@@ -1,0 +1,236 @@
+{
+  "metadata": {
+    "catalog_id": "ASIE.SA.FEASIBILITY.CONTRACTS",
+    "version": "1.0.0",
+    "status": "approved_implementation_baseline",
+    "protocol": "APP",
+    "message_path": "Source Module -> Source Socket -> Socket Contract Layer -> APP -> ASIE System Bus -> Bus Controller governance -> Target Socket -> Target Module"
+  },
+  "global_message_envelope": {
+    "required": [
+      "message_id",
+      "message_type",
+      "message_version",
+      "correlation_id",
+      "causation_id",
+      "contract_id",
+      "socket_id",
+      "source_module",
+      "target_capability",
+      "project_id",
+      "security_context",
+      "idempotency_key",
+      "occurred_at",
+      "payload"
+    ],
+    "security_context_required": ["subject_id", "tenant_id", "roles", "permissions", "authentication_strength", "session_id"],
+    "audit_fields": ["decision", "policy_version", "validation_result", "processing_module", "started_at", "completed_at", "error_code"]
+  },
+  "modules": [
+    {
+      "module_id": "ASIE.MOD.FEASIBILITY",
+      "purpose": "Project classification, template routing, technical and feasibility workflow",
+      "allowed": ["route_model", "validate_required_inputs", "assemble_domain_snapshot"],
+      "forbidden": ["calculate_financial_outputs", "call_other_modules_directly", "override_subscription_safety", "generate_final_verdict"]
+    },
+    {
+      "module_id": "ASIE.MOD.FINANCIAL",
+      "purpose": "Deterministic financial schedules, statements, appraisal, and reconciliation",
+      "allowed": ["calculate_schedules", "reconcile_statements", "publish_versioned_outputs"],
+      "forbidden": ["generate_ai_narrative", "retrieve_research_directly", "render_dashboard", "change_statutory_rules"]
+    },
+    {
+      "module_id": "ASIE.MOD.EVIDENCE",
+      "purpose": "Evidence registry, source quality, benchmark applicability, and research provenance",
+      "allowed": ["score_evidence", "return_approved_benchmarks", "enforce_license_class"],
+      "forbidden": ["become_legal_authority", "calculate_financials", "copy_proprietary_research", "invent_missing_evidence"]
+    },
+    {
+      "module_id": "ASIE.MOD.RISK",
+      "purpose": "Deterministic sensitivity, switching values, stress tests, and Monte Carlo simulation",
+      "allowed": ["run_sensitivity", "solve_switching_values", "run_monte_carlo", "publish_diagnostics"],
+      "forbidden": ["allow_ai_approved_distribution", "hide_non_convergence", "label_result_as_success_probability", "call_financial_module_directly"]
+    },
+    {
+      "module_id": "ASIE.MOD.DECISION",
+      "purpose": "FSDP v3.1 orchestration, deterministic persona KPI evaluation, schema validation, and Sovereign Verdict synthesis",
+      "allowed": ["enforce_persona_sequence", "enforce_isolation", "calculate_persona_kpis", "synthesize_by_versioned_rules"],
+      "forbidden": ["majority_vote", "allow_persona_cross_read", "let_ai_create_kpi", "run_synthesis_with_invalid_output"]
+    },
+    {
+      "module_id": "ASIE.MOD.AI",
+      "purpose": "Contract-bound persona explanation, challenge, and report narrative assistance",
+      "allowed": ["explain_approved_outputs", "challenge_assumptions", "draft_narrative", "suggest_validation_questions"],
+      "forbidden": ["generate_financial_number", "approve_distribution", "produce_final_verdict", "call_provider_from_frontend"]
+    },
+    {
+      "module_id": "ASIE.MOD.EXPORT",
+      "purpose": "Render PDF, Excel, and PowerPoint from immutable snapshots",
+      "allowed": ["render_snapshot", "validate_report_manifest", "publish_checksum"],
+      "forbidden": ["recalculate", "mutate_snapshot", "fetch_unapproved_sources", "diverge_by_format"]
+    }
+  ],
+  "sockets": [
+    {
+      "socket_id": "SCK.FEASIBILITY.ROUTE.V1",
+      "owner": "ASIE.MOD.FEASIBILITY",
+      "accepted_messages": ["feasibility.route.request.v1"],
+      "returned_messages": ["feasibility.route.result.v1", "feasibility.route.rejected.v1"],
+      "required_permissions": ["project:read", "feasibility:route"],
+      "validation": ["jurisdiction_present", "project_profile_present", "subscription_present", "security_context_valid"]
+    },
+    {
+      "socket_id": "SCK.FINANCE.RUN.V1",
+      "owner": "ASIE.MOD.FINANCIAL",
+      "accepted_messages": ["finance.run.request.v1", "finance.validate.request.v1"],
+      "returned_messages": ["finance.run.result.v1", "finance.validation.result.v1", "finance.run.rejected.v1"],
+      "required_permissions": ["project:read", "finance:execute"],
+      "validation": ["approved_input_snapshot", "formula_catalog_version", "rule_pack_version", "currency_and_period_valid"]
+    },
+    {
+      "socket_id": "SCK.EVIDENCE.SCORE.V1",
+      "owner": "ASIE.MOD.EVIDENCE",
+      "accepted_messages": ["evidence.score.request.v1", "benchmark.query.request.v1"],
+      "returned_messages": ["evidence.score.result.v1", "benchmark.query.result.v1", "evidence.request.rejected.v1"],
+      "required_permissions": ["project:read", "evidence:read"],
+      "validation": ["source_registry_present", "license_class_allowed", "claim_type_present"]
+    },
+    {
+      "socket_id": "SCK.RISK.ANALYZE.V1",
+      "owner": "ASIE.MOD.RISK",
+      "accepted_messages": ["risk.sensitivity.request.v1", "risk.switching.request.v1", "risk.monte_carlo.request.v1"],
+      "returned_messages": ["risk.sensitivity.result.v1", "risk.switching.result.v1", "risk.monte_carlo.result.v1", "risk.analysis.rejected.v1"],
+      "required_permissions": ["project:read", "risk:execute"],
+      "validation": ["financial_snapshot_valid", "stochastic_inputs_approved", "correlation_matrix_valid", "gate_catalog_version_present"]
+    },
+    {
+      "socket_id": "SCK.DECISION.FSDP.V1",
+      "owner": "ASIE.MOD.DECISION",
+      "accepted_messages": ["decision.persona.sequence.request.v1", "decision.sovereign_verdict.request.v1"],
+      "returned_messages": ["decision.persona.sequence.result.v1", "decision.sovereign_verdict.result.v1", "decision.request.rejected.v1"],
+      "required_permissions": ["project:read", "decision:execute"],
+      "validation": ["input_snapshot_immutable", "persona_order_valid", "isolation_policy_active", "all_outputs_schema_valid_before_verdict"]
+    },
+    {
+      "socket_id": "SCK.AI.PERSONA.V1",
+      "owner": "ASIE.MOD.AI",
+      "accepted_messages": ["ai.persona.explain.request.v1", "ai.report.narrative.request.v1"],
+      "returned_messages": ["ai.persona.explain.result.v1", "ai.report.narrative.result.v1", "ai.request.rejected.v1"],
+      "required_permissions": ["ai:execute", "project:read_redacted"],
+      "validation": ["approved_redacted_context", "no_other_persona_output", "no_unapproved_financial_generation", "provider_behind_ai_contract"]
+    },
+    {
+      "socket_id": "SCK.EXPORT.RENDER.V1",
+      "owner": "ASIE.MOD.EXPORT",
+      "accepted_messages": ["report.render.request.v1"],
+      "returned_messages": ["report.render.result.v1", "report.render.rejected.v1"],
+      "required_permissions": ["project:read", "report:generate"],
+      "validation": ["snapshot_final_or_preliminary_labelled", "requested_format_entitled", "snapshot_hash_valid", "template_version_present"]
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "CTR.FEASIBILITY.ROUTE.V1",
+      "request_message": "feasibility.route.request.v1",
+      "response_message": "feasibility.route.result.v1",
+      "request_payload_required": ["project_profile", "jurisdiction", "legal_form", "enterprise_size_inputs", "sector", "lifecycle", "financing_structure", "reporting_basis", "subscription", "evidence_readiness"],
+      "response_payload_required": ["model_depth", "sector_template", "required_schedules", "required_evidence", "entitlement_status", "final_status_allowed", "routing_reasons", "router_version"]
+    },
+    {
+      "contract_id": "CTR.FINANCE.RUN.V1",
+      "request_message": "finance.run.request.v1",
+      "response_message": "finance.run.result.v1",
+      "request_payload_required": ["project_snapshot_id", "input_hash", "formula_catalog_version", "rule_pack_version", "model_depth", "time_grid", "currency", "schedule_inputs"],
+      "response_payload_required": ["calculation_run_id", "schedule_outputs", "statements", "project_cash_flow", "equity_cash_flow", "appraisal", "reconciliation_status", "warnings", "output_hash"]
+    },
+    {
+      "contract_id": "CTR.FINANCE.VALIDATE.V1",
+      "request_message": "finance.validate.request.v1",
+      "response_message": "finance.validation.result.v1",
+      "request_payload_required": ["calculation_run_id", "output_hash", "required_reconciliations"],
+      "response_payload_required": ["validation_status", "checks", "blocking_errors", "validator_version"]
+    },
+    {
+      "contract_id": "CTR.EVIDENCE.SCORE.V1",
+      "request_message": "evidence.score.request.v1",
+      "response_message": "evidence.score.result.v1",
+      "request_payload_required": ["project_snapshot_id", "assumptions", "evidence_records", "materiality_policy_version"],
+      "response_payload_required": ["coverage", "quality_distribution", "freshness_status", "unsupported_material_assumptions", "expired_sources", "score_version"]
+    },
+    {
+      "contract_id": "CTR.BENCHMARK.QUERY.V1",
+      "request_message": "benchmark.query.request.v1",
+      "response_message": "benchmark.query.result.v1",
+      "request_payload_required": ["claim_type", "sector", "geography", "project_size", "as_of_date", "allowed_license_classes"],
+      "response_payload_required": ["benchmarks", "applicability", "limitations", "citations", "human_review_required"]
+    },
+    {
+      "contract_id": "CTR.RISK.SENSITIVITY.V1",
+      "request_message": "risk.sensitivity.request.v1",
+      "response_message": "risk.sensitivity.result.v1",
+      "request_payload_required": ["calculation_run_id", "variables", "ranges", "target_metrics", "scenario_policy_version"],
+      "response_payload_required": ["results", "ranked_drivers", "decision_changes", "warnings"]
+    },
+    {
+      "contract_id": "CTR.RISK.SWITCHING.V1",
+      "request_message": "risk.switching.request.v1",
+      "response_message": "risk.switching.result.v1",
+      "request_payload_required": ["calculation_run_id", "variable", "decision_metric", "decision_boundary", "solver_policy_version"],
+      "response_payload_required": ["switching_value", "distance_from_base", "solver_status", "non_monotonic_warning"]
+    },
+    {
+      "contract_id": "CTR.RISK.MONTE_CARLO.V1",
+      "request_message": "risk.monte_carlo.request.v1",
+      "response_message": "risk.monte_carlo.result.v1",
+      "request_payload_required": ["calculation_run_id", "project_snapshot_id", "stochastic_input_version", "distributions", "correlations", "gate_catalog_version", "seed", "minimum_iterations", "convergence_policy"],
+      "response_payload_required": ["monte_carlo_run_id", "valid_iterations", "rejected_iterations", "convergence_status", "gate_probability", "percentiles", "cash_shortfall_probability", "covenant_breach_probability", "drivers", "diagnostics", "warnings"]
+    },
+    {
+      "contract_id": "CTR.DECISION.PERSONA.SEQUENCE.V1",
+      "request_message": "decision.persona.sequence.request.v1",
+      "response_message": "decision.persona.sequence.result.v1",
+      "request_payload_required": ["project_snapshot_id", "calculation_run_id", "evidence_snapshot_hash", "monte_carlo_run_id", "persona_protocol_version", "redaction_policy_version"],
+      "response_payload_required": ["persona_run_ids", "persona_kpis", "schema_validation", "isolation_attestations", "sequence_status"]
+    },
+    {
+      "contract_id": "CTR.AI.PERSONA.EXPLAIN.V1",
+      "request_message": "ai.persona.explain.request.v1",
+      "response_message": "ai.persona.explain.result.v1",
+      "request_payload_required": ["persona_id", "approved_raw_project_context", "approved_deterministic_outputs", "approved_evidence", "success_metric", "forbidden_context_hashes"],
+      "response_payload_required": ["judgement", "evidence", "reasons", "confidence", "confidence_explanation", "success_metric_id", "next_action", "change_condition", "provenance"]
+    },
+    {
+      "contract_id": "CTR.DECISION.SOVEREIGN.VERDICT.V1",
+      "request_message": "decision.sovereign_verdict.request.v1",
+      "response_message": "decision.sovereign_verdict.result.v1",
+      "request_payload_required": ["project_snapshot_id", "calculation_run_id", "monte_carlo_run_id", "persona_run_ids", "persona_schema_validations", "verdict_rule_version"],
+      "response_payload_required": ["verdict_id", "status", "conditions", "blockers", "reasons", "provenance", "decision_rule_trace"]
+    },
+    {
+      "contract_id": "CTR.REPORT.RENDER.V1",
+      "request_message": "report.render.request.v1",
+      "response_message": "report.render.result.v1",
+      "request_payload_required": ["project_snapshot_id", "calculation_run_id", "monte_carlo_run_id", "persona_run_ids", "verdict_id", "format", "template_id", "locale"],
+      "response_payload_required": ["report_id", "format", "snapshot_id", "checksum", "validation_status", "generated_at", "artifact_reference"]
+    }
+  ],
+  "failure_codes": [
+    {"code": "AAS_DIRECT_MODULE_BYPASS", "severity": "critical", "retryable": false},
+    {"code": "CONTRACT_MISSING_OR_INVALID", "severity": "critical", "retryable": false},
+    {"code": "UNAUTHORIZED_PROJECT_ACCESS", "severity": "critical", "retryable": false},
+    {"code": "INPUT_SNAPSHOT_NOT_APPROVED", "severity": "high", "retryable": true},
+    {"code": "SA_RULE_PACK_STALE", "severity": "high", "retryable": false},
+    {"code": "FINANCIAL_RECONCILIATION_FAILED", "severity": "critical", "retryable": false},
+    {"code": "CASH_FLOW_DISCOUNT_BASIS_MISMATCH", "severity": "critical", "retryable": false},
+    {"code": "IRR_AMBIGUOUS_OR_INVALID", "severity": "high", "retryable": false},
+    {"code": "STOCHASTIC_INPUT_NOT_APPROVED", "severity": "high", "retryable": true},
+    {"code": "CORRELATION_MATRIX_INVALID", "severity": "critical", "retryable": true},
+    {"code": "MONTE_CARLO_NOT_CONVERGED", "severity": "high", "retryable": true},
+    {"code": "PERSONA_ISOLATION_VIOLATION", "severity": "critical", "retryable": false},
+    {"code": "PERSONA_OUTPUT_SCHEMA_INVALID", "severity": "high", "retryable": true},
+    {"code": "SOVEREIGN_VERDICT_PRECONDITION_FAILED", "severity": "critical", "retryable": false},
+    {"code": "AI_DECISIVE_NUMBER_ATTEMPT", "severity": "critical", "retryable": false},
+    {"code": "REPORT_SNAPSHOT_MISMATCH", "severity": "critical", "retryable": false},
+    {"code": "SUBSCRIPTION_CRITICAL_TRUTH_SUPPRESSION", "severity": "critical", "retryable": false}
+  ]
+}

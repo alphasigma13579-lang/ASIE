@@ -1,0 +1,113 @@
+قرار معماري رسمي ASIE Architecture Standard (AAS)
+
+واعتبارًا من هذه اللحظة، سأتعامل مع هذا القرار على أنه قرار معماري مجمّد (Frozen Architecture Decision)، ولن أطلب الإذن في كل مرة عندما يكون القرار منسجمًا مع المعيار الذي اعتمدناه.
+
+قرار معماري رسمي
+
+Architecture Decision Record (ADR)
+
+الحقل	القيمة
+القرار	اعتماد ASIE Architecture Standard (AAS)
+الحالة	✅ Approved
+الإصدار	1.0
+نوع القرار	Frozen
+النطاق	Architecture Governance
+السلطة	ASIE Architecture Board
+القرار
+
+يُعتمد ASIE Architecture Standard (AAS) بوصفه المعيار الهندسي الرسمي لمنصة ASIE.
+
+ويصبح المرجع الأعلى الذي تُبنى عليه جميع الوثائق والمواصفات والمعايير الهندسية الخاصة بالمنصة.
+
+اعتماد نظام الترقيم الرسمي
+
+اعتبارًا من الآن، ستكون جميع الوثائق بالصيغة التالية:
+
+AAS-01  ASIE Constitution
+
+AAS-02  ASIE Operating Architecture
+
+AAS-10  ASIE Kernel Specification
+
+AAS-11  ASIE Platform Protocol (APP) Specification
+
+AAS-12  ASIE Heart Controller Specification
+
+AAS-13  ASIE Three Hearts Specification
+
+AAS-14  ASIE Bus Controller Specification
+
+AAS-15  ASIE System Bus Specification
+
+AAS-16  ASIE Socket Contract Layer Specification
+
+AAS-17  ASIE Module Specification
+
+AAS-18  ASIE Message Flow Specification
+
+AAS-20  ASIE Zero Trust Security Specification
+
+AAS-30  ASIE Deployment Architecture
+
+AAS-31  ASIE Infrastructure Architecture
+
+AAS-32  ASIE Database Architecture
+
+AAS-40  ASIE AI Integration Specification
+
+AAS-50  ASIE Plugin Development SDK
+
+AAS-60  ASIE API Specification
+اعتماد رأس موحد لجميع الوثائق
+
+ابتداءً من الآن، ستبدأ جميع الوثائق بالرأس التالي:
+
+ASIE Architecture Standard (AAS)
+
+Document ID :
+Document Name :
+Version :
+Status :
+Classification :
+Owner :
+Authority :
+Architecture :
+Last Updated :
+اعتماد حالات الوثائق
+
+ستستخدم جميع وثائق AAS الحالات التالية فقط:
+
+Draft
+Review
+Approved
+Frozen
+Deprecated
+Archived
+
+ولا تُستخدم أي حالات أخرى.
+
+اعتماد سياسة الإصدارات
+
+يعتمد المشروع نظام Semantic Versioning للوثائق:
+
+Major (1.0 → 2.0): تغييرات معمارية جوهرية (تتطلب ACP).
+Minor (1.1 → 1.2): تحسينات أو توضيحات غير كاسرة.
+Patch (1.0.1 → 1.0.2): تصحيح أخطاء لغوية أو تنسيقية فقط.
+اعتماد سياسة المرجعية
+
+كل وثيقة يجب أن تشير إلى:
+
+الوثيقة الأعلى منها.
+الوثائق التي تعتمد عليها.
+الوثائق التي تعتمد عليها لاحقًا.
+
+وبذلك تصبح شبكة الاعتماد بين الوثائق واضحة وقابلة للتتبع.
+
+قاعدة العمل الجديدة
+
+سأتعامل من الآن فصاعدًا مع أي قرار معماري يتم اعتماده بهذه الصيغة:
+
+إذا كان ينسجم مع المعمارية المجمدة وAAS: سأدمجه مباشرة في الوثائق المناسبة دون انتظار إذن متكرر.
+إذا كان يؤثر على المعمارية المجمدة أو يغير المسؤوليات أو البنية الأساسية: سأوقف التنفيذ وأعتبره Architecture Change Proposal (ACP) حتى يُراجع ويُعتمد قبل أي تعديل.
+
+بهذا نحافظ على استقرار AAS ونمنع الانحراف التدريجي للمعمارية مع تقدم المشروع.

@@ -1,0 +1,772 @@
+{
+  "metadata": {
+    "catalog_id": "ASIE.SA.FEASIBILITY.CATALOG",
+    "version": "1.0.0",
+    "status": "approved_implementation_baseline",
+    "jurisdiction": "SA",
+    "effective_date": "2026-07-13",
+    "architecture": "AAS v1.0.0 Frozen Baseline",
+    "money_precision": "decimal",
+    "rounding_policy": "round_for_presentation_only"
+  },
+  "routing": {
+    "axes": [
+      "jurisdiction",
+      "legal_form",
+      "enterprise_size",
+      "project_complexity",
+      "sector_template",
+      "lifecycle",
+      "financing_structure",
+      "reporting_basis",
+      "subscription_entitlement",
+      "evidence_readiness"
+    ],
+    "depth_levels": [
+      {
+        "id": "LITE",
+        "intended_scope": "individual_micro_low_complexity",
+        "mandatory": [
+          "monthly_cash_model",
+          "revenue_cost_payroll_rent_capex",
+          "break_even",
+          "funding_gap",
+          "npv_when_multiperiod",
+          "core_sensitivity",
+          "monte_carlo_headline",
+          "five_persona_kpis"
+        ]
+      },
+      {
+        "id": "STANDARD",
+        "intended_scope": "small_medium_operating_project",
+        "mandatory": [
+          "integrated_financial_statements",
+          "working_capital",
+          "depreciation_and_replacement",
+          "financing_schedule",
+          "npv_irr_mirr_pi_payback",
+          "switching_values",
+          "monte_carlo_percentiles",
+          "five_persona_outputs"
+        ]
+      },
+      {
+        "id": "ADVANCED",
+        "intended_scope": "medium_large_or_regulated_project",
+        "mandatory": [
+          "full_three_statement_model",
+          "lease_accounting_when_applicable",
+          "multi_scenario_and_stress",
+          "correlated_monte_carlo",
+          "debt_covenants_dscr_llcr",
+          "sector_technical_model",
+          "global_research_benchmarks",
+          "powerpoint_executive_report"
+        ]
+      },
+      {
+        "id": "INSTITUTIONAL",
+        "intended_scope": "large_company_multi_entity_or_project_finance",
+        "mandatory": [
+          "multi_entity_or_multi_site",
+          "project_and_equity_cash_flow",
+          "advanced_financing_and_covenants",
+          "portfolio_and_alternative_comparison",
+          "advanced_monte_carlo_tail_risk",
+          "governed_custom_assumptions",
+          "approval_workflow",
+          "full_audit_package"
+        ]
+      }
+    ],
+    "selection_rule": "required_depth=max(complexity_depth,regulatory_depth,financing_depth,reporting_depth,risk_depth)",
+    "insufficient_subscription_behavior": "PRELIMINARY_ONLY_NO_FINAL_FEASIBILITY"
+  },
+  "subscription_policy": {
+    "tiers": [
+      {
+        "id": "BASIC",
+        "entitlements": ["core_model", "core_monte_carlo_kpi", "five_persona_kpis", "summary_pdf"]
+      },
+      {
+        "id": "PROFESSIONAL",
+        "entitlements": ["full_standard_model", "sensitivity", "switching_values", "pdf", "excel", "persona_narratives"]
+      },
+      {
+        "id": "BUSINESS",
+        "entitlements": ["advanced_model", "correlated_monte_carlo", "technical_depth", "benchmark_depth", "pdf", "excel", "powerpoint"]
+      },
+      {
+        "id": "ENTERPRISE",
+        "entitlements": ["institutional_model", "portfolio", "multi_entity", "custom_templates", "approval_workflow", "api_contracts", "full_exports"]
+      }
+    ],
+    "never_gate": [
+      "calculation_correctness",
+      "critical_warnings",
+      "evidence_quality_status",
+      "funding_gap",
+      "cash_shortfall_warning",
+      "model_invalidity",
+      "reconciliation_failure",
+      "monte_carlo_headline_status",
+      "five_persona_kpi_statuses",
+      "material_assumptions",
+      "final_status_block_reason"
+    ]
+  },
+  "tables": [
+    {
+      "id": "TBL-001",
+      "name": "project_profile",
+      "name_ar": "ملف المشروع",
+      "required": true,
+      "fields": ["project_id", "name", "description", "lifecycle", "sector_code", "analysis_date", "owner_id", "status"]
+    },
+    {
+      "id": "TBL-002",
+      "name": "jurisdiction_and_location",
+      "name_ar": "الدولة والموقع والنطاق السوقي",
+      "required": true,
+      "fields": ["country_code", "region", "city", "site_type", "market_scope", "currency", "timezone", "rule_effective_date"]
+    },
+    {
+      "id": "TBL-003",
+      "name": "legal_entity_and_reporting",
+      "name_ar": "الكيان والأساس المحاسبي",
+      "required": true,
+      "fields": ["legal_form", "ownership_profile", "enterprise_size", "reporting_basis", "public_accountability", "vat_status", "tax_zakat_profile"]
+    },
+    {
+      "id": "TBL-004",
+      "name": "assumption_register",
+      "name_ar": "سجل الافتراضات",
+      "required": true,
+      "fields": ["assumption_id", "name", "value", "unit", "currency", "period", "scenario", "source_id", "owner", "approval_status", "valid_from", "valid_to"]
+    },
+    {
+      "id": "TBL-005",
+      "name": "evidence_register",
+      "name_ar": "سجل الأدلة والمصادر",
+      "required": true,
+      "fields": ["source_id", "source_type", "publisher", "title", "url_or_document_id", "publication_date", "access_date", "geography", "sector", "methodology", "license_class", "quality_grade", "reviewer", "revalidation_date"]
+    },
+    {
+      "id": "TBL-006",
+      "name": "products_services",
+      "name_ar": "المنتجات والخدمات",
+      "required": true,
+      "fields": ["item_id", "name", "unit", "channel", "launch_date", "capacity_link", "price_model", "cost_model", "active"]
+    },
+    {
+      "id": "TBL-007",
+      "name": "demand_price_volume",
+      "name_ar": "الطلب والسعر وحجم المبيعات",
+      "required": true,
+      "fields": ["period", "item_id", "market_demand", "target_share", "units", "price_ex_vat", "discounts", "returns", "ramp_up", "seasonality", "evidence_id"]
+    },
+    {
+      "id": "TBL-008",
+      "name": "market_and_competitors",
+      "name_ar": "السوق والمنافسون",
+      "required": true,
+      "fields": ["segment", "geography", "market_size", "growth", "competitor", "offer", "price", "capacity", "channel", "strength", "evidence_id"]
+    },
+    {
+      "id": "TBL-009",
+      "name": "site_and_facilities",
+      "name_ar": "الموقع والمرافق",
+      "required": true,
+      "fields": ["site_id", "location", "area", "usable_area", "fitout_need", "utility_capacity", "access", "lease_or_own", "permit_status", "evidence_id"]
+    },
+    {
+      "id": "TBL-010",
+      "name": "capacity_and_process",
+      "name_ar": "الطاقة والعملية الفنية",
+      "required": true,
+      "fields": ["process_id", "output_unit", "design_capacity", "available_capacity", "utilization", "yield", "waste", "downtime", "bottleneck", "quality_target"]
+    },
+    {
+      "id": "TBL-011",
+      "name": "capex_assets",
+      "name_ar": "الأصول والتجهيزات الرأسمالية",
+      "required": true,
+      "fields": ["asset_id", "category", "description", "quantity", "unit_cost_ex_vat", "freight", "duty", "installation", "commissioning", "capitalized_cost", "purchase_date", "in_service_date", "funding_source", "evidence_id"]
+    },
+    {
+      "id": "TBL-012",
+      "name": "depreciation_amortization",
+      "name_ar": "الإهلاك والإطفاء",
+      "required": true,
+      "fields": ["asset_id", "component_id", "method", "useful_life", "residual_value", "in_service_date", "impairment", "disposal_date", "replacement_asset_id", "policy_version"]
+    },
+    {
+      "id": "TBL-013",
+      "name": "leases_and_rent",
+      "name_ar": "الإيجارات وعقود الإيجار",
+      "required": true,
+      "fields": ["lease_id", "site_or_asset", "start_date", "end_date", "payment_frequency", "cash_payment", "escalation", "deposit", "service_component", "accounting_treatment", "discount_rate", "renewal_option", "evidence_id"]
+    },
+    {
+      "id": "TBL-014",
+      "name": "workforce_plan",
+      "name_ar": "خطة القوى العاملة",
+      "required": true,
+      "fields": ["role_id", "role", "nationality_class", "headcount", "start_date", "shift", "utilization", "annual_increase", "turnover", "replacement_time"]
+    },
+    {
+      "id": "TBL-015",
+      "name": "payroll_and_employee_cost",
+      "name_ar": "الرواتب وتكلفة الموظف",
+      "required": true,
+      "fields": ["role_id", "basic_salary", "housing", "transport", "other_allowances", "commission", "overtime", "employer_contributions", "medical", "recruitment", "visa_permit", "training", "leave_cost", "end_of_service_rule", "evidence_id"]
+    },
+    {
+      "id": "TBL-016",
+      "name": "direct_materials_and_cogs",
+      "name_ar": "المواد المباشرة وتكلفة المبيعات",
+      "required": true,
+      "fields": ["item_id", "input_id", "quantity_per_unit", "yield", "waste", "unit_cost_ex_vat", "freight", "duty", "supplier", "lead_time", "minimum_order", "currency", "evidence_id"]
+    },
+    {
+      "id": "TBL-017",
+      "name": "operating_expenses",
+      "name_ar": "المصاريف التشغيلية",
+      "required": true,
+      "fields": ["expense_id", "category", "fixed_or_variable", "driver", "amount_ex_vat", "frequency", "start_date", "escalation", "allocation_rule", "evidence_id"]
+    },
+    {
+      "id": "TBL-018",
+      "name": "preopening_and_contingency",
+      "name_ar": "ما قبل التشغيل والاحتياطي",
+      "required": true,
+      "fields": ["cost_id", "category", "amount", "timing", "capital_or_expense", "contingency_basis", "optimism_bias_adjustment", "evidence_id"]
+    },
+    {
+      "id": "TBL-019",
+      "name": "inventory_receivables_payables",
+      "name_ar": "المخزون والعملاء والموردون",
+      "required": true,
+      "fields": ["period", "item_or_segment", "inventory_days", "receivable_days", "payable_days", "bad_debt_rate", "obsolete_inventory_rate", "cash_sales_share", "advance_payment_share"]
+    },
+    {
+      "id": "TBL-020",
+      "name": "debt_facilities",
+      "name_ar": "التسهيلات والقروض",
+      "required": false,
+      "fields": ["facility_id", "lender", "limit", "currency", "draw_schedule", "interest_basis", "rate", "fees", "grace_period", "repayment_type", "maturity", "balloon", "covenants", "security", "evidence_id"]
+    },
+    {
+      "id": "TBL-021",
+      "name": "debt_schedule",
+      "name_ar": "جدول خدمة الدين",
+      "required": false,
+      "fields": ["period", "facility_id", "opening_balance", "drawdown", "interest", "capitalized_interest", "principal", "fees", "cash_interest", "closing_balance", "debt_service"]
+    },
+    {
+      "id": "TBL-022",
+      "name": "equity_and_owner_flows",
+      "name_ar": "حقوق الملكية وتدفقات المالك",
+      "required": true,
+      "fields": ["period", "owner_id", "contribution", "owner_compensation", "withdrawal", "dividend", "retained_earnings_effect", "approval_status"]
+    },
+    {
+      "id": "TBL-023",
+      "name": "vat_zakat_tax_rules",
+      "name_ar": "الزكاة والضريبة والقيمة المضافة",
+      "required": true,
+      "fields": ["rule_id", "jurisdiction", "entity_profile", "rule_type", "effective_from", "effective_to", "calculation_method", "recoverability", "authority", "source_id", "human_reviewed_at"]
+    },
+    {
+      "id": "TBL-024",
+      "name": "inflation_fx_discount_rates",
+      "name_ar": "التضخم والعملات ومعدلات الخصم",
+      "required": true,
+      "fields": ["period", "variable", "nominal_or_real", "rate", "currency_pair", "fx_rate", "source_id", "approval_status"]
+    },
+    {
+      "id": "TBL-025",
+      "name": "financial_statements",
+      "name_ar": "القوائم المالية المترابطة",
+      "required": true,
+      "fields": ["period", "statement", "line_item", "amount", "currency", "source_schedule", "calculation_id", "snapshot_id"]
+    },
+    {
+      "id": "TBL-026",
+      "name": "investment_appraisal",
+      "name_ar": "مؤشرات التقييم الاستثماري",
+      "required": true,
+      "fields": ["cash_flow_view", "discount_basis", "npv", "irr", "irr_status", "mirr", "pi", "payback", "discounted_payback", "minimum_cash", "funding_gap", "dscr_min", "llcr", "snapshot_id"]
+    },
+    {
+      "id": "TBL-027",
+      "name": "scenario_sensitivity_switching",
+      "name_ar": "السيناريوهات والحساسية وقيم التحول",
+      "required": true,
+      "fields": ["analysis_id", "type", "variable", "base_value", "tested_value", "output_metric", "output_value", "switching_value", "decision_changed", "snapshot_id"]
+    },
+    {
+      "id": "TBL-028",
+      "name": "monte_carlo_inputs",
+      "name_ar": "مدخلات محاكاة مونت كارلو",
+      "required": true,
+      "fields": ["variable_id", "base_value", "distribution", "parameters", "lower_bound", "upper_bound", "evidence_id", "approver", "correlation_group", "version"]
+    },
+    {
+      "id": "TBL-029",
+      "name": "monte_carlo_runs",
+      "name_ar": "تشغيلات مونت كارلو",
+      "required": true,
+      "fields": ["run_id", "snapshot_id", "seed", "rng", "requested_iterations", "valid_iterations", "rejected_iterations", "convergence_status", "gate_probability", "npv_p10", "npv_p50", "npv_p90", "funding_p90", "cash_shortfall_probability", "driver_results", "created_at"]
+    },
+    {
+      "id": "TBL-030",
+      "name": "risk_register",
+      "name_ar": "سجل المخاطر",
+      "required": true,
+      "fields": ["risk_id", "category", "cause", "event", "impact", "likelihood_basis", "quantified_variable", "mitigation", "owner", "trigger", "residual_risk", "evidence_id"]
+    },
+    {
+      "id": "TBL-031",
+      "name": "persona_runs",
+      "name_ar": "تشغيلات الشخصيات السيادية",
+      "required": true,
+      "fields": ["persona_run_id", "persona_id", "sequence", "input_snapshot_hash", "judgement", "evidence", "reasons", "confidence", "confidence_explanation", "success_metric_id", "next_action", "change_condition", "schema_valid", "isolation_attestation"]
+    },
+    {
+      "id": "TBL-032",
+      "name": "sovereign_verdict",
+      "name_ar": "الحكم السيادي",
+      "required": true,
+      "fields": ["verdict_id", "project_snapshot_id", "status", "conditions", "blockers", "deterministic_rule_version", "persona_run_ids", "evidence_hash", "calculation_run_id", "created_at"]
+    },
+    {
+      "id": "TBL-033",
+      "name": "calculation_snapshot",
+      "name_ar": "لقطة الحساب",
+      "required": true,
+      "fields": ["snapshot_id", "project_id", "input_hash", "evidence_hash", "formula_catalog_version", "rule_pack_version", "calculation_run_id", "monte_carlo_run_id", "persona_run_ids", "output_hash", "status", "created_at"]
+    },
+    {
+      "id": "TBL-034",
+      "name": "report_manifest",
+      "name_ar": "سجل التقارير",
+      "required": true,
+      "fields": ["report_id", "snapshot_id", "format", "template_id", "locale", "generated_at", "checksum", "validation_status", "download_permission"]
+    }
+  ],
+  "formulas": [
+    {
+      "id": "FIN-RATE-001",
+      "name": "effective_period_rate",
+      "expression": "(1 + annual_effective_rate)^(1 / periods_per_year) - 1",
+      "guardrails": ["annual_effective_rate>-1", "periods_per_year>0"]
+    },
+    {
+      "id": "FIN-RATE-002",
+      "name": "real_rate",
+      "expression": "(1 + nominal_rate) / (1 + inflation_rate) - 1",
+      "guardrails": ["inflation_rate>-1", "nominal_and_inflation_same_period"]
+    },
+    {
+      "id": "FIN-REV-001",
+      "name": "net_revenue",
+      "expression": "units * price_ex_vat - discounts - returns",
+      "aggregation_grain": "item_channel_period"
+    },
+    {
+      "id": "FIN-COGS-001",
+      "name": "unit_variable_cost",
+      "expression": "sum(input_quantity_per_unit / yield * landed_input_cost) + other_variable_unit_cost",
+      "guardrails": ["yield>0", "no_double_count_freight_or_duty"]
+    },
+    {
+      "id": "FIN-MARGIN-001",
+      "name": "contribution_margin",
+      "expression": "net_revenue - variable_costs",
+      "unit": "money"
+    },
+    {
+      "id": "FIN-MARGIN-002",
+      "name": "weighted_contribution_margin_ratio",
+      "expression": "sum(contribution_margin_by_item) / sum(net_revenue_by_item)",
+      "guardrails": ["total_net_revenue!=0"]
+    },
+    {
+      "id": "FIN-BE-001",
+      "name": "break_even_revenue",
+      "expression": "fixed_cash_operating_costs / weighted_contribution_margin_ratio",
+      "guardrails": ["weighted_contribution_margin_ratio>0"]
+    },
+    {
+      "id": "FIN-PL-001",
+      "name": "gross_profit",
+      "expression": "net_revenue - cogs",
+      "unit": "money"
+    },
+    {
+      "id": "FIN-PL-002",
+      "name": "ebitda",
+      "expression": "net_revenue - cogs - operating_expenses_excluding_depreciation_amortization_interest_tax",
+      "unit": "money"
+    },
+    {
+      "id": "FIN-PL-003",
+      "name": "ebit",
+      "expression": "ebitda - depreciation - amortization - impairment_operating",
+      "unit": "money"
+    },
+    {
+      "id": "FIN-DEP-001",
+      "name": "straight_line_depreciation",
+      "expression": "(depreciable_cost - residual_value) / useful_life_periods",
+      "guardrails": ["useful_life_periods>0", "starts_on_in_service_date", "component_level_when_material"]
+    },
+    {
+      "id": "FIN-LEASE-001",
+      "name": "initial_lease_liability",
+      "expression": "sum(lease_payment_t / (1 + period_discount_rate)^t)",
+      "guardrails": ["apply_only_under_selected_reporting_policy", "separate_service_components", "do_not_double_count_cash_rent"]
+    },
+    {
+      "id": "FIN-HR-001",
+      "name": "loaded_employee_cost",
+      "expression": "basic + allowances + variable_pay + employer_contributions + insurance + recruitment_amortization + visa_permit + training + leave_cost + end_of_service_accrual",
+      "guardrails": ["statutory_components_resolved_by_effective_dated_rule_engine"]
+    },
+    {
+      "id": "FIN-WC-001",
+      "name": "net_working_capital",
+      "expression": "trade_receivables + eligible_inventory + other_operating_current_assets - trade_payables - other_operating_current_liabilities",
+      "guardrails": ["exclude_cash_and_financing_items", "vat_treatment_consistent"]
+    },
+    {
+      "id": "FIN-WC-002",
+      "name": "receivables_from_dso",
+      "expression": "credit_revenue * dso / days_in_period",
+      "guardrails": ["credit_revenue_only", "period_alignment"]
+    },
+    {
+      "id": "FIN-WC-003",
+      "name": "inventory_from_dio",
+      "expression": "eligible_cogs * dio / days_in_period",
+      "guardrails": ["inventory_relevant_business_only"]
+    },
+    {
+      "id": "FIN-WC-004",
+      "name": "payables_from_dpo",
+      "expression": "credit_purchases * dpo / days_in_period",
+      "guardrails": ["credit_purchases_not_cogs_when_materially_different"]
+    },
+    {
+      "id": "FIN-CF-001",
+      "name": "cash_bridge",
+      "expression": "opening_cash + cfo + cfi + cff",
+      "output": "closing_cash"
+    },
+    {
+      "id": "FIN-CF-002",
+      "name": "fcff",
+      "expression": "nopat + depreciation + amortization - capex - delta_nwc + approved_non_cash_adjustments",
+      "guardrails": ["exclude_debt_draws_and_principal", "tax_from_tax_schedule"]
+    },
+    {
+      "id": "FIN-CF-003",
+      "name": "fcfe",
+      "expression": "net_income + depreciation + amortization - capex - delta_nwc + net_borrowing + approved_non_cash_adjustments",
+      "guardrails": ["equity_cash_flow_only"]
+    },
+    {
+      "id": "FIN-CF-004",
+      "name": "cfads",
+      "expression": "operating_cash_before_financing - cash_taxes - maintenance_capex + approved_cfads_adjustments",
+      "guardrails": ["definition_locked_per_financing_contract"]
+    },
+    {
+      "id": "FIN-VAL-001",
+      "name": "npv",
+      "expression": "sum(cash_flow_t / (1 + discount_rate)^t)",
+      "guardrails": ["cash_flow_and_discount_basis_match", "include_t0", "use_xnpv_for_irregular_dates"]
+    },
+    {
+      "id": "FIN-VAL-002",
+      "name": "xnpv",
+      "expression": "sum(cash_flow_i / (1 + annual_rate)^((date_i-date_0)/day_count_basis))",
+      "guardrails": ["dates_monotonic", "document_day_count_basis"]
+    },
+    {
+      "id": "FIN-VAL-003",
+      "name": "irr",
+      "expression": "solve r where npv(r)=0",
+      "guardrails": ["detect_sign_changes", "report_multiple_or_no_root", "do_not_use_as_sole_decision_metric"]
+    },
+    {
+      "id": "FIN-VAL-004",
+      "name": "mirr",
+      "expression": "(future_value_positive_cash_flows / -present_value_negative_cash_flows)^(1/n) - 1",
+      "guardrails": ["document_finance_rate", "document_reinvestment_rate"]
+    },
+    {
+      "id": "FIN-VAL-005",
+      "name": "profitability_index",
+      "expression": "present_value_future_cash_inflows / absolute_initial_investment",
+      "guardrails": ["initial_investment>0", "same_discount_basis_as_npv"]
+    },
+    {
+      "id": "FIN-VAL-006",
+      "name": "wacc",
+      "expression": "equity_weight * cost_of_equity + debt_weight * pre_tax_cost_of_debt * (1 - applicable_tax_shield_rate)",
+      "guardrails": ["market_or_approved_weights", "tax_shield_only_when_applicable", "not_for_equity_cash_flow"]
+    },
+    {
+      "id": "FIN-DEBT-001",
+      "name": "period_dscr",
+      "expression": "cfads / debt_service",
+      "guardrails": ["debt_service>0", "definition_matches_financing_contract"]
+    },
+    {
+      "id": "FIN-DEBT-002",
+      "name": "llcr",
+      "expression": "npv_of_cfads_over_remaining_loan_life_at_approved_debt_rate / opening_debt_balance",
+      "guardrails": ["opening_debt_balance>0", "loan_life_only"]
+    },
+    {
+      "id": "FIN-LIQ-001",
+      "name": "funding_gap",
+      "expression": "max(0, required_minimum_cash - minimum_pre_funding_cash)",
+      "guardrails": ["include_timing_not_annual_net_only"]
+    },
+    {
+      "id": "RISK-MC-001",
+      "name": "monte_carlo_feasibility_gate_probability",
+      "expression": "count(valid_simulation where all applicable approved gates pass) / count(valid_simulations)",
+      "guardrails": ["not_success_probability_label", "non_applicable_gates_excluded", "convergence_required", "evidence_backed_distributions"]
+    },
+    {
+      "id": "RISK-SW-001",
+      "name": "switching_value",
+      "expression": "solve input_value where selected_decision_metric reaches decision_boundary",
+      "guardrails": ["boundary_and_solver_documented", "report_non_monotonic_cases"]
+    },
+    {
+      "id": "EVD-QUAL-001",
+      "name": "evidence_coverage",
+      "expression": "sum(materiality_weight for valid_supported_material_assumptions) / sum(materiality_weight for all_material_assumptions)",
+      "guardrails": ["weights_governed", "quality_and_freshness_reported_separately", "ai_not_source"]
+    },
+    {
+      "id": "FSDP-KPI-001",
+      "name": "execution_readiness_index",
+      "expression": "sum(weight of passed applicable execution gates) / sum(weight of applicable execution gates)",
+      "guardrails": ["deterministic", "weights_versioned", "critical_gate_failure_visible"]
+    },
+    {
+      "id": "FSDP-KPI-002",
+      "name": "commercial_acceptance_index",
+      "expression": "sum(weight of passed applicable commercial evidence gates) / sum(weight of applicable commercial evidence gates)",
+      "guardrails": ["sector_specific", "demand_and_willingness_to_pay_evidence_required"]
+    },
+    {
+      "id": "FSDP-KPI-003",
+      "name": "technical_robustness_index",
+      "expression": "sum(weight of controlled applicable critical failure modes) / sum(weight of applicable critical failure modes)",
+      "guardrails": ["critical_uncontrolled_failure_visible", "sector_specific"]
+    },
+    {
+      "id": "FSDP-KPI-004",
+      "name": "transition_readiness_index",
+      "expression": "sum(weight of completed applicable next_stage_prerequisites) / sum(weight of applicable next_stage_prerequisites)",
+      "guardrails": ["next_stage_explicit", "blocked_prerequisites_visible"]
+    },
+    {
+      "id": "FSDP-KPI-005",
+      "name": "pressure_survival_index",
+      "expression": "sum(weight of passed valid applicable stress tests) / sum(weight of valid applicable stress tests)",
+      "guardrails": ["stress_catalog_versioned", "not_equal_to_monte_carlo_probability"]
+    }
+  ],
+  "dashboard_kpis": {
+    "permanent_summary": [
+      {"id": "KPI-VERDICT", "label_ar": "الحكم السيادي", "source": "sovereign_verdict", "type": "status"},
+      {"id": "KPI-MC-PASS", "label_ar": "احتمال اجتياز شروط الجدوى", "source_formula": "RISK-MC-001", "type": "probability"},
+      {"id": "KPI-EVIDENCE", "label_ar": "جودة الأدلة", "source_formula": "EVD-QUAL-001", "type": "quality"}
+    ],
+    "permanent_personas": [
+      {"id": "KPI-PM", "label_ar": "جاهزية التنفيذ", "source_formula": "FSDP-KPI-001"},
+      {"id": "KPI-BA", "label_ar": "القبول التجاري", "source_formula": "FSDP-KPI-002"},
+      {"id": "KPI-TA", "label_ar": "المتانة الفنية", "source_formula": "FSDP-KPI-003"},
+      {"id": "KPI-AC", "label_ar": "جاهزية الانتقال", "source_formula": "FSDP-KPI-004"},
+      {"id": "KPI-RT", "label_ar": "تحمل الضغط", "source_formula": "FSDP-KPI-005"}
+    ],
+    "adaptive_candidates": [
+      "total_investment",
+      "funding_gap",
+      "minimum_cash",
+      "break_even_date",
+      "payback_period",
+      "net_revenue",
+      "ebitda",
+      "net_cash_flow",
+      "npv",
+      "irr_or_mirr",
+      "minimum_dscr",
+      "llcr",
+      "capacity_utilization",
+      "schedule_readiness"
+    ],
+    "max_adaptive_kpis": 7,
+    "first_page_forbidden": ["large_tables", "long_narrative", "formula_details", "methodology_chapters", "raw_sources"]
+  },
+  "reports": [
+    {
+      "id": "RPT-XLSX",
+      "format": "xlsx",
+      "required_sections": ["executive_kpi_summary", "sovereign_verdict", "monte_carlo", "five_persona_kpis", "inputs", "evidence", "technical", "revenue", "cogs", "opex", "capex", "depreciation", "leases", "workforce", "working_capital", "debt", "rules", "statements", "appraisal", "sensitivity", "persona_details", "checks"]
+    },
+    {
+      "id": "RPT-PDF",
+      "format": "pdf",
+      "required_sections": ["executive_kpi_summary", "executive_decision", "sovereign_verdict", "monte_carlo", "five_persona_kpis", "scope", "methodology", "data_quality", "market", "technical", "operational", "financial", "risk", "personas", "recommendations", "assumptions", "limitations", "appendices"]
+    },
+    {
+      "id": "RPT-PPTX",
+      "format": "pptx",
+      "required_sections": ["kpis", "sovereign_verdict", "monte_carlo", "five_persona_kpis", "market", "financial", "technical", "risks", "scenarios", "recommendations", "next_actions"]
+    }
+  ],
+  "reference_governance": {
+    "admission_criteria": [
+      "claim_type_fit",
+      "source_authority_or_reputation",
+      "methodology_visibility",
+      "sector_and_geography_applicability",
+      "publication_freshness",
+      "license_and_usage_permission",
+      "human_review",
+      "limitations_recorded"
+    ],
+    "seed_references": [
+      {
+        "id": "REF-SA-MONSHAAT-SIZE",
+        "publisher": "Monsha'at",
+        "title": "Enterprises' Classification",
+        "url": "https://www.monshaat.gov.sa/en/SMEs-definition",
+        "authority_scope": "Saudi enterprise-size classification",
+        "use": "effective_dated_rule_seed",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-SA-ZATCA-VAT",
+        "publisher": "ZATCA",
+        "title": "VAT Implementing Regulations",
+        "url": "https://zatca.gov.sa/en/RulesRegulations/Taxes/Pages/VATImplementingRegulations.aspx",
+        "authority_scope": "Saudi VAT",
+        "use": "effective_dated_rule_seed",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-SA-ZATCA-ZAKAT",
+        "publisher": "ZATCA",
+        "title": "Implementing Regulation for Zakat Collection",
+        "url": "https://zatca.gov.sa/en/RulesRegulations/Taxes/Pages/ZakatRegulations.aspx",
+        "authority_scope": "Saudi zakat",
+        "use": "effective_dated_rule_seed",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-SA-SOCPA-STANDARDS",
+        "publisher": "SOCPA",
+        "title": "Overview of Professional Standards",
+        "url": "https://socpa.org.sa/Socpa/Professional-standards/Overview-of-standards.aspx?lang=en-us",
+        "authority_scope": "Saudi accounting-framework guidance",
+        "use": "reporting_basis_rule_seed",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-SA-HRSD-EOS",
+        "publisher": "Ministry of Human Resources and Social Development",
+        "title": "End of Service Benefit Calculator",
+        "url": "https://www.hrsd.gov.sa/en/ministry-services/services/end-service-benefit-calculator",
+        "authority_scope": "Saudi employment and end-of-service reference",
+        "use": "effective_dated_rule_seed",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-IFRS-IAS16",
+        "publisher": "IFRS Foundation",
+        "title": "IAS 16 Property, Plant and Equipment",
+        "url": "https://www.ifrs.org/issued-standards/list-of-standards/ias-16-property-plant-and-equipment/",
+        "authority_scope": "Accounting reference subject to applicable Saudi endorsement and reporting basis",
+        "use": "accounting_method_reference",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-IFRS-IFRS16",
+        "publisher": "IFRS Foundation",
+        "title": "IFRS 16 Leases",
+        "url": "https://www.ifrs.org/issued-standards/list-of-standards/ifrs-16-leases/",
+        "authority_scope": "Accounting reference subject to applicable Saudi endorsement and reporting basis",
+        "use": "accounting_method_reference",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-WB-ECONOMIC-ANALYSIS",
+        "publisher": "World Bank",
+        "title": "Economic Analysis of Investment Operations",
+        "url": "https://documents1.worldbank.org/curated/en/792771468323717830/pdf/298210REPLACEMENT.pdf",
+        "authority_scope": "International appraisal methodology, not Saudi authority",
+        "use": "alternatives_sensitivity_switching_values_reference",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-IFC-FEASIBILITY",
+        "publisher": "International Finance Corporation",
+        "title": "Feasibility Studies Reference",
+        "url": "https://www.ifc.org/content/dam/ifc/doc/mgrt/parttwo-feasibilitystudies.pdf",
+        "authority_scope": "International feasibility methodology, not Saudi authority",
+        "use": "methodology_reference",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-MCK-STRATEGY-LENSES",
+        "publisher": "McKinsey & Company",
+        "title": "Seeing your way to better strategy",
+        "url": "https://www.mckinsey.com/capabilities/strategy-and-corporate-finance/our-insights/seeing-your-way-to-better-strategy",
+        "authority_scope": "Strategic research and framework, not regulatory or accounting authority",
+        "use": "financial_market_competitive_operating_model_lenses",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-MCK-CAPITAL-EXCELLENCE",
+        "publisher": "McKinsey & Company",
+        "title": "Capital Excellence",
+        "url": "https://www.mckinsey.com/capabilities/operations/how-we-help-clients/capital-excellence",
+        "authority_scope": "Capital-project research and framework, not Saudi authority",
+        "use": "capital_readiness_and_execution_benchmark",
+        "accessed_at": "2026-07-13"
+      },
+      {
+        "id": "REF-MCK-DIGITAL-TRANSFORMATION",
+        "publisher": "McKinsey & Company",
+        "title": "What is digital transformation?",
+        "url": "https://www.mckinsey.com/featured-insights/mckinsey-explainers/what-is-digital-transformation",
+        "authority_scope": "Digital readiness research and framework, not Saudi authority",
+        "use": "digital_readiness_benchmark",
+        "accessed_at": "2026-07-13"
+      }
+    ]
+  },
+  "snapshot_required_fields": [
+    "calculation_run_id",
+    "project_snapshot_id",
+    "formula_catalog_version",
+    "rule_pack_version",
+    "evidence_snapshot_hash",
+    "monte_carlo_run_id",
+    "persona_run_ids",
+    "output_hash",
+    "generated_at",
+    "locale"
+  ]
+}

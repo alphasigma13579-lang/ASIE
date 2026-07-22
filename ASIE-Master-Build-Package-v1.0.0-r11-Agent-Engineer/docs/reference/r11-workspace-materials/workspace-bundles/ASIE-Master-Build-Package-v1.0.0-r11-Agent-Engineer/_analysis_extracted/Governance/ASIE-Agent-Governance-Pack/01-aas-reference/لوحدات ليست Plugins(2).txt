@@ -1,0 +1,227 @@
+لوحدات ليست Plugins
+
+أسميها
+
+Modules
+
+وليس Plugins.
+
+Financial Module
+
+Geo Module
+
+Research Module
+
+Document Module
+
+Market Module
+
+AI Module
+
+Export Module
+
+Notification Module
+
+Payment Module
+
+Compliance Module
+
+...
+
+وكل مكعب يحتوي
+
+Manifest
+
+Contract
+
+Capabilities
+
+Dependencies
+
+Configuration
+
+Health
+
+Lifecycle
+
+Permissions
+
+ثم السوكيت
+
+وهنا أرى أن السوكيت أهم من الـPlugin.
+
+السوكيت هو العقد.
+
+Socket ID
+
+Socket Type
+
+Protocol
+
+Accepted Messages
+
+Returned Messages
+
+Priority
+
+Permissions
+
+Required Capabilities
+
+Health Status
+
+Owner
+
+Version
+
+أي Plugin يريد الدخول
+
+يجب أن يحقق مواصفات السوكيت.
+
+وليس العكس.
+
+ثم الـBus
+
+وهذا هو قلب المشروع الحقيقي.
+
+وظيفته ليست مجرد الربط.
+
+بل
+
+Module Discovery
+
+Module Loading
+
+Module Unloading
+
+Routing
+
+Health Monitoring
+
+Message Queue
+
+Priority Management
+
+Version Compatibility
+
+Isolation
+
+Recovery
+
+أي أنه يشبه CAN Bus Manager.
+
+ثم Heart Controller
+
+وهنا أعتقد أننا يجب أن ننسى كلمة Load Balancer.
+
+لأنه أكبر من ذلك.
+
+هو مسؤول عن
+
+Heart Health
+
+Heart State
+
+Heart Synchronization
+
+Task Distribution
+
+Resource Monitoring
+
+Scaling
+
+Emergency Switching
+
+Sleep/Wakeup
+
+Token Optimization
+
+أي هو الذي يقرر:
+
+هل يعمل القلب الثاني؟
+
+هل أوقظ القلب الثالث؟
+
+هل أعيد توزيع المهام؟
+
+ثم القلوب
+
+أنا لن أسميها
+
+Heart 1
+
+Heart 2
+
+Heart 3
+
+في الوثائق.
+
+بل
+
+Primary Heart
+
+Assist Heart
+
+Reserve Heart
+
+لأن الدور يتغير.
+
+وليس الرقم.
+
+إذا تعطل الأول
+
+يصبح الثاني
+
+Primary.
+
+ثم نقطة أعتبرها أهم نقطة في المشروع كله
+
+النظام كله
+
+لا يعرف شيئاً عن
+
+Google
+
+ولا
+
+Claude
+
+ولا
+
+OpenAI
+
+ولا
+
+Redis
+
+ولا
+
+PostgreSQL.
+
+يعرف شيئاً واحداً فقط.
+
+Socket
+
+وهذا بالضبط مثل السيارة.
+
+الـCAN لا يعرف
+
+من صنع وحدة ABS.
+
+ولا يهمه.
+
+لذلك أريد أن نكتب في الدستور
+
+هذه العبارة.
+
+ASIE does not integrate with technologies.
+
+ASIE integrates with Contracts.
+
+أي
+
+ASIE لا يتعامل مع التقنيات.
+
+بل مع العقود البرمجية.
+
+وأعتبر هذه الجملة هي الفلسفة الذهبية للمشروع.

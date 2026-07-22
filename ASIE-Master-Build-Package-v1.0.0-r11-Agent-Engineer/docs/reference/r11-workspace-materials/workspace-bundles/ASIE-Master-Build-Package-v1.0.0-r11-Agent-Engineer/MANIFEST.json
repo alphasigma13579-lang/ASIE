@@ -1,0 +1,25 @@
+{
+  "package": "ASIE-Master-Build-Package",
+  "version": "1.0.0-r11",
+  "created_at": "2026-07-15",
+  "baseline": "ASIE AAS v1.0.0 Frozen Baseline",
+  "predecessor": "ASIE-KIMI-Master-Build-Package-v1.0.0-r10",
+  "specification_verdict": "good_architect_resolution_closed",
+  "implementation_readiness": "unverified_until_preflight_and_acceptance_tests_pass",
+  "included_package_sha256": {
+    "ASIE-KIMI-Master-Build-Package-v1.0.0-r8.zip": "29adebe709c348b997d995564d5fc101c6f1983c5d325f812f89b1c2dfe8fe05",
+    "ASIE-Execution-Pack-v1.0.0-full-r15.zip": "ce5e3d2278976f52a255bd0a9bef9e33d99871bd573cd1147ad61307f1994fa7",
+    "ASIE-Algorithm-Catalog-v1.0.0-full-r15.zip": "a328d53ff3c7b989ccb70cd7b6d63b85f24200e337776204bc84f176ac7da627",
+    "ASIE-Saudi-Feasibility-Decision-Pack-v1.0.0.zip": "6b288f50e91d521051ee960c0240235ca656561a284f8592bc28b347d619fef1"
+  },
+  "binding_addendum": "06-integration/ASIE-Feasibility-Decision-Integration-Addendum-v1.0.0.md",
+  "correction_closure": "06-integration/ASIE-r10-Correction-Closure-and-Traceability.md",
+  "architect_resolution_closure": "07-architect-decisions/ASIE-r11-Architect-Resolution-Closure.md",
+  "review": "05-audits/ASIE-Master-r11-Architect-Resolution-Review-2026-07-15.md",
+  "source_architect_file_sha256": {
+    "architect_resolutions.md": "e0d52f860a8380d9ac7f1069df284881ff5cbbcf7713daffad5f16992e75bd28",
+    "implementation_plan.md": "95e9f643e0fe011dcbdb08d57af1de2c17b0c5086507fcc272cfed9622257780",
+    "project_evaluation-ar.md": "f96c15428b1ef58b076e2d577ce6b83b56213d5ba812a9f087a127816c477b20",
+    "architect_master_plan-v1.0.md": "821e65a1b1580eb1fbc911ff7c36d72dfe3bbb827b20cc3283c6701acff6539f"
+  }
+}

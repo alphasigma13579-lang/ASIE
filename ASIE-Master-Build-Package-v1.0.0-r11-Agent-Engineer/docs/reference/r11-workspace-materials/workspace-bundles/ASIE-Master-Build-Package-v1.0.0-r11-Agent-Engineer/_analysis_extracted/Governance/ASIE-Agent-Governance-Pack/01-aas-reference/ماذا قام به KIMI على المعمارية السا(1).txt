@@ -1,0 +1,150 @@
+ماذا قام به KIMI على المعمارية السابقة 
+
+🏗️ Backend Stack الكامل لمشروع ASIE
+بناءً على وثائق المشروع الـ 17 التي قرأتها، إليك القرارات التقنية الدقيقة:
+1. 🗄️ Database
+Table
+المكون	التقنية	السبب
+الأساسي	PostgreSQL 16	Relational + JSON support + Full-text search
+Realtime	Supabase	WebSocket subscriptions + Presence API
+Vector DB	pgvector (inside PostgreSQL)	تخزين embeddings للبحث الذكي
+Cache	Redis	Sessions + Rate limiting + Hot data
+File Storage	Supabase Storage	Reports PDF/PPT + User uploads
+Backup	pg_dump + S3	Daily automated backups
+plain
+📁 PostgreSQL
+ ├── users, projects, reports (tables)
+ ├── pgvector (AI embeddings)
+ └── Row Level Security (RLS)
+ 
+📁 Redis
+ ├── Sessions (JWT blacklist)
+ ├── Rate limiting counters
+ └── Chat message queue
+ 
+📁 Supabase
+ ├── Realtime subscriptions
+ ├── Auth integration
+ └── File storage
+2. 🔐 Auth (المصادقة)
+Table
+المكون	التقنية	الوضع
+الأساسي	Supabase Auth	OAuth 2.0 + JWT + Refresh tokens
+Email/Password	Supabase + bcrypt	مع تفعيل البريد
+Social Login	Google + Apple + LinkedIn	OAuth 2.0
+RBAC	مخصص (Casbin)	5 أدوار: User → Admin
+2FA	TOTP (Google Authenticator)	Planned for Pro tier
+Session	Redis + JWT	24h access / 7d refresh
+Python
+# الأدوار (RBAC)
+roles = {
+    "guest":       ["view_public"],
+    "user":        ["create_project", "view_reports", "chat_ai"],
+    "plus":        ["+advanced_reports", "+priority_ai", "+export_ppt"],
+    "pro":         ["+api_access", "+custom_models", "+team_collab"],
+    "admin":       ["+all +user_management +analytics"],
+    "super_admin": ["+all +system_config +billing_access"]
+}
+3. 📨 Messaging (الرسائل والأحداث)
+Table
+المكون	التقنية	الاستخدام
+Event Bus	Internal (Python asyncio)	أحداث داخل التطبيق
+Queue	Redis Pub/Sub	Chat messages + AI requests
+Background Jobs	Celery + Redis	PDF generation + Email sending
+Real-time	Supabase Realtime	Push notifications + Chat
+WebSocket	FastAPI WebSocket	Chat streaming (AI responses)
+plain
+📨 تدفق الرسائل:
+User Chat → FastAPI WebSocket → Redis Queue → Celery Worker → AI API
+                                     ↓
+                              Supabase Realtime (push to UI)
+4. 🌐 Hosting (الاستضافة)
+Table
+المكون	التقنية	الموقع
+Frontend	Vercel	Edge CDN (أقرب للمستخدم)
+Backend API	VPS (Saudi Telecom Cloud)	داخل السعودية (SDAIA compliance)
+AI Models	Saudi VPS + GPU	Kimi/Llama محليًا
+Database	Supabase Cloud	Managed PostgreSQL
+Files	Supabase Storage	CDN للملفات
+Docker	Docker Compose	Containerization للخدمات
+plain
+🌍 Architecture موزعة:
+
+[User] → [Vercel CDN] → [Saudi VPS API]
+                              ↓
+                    [Supabase DB] ← [Redis Cache]
+                              ↓
+                    [AI Cluster] (GPU VPS)
+لماذا VPS Saudi Telecom وليس AWS/GCP؟
+✅ SDAIA compliance (البيانات لا تغادر السعودية)
+✅ Cloud Act (تجنب وصول الحكومة الأمريكية)
+✅ GDPR (حماية بيانات EU users)
+✅ Latency أقل للمستخدمين السعوديين
+5. 🤖 AI Provider
+Table
+النموذج	الاستخدام	التكامل
+Kimi K2.5 (Moonshot AI)	🔥 Primary — دراسات الجدوى المعمقة	API مباشر
+Llama 3.1 (Meta)	⚡ مهام سريعة + Chat عام	Self-hosted على GPU
+DeepSeek	💰 نموذج اقتصادي — تكلفة منخفضة	API
+Qwen (Alibaba)	🌐 Multilingual — ترجمة + تحليل	API
+Swarm Search	🔍 بحث متعدد المصادر	Custom implementation
+GPT-4o (OpenAI)	🔒 Backup فقط — Fallback	API (مقيد)
+Python
+# Swarm Search — نظام البحث المتعدد
+swarm_agents = {
+    "market_researcher":    "Kimi K2.5",      # تحليل السوق
+    "competitor_analyst":   "Kimi K2.5",      # دراسة المنافسين  
+    "financial_modeler":    "DeepSeek",       # النمذجة المالية
+    "risk_assessor":        "Llama 3.1",      # تقييم المخاطر
+    "report_writer":        "Kimi K2.5",      # كتابة التقرير
+    "chat_assistant":       "Llama 3.1",      # الدردشة السريعة
+    "translator":           "Qwen",           # الترجمة
+}
+لماذا Kimi K2.5 الأساسي وليس GPT-4o؟
+✅ تكلفة أقل (80% أرخص من GPT-4)
+✅ أداء أفضل في العربية
+✅ لا يخضع لـ Cloud Act (شركة صينية)
+✅ يدعم context window طويل (2M tokens)
+🏗️ المعمارية الكاملة
+plain
+┌─────────────────────────────────────────────────┐
+│  FRONTEND (Vercel)                              │
+│  React 19 + TypeScript + Tailwind + shadcn/ui   │
+│  GSAP + Framer Motion + Recharts + MapLibre     │
+└────────────────────┬────────────────────────────┘
+                     │ HTTPS / WebSocket
+┌────────────────────▼────────────────────────────┐
+│  BACKEND (Saudi VPS — Docker)                   │
+│  FastAPI (Python) + Celery + Redis              │
+│  ├─ Auth Service     (Supabase Auth + JWT)      │
+│  ├─ AI Orchestrator  (Swarm Search)             │
+│  ├─ Report Engine    (PDF/PPT generation)       │
+│  ├─ Map Service      (MapLibre + Geocoding)     │
+│  ├─ Notification     (Supabase Realtime)        │
+│  └─ Payment          (Stripe / HyperPay)        │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│  DATA LAYER                                       │
+│  ├─ PostgreSQL 16   (Supabase) — Main DB        │
+│  ├─ Redis           (Cache + Queue)             │
+│  ├─ Supabase Storage(Files CDN)                 │
+│  └─ pgvector        (AI embeddings)             │
+└─────────────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│  AI CLUSTER (GPU VPS)                            │
+│  ├─ Kimi K2.5 API    (Deep analysis)            │
+│  ├─ Llama 3.1        (Self-hosted — Fast)       │
+│  ├─ DeepSeek API     (Economical)               │
+│  ├─ Qwen API         (Multilingual)             │
+│  └─ Swarm Controller (Multi-agent routing)      │
+└─────────────────────────────────────────────────┘
+📊 ملخص القرارات
+Table
+الطبقة	الاختيار	البديل المرفوض
+Database	PostgreSQL + Supabase	MongoDB (لا يدعم RLS)
+Auth	Supabase Auth + Casbin RBAC	Auth0 (Cloud Act)
+Messaging	Redis Pub/Sub + Celery	RabbitMQ (معقد)
+Hosting	Vercel + Saudi VPS	AWS (Cloud Act)
+AI	Kimi K2.5 (Primary) + Swarm	OpenAI only (مكلف + Cloud Act)

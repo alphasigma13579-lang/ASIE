@@ -1,0 +1,25 @@
+{
+  "package_id": "ASIE.SA.FEASIBILITY.DECISION.PACK",
+  "version": "1.0.0",
+  "created_at": "2026-07-13",
+  "validation": {
+    "json_valid": true,
+    "tables": 34,
+    "formulas": 38,
+    "permanent_kpis": 8,
+    "seed_references": 12,
+    "contracts": 12,
+    "acceptance_tests": 70,
+    "critical_acceptance_tests": 45,
+    "duplicate_ids": 0,
+    "all_report_formats_kpi_first": true
+  },
+  "sha256": {
+    "README.md": "ea4525c8aa60df34ead313ffd87c886ac219d066eb552e552cd60866e07ec6a9",
+    "ASIE-SA-FEASIBILITY-BUILD-SPEC-v1.0.0.md": "e07de61b28eb6ef0d4aee7420f5e5416ef4366ffefbe7994eed7207532f54d54",
+    "ASIE-SA-FEASIBILITY-CATALOG-v1.0.0.json": "6dcc2892d1e71f32200e666317d55ef213c44ce85b55fdbc25a9e1d4dad3d7e1",
+    "ASIE-SA-FEASIBILITY-CONTRACTS-v1.0.0.json": "6e9e0388d294f0bd7ba030674e5ba44387e77870e1fb75cc2c3093c11ff02974",
+    "ASIE-SA-FEASIBILITY-ACCEPTANCE-v1.0.0.json": "4e4cd3d2bbb7c4cb276398c9a5bcdc44d188c6c0156d8cf628d4a4baa0e49618",
+    "ASIE-KIMI-FEASIBILITY-IMPLEMENTATION-PROMPT-v1.0.0.md": "597f27bb32069cc005dc9e47e749df08028393fa5314a098aa7570f2d6f8cc24"
+  }
+}

@@ -1,0 +1,640 @@
+{
+  "metadata": {
+    "catalog_id": "ASIE.SA.FEASIBILITY.ACCEPTANCE",
+    "version": "1.0.0",
+    "status": "blocking_release_gate",
+    "pass_rule": "all_blocking_tests_must_pass"
+  },
+  "tests": [
+    {
+      "id": "AAS-001",
+      "category": "architecture",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "No direct Module-to-Module communication",
+      "procedure": "Trace every feasibility, finance, risk, evidence, AI, decision, and export request",
+      "expected": "Every trace uses an approved Contract, Socket Contract Layer, APP, System Bus, and governed target Socket"
+    },
+    {
+      "id": "AAS-002",
+      "category": "architecture",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Dashboard is presentation only",
+      "procedure": "Static-scan frontend imports and runtime network calls",
+      "expected": "No financial formula, source validation, database access, report calculation, or AI-provider call exists in frontend"
+    },
+    {
+      "id": "AAS-003",
+      "category": "architecture",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "No business logic in Kernel, Hearts, Bus Controller, System Bus, or Socket Contract Layer",
+      "procedure": "Inspect affected component dependencies and code ownership",
+      "expected": "Feasibility logic exists only inside approved functional Module boundaries"
+    },
+    {
+      "id": "AAS-004",
+      "category": "architecture",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Mandatory stack is preserved",
+      "procedure": "Inspect manifests and runtime layout",
+      "expected": "Frontend is React, TypeScript, Vite, pnpm; Python is backend-only"
+    },
+    {
+      "id": "AAS-005",
+      "category": "architecture",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "No implementation technology becomes ASIE authority",
+      "procedure": "Inspect architecture documentation and adapters",
+      "expected": "Providers, queues, Redis, database, API framework, and AI remain behind Contracts"
+    },
+    {
+      "id": "ROUTE-001",
+      "category": "routing",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Legal form, enterprise size, project complexity, and subscription remain independent",
+      "procedure": "Route a small LLC with a capital-intensive regulated project",
+      "expected": "Advanced or Institutional depth is selected despite small enterprise size"
+    },
+    {
+      "id": "ROUTE-002",
+      "category": "routing",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Location is collected before detailed analysis",
+      "procedure": "Start a new project without country and city/market scope",
+      "expected": "Detailed model routing and final analysis are blocked"
+    },
+    {
+      "id": "ROUTE-003",
+      "category": "routing",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Subscription cannot silently reduce required rigor",
+      "procedure": "Submit an Institutional-depth project under BASIC entitlement",
+      "expected": "Result is PRELIMINARY_ONLY, critical warnings remain visible, FINAL_FEASIBILITY is blocked"
+    },
+    {
+      "id": "ROUTE-004",
+      "category": "routing",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Sector templates are not interchangeable",
+      "procedure": "Compare restaurant, software, and manufacturing routed schedules",
+      "expected": "Each route activates materially different technical and operating schedules"
+    },
+    {
+      "id": "ROUTE-005",
+      "category": "routing",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Saudi rules are not a GCC default",
+      "procedure": "Change jurisdiction from SA to a GCC country without an approved country pack",
+      "expected": "Regulatory calculation is blocked with COUNTRY_RULE_PACK_UNAVAILABLE"
+    },
+    {
+      "id": "FIN-001",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Money uses decimal arithmetic",
+      "procedure": "Compute 0.1 + 0.2 and aggregate repeated fractional currency amounts",
+      "expected": "Exact decimal result is preserved internally and rounding occurs only at presentation"
+    },
+    {
+      "id": "FIN-002",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Effective monthly rate conversion is correct",
+      "procedure": "Convert 12 percent annual effective rate to monthly",
+      "expected": "Result equals 0.009488792934583046 within configured decimal tolerance, not 0.01"
+    },
+    {
+      "id": "FIN-003",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "NPV golden vector is correct",
+      "procedure": "Calculate NPV for [-1000, 400, 400, 400] at 10 percent per period",
+      "expected": "NPV equals -5.259203606311189 within configured decimal tolerance"
+    },
+    {
+      "id": "FIN-004",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Cash-flow and discount-rate bases match",
+      "procedure": "Attempt to discount nominal FCFF with a real discount rate",
+      "expected": "Calculation fails with CASH_FLOW_DISCOUNT_BASIS_MISMATCH"
+    },
+    {
+      "id": "FIN-005",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Project and equity cash flows are separate",
+      "procedure": "Add a debt draw to a funded project",
+      "expected": "Debt draw changes equity financing cash flow but not FCFF project cash flow"
+    },
+    {
+      "id": "FIN-006",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "IRR ambiguity is detected",
+      "procedure": "Calculate IRR for [-100, 230, -132]",
+      "expected": "System reports multiple valid roots near 10 percent and 20 percent, marks headline IRR ambiguous, and does not select one silently"
+    },
+    {
+      "id": "FIN-007",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "MIRR golden vector is correct",
+      "procedure": "Calculate MIRR for [-1000, 400, 400, 400] with 10 percent finance and reinvestment rates",
+      "expected": "MIRR equals 0.09806823486065386 within configured tolerance"
+    },
+    {
+      "id": "FIN-008",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Weighted break-even is correct",
+      "procedure": "Use fixed cash cost 100000 and weighted contribution margin ratio 0.40",
+      "expected": "Break-even revenue equals 250000"
+    },
+    {
+      "id": "FIN-009",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Straight-line depreciation is correct",
+      "procedure": "Asset cost 100000, residual 10000, useful life 5 years, full-year basis",
+      "expected": "Annual depreciation equals 18000 and begins only on in-service date"
+    },
+    {
+      "id": "FIN-010",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Lease cost is not double counted",
+      "procedure": "Activate applicable right-of-use accounting for a lease",
+      "expected": "Accounting expense classification changes correctly while actual cash payments appear once in cash flow"
+    },
+    {
+      "id": "FIN-011",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "VAT is not treated automatically as revenue or cost",
+      "procedure": "Run recoverable, nonrecoverable, exempt, and unregistered cases",
+      "expected": "Each case follows the effective-dated approved rule and no VAT amount is duplicated"
+    },
+    {
+      "id": "FIN-012",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Loaded payroll includes all applicable employer cost",
+      "procedure": "Run a role with allowances, employer burdens, recruitment, insurance, and end-of-service",
+      "expected": "Payroll schedule includes each applicable component once and reconciles to statements"
+    },
+    {
+      "id": "FIN-013",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Working-capital drivers use correct bases",
+      "procedure": "Compare DSO on credit revenue and DPO on credit purchases",
+      "expected": "Cash sales and noncredit purchases are excluded from the respective driver calculations"
+    },
+    {
+      "id": "FIN-014",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Balance sheet reconciles",
+      "procedure": "Introduce a one-riyal imbalance",
+      "expected": "Final report and Sovereign Verdict are blocked with FINANCIAL_RECONCILIATION_FAILED"
+    },
+    {
+      "id": "FIN-015",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Cash-flow statement reconciles",
+      "procedure": "Compare opening cash plus CFO, CFI, and CFF to closing cash",
+      "expected": "Equality holds at full precision for every period"
+    },
+    {
+      "id": "FIN-016",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Debt roll-forward reconciles",
+      "procedure": "Run drawdown, grace period, capitalized interest, principal, and balloon payment",
+      "expected": "Opening debt plus movements equals closing debt for every period and DSCR uses the approved contract definition"
+    },
+    {
+      "id": "FIN-017",
+      "category": "financial",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Monthly liquidity is not hidden by annual profit",
+      "procedure": "Create a profitable annual case with a cash deficit in month four",
+      "expected": "Dashboard shows funding gap/cash-shortfall warning and does not classify liquidity as healthy"
+    },
+    {
+      "id": "FIN-018",
+      "category": "financial",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Identical inputs are reproducible",
+      "procedure": "Run the same approved input snapshot twice",
+      "expected": "All deterministic schedule outputs and output hashes are identical"
+    },
+    {
+      "id": "RULE-001",
+      "category": "saudi_rules",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Saudi rule records are effective-dated",
+      "procedure": "Evaluate a project before and after a rule effective-date boundary",
+      "expected": "Correct version is applied and authority/source are included in lineage"
+    },
+    {
+      "id": "RULE-002",
+      "category": "saudi_rules",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Stale rules fail closed",
+      "procedure": "Use an expired material rule without approved successor or human exception",
+      "expected": "Final regulatory calculation is blocked with SA_RULE_PACK_STALE"
+    },
+    {
+      "id": "RULE-003",
+      "category": "saudi_rules",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Enterprise-size classification is versioned and source-backed",
+      "procedure": "Classify boundary cases using employee and revenue inputs and inspect rule lineage",
+      "expected": "The effective Saudi classification rule, source, conflict handling, and result reason are recorded; no UI constant is authoritative"
+    },
+    {
+      "id": "RULE-004",
+      "category": "saudi_rules",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Employment obligations use the applicable effective-dated rule",
+      "procedure": "Run employee-cost and end-of-service cases across entity, worker, and date profiles",
+      "expected": "Applicable rule versions and inputs are traceable and no universal fixed percentage is applied"
+    },
+    {
+      "id": "RULE-005",
+      "category": "saudi_rules",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "ASIE does not claim government approval without exact proof",
+      "procedure": "Generate a report from official Saudi data without an official project approval record",
+      "expected": "Report cites official sources but does not label the project or ASIE model as government approved"
+    },
+    {
+      "id": "EVD-001",
+      "category": "evidence",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Every material assumption has provenance",
+      "procedure": "Remove the source from a material revenue or CapEx assumption",
+      "expected": "Evidence coverage falls, warning is visible, and final status follows materiality policy"
+    },
+    {
+      "id": "EVD-002",
+      "category": "evidence",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Global research is contextualized",
+      "procedure": "Attach a McKinsey global benchmark from another sector or geography",
+      "expected": "Benchmark is not applied until applicability and limitations are reviewed"
+    },
+    {
+      "id": "EVD-003",
+      "category": "evidence",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Research does not override Saudi authority",
+      "procedure": "Provide a global source that conflicts with a current Saudi official rule",
+      "expected": "Saudi official rule controls the regulatory claim and conflict is logged"
+    },
+    {
+      "id": "EVD-004",
+      "category": "evidence",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Proprietary content is protected",
+      "procedure": "Attempt unlicensed ingestion or reproduction of proprietary survey questions or benchmark database",
+      "expected": "Request is blocked and audited"
+    },
+    {
+      "id": "EVD-005",
+      "category": "evidence",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Synthetic data is visible",
+      "procedure": "Run a prototype project using mock source adapters",
+      "expected": "UI and every report show DEMO_DATA and do not claim official/live/verified status"
+    },
+    {
+      "id": "MC-001",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Monte Carlo headline is always present",
+      "procedure": "Open any project overview",
+      "expected": "KPI shows a calculated value, RUNNING, or NOT_READY with reason; it is never silently absent"
+    },
+    {
+      "id": "MC-002",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "KPI is not mislabeled",
+      "procedure": "Inspect Arabic and English labels",
+      "expected": "Label means probability of passing feasibility gates, never unconditional project success probability"
+    },
+    {
+      "id": "MC-003",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "All-pass and no-pass gate arithmetic is correct",
+      "procedure": "Run controlled fixtures where all valid simulations pass, then none pass",
+      "expected": "KPI equals 1.0 then 0.0 exactly"
+    },
+    {
+      "id": "MC-004",
+      "category": "monte_carlo",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Non-applicable gates are excluded",
+      "procedure": "Run a project without debt",
+      "expected": "DSCR gate is NOT_APPLICABLE and is excluded from denominator and pass logic"
+    },
+    {
+      "id": "MC-005",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Stochastic inputs require approval",
+      "procedure": "Submit a distribution without evidence or human approval",
+      "expected": "Simulation is blocked with STOCHASTIC_INPUT_NOT_APPROVED"
+    },
+    {
+      "id": "MC-006",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Correlation matrix is valid",
+      "procedure": "Submit a nonsymmetric or non-positive-semidefinite matrix",
+      "expected": "Simulation is blocked with CORRELATION_MATRIX_INVALID"
+    },
+    {
+      "id": "MC-007",
+      "category": "monte_carlo",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Fixed-seed run is reproducible",
+      "procedure": "Run identical simulation snapshot twice with identical engine and seed",
+      "expected": "Samples, percentiles, KPI, drivers, and output hash are identical"
+    },
+    {
+      "id": "MC-008",
+      "category": "monte_carlo",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Convergence is measured",
+      "procedure": "Run an intentionally unstable tail fixture at minimum iterations",
+      "expected": "Engine continues within policy or returns MONTE_CARLO_NOT_CONVERGED with visible warning"
+    },
+    {
+      "id": "MC-009",
+      "category": "monte_carlo",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Percentile directions are explicit",
+      "procedure": "Inspect NPV and cost/funding percentile displays",
+      "expected": "P10/P50/P90 definitions and better/worse direction are labelled without ambiguity"
+    },
+    {
+      "id": "MC-010",
+      "category": "monte_carlo",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "AI cannot set simulation parameters",
+      "procedure": "Attempt to persist AI-proposed distribution or correlation as approved",
+      "expected": "Write is rejected until evidence or authorized human approval exists"
+    },
+    {
+      "id": "FSDP-001",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Persona order is fixed",
+      "procedure": "Attempt to run Technical Auditor before Business Advisor",
+      "expected": "Sequence request is rejected"
+    },
+    {
+      "id": "FSDP-002",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Personas remain isolated",
+      "procedure": "Inject another persona output into a persona context",
+      "expected": "Run is blocked with PERSONA_ISOLATION_VIOLATION and audited"
+    },
+    {
+      "id": "FSDP-003",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Persona KPIs are deterministic",
+      "procedure": "Ask an AI persona to change its KPI score",
+      "expected": "Score remains unchanged and AI response can only explain or challenge"
+    },
+    {
+      "id": "FSDP-004",
+      "category": "five_personas",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Persona output schema is complete",
+      "procedure": "Remove judgement, evidence, confidence explanation, metric, next action, or change condition",
+      "expected": "Output becomes invalid and sequence cannot complete"
+    },
+    {
+      "id": "FSDP-005",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Sovereign Verdict requires all five valid runs",
+      "procedure": "Request verdict with four personas or one invalid schema",
+      "expected": "Verdict is blocked with SOVEREIGN_VERDICT_PRECONDITION_FAILED"
+    },
+    {
+      "id": "FSDP-006",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Final verdict is not voting",
+      "procedure": "Create three positive and two negative persona judgements",
+      "expected": "Deterministic rule trace evaluates conditions and blockers; no majority count decides result"
+    },
+    {
+      "id": "FSDP-007",
+      "category": "five_personas",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "AI cannot own final decision",
+      "procedure": "Attempt to persist an AI-generated final verdict without deterministic synthesis",
+      "expected": "Request is rejected and audited as AI_DECISIVE_NUMBER_ATTEMPT or authority violation"
+    },
+    {
+      "id": "UI-001",
+      "category": "dashboard",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "First page is KPI-first",
+      "procedure": "Render project overview on desktop and mobile",
+      "expected": "Sovereign Verdict, Monte Carlo, Evidence Confidence, five persona KPIs, and five-to-seven adaptive KPIs are visible without large tables or long narrative"
+    },
+    {
+      "id": "UI-002",
+      "category": "dashboard",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Permanent persona KPIs are never silently absent",
+      "procedure": "Open project before, during, and after persona execution",
+      "expected": "Each persona shows PENDING, RUNNING, value, ERROR, or NOT_APPLICABLE with reason"
+    },
+    {
+      "id": "UI-003",
+      "category": "dashboard",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "KPI lineage is accessible",
+      "procedure": "Open every KPI detail",
+      "expected": "User can reach formula/definition, source schedule, assumptions, evidence, snapshot, and warnings"
+    },
+    {
+      "id": "UI-004",
+      "category": "dashboard",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Project Workspace is one click away",
+      "procedure": "Navigate from overview to market, technical, financial, risk, personas, evidence, and reports",
+      "expected": "Every destination is directly available and preserves project context"
+    },
+    {
+      "id": "UI-005",
+      "category": "dashboard",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Subscription never suppresses critical truth",
+      "procedure": "View the same critical cash-shortfall project under all tiers",
+      "expected": "Critical warning, funding gap, Monte Carlo status, persona KPI statuses, and block reason remain visible"
+    },
+    {
+      "id": "RPT-001",
+      "category": "reports",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "All formats use one immutable snapshot",
+      "procedure": "Generate UI, Excel, PDF, and PowerPoint outputs",
+      "expected": "All carry the same snapshot, calculation, formula, rule, evidence, Monte Carlo, persona, and verdict identifiers"
+    },
+    {
+      "id": "RPT-002",
+      "category": "reports",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Reports do not recalculate",
+      "procedure": "Trace report generation and change local spreadsheet recalculation settings",
+      "expected": "Authoritative values remain snapshot values and report manifest still reconciles"
+    },
+    {
+      "id": "RPT-003",
+      "category": "reports",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "Excel contains professional schedules and checks",
+      "procedure": "Generate Excel for each depth level",
+      "expected": "Required routed schedules, formulas/references, evidence, and reconciliation tabs exist without unsupported sections"
+    },
+    {
+      "id": "RPT-004",
+      "category": "reports",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "PowerPoint is KPI-first",
+      "procedure": "Render the first three slides",
+      "expected": "KPIs, Sovereign Verdict, Monte Carlo, and five persona indicators precede detailed narrative"
+    },
+    {
+      "id": "RPT-005",
+      "category": "reports",
+      "severity": "high",
+      "blocking": true,
+      "requirement": "PDF carries assumptions and limitations",
+      "procedure": "Generate a preliminary and a final report",
+      "expected": "Status, evidence quality, assumptions, limitations, mock labels, and unresolved risks are explicit"
+    },
+    {
+      "id": "RPT-006",
+      "category": "reports",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Every report format carries the permanent decision KPIs",
+      "procedure": "Generate Excel, PDF, and PowerPoint for a completed project",
+      "expected": "Each format includes Sovereign Verdict, Monte Carlo headline, all five persona KPIs, and the routed project KPI summary from the same snapshot"
+    },
+    {
+      "id": "SEC-001",
+      "category": "security",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Project authorization is enforced",
+      "procedure": "Request another tenant's project snapshot",
+      "expected": "Request is denied and audited without data leakage"
+    },
+    {
+      "id": "SEC-002",
+      "category": "security",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Frontend cannot call AI provider",
+      "procedure": "Inspect browser network requests and bundled code",
+      "expected": "No provider URL, API key, or provider SDK call exists in browser"
+    },
+    {
+      "id": "SEC-003",
+      "category": "security",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Audit chain is complete",
+      "procedure": "Trace routing, finance, evidence, risk, personas, verdict, and report generation",
+      "expected": "Correlation, causation, Contract, Socket, subject, project, decision, versions, timestamps, and error fields are recoverable"
+    },
+    {
+      "id": "SEC-004",
+      "category": "security",
+      "severity": "critical",
+      "blocking": true,
+      "requirement": "Critical snapshots are immutable",
+      "procedure": "Attempt to mutate an input, evidence, calculation, Monte Carlo, persona, or report snapshot after finalization",
+      "expected": "Mutation is denied; a new version/snapshot is required"
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+قرار الاعتماد الرسمي للمعمارية 
+
+Document ID: ASIE-ACP-000
+
+Title:
+
+ASIE Core Architecture v1.0 — Frozen
+
+Status:
+
+✅ Approved
+
+Effective Date:
+
+11 July 2026
+
+ما معنى "Frozen"؟
+
+يعني أن هذا الهيكل أصبح العقد المعماري الذي يلتزم به كل المطورين والإيجنتات والوثائق.
+
+                   ASIE CONSTITUTION
+                           │
+                           ▼
+             ASIE OPERATING ARCHITECTURE
+                           │
+                           ▼
+            ASIE PLATFORM SPECIFICATIONS
+                           │
+          ┌────────────────┴────────────────┐
+          │                                 │
+          ▼                                 ▼
+    ASIE KERNEL                 ASIE PLATFORM PROTOCOL
+    SPECIFICATION                  (APP) SPECIFICATION
+          │                                 │
+          └────────────────┬────────────────┘
+                           ▼
+══════════════════════════════════════════════════════════════
+                       ASIE RUNTIME
+══════════════════════════════════════════════════════════════
+                           │
+                           ▼
+                ASIE HEART CONTROLLER
+                           │
+                ┌──────────┼──────────┐
+                ▼          ▼          ▼
+             ❤️ H1       ❤️ H2       ❤️ H3
+                           │
+                           ▼
+                 ASIE BUS CONTROLLER
+                           │
+                           ▼
+                    ASIE SYSTEM BUS
+                           │
+                           ▼
+               SOCKET CONTRACT LAYER
+                           │
+                           ▼
+                     ASIE MODULES
+ابتداءً من اليوم تصبح هذه قواعد المشروع
+Rule 01
+
+لا يجوز إضافة طبقة جديدة.
+
+Rule 02
+
+لا يجوز إضافة Controller جديد.
+
+Rule 03
+
+لا يجوز إضافة Bus جديدة.
+
+Rule 04
+
+لا يجوز إضافة Heart رابع.
+
+Rule 05
+
+لا يجوز تجاوز ASIE System Bus.
+
+أي Module يتصل مباشرة بآخر يعتبر مخالفة معمارية.
+
+Rule 06
+
+لا يجوز لأي Module أن يعمل بدون Socket Contract.
+
+Rule 07
+
+لا يجوز لأي Module أن يتواصل خارج APP.
+
+Rule 08
+
+Kernel لا يعتمد على أي تقنية.
+
+Rule 09
+
+القلوب لا تنفذ Business Logic.
+
+Rule 10
+
+الـ Modules لا تعرف بعضها مباشرة.
+
+ماذا يمكن تعديله مستقبلاً؟
+
+يسمح فقط بتعديل:
+
+إضافة Module جديدة.
+إضافة Socket جديدة.
+إضافة Plugin جديدة.
+تعديل Contracts.
+تحسين APP مع الحفاظ على التوافق (Backward Compatibility).
+تحسين أداء القلوب.
+تحسين Bus.
+
+لكن دون تغيير الهيكل الأساسي.
+
+ماذا يحتاج Architecture Change Proposal (ACP)؟
+
+أي تغيير في:
+
+Kernel
+Heart Controller
+Hearts
+Bus Controller
+ASIE System Bus
+Socket Contract Layer
+
+يتطلب ACP (Architecture Change Proposal)، مع تبرير فني ومراجعة رسمية، وليس مجرد قرار أثناء التطوير.
+
+
+
+طبقة الأمان يتم تطويرها 
+
+الأمان 
+
+الشكل الصحيح
+
+بدلاً من إضافة طبقة جديدة، يكون المخطط بهذا المفهوم:
+
+╔══════════════════════════════════════════════════════════════╗
+║          ASIE ZERO TRUST SECURITY FRAMEWORK                 ║
+║                                                              ║
+║   Identity │ Authentication │ Authorization │ Encryption     ║
+║   RBAC     │ Audit │ Policies │ Rate Limits │ Validation     ║
+║                                                              ║
+║   ┌──────────────────────────────────────────────────────┐   ║
+║   │                  بقية معمارية ASIE                   │   ║
+║   └──────────────────────────────────────────────────────┘   ║
+╚══════════════════════════════════════════════════════════════╝
+
+أي أن الأمن هو غلاف (Security Envelope) يحيط بجميع الطبقات.
