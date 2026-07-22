@@ -1674,7 +1674,7 @@ export function App() {
                 <button disabled={wizardStep === 0} onClick={() => setWizardStep((current) => Math.max(current - 1, 0))}>
                   السابق
                 </button>
-                <button className="primary-button" disabled={isBusy} onClick={handleWizardPrimary}>
+                <button className="primary-button" disabled={isBusy || Boolean(validateWizardStep())} onClick={handleWizardPrimary}>
                   {wizardStep < wizardJourney.length - 1 ? "التالي" : "افحص النواقص"}
                 </button>
               </div>
