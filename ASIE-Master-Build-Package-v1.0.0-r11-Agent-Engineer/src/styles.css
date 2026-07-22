@@ -1948,3 +1948,80 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Compact journey indicator: orientation only, never a second content panel. */
+.wizard-rail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  scrollbar-width: thin;
+}
+
+.wizard-node {
+  flex: 0 0 38px;
+  width: 38px;
+  min-height: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  justify-items: center;
+  gap: 0;
+}
+
+.wizard-node svg {
+  display: none;
+}
+
+.wizard-node span {
+  width: 28px;
+  height: 28px;
+}
+
+.wizard-node strong {
+  display: none;
+}
+
+.wizard-node--active {
+  flex-basis: auto;
+  width: auto;
+  min-width: 108px;
+  padding: 0 12px;
+  display: inline-flex;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 999px;
+}
+
+.wizard-node--active strong {
+  display: inline;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.wizard-rail::before {
+  content: "مسار المشروع";
+  color: #6b7c72;
+  font-size: 11px;
+  font-weight: 700;
+  margin-inline-end: 4px;
+  white-space: nowrap;
+}
+
+.wizard-board {
+  gap: 10px;
+}
+
+.wizard-focus {
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .wizard-node--active {
+    min-width: 92px;
+  }
+}
