@@ -42,9 +42,22 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("اكتب اسمًا واضحًا للمشروع", APP)
 
     def test_capital_is_required_before_advancing(self):
-        self.assertIn("wizardStep === 6", APP)
+        self.assertIn("step === 6", APP)
         self.assertIn("capital_available <= 0", APP)
         self.assertIn("اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر", APP)
+
+    def test_all_intake_steps_are_sequential_and_gated(self):
+        self.assertIn("maxUnlockedWizardStep", APP)
+        self.assertIn("disabled={index > maxUnlockedWizardStep}", APP)
+        for message in (
+            "حدد الفجوة التي يعالجها المشروع",
+            "حدد الميزة التي يقدمها المشروع",
+            "اختر جمهور المشروع",
+            "اختر طريقة تعبئة تفاصيل المشروع",
+            "اكتب تكلفة التأسيس التقريبية",
+            "ارفع ملف CSV أو Excel قبل فحص النواقص",
+        ):
+            self.assertIn(message, APP)
 
 
 if __name__ == "__main__":
