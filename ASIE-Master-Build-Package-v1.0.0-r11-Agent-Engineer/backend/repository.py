@@ -51,9 +51,69 @@ ASSUMPTION_META = {
 }
 
 
+SYSTEM_CONTEXT_INPUT_KEYS = {
+    "primary_sector_id",
+    "activity_description",
+    "location_scope",
+    "location_country",
+    "intake_mode",
+}
+
+
+def meaningful_assumption_value(value: Any) -> bool:
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, (list, tuple, dict, set)):
+        return bool(value)
+    return True
+
+
+def derive_monthly_fixed_cost(inputs: dict[str, Any]) -> float:
+    """Derive fixed monthly costs from the detailed monthly cost components."""
+    component_keys = (
+        "payroll_monthly",
+        "rent_monthly",
+        "utilities_monthly",
+        "marketing_monthly",
+        "maintenance_monthly",
+    )
+    components = []
+    for key in component_keys:
+        try:
+            components.append(max(0.0, float(inputs.get(key, 0) or 0)))
+        except (TypeError, ValueError):
+            components.append(0.0)
+    other_costs_total = 0.0
+    for row in inputs.get("other_monthly_costs", []) or []:
+        if isinstance(row, dict):
+            try:
+                other_costs_total += max(0.0, float(row.get("amount", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+    detailed_total = sum(components) + other_costs_total
+    if detailed_total > 0:
+        return detailed_total
+    try:
+        return max(0.0, float(inputs.get("monthly_fixed_cost", 0) or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, Any]]:
+    """Build the human-review manifest from values the user actually supplied.
+
+    Empty, zero, disabled, and system-context fields are intentionally excluded.
+    They must never appear as user assumptions merely because the frontend schema
+    carries safe defaults for them.
+    """
     rows: dict[str, dict[str, Any]] = {}
     for key, value in project.inputs.items():
+        if key in SYSTEM_CONTEXT_INPUT_KEYS or not meaningful_assumption_value(value):
+            continue
         label, unit = ASSUMPTION_META.get(key, (key, "unit"))
         rows[key] = {
             "input_key": key,
@@ -65,30 +125,7 @@ def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, 
             "confidence": 0.65,
             "review_status": "draft",
         }
-    for key, default in {
-        "annual_discount_rate": 0.1,
-        "working_capital_months": 2,
-        "debt_amount": 0,
-        "annual_interest_rate": 0.08,
-        "loan_years": 5,
-        "loan_grace_months": 0,
-        "depreciation_years": 5,
-        "equity_contribution": 0,
-    }.items():
-        if key not in rows:
-            label, unit = ASSUMPTION_META[key]
-            rows[key] = {
-                "input_key": key,
-                "label": label,
-                "value": default,
-                "unit": unit,
-                "owner": "Finance Engine defaults",
-                "source_type": "local_default",
-                "confidence": 0.55,
-                "review_status": "needs_review",
-            }
     return rows
-
 
 @dataclass(frozen=True)
 class ProjectRecord:
@@ -492,6 +529,7 @@ class Repository:
             return None
         merged_inputs = dict(project.inputs)
         merged_inputs.update(dict(payload.get("inputs") or {}))
+        merged_inputs["monthly_fixed_cost"] = derive_monthly_fixed_cost(merged_inputs)
         updated = ProjectRecord(
             project_id=project.project_id,
             name=str(payload.get("name", project.name) or project.name),
@@ -587,7 +625,10 @@ class Repository:
             sector=str(payload.get("sector") or "خدمات"),
             jurisdiction=str(payload.get("jurisdiction") or "Saudi Arabia"),
             depth_profile=str(payload.get("depth_profile") or "starter"),
-            inputs=dict(payload.get("inputs") or {}),
+            inputs={
+                **dict(payload.get("inputs") or {}),
+                "monthly_fixed_cost": derive_monthly_fixed_cost(dict(payload.get("inputs") or {})),
+            },
             created_at=created_at,
             updated_at=created_at,
             organization_id=str(payload.get("organization_id") or LEGACY_ORGANIZATION_ID),
@@ -634,7 +675,18 @@ class Repository:
         )
 
     def sync_assumptions(self, project: ProjectRecord) -> None:
-        for key, meta in default_assumption_records(project).items():
+        review_manifest = default_assumption_records(project)
+        with closing(self.connect()) as conn:
+            if review_manifest:
+                placeholders = ", ".join("?" for _ in review_manifest)
+                conn.execute(
+                    f"DELETE FROM assumptions WHERE project_id = ? AND input_key NOT IN ({placeholders})",
+                    (project.project_id, *review_manifest.keys()),
+                )
+            else:
+                conn.execute("DELETE FROM assumptions WHERE project_id = ?", (project.project_id,))
+            conn.commit()
+        for meta in review_manifest.values():
             self.save_assumption(project.project_id, meta)
 
     def save_assumption(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -669,9 +721,18 @@ class Repository:
                     value = excluded.value,
                     unit = excluded.unit,
                     owner = excluded.owner,
-                    source_type = excluded.source_type,
-                    confidence = excluded.confidence,
-                    review_status = excluded.review_status,
+                    source_type = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.source_type
+                        ELSE excluded.source_type
+                    END,
+                    confidence = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.confidence
+                        ELSE excluded.confidence
+                    END,
+                    review_status = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.review_status
+                        ELSE excluded.review_status
+                    END,
                     updated_at = excluded.updated_at
                 """,
                 record,

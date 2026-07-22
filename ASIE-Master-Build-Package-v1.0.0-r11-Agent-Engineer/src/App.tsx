@@ -28,6 +28,7 @@ import { BrandLockup } from "./BrandMark";
 import {
   createEvidenceLink,
   createDatasetTransformation,
+  createProjectAssumption,
   createProject,
   createSnapshotReview,
   compareSnapshots,
@@ -163,41 +164,190 @@ const wizardStepHelp = [
   "اختر كيف تريد تعبئة باقي الأرقام: بنفسك، من ملف، أو بمساعدة تقديرية عند تفعيلها.",
 ];
 
+const arabicSubsectorLabels: Record<string, string> = {
+  "Heavy Manufacturing": "الصناعات الثقيلة",
+  "Light Manufacturing": "الصناعات الخفيفة",
+  "Food Manufacturing": "الصناعات الغذائية",
+  Pharmaceuticals: "الصناعات الدوائية",
+  "Real Estate Development": "التطوير العقاري",
+  "Commercial Real Estate": "العقارات التجارية",
+  "Residential Real Estate": "العقارات السكنية",
+  "Industrial Real Estate": "العقارات الصناعية",
+  "Land Transport": "النقل البري",
+  Warehousing: "المستودعات والتخزين",
+  "E-commerce Logistics": "خدمات توصيل التجارة الإلكترونية",
+  "Ports & Airports": "الموانئ والمطارات",
+  "Leisure Tourism": "السياحة الترفيهية",
+  "Hotels & Hospitality": "الفنادق والضيافة",
+  "Events & Festivals": "الفعاليات والمهرجانات",
+  "Cinema & Production": "السينما والإنتاج",
+  AI: "الذكاء الاصطناعي",
+  "Cloud Computing": "الحوسبة السحابية",
+  Cybersecurity: "الأمن السيبراني",
+  Software: "البرمجيات",
+  "Data Centers": "مراكز البيانات",
+  Banks: "البنوك",
+  Insurance: "التأمين",
+  Financing: "التمويل",
+  "Capital Markets": "أسواق المال",
+  Investment: "الاستثمار",
+  Hospitals: "المستشفيات",
+  Clinics: "العيادات",
+  HealthTech: "التقنيات الصحية",
+  "Medical Devices": "الأجهزة الطبية",
+  Agriculture: "الزراعة",
+  "Food Security": "الأمن الغذائي",
+  AgriTech: "التقنيات الزراعية",
+  Livestock: "الثروة الحيوانية",
+  "Food Supply Chains": "سلاسل إمداد الغذاء",
+};
+
+function arabicSubsectorLabel(value: string): string {
+  return arabicSubsectorLabels[value] ?? value;
+}
+
+const saudiCitiesByRegion: Record<string, string[]> = {
+  "منطقة الرياض": ["الرياض", "الخرج", "الدرعية", "الدوادمي", "المجمعة", "شقراء", "الزلفي", "وادي الدواسر", "عفيف"],
+  "منطقة مكة المكرمة": ["مكة المكرمة", "جدة", "الطائف", "رابغ", "القنفذة", "الليث", "خليص"],
+  "منطقة المدينة المنورة": ["المدينة المنورة", "ينبع", "العلا", "بدر", "مهد الذهب"],
+  "منطقة القصيم": ["بريدة", "عنيزة", "الرس", "البكيرية", "المذنب"],
+  "المنطقة الشرقية": ["الدمام", "الخبر", "الظهران", "الأحساء", "الجبيل", "القطيف", "حفر الباطن", "رأس تنورة"],
+  "منطقة عسير": ["أبها", "خميس مشيط", "بيشة", "محايل عسير", "النماص"],
+  "منطقة تبوك": ["تبوك", "ضباء", "الوجه", "أملج", "حقل"],
+  "منطقة حائل": ["حائل", "بقعاء"],
+  "منطقة الحدود الشمالية": ["عرعر", "رفحاء", "طريف"],
+  "منطقة جازان": ["جازان", "صبيا", "أبو عريش", "صامطة", "بيش"],
+  "منطقة نجران": ["نجران", "شرورة"],
+  "منطقة الباحة": ["الباحة", "بلجرشي", "المندق", "المخواة"],
+  "منطقة الجوف": ["سكاكا", "دومة الجندل", "القريات", "طبرجل"],
+};
+
+function governedNameError(value: string, label: string, minimumLength = 3, maximumLength = 60): string | null {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length < minimumLength) return `${label} قصير جدًا.`;
+  if (normalized.length > maximumLength) return `${label} طويل جدًا؛ الحد الأقصى ${maximumLength} حرفًا.`;
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}\s'’\-ـ]*$/u.test(normalized)) {
+    return `${label} يجب أن يحتوي على حروف وأرقام ومسافات فقط.`;
+  }
+  if (/(.)\1{2,}/u.test(normalized) || /^(.{1,4})\1{2,}$/u.test(normalized)) {
+    return `${label} يحتوي على تكرار غير مقبول للحروف أو المقاطع.`;
+  }
+  const distinctLetters = new Set((normalized.match(/\p{L}/gu) ?? []).map((letter) => letter.toLocaleLowerCase("ar-SA")));
+  if (distinctLetters.size < 2) return `${label} غير واضح؛ اكتب اسمًا حقيقيًا ومفهومًا.`;
+  return null;
+}
+
+const assumptionArabicLabels: Record<string, string> = {
+  primary_sector_id: "القطاع",
+  subsector_id: "النشاط التفصيلي",
+  activity_description: "وصف النشاط",
+  location_scope: "نطاق السوق",
+  location_country: "الدولة",
+  location_region: "المنطقة",
+  location_city: "المدينة",
+  location_district: "الحي أو الشارع",
+  location_latitude: "خط العرض",
+  location_longitude: "خط الطول",
+  gap_statement: "حاجة السوق",
+  competitive_edge: "الميزة التنافسية",
+  target_audience: "الجمهور المستهدف",
+  intake_mode: "طريقة إدخال التفاصيل",
+  capital_available: "رأس المال المتاح",
+  startup_cost: "تكلفة التأسيس",
+  monthly_fixed_cost: "المصاريف الشهرية الثابتة",
+  other_monthly_costs: "بنود شهرية أخرى",
+  unit_price: "سعر البيع أو الخدمة",
+  variable_cost: "تكلفة تقديم الخدمة",
+  monthly_units: "العملاء أو الطلبات شهريًا",
+  use_operating_capacity: "استخدام الطاقة التشغيلية",
+  capacity_units_per_day: "الطاقة التشغيلية اليومية",
+  operating_days_per_month: "أيام التشغيل شهريًا",
+  utilization_rate: "نسبة الاستفادة من الطاقة",
+  payroll_monthly: "الرواتب الشهرية",
+  rent_monthly: "الإيجار الشهري",
+  utilities_monthly: "المرافق الشهرية",
+  marketing_monthly: "التسويق الشهري",
+  maintenance_monthly: "الصيانة الشهرية",
+  capex_equipment: "تكلفة المعدات",
+  capex_fitout: "تكلفة التجهيز",
+  capex_licenses_local: "تكلفة التراخيص",
+  depreciation_years: "سنوات الإهلاك",
+  equity_contribution: "المساهمة الذاتية",
+  loan_grace_months: "فترة السماح",
+  annual_discount_rate: "معدل الخصم السنوي",
+  working_capital_months: "أشهر رأس المال العامل",
+  debt_amount: "مبلغ القرض",
+  annual_interest_rate: "تكلفة التمويل السنوية",
+  loan_years: "مدة القرض",
+};
+
+const assumptionReviewGroups = [
+  { id: "identity", label: "هوية المشروع وموقعه", keys: ["primary_sector_id", "subsector_id", "activity_description", "location_scope", "location_country", "location_region", "location_city", "location_district", "location_latitude", "location_longitude"] },
+  { id: "market", label: "السوق والميزة والجمهور", keys: ["gap_statement", "competitive_edge", "target_audience", "intake_mode"] },
+  { id: "operations", label: "التشغيل والطاقة", keys: ["monthly_units", "use_operating_capacity", "capacity_units_per_day", "operating_days_per_month", "utilization_rate"] },
+  { id: "finance", label: "التكاليف والإيرادات", keys: ["capital_available", "startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "payroll_monthly", "rent_monthly", "utilities_monthly", "marketing_monthly", "maintenance_monthly", "capex_equipment", "capex_fitout", "capex_licenses_local", "depreciation_years", "equity_contribution"] },
+  { id: "funding", label: "التمويل والخصم", keys: ["loan_grace_months", "annual_discount_rate", "working_capital_months", "debt_amount", "annual_interest_rate", "loan_years"] },
+];
+
+function assumptionArabicLabel(item: AssumptionRecord): string {
+  return assumptionArabicLabels[item.input_key] ?? item.label;
+}
+
+function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
+  const components = [
+    inputs.payroll_monthly,
+    inputs.rent_monthly,
+    inputs.utilities_monthly,
+    inputs.marketing_monthly,
+    inputs.maintenance_monthly,
+  ].map((value) => Number(value) || 0);
+  const otherCostsTotal = (inputs.other_monthly_costs ?? []).reduce((total, item) => total + Math.max(0, Number(item.amount) || 0), 0);
+  const detailedTotal = components.reduce((total, value) => total + Math.max(0, value), 0) + otherCostsTotal;
+  return detailedTotal > 0 ? detailedTotal : Number(inputs.monthly_fixed_cost) || 0;
+}
+
 const defaultInputs: Required<ProjectInputs> = {
-  primary_sector_id: "SEC-11",
-  subsector_id: "Software",
-  activity_description: "منصة محلية لتقييم جدوى المشاريع",
-  location_scope: "Saudi Arabia",
+  primary_sector_id: "",
+  subsector_id: "",
+  activity_description: "",
+  location_scope: "المملكة العربية السعودية",
+  location_country: "SA",
+  location_region: "",
+  location_city: "",
+  location_district: "",
+  location_latitude: 0,
+  location_longitude: 0,
   gap_statement: "",
   competitive_edge: "",
-  target_audience: "individuals",
-  intake_mode: "manual",
-  capital_available: 300000,
-  startup_cost: 250000,
-  monthly_fixed_cost: 62000,
-  unit_price: 85,
-  variable_cost: 34,
-  monthly_units: 1600,
+  target_audience: "",
+  intake_mode: "",
+  capital_available: 0,
+  startup_cost: 0,
+  monthly_fixed_cost: 0,
+  other_monthly_costs: [],
+  unit_price: 0,
+  variable_cost: 0,
+  monthly_units: 0,
   use_operating_capacity: false,
-  capacity_units_per_day: 80,
-  operating_days_per_month: 22,
-  utilization_rate: 0.9,
-  payroll_monthly: 28000,
-  rent_monthly: 14000,
-  utilities_monthly: 5500,
-  marketing_monthly: 7000,
-  maintenance_monthly: 3500,
-  capex_equipment: 120000,
-  capex_fitout: 85000,
-  capex_licenses_local: 45000,
-  depreciation_years: 5,
-  equity_contribution: 150000,
+  capacity_units_per_day: 0,
+  operating_days_per_month: 0,
+  utilization_rate: 0,
+  payroll_monthly: 0,
+  rent_monthly: 0,
+  utilities_monthly: 0,
+  marketing_monthly: 0,
+  maintenance_monthly: 0,
+  capex_equipment: 0,
+  capex_fitout: 0,
+  capex_licenses_local: 0,
+  depreciation_years: 0,
+  equity_contribution: 0,
   loan_grace_months: 0,
-  annual_discount_rate: 0.1,
-  working_capital_months: 2,
+  annual_discount_rate: 0,
+  working_capital_months: 0,
   debt_amount: 0,
-  annual_interest_rate: 0.08,
-  loan_years: 5,
+  annual_interest_rate: 0,
+  loan_years: 0,
 };
 
 function formatValue(output: OutputEnvelope): string {
@@ -229,6 +379,24 @@ function statusText(status: string): string {
     BLOCKED_NOT_READY: "متوقف لمدخلات ناقصة",
     USER_VERIFIED: "مدخلات مستخدم",
     DEMO_DATA: "بيانات تجريبية",
+    candidate: "مرشح للمراجعة",
+    reference_only: "مرجعي فقط",
+    approved_for_use: "معتمد للاستخدام",
+    review_required: "بانتظار المراجعة",
+    rejected: "مرفوض",
+    unknown: "غير معروف",
+    approved: "معتمد",
+    draft: "مسودة",
+    needs_review: "يحتاج مراجعة",
+    pending: "قيد الانتظار",
+    enabled: "مفعّل",
+    disabled: "غير مفعّل",
+    manual_csv: "إدخال CSV",
+    manual_table: "إدخال يدوي",
+    aggregate_average: "حساب المتوسط",
+    aggregate_sum: "حساب المجموع",
+    select_column: "اختيار عمود",
+    manual_derivation_note: "ملاحظة اشتقاق",
   };
   return map[status] ?? status;
 }
@@ -320,6 +488,14 @@ function SnapshotAnalytics({ overview }: { overview: ProjectOverview | null }) {
   );
 }
 
+function normalizeNumericInput(rawValue: string): string {
+  return rawValue
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٫,،]/g, ".")
+    .replace(/\s/g, "");
+}
+
 function NumberField({
   label,
   value,
@@ -329,15 +505,61 @@ function NumberField({
   value: number;
   onChange: (nextValue: number) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? value : 0));
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) setDraftValue(String(Number.isFinite(value) ? value : 0));
+  }, [isEditing, value]);
+
+  function updateDraft(rawValue: string) {
+    const normalized = normalizeNumericInput(rawValue);
+    if (normalized !== "" && !/^\d*(?:\.\d*)?$/.test(normalized)) return;
+    setDraftValue(normalized);
+    if (normalized === "" || normalized === ".") return;
+    const nextValue = Number(normalized);
+    if (Number.isFinite(nextValue) && nextValue >= 0) onChange(nextValue);
+  }
+
+  function commitDraft() {
+    setIsEditing(false);
+    const normalized = normalizeNumericInput(draftValue);
+    const nextValue = normalized === "" || normalized === "." ? 0 : Math.max(0, Number(normalized));
+    const safeValue = Number.isFinite(nextValue) ? nextValue : 0;
+    setDraftValue(String(safeValue));
+    onChange(safeValue);
+  }
+
+  function stepValue(delta: number) {
+    const currentValue = Number(normalizeNumericInput(draftValue)) || 0;
+    const nextValue = Math.max(0, currentValue + delta);
+    setDraftValue(String(nextValue));
+    onChange(nextValue);
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
-      <input
-        min="0"
-        type="number"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
+      <span className="number-input-control">
+        <input
+          type="text"
+          inputMode="decimal"
+          dir="ltr"
+          value={draftValue}
+          required
+          onFocus={(event) => {
+            setIsEditing(true);
+            event.currentTarget.select();
+          }}
+          onBlur={commitDraft}
+          onChange={(event) => updateDraft(event.target.value)}
+          aria-label={label}
+        />
+        <span className="number-input-control__steppers" aria-hidden="false">
+          <button type="button" tabIndex={-1} aria-label={`زيادة ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(1)}>▲</button>
+          <button type="button" tabIndex={-1} aria-label={`إنقاص ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(-1)}>▼</button>
+        </span>
+      </span>
     </label>
   );
 }
@@ -408,7 +630,9 @@ export function App() {
   const lastStageRef = useRef<AppStage>("dashboard");
   const historyNavigationRef = useRef(false);
   const [wizardStep, setWizardStep] = useState(0);
-  const [locationParts, setLocationParts] = useState({ country: "", region: "", city: "", street: "" });
+  const [maxUnlockedWizardStep, setMaxUnlockedWizardStep] = useState(0);
+  const [showCustomSector, setShowCustomSector] = useState(false);
+  const [showCustomSubsector, setShowCustomSubsector] = useState(false);
   const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedTransformationId, setSelectedTransformationId] = useState("");
@@ -416,17 +640,17 @@ export function App() {
   const [transformationColumn, setTransformationColumn] = useState("value");
   const [fileImportStatus, setFileImportStatus] = useState("");
   const [form, setForm] = useState({
-    name: "مشروع جدوى محلي",
-    sector: "خدمات",
-    jurisdiction: "Saudi Arabia",
+    name: "",
+    sector: "",
+    jurisdiction: "المملكة العربية السعودية",
     depth_profile: "starter",
     inputs: {
       ...defaultInputs,
       gap_statement: "",
       competitive_edge: "",
-      target_audience: "individuals",
-      intake_mode: "manual",
-      capital_available: 300000,
+      target_audience: "",
+      intake_mode: "",
+      capital_available: 0,
     },
   });
 
@@ -454,7 +678,7 @@ export function App() {
   const commandAction = !project
     ? { label: "ابدأ تعريف المشروع", detail: "لم تُنشأ مسودة مشروع بعد.", stage: "wizard" as AppStage, action: "navigate" as const }
     : !readiness
-      ? { label: "افحص الجاهزية", detail: "احفظ المشروع لعرض بوابات الجاهزية من الخادم.", stage: "wizard" as AppStage, action: "navigate" as const }
+      ? { label: "اربط أدلة المشروع", detail: "أضف ما يثبت أرقامك قبل فحص الجاهزية.", stage: "evidence" as AppStage, action: "navigate" as const }
       : !readiness.ready_to_run
         ? { label: "عالج متطلبات الجاهزية", detail: `${readinessBlocked.length} متطلباً يحتاج انتباهاً قبل التشغيل.`, stage: "readiness" as AppStage, action: "navigate" as const }
         : !snapshotOverview
@@ -471,39 +695,28 @@ export function App() {
     }));
   }
 
-  function updateLocationPart(part: keyof typeof locationParts, value: string) {
-    setLocationParts((current) => {
-      const next = { ...current, [part]: value };
-      const location = [next.street, next.city, next.region, next.country].filter(Boolean).join("، ");
-      updateInputs({ location_scope: location });
-      setForm((currentForm) => ({ ...currentForm, jurisdiction: location || currentForm.jurisdiction }));
-      return next;
+  function updateStructuredLocation(
+    part: "location_region" | "location_city" | "location_district" | "location_latitude" | "location_longitude",
+    value: string | number
+  ) {
+    setForm((current) => {
+      const inputs = { ...current.inputs, [part]: value };
+      const location = [
+        inputs.location_district,
+        inputs.location_city,
+        inputs.location_region,
+        "المملكة العربية السعودية",
+      ].filter(Boolean).join("، ");
+      return {
+        ...current,
+        jurisdiction: "المملكة العربية السعودية",
+        inputs: {
+          ...inputs,
+          location_country: "SA",
+          location_scope: location,
+        },
+      };
     });
-  }
-
-  function handleUseDeviceLocation() {
-    if (!navigator.geolocation) {
-      setError("المتصفح لا يدعم قراءة الموقع. اكتب المدينة يدوياً.");
-      return;
-    }
-    setIsBusy(true);
-    setError(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const nextLocation = `GPS ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
-        setForm((current) => ({
-          ...current,
-          jurisdiction: nextLocation,
-          inputs: { ...current.inputs, location_scope: nextLocation },
-        }));
-        setIsBusy(false);
-      },
-      () => {
-        setError("لم يتم تفعيل الموقع. يمكنك كتابة المدينة يدوياً.");
-        setIsBusy(false);
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
-    );
   }
 
   const mcOutput = useMemo(
@@ -627,6 +840,32 @@ export function App() {
       await loadProjectWorkspace(nextProject.project_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر حفظ المسودة.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleApproveAssumptions(items: AssumptionRecord[]) {
+    if (!project) {
+      setError("احفظ بيانات المشروع أولًا قبل اعتماد الافتراضات.");
+      return;
+    }
+    const pendingItems = items.filter((item) => item.review_status !== "approved");
+    if (!pendingItems.length) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      for (const item of pendingItems) {
+        await createProjectAssumption(project.project_id, {
+          ...item,
+          source_type: "manual_review",
+          confidence: Math.max(item.confidence, 0.8),
+          review_status: "approved",
+        });
+      }
+      await loadProjectWorkspace(project.project_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر حفظ المراجعة البشرية.");
     } finally {
       setIsBusy(false);
     }
@@ -949,22 +1188,100 @@ export function App() {
     }
   }
 
-  async function handleSaveAndAdvance() {
-    await handleSaveDraft();
-    setWizardStep((current) => Math.min(current + 1, wizardJourney.length - 1));
+  function validateWizardStepAt(step: number): string | null {
+    if (step === 0 && !saudiCitiesByRegion[form.inputs.location_region]) return "اختر المنطقة من القائمة المعتمدة.";
+    if (step === 0 && !(saudiCitiesByRegion[form.inputs.location_region] ?? []).includes(form.inputs.location_city)) return "اختر المدينة من القائمة.";
+    if (step === 0 && form.inputs.location_district?.trim()) {
+      const districtError = governedNameError(form.inputs.location_district, "اسم الحي أو الشارع", 2, 50);
+      if (districtError) return districtError;
+    }
+    if (step === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
+    if (step === 1 && form.inputs.primary_sector_id === "CUSTOM" && !form.sector.trim()) return "اكتب اسم القطاع.";
+    if (step === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
+    if (step === 3) {
+      const nameError = governedNameError(form.name, "اسم المشروع");
+      if (nameError) return nameError;
+    }
+    if (step === 4 && !form.inputs.gap_statement?.trim()) return "حدد الفجوة التي يعالجها المشروع.";
+    if (step === 4 && !form.inputs.competitive_edge?.trim()) return "حدد الميزة التي يقدمها المشروع.";
+    if (step === 5 && !form.inputs.target_audience?.trim()) return "اختر جمهور المشروع.";
+    if (step === 6 && (!Number.isFinite(form.inputs.capital_available) || form.inputs.capital_available <= 0)) {
+      return "اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر.";
+    }
+    if (step === 7 && !form.inputs.intake_mode?.trim()) return "اختر طريقة تعبئة تفاصيل المشروع.";
+    if (step === 7 && form.inputs.intake_mode === "file" && !fileImportStatus && datasets.length === 0) {
+      return "ارفع ملف CSV أو Excel قبل فحص النواقص.";
+    }
+    if (step === 7 && form.inputs.intake_mode === "manual") {
+      if (form.inputs.startup_cost <= 0) return "اكتب تكلفة التأسيس التقريبية.";
+      if (form.inputs.unit_price <= 0) return "اكتب سعر البيع أو الخدمة.";
+      if (form.inputs.monthly_units <= 0) return "اكتب عدد العملاء أو الطلبات شهريًا.";
+      if (form.inputs.variable_cost > form.inputs.unit_price) return "تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.";
+      if (form.inputs.annual_discount_rate <= 0) return "اكتب معدل الخصم السنوي المستخدم في التقييم.";
+      if (form.inputs.working_capital_months < 0) return "أشهر رأس المال العامل لا يمكن أن تكون سالبة.";
+      if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return "اكتب معدل تكلفة التمويل للقرض.";
+      if (form.inputs.debt_amount > 0 && form.inputs.loan_years <= 0) return "اكتب مدة القرض بالسنوات.";
+    }
+    return null;
+  }
+
+  function validateWizardStep(): string | null {
+    return validateWizardStepAt(wizardStep);
+  }
+
+  function unlockAndOpenWizardStep(nextStep: number) {
+    const bounded = Math.min(nextStep, wizardJourney.length - 1);
+    setMaxUnlockedWizardStep((current) => Math.max(current, bounded));
+    setWizardStep(bounded);
+  }
+
+  function handleSaveAndAdvance() {
+    unlockAndOpenWizardStep(wizardStep + 1);
   }
 
   async function handleWizardPrimary() {
+    const validationError = validateWizardStep();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
     if (wizardStep < wizardJourney.length - 1) {
-      await handleSaveAndAdvance();
+      handleSaveAndAdvance();
       return;
     }
     await handleSaveDraft();
-    setStage("readiness");
+    setStage("evidence");
   }
 
   function advanceWizardFromChoice() {
-    setWizardStep((current) => Math.min(current + 1, wizardJourney.length - 1));
+    unlockAndOpenWizardStep(wizardStep + 1);
+  }
+
+  function navigateFromReadiness(stepId: string, status?: string) {
+    if (stepId === "sources") {
+      setStage("evidence");
+      return;
+    }
+    if (stepId === "run" && status === "ready") {
+      setStage("run");
+      return;
+    }
+    const wizardTargets: Record<string, number> = {
+      definition: 0,
+      sector_intelligence: 1,
+      revenue_model: 7,
+      costs: 7,
+      financing: 7,
+      assumptions: 7,
+      review: 7,
+      run: 7,
+    };
+    const target = wizardTargets[stepId] ?? 0;
+    setMaxUnlockedWizardStep((current) => Math.max(current, target));
+    setWizardStep(target);
+    setStage("wizard");
+    setError(null);
   }
 
   async function handleRunAndOpenDecision() {
@@ -981,6 +1298,7 @@ export function App() {
       depth_profile: item.depth_profile,
       inputs: { ...defaultInputs, ...item.inputs },
     });
+    setMaxUnlockedWizardStep(wizardJourney.length - 1);
     setStage("wizard");
     void loadProjectWorkspace(item.project_id);
   }
@@ -1198,6 +1516,23 @@ export function App() {
           </div>
         </section>
 
+        {stage !== "dashboard" ? (
+          <section className="next-action-banner" aria-label="الخطوة التالية">
+            <div>
+              <span>الخطوة التالية</span>
+              <strong>{commandAction.label}</strong>
+              <p>{commandAction.detail}</p>
+            </div>
+            <button className="primary-button" disabled={isBusy} onClick={() => {
+              setStage(commandAction.stage);
+              if (commandAction.action === "run") void handleRunAndOpenDecision();
+            }}>
+              {commandAction.action === "run" ? <Play size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />}
+              {commandAction.label}
+            </button>
+          </section>
+        ) : null}
+
         <div className={`client-page-shell client-page-shell--${pageDirection}`} key={stage}>
         {stage === "dashboard" ? (
           <section className="command-center" aria-label="مركز قيادة القرار">
@@ -1361,7 +1696,14 @@ export function App() {
                           : "wizard-node"
                     }
                     key={item.label}
-                    onClick={() => setWizardStep(index)}
+                    disabled={index > maxUnlockedWizardStep}
+                    aria-label={index > maxUnlockedWizardStep ? `${item.label} — أكمل الخطوات السابقة أولًا` : item.label}
+                    onClick={() => {
+                      if (index <= maxUnlockedWizardStep) {
+                        setError(null);
+                        setWizardStep(index);
+                      }
+                    }}
                   >
                     <Icon size={16} aria-hidden="true" />
                     <span>{index + 1}</span>
@@ -1382,7 +1724,7 @@ export function App() {
                 <button disabled={wizardStep === 0} onClick={() => setWizardStep((current) => Math.max(current - 1, 0))}>
                   السابق
                 </button>
-                <button className="primary-button" disabled={isBusy} onClick={handleWizardPrimary}>
+                <button className="primary-button" disabled={isBusy || Boolean(validateWizardStep())} onClick={handleWizardPrimary}>
                   {wizardStep < wizardJourney.length - 1 ? "التالي" : "افحص النواقص"}
                 </button>
               </div>
@@ -1394,12 +1736,12 @@ export function App() {
           <section className="panel evidence-workbench-intro">
             <div className="section-title">
               <Database size={20} aria-hidden="true" />
-              <h2>Evidence Workbench</h2>
+              <h2>لوحة الأدلة</h2>
             </div>
             <div className="journey-metrics">
               <article>
                 <Database size={18} aria-hidden="true" />
-                <span>Datasets</span>
+                <span>مجموعات البيانات</span>
                 <strong>{datasets.length}</strong>
               </article>
               <article>
@@ -1409,16 +1751,27 @@ export function App() {
               </article>
               <article>
                 <FileUp size={18} aria-hidden="true" />
-                <span>Transformations</span>
+                <span>التحويلات</span>
                 <strong>{transformations.length}</strong>
               </article>
               <article>
                 <BadgeCheck size={18} aria-hidden="true" />
-                <span>Ledger</span>
+                <span>سجل الأدلة</span>
                 <strong>{evidenceLedger.length}</strong>
               </article>
             </div>
-            <p className="muted">استخدم لوحة “بيانات وأدلة محلية” أدناه لاستيراد CSV/Excel أو إدخال CSV نصي ثم إنشاء التحويلات والربط.</p>
+            <p className="muted">الأدلة هي المعلومات التي تثبت أرقام مشروعك. ارفع ملفًا أو أدخل بياناتك، ثم افحص الجودة واعتمد الدليل قبل ربطه بالتحليل.</p>
+            <div className="evidence-guidance">
+              <article><strong>ما الذي أرفعه؟</strong><span>مبيعات، عروض أسعار، إيجارات، رواتب، أو تقرير رسمي يخص السوق السعودي.</span></article>
+              <article><strong>ماذا تفعل المنصة؟</strong><span>تفحص الملف، توضّح النواقص، ثم تعرض لك ما يحتاج اعتمادًا بشريًا.</span></article>
+              <article><strong>متى أشغّل التحليل؟</strong><span>{canRunCurrentProject ? "المشروع جاهز. شغّل التحليل لإنشاء أول نتيجة محفوظة." : "أكمل متطلبات الجاهزية أولًا؛ سنرشدك إليها خطوة بخطوة."}</span></article>
+            </div>
+            <div className="next-action-banner__actions">
+              <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenDecision() : setStage("readiness")}>
+                <Play size={18} aria-hidden="true" />
+                {canRunCurrentProject ? "شغّل التحليل الآن" : "انتقل إلى فحص الجاهزية"}
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -1426,15 +1779,35 @@ export function App() {
           <section className="panel readiness-board">
             <div className="section-title">
               <CheckCircle2 size={20} aria-hidden="true" />
-              <h2>Readiness قبل التشغيل</h2>
+              <h2>جاهزية المشروع قبل التحليل</h2>
+            </div>
+            <div className="readiness-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  const firstIncomplete = readiness?.steps.find((item) => item.status !== "ready");
+                  navigateFromReadiness(firstIncomplete?.step_id ?? "definition", firstIncomplete?.status);
+                }}
+              >
+                <ArrowLeft size={17} aria-hidden="true" />
+                العودة إلى أول متطلب ناقص
+              </button>
+              <small>اضغط على أي بطاقة للذهاب مباشرة إلى مكان تعديلها.</small>
             </div>
             <div className="workflow-steps">
               {(readiness?.steps ?? []).map((item, index) => (
-                <div className={item.status === "ready" ? "workflow-step workflow-step--done" : "workflow-step"} key={item.step_id}>
+                <button
+                  type="button"
+                  className={item.status === "ready" ? "workflow-step workflow-step--done workflow-step--action" : "workflow-step workflow-step--action"}
+                  key={item.step_id}
+                  title={`${item.label}: ${item.message}`}
+                  onClick={() => navigateFromReadiness(item.step_id, item.status)}
+                >
                   <span>{index + 1}</span>
                   <strong>{item.label}</strong>
                   <small>{item.message}</small>
-                </div>
+                  <em>{item.status === "ready" ? "عرض المدخلات" : "انتقل لإكمالها"}</em>
+                </button>
               ))}
             </div>
             {!readiness ? <p className="muted">احفظ المسودة أولًا لعرض الجاهزية خطوة بخطوة.</p> : null}
@@ -1448,7 +1821,7 @@ export function App() {
               <h2>تشغيل التحليل</h2>
             </div>
             <p className="muted">
-              التشغيل ينشئ Snapshot جديدًا من الحالة الحالية. التقرير وحزمة القرار يقرآن هذه اللقطة بدون إعادة حساب.
+              عند الضغط على الزر، تنشئ المنصة نتيجة محفوظة من بياناتك الحالية. لا تحتاج إلى معرفة التفاصيل التقنية.
             </p>
             <button className="primary-button primary-button--large" disabled={!canRunCurrentProject || isBusy} onClick={handleRunAndOpenDecision}>
               <Play size={20} aria-hidden="true" />
@@ -1821,12 +2194,12 @@ export function App() {
                 <dd>{sourcePolicy.reference_only.length}</dd>
               </div>
             </dl>
-            <p className="muted">{sourcePolicy.rule}</p>
+            <p className="muted">لا تُفعّل المنصة أي مصدر خارجي تلقائيًا. لا يُستخدم المصدر إلا بعد التحقق من الترخيص والنسبة والتصنيف والمراجعة البشرية.</p>
             <div className="source-list">
               {sources.slice(0, 3).map((source) => (
                 <article key={source.source_id}>
                   <strong>{source.source_id}</strong>
-                  <span>{source.state}</span>
+                  <span>{statusText(source.state)}</span>
                 </article>
               ))}
             </div>
@@ -1909,7 +2282,7 @@ export function App() {
                   <option value="">بدون تحويل</option>
                   {selectedDatasetTransformations.map((item) => (
                     <option value={item.transformation_id} key={item.transformation_id}>
-                      {item.operation_type} · {item.review_status}
+                      {statusText(item.operation_type)} · {statusText(item.review_status)}
                     </option>
                   ))}
                 </select>
@@ -1954,7 +2327,7 @@ export function App() {
                 <article key={dataset.dataset_id}>
                   <strong>{dataset.title}</strong>
                   <span>
-                    {dataset.review_status} · جودة {dataset.notes.quality_review?.status ?? "unknown"} · {dataset.row_count} صف
+                    {statusText(dataset.review_status)} · جودة {statusText(dataset.notes.quality_review?.status ?? "unknown")} · {dataset.row_count} صف
                   </span>
                   <small>{dataset.columns.slice(0, 4).join(" · ")}</small>
                 </article>
@@ -1965,7 +2338,7 @@ export function App() {
                 <article key={transformation.transformation_id}>
                   <strong>{transformation.operation_label}</strong>
                   <span>
-                    {transformation.operation_type} · مراجعة {transformation.review_status} · جودة{" "}
+                    {statusText(transformation.operation_type)} · مراجعة {statusText(transformation.review_status)} · جودة{" "}
                     {transformation.lineage.quality_review?.status ?? "unknown"}
                   </span>
                   <small>
@@ -2008,36 +2381,18 @@ export function App() {
           <div className="guided-question-card">
             {wizardStep === 0 ? (
               <>
-                <p className="guided-question-card__kicker">السؤال الأول</p>
-                <h3>أين موقع العميل أو المشروع؟</h3>
-                <p>استخدم موقعك بإذنك، أو اكتب المكان يدوياً. لن نطلب قراءة الموقع دون ضغطك.</p>
-                <div className="guided-input-row">
-                  <label className="field">
-                    <span>المدينة أو الدولة</span>
-                    <input
-                      value={form.inputs.location_scope}
-                      placeholder="مثال: الرياض، جدة، القصيم، البحرين"
-                      onChange={(event) => {
-                        setForm({
-                          ...form,
-                          jurisdiction: event.target.value,
-                          inputs: { ...form.inputs, location_scope: event.target.value },
-                        });
-                      }}
-                    />
-                  </label>
-                  <button type="button" className="secondary-action" disabled={isBusy} onClick={handleUseDeviceLocation}>
-                    <MapPin size={18} aria-hidden="true" />
-                    استخدم موقعي
-                  </button>
-                </div>
+                <p className="guided-question-card__kicker">الموقع داخل المملكة</p>
+                <h3>أين سيعمل المشروع؟</h3>
+                <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
                 <div className="location-fields">
-                  <label className="field"><span>الدولة</span><input value={locationParts.country} placeholder="السعودية" onChange={(event) => updateLocationPart("country", event.target.value)} /></label>
-                  <label className="field"><span>المنطقة</span><input value={locationParts.region} placeholder="الرياض" onChange={(event) => updateLocationPart("region", event.target.value)} /></label>
-                  <label className="field"><span>المدينة</span><input value={locationParts.city} placeholder="الرياض" onChange={(event) => updateLocationPart("city", event.target.value)} /></label>
-                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input value={locationParts.street} placeholder="اكتب المكان التقريبي" onChange={(event) => updateLocationPart("street", event.target.value)} /></label>
+                  <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
+                  <label className="field"><span>المنطقة</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">اختر المنطقة</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
+                  <label className="field"><span>المدينة</span><select value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => updateStructuredLocation("location_city", event.target.value)}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
+                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
+                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
+                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
                 </div>
-                <p className="guided-hint">بعد تحديد المكان اضغط «التالي» للانتقال إلى مجال المشروع.</p>
+                <p className="guided-hint">لا تُقرأ إحداثيات الجهاز تلقائيًا. إدخالها اختياري وتحت سيطرة المستخدم.</p>
               </>
             ) : null}
             {wizardStep === 1 ? (
@@ -2048,14 +2403,21 @@ export function App() {
                 <div className="choice-grid choice-grid--sectors" role="group" aria-label="قطاعات المشروع">
                   {sectorTaxonomy.map((item) => (
                     <button type="button" key={item.sector_id} className={form.inputs.primary_sector_id === item.sector_id ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
-                      setForm((current) => ({ ...current, sector: item.arabic_name, inputs: { ...current.inputs, primary_sector_id: item.sector_id, subsector_id: item.subsectors[0] ?? "" } }));
+                      setShowCustomSector(false);
+                      setForm((current) => ({ ...current, sector: item.arabic_name, inputs: { ...current.inputs, primary_sector_id: item.sector_id, subsector_id: "" } }));
                       advanceWizardFromChoice();
                     }}>
                       <strong>{item.arabic_name}</strong><small>{item.subsectors.length} تصنيفات متاحة</small>
                     </button>
                   ))}
-                  <button type="button" className="choice-card choice-card--add" onClick={() => setError("أضفنا مكاناً لقطاع جديد. سيتم اعتماده بعد مراجعة التصنيف.")}><strong>+ قطاع آخر</strong><small>اكتب مجالك إذا لم تجده</small></button>
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSector(true); setForm((current) => ({ ...current, sector: "", inputs: { ...current.inputs, primary_sector_id: "CUSTOM", subsector_id: "" } })); }}><strong>+ قطاع آخر</strong><small>اكتب مجالك إذا لم تجده</small></button>
                 </div>
+                {showCustomSector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>اسم القطاع</span><input autoFocus value={form.sector} placeholder="مثال: الصناعات الإبداعية" onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value, inputs: { ...current.inputs, primary_sector_id: "CUSTOM" } }))} /></label>
+                    <button type="button" className="primary-button" disabled={!form.sector.trim()} onClick={advanceWizardFromChoice}>حفظ القطاع والمتابعة</button>
+                  </div>
+                ) : null}
               </>
             ) : null}
             {wizardStep === 2 ? (
@@ -2065,10 +2427,16 @@ export function App() {
                 <p>اختر النوع الذي يصف مشروعك بدقة. إذا لم تجده، أضف وصفك الخاص.</p>
                 <div className="choice-grid" role="group" aria-label="التصنيف الدقيق">
                   {(selectedSector?.subsectors ?? [form.inputs.subsector_id]).map((item) => (
-                    <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{item}</strong><small>اختيار التصنيف</small></button>
+                    <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{arabicSubsectorLabel(item)}</strong><small>اختر هذا النشاط</small></button>
                   ))}
-                  <button type="button" className="choice-card choice-card--add" onClick={() => setError("أضف وصف التصنيف الجديد، وسيُحفظ ضمن اقتراحات المنصة بعد المراجعة.")}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSubsector(true); updateInputs({ subsector_id: "" }); }}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
                 </div>
+                {showCustomSubsector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>وصف التصنيف</span><input autoFocus value={form.inputs.subsector_id} placeholder="اكتب النشاط بدقة" onChange={(event) => updateInputs({ subsector_id: event.target.value })} /></label>
+                    <button type="button" className="primary-button" disabled={!form.inputs.subsector_id?.trim()} onClick={advanceWizardFromChoice}>حفظ التصنيف والمتابعة</button>
+                  </div>
+                ) : null}
               </>
             ) : null}
             {wizardStep === 3 ? (
@@ -2077,7 +2445,18 @@ export function App() {
                 <h3>وش اسم مشروعك؟</h3>
                 <label className="field">
                   <span>اسم بسيط وواضح</span>
-                  <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                  <input
+                    maxLength={60}
+                    value={form.name}
+                    placeholder="مثال: عيادات النخبة"
+                    aria-invalid={Boolean(form.name.trim() && governedNameError(form.name, "اسم المشروع"))}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  />
+                  {form.name.trim() && governedNameError(form.name, "اسم المشروع") ? (
+                    <small className="field-error">{governedNameError(form.name, "اسم المشروع")}</small>
+                  ) : (
+                    <small className="field-hint">من 3 إلى 60 حرفًا، باسم واضح غير مكرر.</small>
+                  )}
                 </label>
                 <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> اقترح أسماء للمشروع</button><small>ستتصل هذه المساعدة لاحقاً بخدمة الذكاء الاصطناعي المعتمدة.</small></div>
               </>
@@ -2161,14 +2540,133 @@ export function App() {
                   </label>
                 ) : null}
                 {form.inputs.intake_mode === "manual" ? (
+                  <>
                   <div className="guided-finance-lite">
                     <NumberField label="تكلفة التأسيس التقريبية" value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
-                    <NumberField label="المصاريف الشهرية" value={form.inputs.monthly_fixed_cost} onChange={(value) => updateInputs({ monthly_fixed_cost: value })} />
+                    <label className="field">
+                      <span>المصاريف الشهرية <small>(تحسب تلقائيًا)</small></span>
+                      <output className="derived-number-field">{monthlyFixedCostFromInputs(form.inputs).toLocaleString("ar-SA")}</output>
+                    </label>
                     <NumberField label="سعر البيع أو الخدمة" value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
                     <NumberField label="تكلفة تقديم الخدمة" value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
                     <NumberField label="عدد العملاء أو الطلبات شهرياً" value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
                   </div>
+                  <details className="manual-advanced-fields" open>
+                    <summary>إضافة تفاصيل تشغيلية أدق <small>(اختياري)</small></summary>
+                    <p className="muted">لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها.</p>
+                    <strong>تفصيل المصاريف الشهرية</strong>
+                    <div className="other-monthly-costs">
+                      <div className="other-monthly-costs__heading">
+                        <strong>بنود شهرية أخرى</strong>
+                        <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: [...(current.inputs.other_monthly_costs ?? []), { name: "", amount: 0 }] } }))}>+ إضافة بند</button>
+                      </div>
+                      <p className="muted">مثل: التأمين، الاشتراكات، النظافة، النقل، الاتصالات أو أي مصروف آخر.</p>
+                      {(form.inputs.other_monthly_costs ?? []).map((item, index) => (
+                        <div className="other-monthly-cost-row" key={index}>
+                          <input maxLength={60} placeholder="اسم المصروف" value={item.name} onChange={(event) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], name: event.target.value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <NumberField label="المبلغ الشهري" value={item.amount} onChange={(value) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], amount: value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: (current.inputs.other_monthly_costs ?? []).filter((_, rowIndex) => rowIndex !== index) } }))}>حذف</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="guided-finance-lite">
+                      <NumberField label="الرواتب الشهرية" value={form.inputs.payroll_monthly} onChange={(value) => updateInputs({ payroll_monthly: value })} />
+                      <NumberField label="الإيجار الشهري" value={form.inputs.rent_monthly} onChange={(value) => updateInputs({ rent_monthly: value })} />
+                      <NumberField label="المرافق الشهرية" value={form.inputs.utilities_monthly} onChange={(value) => updateInputs({ utilities_monthly: value })} />
+                      <NumberField label="التسويق الشهري" value={form.inputs.marketing_monthly} onChange={(value) => updateInputs({ marketing_monthly: value })} />
+                      <NumberField label="الصيانة الشهرية" value={form.inputs.maintenance_monthly} onChange={(value) => updateInputs({ maintenance_monthly: value })} />
+                    </div>
+                    <strong>تفصيل التأسيس والأصول</strong>
+                    <div className="guided-finance-lite">
+                      <NumberField label="المعدات" value={form.inputs.capex_equipment} onChange={(value) => updateInputs({ capex_equipment: value })} />
+                      <NumberField label="التجهيز والديكور" value={form.inputs.capex_fitout} onChange={(value) => updateInputs({ capex_fitout: value })} />
+                      <NumberField label="التراخيص المحلية" value={form.inputs.capex_licenses_local} onChange={(value) => updateInputs({ capex_licenses_local: value })} />
+                      <NumberField label="سنوات الإهلاك" value={form.inputs.depreciation_years} onChange={(value) => updateInputs({ depreciation_years: value })} />
+                      <NumberField label="المساهمة الذاتية" value={form.inputs.equity_contribution} onChange={(value) => updateInputs({ equity_contribution: value })} />
+                    </div>
+                  </details>
+                  <div className="choice-section financing-inputs" id="financing-inputs">
+                    <strong>افتراضات التمويل</strong>
+                    <p className="muted">إذا لن تستخدم قرضًا، اترك مبلغ القرض صفرًا. معدل الخصم مطلوب لتقييم القيمة الحالية.</p>
+                    <div className="guided-finance-lite">
+                      <NumberField label="معدل الخصم السنوي (%)" value={Math.round(form.inputs.annual_discount_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_discount_rate: value / 100 })} />
+                      <NumberField label="أشهر رأس المال العامل" value={form.inputs.working_capital_months} onChange={(value) => updateInputs({ working_capital_months: value })} />
+                      <NumberField label="مبلغ القرض — صفر إذا لا يوجد" value={form.inputs.debt_amount} onChange={(value) => updateInputs({ debt_amount: value })} />
+                      {form.inputs.debt_amount > 0 ? (
+                        <>
+                          <NumberField label="معدل تكلفة التمويل السنوي (%)" value={Math.round(form.inputs.annual_interest_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_interest_rate: value / 100 })} />
+                          <NumberField label="مدة القرض بالسنوات" value={form.inputs.loan_years} onChange={(value) => updateInputs({ loan_years: value })} />
+                          <NumberField label="فترة السماح بالأشهر" value={form.inputs.loan_grace_months} onChange={(value) => updateInputs({ loan_grace_months: value })} />
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  </>
                 ) : null}
+                {project ? (
+                  <div className="choice-section assumption-review-panel" id="assumption-human-review">
+                    <div className="assumption-review-panel__heading">
+                      <div>
+                        <strong>المراجعة البشرية للافتراضات</strong>
+                        <p className="muted">راجع الملخصات، وافتح التفاصيل عند الحاجة، ثم اعتمد كل مجموعة.</p>
+                      </div>
+                      <span className="review-progress">
+                        {assumptions.filter((item) => item.review_status === "approved").length} من {assumptions.length} مكتملة
+                      </span>
+                    </div>
+                    <div className="review-group-list">
+                      {assumptionReviewGroups.map((group) => {
+                        const groupItems = assumptions.filter((item) => group.keys.includes(item.input_key));
+                        if (!groupItems.length) return null;
+                        const pendingCount = groupItems.filter((item) => item.review_status !== "approved").length;
+                        return (
+                          <article className={pendingCount ? "review-group" : "review-group review-group--complete"} key={group.id}>
+                            <div className="review-group__summary">
+                              <div>
+                                <strong>{group.label}</strong>
+                                <small>{groupItems.length} بنود · {pendingCount ? `${pendingCount} بانتظار المراجعة` : "تمت مراجعتها"}</small>
+                              </div>
+                              {pendingCount ? (
+                                <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumptions(groupItems)}>
+                                  اعتماد المجموعة
+                                </button>
+                              ) : (
+                                <span className="review-complete"><CheckCircle2 size={16} aria-hidden="true" /> مكتملة</span>
+                              )}
+                            </div>
+                            <details>
+                              <summary>عرض القيم ومراجعتها</summary>
+                              <div className="review-group__items">
+                                {groupItems.map((item) => (
+                                  <div key={item.assumption_id}>
+                                    <strong>{assumptionArabicLabel(item)}</strong>
+                                    <span>{item.value || "غير محدد"} {item.unit === "unit" ? "" : item.unit}</span>
+                                    <small>{item.review_status === "approved" ? "معتمد" : "بانتظار المراجعة"}</small>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {assumptions.length ? (
+                      <button type="button" className="secondary-action review-all-button" disabled={isBusy || assumptions.every((item) => item.review_status === "approved")} onClick={() => handleApproveAssumptions(assumptions)}>
+                        راجعت جميع المجموعات وأعتمدها
+                      </button>
+                    ) : <p className="muted">احفظ بيانات المشروع مرة أخرى لإنشاء قائمة الافتراضات المطلوب مراجعتها.</p>}
+                  </div>
+                ) : (
+                  <p className="guided-hint">احفظ بيانات المشروع أولًا، ثم ستظهر هنا مراجعة مختصرة ومجمعة.</p>
+                )}
               </>
             ) : null}
           </div>
@@ -2322,7 +2820,7 @@ export function App() {
                   </div>
                   <div>
                     <dt>التصنيف الفرعي</dt>
-                    <dd>{overview.sector_intelligence.taxonomy_record.subsector_id || "غير محدد"}</dd>
+                    <dd>{overview.sector_intelligence.taxonomy_record.subsector_id ? arabicSubsectorLabel(overview.sector_intelligence.taxonomy_record.subsector_id) : "غير محدد"}</dd>
                   </div>
                   <div>
                     <dt>فجوات الأدلة</dt>
@@ -2398,7 +2896,7 @@ export function App() {
                   {overview.evidence_register.source_records.slice(0, 5).map((source) => (
                     <article key={source.source_id}>
                       <strong>{source.publisher}</strong>
-                      <span>{source.state}</span>
+                      <span>{statusText(source.state)}</span>
                     </article>
                   ))}
                 </div>
