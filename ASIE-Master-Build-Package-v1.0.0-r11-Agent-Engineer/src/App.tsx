@@ -1683,34 +1683,12 @@ export function App() {
               <Rocket size={20} aria-hidden="true" />
               <h2>معالج المشروع</h2>
             </div>
-            <div className="wizard-rail">
-              {wizardJourney.map((item, index) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    className={
-                      index === wizardStep
-                        ? "wizard-node wizard-node--active"
-                        : index < wizardStep
-                          ? "wizard-node wizard-node--done"
-                          : "wizard-node"
-                    }
-                    key={item.label}
-                    disabled={index > maxUnlockedWizardStep}
-                    aria-label={index > maxUnlockedWizardStep ? `${item.label} — أكمل الخطوات السابقة أولًا` : item.label}
-                    onClick={() => {
-                      if (index <= maxUnlockedWizardStep) {
-                        setError(null);
-                        setWizardStep(index);
-                      }
-                    }}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    <span>{index + 1}</span>
-                    <strong>{item.label}</strong>
-                  </button>
-                );
-              })}
+            <div className="wizard-rail" aria-label="تقدم معالج المشروع">
+              <span className="wizard-progress-label">الخطوة {wizardStep + 1} من {wizardJourney.length}</span>
+              <strong>{wizardJourney[wizardStep].label}</strong>
+              <span className="wizard-progress-track" aria-hidden="true">
+                <span style={{ width: `${((wizardStep + 1) / wizardJourney.length) * 100}%` }} />
+              </span>
             </div>
             <div className="wizard-focus">
               <div>
@@ -2387,7 +2365,10 @@ export function App() {
                 <div className="location-fields">
                   <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
                   <label className="field"><span>المنطقة</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">اختر المنطقة</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
-                  <label className="field"><span>المدينة</span><select value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => updateStructuredLocation("location_city", event.target.value)}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
+                  <label className="field"><span>المدينة</span><select value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => {
+                        updateStructuredLocation("location_city", event.target.value);
+                        if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
+                      }}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
                   <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
                   <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
                   <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
@@ -2451,6 +2432,9 @@ export function App() {
                     placeholder="مثال: عيادات النخبة"
                     aria-invalid={Boolean(form.name.trim() && governedNameError(form.name, "اسم المشروع"))}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    onBlur={() => {
+                      if (!governedNameError(form.name, "اسم المشروع")) setTimeout(() => advanceWizardFromChoice(), 0);
+                    }}
                   />
                   {form.name.trim() && governedNameError(form.name, "اسم المشروع") ? (
                     <small className="field-error">{governedNameError(form.name, "اسم المشروع")}</small>
@@ -2467,7 +2451,10 @@ export function App() {
                 <h3>ما الفجوة التي يحلها مشروعك؟ وما ميزتك؟</h3>
                 <p>لا تحتاج صياغة طويلة. اختر الأقرب، ويمكنك تعديلها أو كتابة خيارك.</p>
                 <div className="choice-section"><strong>ما الفجوة التي لاحظتها؟</strong><div className="choice-grid choice-grid--compact">{["الخدمة غير متوفرة في موقعي", "الانتظار أو الوصول صعب", "السعر مرتفع", "الجودة أو التخصص غير كافٍ"].map((item) => <button type="button" key={item} className={form.inputs.gap_statement === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => updateInputs({ gap_statement: item })}>{item}</button>)}</div></div>
-                <div className="choice-section"><strong>ما ميزتك الأقرب؟</strong><div className="choice-grid choice-grid--compact">{["موقع أفضل", "سرعة أعلى", "تخصص واضح", "سعر منافس", "تجربة أسهل"].map((item) => <button type="button" key={item} className={form.inputs.competitive_edge === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => updateInputs({ competitive_edge: item, activity_description: item })}>{item}</button>)}</div></div>
+                <div className="choice-section"><strong>ما ميزتك الأقرب؟</strong><div className="choice-grid choice-grid--compact">{["موقع أفضل", "سرعة أعلى", "تخصص واضح", "سعر منافس", "تجربة أسهل"].map((item) => <button type="button" key={item} className={form.inputs.competitive_edge === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
+                          updateInputs({ competitive_edge: item, activity_description: item });
+                          if (form.inputs.gap_statement) setTimeout(() => advanceWizardFromChoice(), 0);
+                        }}>{item}</button>)}</div></div>
                 <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> ساعدني على فهم الفجوة والميزة</button><small>ستظهر اقتراحات ذكية بعد تفعيل بوابة المساعدة.</small></div>
               </>
             ) : null}

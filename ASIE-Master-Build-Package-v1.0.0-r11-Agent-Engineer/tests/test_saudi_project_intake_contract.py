@@ -77,8 +77,13 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("مبلغ القرض — صفر إذا لا يوجد", APP)
 
     def test_all_intake_steps_are_sequential_and_gated(self):
+        # The journey indicator is intentionally compact: it shows only the
+        # current stage while the wizard keeps its sequential unlock contract.
         self.assertIn("maxUnlockedWizardStep", APP)
-        self.assertIn("disabled={index > maxUnlockedWizardStep}", APP)
+        self.assertIn("unlockAndOpenWizardStep", APP)
+        self.assertIn("wizard-progress-label", APP)
+        self.assertIn("wizard-progress-track", APP)
+        self.assertNotIn("wizardJourney.map", APP)
         for message in (
             "حدد الفجوة التي يعالجها المشروع",
             "حدد الميزة التي يقدمها المشروع",
