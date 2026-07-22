@@ -341,7 +341,8 @@ function NumberField({
       <input
         min="0"
         type="number"
-        value={value}
+        value={value || ""}
+        required
         onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>
@@ -951,6 +952,9 @@ export function App() {
     if (wizardStep === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
     if (wizardStep === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
     if (wizardStep === 3 && !form.name.trim()) return "اكتب اسمًا واضحًا للمشروع.";
+    if (wizardStep === 6 && (!Number.isFinite(form.inputs.capital_available) || form.inputs.capital_available <= 0)) {
+      return "اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر.";
+    }
     return null;
   }
 
