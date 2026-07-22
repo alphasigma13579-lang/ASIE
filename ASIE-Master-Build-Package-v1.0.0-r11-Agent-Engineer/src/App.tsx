@@ -2253,6 +2253,7 @@ export function App() {
                   </label>
                 ) : null}
                 {form.inputs.intake_mode === "manual" ? (
+                  <>
                   <div className="guided-finance-lite">
                     <NumberField label="تكلفة التأسيس التقريبية" value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
                     <NumberField label="المصاريف الشهرية" value={form.inputs.monthly_fixed_cost} onChange={(value) => updateInputs({ monthly_fixed_cost: value })} />
