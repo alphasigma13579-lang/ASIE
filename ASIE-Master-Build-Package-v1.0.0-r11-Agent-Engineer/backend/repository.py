@@ -51,9 +51,38 @@ ASSUMPTION_META = {
 }
 
 
+SYSTEM_CONTEXT_INPUT_KEYS = {
+    "primary_sector_id",
+    "activity_description",
+    "location_scope",
+    "location_country",
+    "intake_mode",
+}
+
+
+def meaningful_assumption_value(value: Any) -> bool:
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, (list, tuple, dict, set)):
+        return bool(value)
+    return True
+
+
 def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, Any]]:
+    """Build the human-review manifest from values the user actually supplied.
+
+    Empty, zero, disabled, and system-context fields are intentionally excluded.
+    They must never appear as user assumptions merely because the frontend schema
+    carries safe defaults for them.
+    """
     rows: dict[str, dict[str, Any]] = {}
     for key, value in project.inputs.items():
+        if key in SYSTEM_CONTEXT_INPUT_KEYS or not meaningful_assumption_value(value):
+            continue
         label, unit = ASSUMPTION_META.get(key, (key, "unit"))
         rows[key] = {
             "input_key": key,
@@ -65,30 +94,7 @@ def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, 
             "confidence": 0.65,
             "review_status": "draft",
         }
-    for key, default in {
-        "annual_discount_rate": 0.1,
-        "working_capital_months": 2,
-        "debt_amount": 0,
-        "annual_interest_rate": 0.08,
-        "loan_years": 5,
-        "loan_grace_months": 0,
-        "depreciation_years": 5,
-        "equity_contribution": 0,
-    }.items():
-        if key not in rows:
-            label, unit = ASSUMPTION_META[key]
-            rows[key] = {
-                "input_key": key,
-                "label": label,
-                "value": default,
-                "unit": unit,
-                "owner": "Finance Engine defaults",
-                "source_type": "local_default",
-                "confidence": 0.55,
-                "review_status": "needs_review",
-            }
     return rows
-
 
 @dataclass(frozen=True)
 class ProjectRecord:
@@ -634,7 +640,18 @@ class Repository:
         )
 
     def sync_assumptions(self, project: ProjectRecord) -> None:
-        for key, meta in default_assumption_records(project).items():
+        review_manifest = default_assumption_records(project)
+        with closing(self.connect()) as conn:
+            if review_manifest:
+                placeholders = ", ".join("?" for _ in review_manifest)
+                conn.execute(
+                    f"DELETE FROM assumptions WHERE project_id = ? AND input_key NOT IN ({placeholders})",
+                    (project.project_id, *review_manifest.keys()),
+                )
+            else:
+                conn.execute("DELETE FROM assumptions WHERE project_id = ?", (project.project_id,))
+            conn.commit()
+        for meta in review_manifest.values():
             self.save_assumption(project.project_id, meta)
 
     def save_assumption(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -669,9 +686,18 @@ class Repository:
                     value = excluded.value,
                     unit = excluded.unit,
                     owner = excluded.owner,
-                    source_type = excluded.source_type,
-                    confidence = excluded.confidence,
-                    review_status = excluded.review_status,
+                    source_type = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.source_type
+                        ELSE excluded.source_type
+                    END,
+                    confidence = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.confidence
+                        ELSE excluded.confidence
+                    END,
+                    review_status = CASE
+                        WHEN assumptions.value = excluded.value THEN assumptions.review_status
+                        ELSE excluded.review_status
+                    END,
                     updated_at = excluded.updated_at
                 """,
                 record,
