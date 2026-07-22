@@ -2068,3 +2068,24 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   background: linear-gradient(90deg, #2c7a59, #9bcf77);
   transition: width .35s ease;
 }
+
+
+/* UX-R4: compact wizard surface; the journey is orientation, not a second card. */
+.wizard-board { padding: 8px 0 0; border: 0; background: transparent; box-shadow: none; }
+.wizard-board > .section-title { margin: 0 4px 4px; }
+.wizard-board .wizard-rail { display:flex; align-items:center; gap:8px; padding:0 4px 6px; border-bottom:1px solid #dfe8e2; }
+.wizard-rail > .wizard-progress-label { font-size:11px; color:#718178; }
+.wizard-rail > strong { font-size:16px; white-space:nowrap; }
+.wizard-rail .wizard-progress-track { flex:1 1 120px; max-width:150px; height:3px; margin-inline-start:auto; direction:rtl; }
+.wizard-focus { margin-top:0; min-height:0; grid-template-columns:minmax(0,1fr) auto; gap:12px; border:0; border-radius:0; padding:10px 4px 0; background:transparent; }
+.wizard-focus .eyebrow { display:none; }
+.wizard-focus h2 { margin:0 0 3px; font-size:20px; }
+.wizard-focus .muted { margin-bottom:0; line-height:1.55; }
+.wizard-focus .button-row { align-self:end; }
+@media (max-width:760px) {
+  .wizard-board { padding-top:4px; }
+  .wizard-board .wizard-rail { flex-wrap:wrap; }
+  .wizard-rail .wizard-progress-track { flex-basis:100%; max-width:none; }
+  .wizard-focus { grid-template-columns:1fr; gap:8px; }
+  .wizard-focus .button-row { justify-content:flex-start; }
+}
