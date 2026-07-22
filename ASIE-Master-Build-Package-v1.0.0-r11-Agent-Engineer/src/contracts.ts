@@ -15,6 +15,12 @@ export interface ProjectInputs {
   subsector_id?: string;
   activity_description?: string;
   location_scope?: string;
+  location_country?: "SA" | string;
+  location_region?: string;
+  location_city?: string;
+  location_district?: string;
+  location_latitude?: number;
+  location_longitude?: number;
   gap_statement?: string;
   competitive_edge?: string;
   target_audience?: string;
