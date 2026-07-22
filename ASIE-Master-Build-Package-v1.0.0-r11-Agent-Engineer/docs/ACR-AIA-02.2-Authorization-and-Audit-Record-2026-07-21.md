@@ -1,4 +1,6 @@
-# ACR-AIA-02 — Authorization and Audit Boundary
+# ACR-AIA-02.2 — Authorization and Audit Boundary
+
+> سجل تاريخي لمرحلة Offline بتاريخ 2026-07-21. أعيد ترقيمه في سجل الاعتماد بتاريخ 2026-07-22 لإزالة تعارض المعرّف مع مرحلة Context / Review / Approval. لا يمثل تصريح تفعيل إنتاجي.
 
 ## الحالة
 
