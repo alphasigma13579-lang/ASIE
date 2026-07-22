@@ -969,6 +969,10 @@ export function App() {
       if (form.inputs.unit_price <= 0) return "اكتب سعر البيع أو الخدمة.";
       if (form.inputs.monthly_units <= 0) return "اكتب عدد العملاء أو الطلبات شهريًا.";
       if (form.inputs.variable_cost > form.inputs.unit_price) return "تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.";
+      if (form.inputs.annual_discount_rate <= 0) return "اكتب معدل الخصم السنوي المستخدم في التقييم.";
+      if (form.inputs.working_capital_months < 0) return "أشهر رأس المال العامل لا يمكن أن تكون سالبة.";
+      if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return "اكتب معدل تكلفة التمويل للقرض.";
+      if (form.inputs.debt_amount > 0 && form.inputs.loan_years <= 0) return "اكتب مدة القرض بالسنوات.";
     }
     return null;
   }
@@ -1004,6 +1008,32 @@ export function App() {
 
   function advanceWizardFromChoice() {
     unlockAndOpenWizardStep(wizardStep + 1);
+  }
+
+  function navigateFromReadiness(stepId: string, status?: string) {
+    if (stepId === "sources") {
+      setStage("evidence");
+      return;
+    }
+    if (stepId === "run" && status === "ready") {
+      setStage("run");
+      return;
+    }
+    const wizardTargets: Record<string, number> = {
+      definition: 0,
+      sector_intelligence: 1,
+      revenue_model: 7,
+      costs: 7,
+      financing: 7,
+      assumptions: 7,
+      review: 7,
+      run: 7,
+    };
+    const target = wizardTargets[stepId] ?? 0;
+    setMaxUnlockedWizardStep((current) => Math.max(current, target));
+    setWizardStep(target);
+    setStage("wizard");
+    setError(null);
   }
 
   async function handleRunAndOpenDecision() {
@@ -1475,13 +1505,33 @@ export function App() {
               <CheckCircle2 size={20} aria-hidden="true" />
               <h2>Readiness قبل التشغيل</h2>
             </div>
+            <div className="readiness-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  const firstIncomplete = readiness?.steps.find((item) => item.status !== "ready");
+                  navigateFromReadiness(firstIncomplete?.step_id ?? "definition", firstIncomplete?.status);
+                }}
+              >
+                <ArrowLeft size={17} aria-hidden="true" />
+                العودة إلى أول متطلب ناقص
+              </button>
+              <small>اضغط على أي بطاقة للذهاب مباشرة إلى مكان تعديلها.</small>
+            </div>
             <div className="workflow-steps">
               {(readiness?.steps ?? []).map((item, index) => (
-                <div className={item.status === "ready" ? "workflow-step workflow-step--done" : "workflow-step"} key={item.step_id}>
+                <button
+                  type="button"
+                  className={item.status === "ready" ? "workflow-step workflow-step--done workflow-step--action" : "workflow-step workflow-step--action"}
+                  key={item.step_id}
+                  title={`${item.label}: ${item.message}`}
+                  onClick={() => navigateFromReadiness(item.step_id, item.status)}
+                >
                   <span>{index + 1}</span>
                   <strong>{item.label}</strong>
                   <small>{item.message}</small>
-                </div>
+                  <em>{item.status === "ready" ? "عرض المدخلات" : "انتقل لإكمالها"}</em>
+                </button>
               ))}
             </div>
             {!readiness ? <p className="muted">احفظ المسودة أولًا لعرض الجاهزية خطوة بخطوة.</p> : null}
@@ -2209,6 +2259,22 @@ export function App() {
                     <NumberField label="سعر البيع أو الخدمة" value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
                     <NumberField label="تكلفة تقديم الخدمة" value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
                     <NumberField label="عدد العملاء أو الطلبات شهرياً" value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
+                  </div>
+                  <div className="choice-section financing-inputs" id="financing-inputs">
+                    <strong>افتراضات التمويل</strong>
+                    <p className="muted">إذا لن تستخدم قرضًا، اترك مبلغ القرض صفرًا. معدل الخصم مطلوب لتقييم القيمة الحالية.</p>
+                    <div className="guided-finance-lite">
+                      <NumberField label="معدل الخصم السنوي (%)" value={Math.round(form.inputs.annual_discount_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_discount_rate: value / 100 })} />
+                      <NumberField label="أشهر رأس المال العامل" value={form.inputs.working_capital_months} onChange={(value) => updateInputs({ working_capital_months: value })} />
+                      <NumberField label="مبلغ القرض — صفر إذا لا يوجد" value={form.inputs.debt_amount} onChange={(value) => updateInputs({ debt_amount: value })} />
+                      {form.inputs.debt_amount > 0 ? (
+                        <>
+                          <NumberField label="معدل تكلفة التمويل السنوي (%)" value={Math.round(form.inputs.annual_interest_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_interest_rate: value / 100 })} />
+                          <NumberField label="مدة القرض بالسنوات" value={form.inputs.loan_years} onChange={(value) => updateInputs({ loan_years: value })} />
+                          <NumberField label="فترة السماح بالأشهر" value={form.inputs.loan_grace_months} onChange={(value) => updateInputs({ loan_grace_months: value })} />
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </>
