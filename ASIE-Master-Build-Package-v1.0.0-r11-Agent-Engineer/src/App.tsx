@@ -368,6 +368,14 @@ function SnapshotAnalytics({ overview }: { overview: ProjectOverview | null }) {
   );
 }
 
+function normalizeNumericInput(rawValue: string): string {
+  return rawValue
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٫,،]/g, ".")
+    .replace(/\s/g, "");
+}
+
 function NumberField({
   label,
   value,
@@ -377,16 +385,61 @@ function NumberField({
   value: number;
   onChange: (nextValue: number) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? value : 0));
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) setDraftValue(String(Number.isFinite(value) ? value : 0));
+  }, [isEditing, value]);
+
+  function updateDraft(rawValue: string) {
+    const normalized = normalizeNumericInput(rawValue);
+    if (normalized !== "" && !/^\d*(?:\.\d*)?$/.test(normalized)) return;
+    setDraftValue(normalized);
+    if (normalized === "" || normalized === ".") return;
+    const nextValue = Number(normalized);
+    if (Number.isFinite(nextValue) && nextValue >= 0) onChange(nextValue);
+  }
+
+  function commitDraft() {
+    setIsEditing(false);
+    const normalized = normalizeNumericInput(draftValue);
+    const nextValue = normalized === "" || normalized === "." ? 0 : Math.max(0, Number(normalized));
+    const safeValue = Number.isFinite(nextValue) ? nextValue : 0;
+    setDraftValue(String(safeValue));
+    onChange(safeValue);
+  }
+
+  function stepValue(delta: number) {
+    const currentValue = Number(normalizeNumericInput(draftValue)) || 0;
+    const nextValue = Math.max(0, currentValue + delta);
+    setDraftValue(String(nextValue));
+    onChange(nextValue);
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
-      <input
-        min="0"
-        type="number"
-        value={value || ""}
-        required
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
+      <span className="number-input-control">
+        <input
+          type="text"
+          inputMode="decimal"
+          dir="ltr"
+          value={draftValue}
+          required
+          onFocus={(event) => {
+            setIsEditing(true);
+            event.currentTarget.select();
+          }}
+          onBlur={commitDraft}
+          onChange={(event) => updateDraft(event.target.value)}
+          aria-label={label}
+        />
+        <span className="number-input-control__steppers" aria-hidden="false">
+          <button type="button" tabIndex={-1} aria-label={`زيادة ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(1)}>▲</button>
+          <button type="button" tabIndex={-1} aria-label={`إنقاص ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(-1)}>▼</button>
+        </span>
+      </span>
     </label>
   );
 }
