@@ -379,6 +379,12 @@ function statusText(status: string): string {
     BLOCKED_NOT_READY: "متوقف لمدخلات ناقصة",
     USER_VERIFIED: "مدخلات مستخدم",
     DEMO_DATA: "بيانات تجريبية",
+    candidate: "مرشح للمراجعة",
+    reference_only: "مرجعي فقط",
+    approved_for_use: "معتمد للاستخدام",
+    review_required: "بانتظار المراجعة",
+    rejected: "مرفوض",
+    unknown: "غير معروف",
   };
   return map[status] ?? status;
 }
@@ -1498,6 +1504,23 @@ export function App() {
           </div>
         </section>
 
+        {stage !== "dashboard" ? (
+          <section className="next-action-banner" aria-label="الخطوة التالية">
+            <div>
+              <span>الخطوة التالية</span>
+              <strong>{commandAction.label}</strong>
+              <p>{commandAction.detail}</p>
+            </div>
+            <button className="primary-button" disabled={isBusy} onClick={() => {
+              setStage(commandAction.stage);
+              if (commandAction.action === "run") void handleRunAndOpenDecision();
+            }}>
+              {commandAction.action === "run" ? <Play size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />}
+              {commandAction.label}
+            </button>
+          </section>
+        ) : null}
+
         <div className={`client-page-shell client-page-shell--${pageDirection}`} key={stage}>
         {stage === "dashboard" ? (
           <section className="command-center" aria-label="مركز قيادة القرار">
@@ -1701,12 +1724,12 @@ export function App() {
           <section className="panel evidence-workbench-intro">
             <div className="section-title">
               <Database size={20} aria-hidden="true" />
-              <h2>Evidence Workbench</h2>
+              <h2>لوحة الأدلة</h2>
             </div>
             <div className="journey-metrics">
               <article>
                 <Database size={18} aria-hidden="true" />
-                <span>Datasets</span>
+                <span>مجموعات البيانات</span>
                 <strong>{datasets.length}</strong>
               </article>
               <article>
@@ -1716,16 +1739,27 @@ export function App() {
               </article>
               <article>
                 <FileUp size={18} aria-hidden="true" />
-                <span>Transformations</span>
+                <span>التحويلات</span>
                 <strong>{transformations.length}</strong>
               </article>
               <article>
                 <BadgeCheck size={18} aria-hidden="true" />
-                <span>Ledger</span>
+                <span>سجل الأدلة</span>
                 <strong>{evidenceLedger.length}</strong>
               </article>
             </div>
-            <p className="muted">استخدم لوحة “بيانات وأدلة محلية” أدناه لاستيراد CSV/Excel أو إدخال CSV نصي ثم إنشاء التحويلات والربط.</p>
+            <p className="muted">الأدلة هي المعلومات التي تثبت أرقام مشروعك. ارفع ملفًا أو أدخل بياناتك، ثم افحص الجودة واعتمد الدليل قبل ربطه بالتحليل.</p>
+            <div className="evidence-guidance">
+              <article><strong>ما الذي أرفعه؟</strong><span>مبيعات، عروض أسعار، إيجارات، رواتب، أو تقرير رسمي يخص السوق السعودي.</span></article>
+              <article><strong>ماذا تفعل المنصة؟</strong><span>تفحص الملف، توضّح النواقص، ثم تعرض لك ما يحتاج اعتمادًا بشريًا.</span></article>
+              <article><strong>متى أشغّل التحليل؟</strong><span>{canRunCurrentProject ? "المشروع جاهز. شغّل التحليل لإنشاء أول نتيجة محفوظة." : "أكمل متطلبات الجاهزية أولًا؛ سنرشدك إليها خطوة بخطوة."}</span></article>
+            </div>
+            <div className="next-action-banner__actions">
+              <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenDecision() : setStage("readiness")}>
+                <Play size={18} aria-hidden="true" />
+                {canRunCurrentProject ? "شغّل التحليل الآن" : "اعرض ما ينقص المشروع"}
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -1733,7 +1767,7 @@ export function App() {
           <section className="panel readiness-board">
             <div className="section-title">
               <CheckCircle2 size={20} aria-hidden="true" />
-              <h2>Readiness قبل التشغيل</h2>
+              <h2>جاهزية المشروع قبل التحليل</h2>
             </div>
             <div className="readiness-actions">
               <button
@@ -1775,7 +1809,7 @@ export function App() {
               <h2>تشغيل التحليل</h2>
             </div>
             <p className="muted">
-              التشغيل ينشئ Snapshot جديدًا من الحالة الحالية. التقرير وحزمة القرار يقرآن هذه اللقطة بدون إعادة حساب.
+              عند الضغط على الزر، تنشئ المنصة نتيجة محفوظة من بياناتك الحالية. لا تحتاج إلى معرفة التفاصيل التقنية.
             </p>
             <button className="primary-button primary-button--large" disabled={!canRunCurrentProject || isBusy} onClick={handleRunAndOpenDecision}>
               <Play size={20} aria-hidden="true" />
