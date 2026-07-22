@@ -385,6 +385,18 @@ function statusText(status: string): string {
     review_required: "بانتظار المراجعة",
     rejected: "مرفوض",
     unknown: "غير معروف",
+    approved: "معتمد",
+    draft: "مسودة",
+    needs_review: "يحتاج مراجعة",
+    pending: "قيد الانتظار",
+    enabled: "مفعّل",
+    disabled: "غير مفعّل",
+    manual_csv: "إدخال CSV",
+    manual_table: "إدخال يدوي",
+    aggregate_average: "حساب المتوسط",
+    aggregate_sum: "حساب المجموع",
+    select_column: "اختيار عمود",
+    manual_derivation_note: "ملاحظة اشتقاق",
   };
   return map[status] ?? status;
 }
@@ -2182,12 +2194,12 @@ export function App() {
                 <dd>{sourcePolicy.reference_only.length}</dd>
               </div>
             </dl>
-            <p className="muted">{sourcePolicy.rule}</p>
+            <p className="muted">لا تُفعّل المنصة أي مصدر خارجي تلقائيًا. لا يُستخدم المصدر إلا بعد التحقق من الترخيص والنسبة والتصنيف والمراجعة البشرية.</p>
             <div className="source-list">
               {sources.slice(0, 3).map((source) => (
                 <article key={source.source_id}>
                   <strong>{source.source_id}</strong>
-                  <span>{source.state}</span>
+                  <span>{statusText(source.state)}</span>
                 </article>
               ))}
             </div>
@@ -2270,7 +2282,7 @@ export function App() {
                   <option value="">بدون تحويل</option>
                   {selectedDatasetTransformations.map((item) => (
                     <option value={item.transformation_id} key={item.transformation_id}>
-                      {item.operation_type} · {item.review_status}
+                      {statusText(item.operation_type)} · {statusText(item.review_status)}
                     </option>
                   ))}
                 </select>
@@ -2315,7 +2327,7 @@ export function App() {
                 <article key={dataset.dataset_id}>
                   <strong>{dataset.title}</strong>
                   <span>
-                    {dataset.review_status} · جودة {dataset.notes.quality_review?.status ?? "unknown"} · {dataset.row_count} صف
+                    {statusText(dataset.review_status)} · جودة {statusText(dataset.notes.quality_review?.status ?? "unknown")} · {dataset.row_count} صف
                   </span>
                   <small>{dataset.columns.slice(0, 4).join(" · ")}</small>
                 </article>
@@ -2326,7 +2338,7 @@ export function App() {
                 <article key={transformation.transformation_id}>
                   <strong>{transformation.operation_label}</strong>
                   <span>
-                    {transformation.operation_type} · مراجعة {transformation.review_status} · جودة{" "}
+                    {statusText(transformation.operation_type)} · مراجعة {statusText(transformation.review_status)} · جودة{" "}
                     {transformation.lineage.quality_review?.status ?? "unknown"}
                   </span>
                   <small>
@@ -2884,7 +2896,7 @@ export function App() {
                   {overview.evidence_register.source_records.slice(0, 5).map((source) => (
                     <article key={source.source_id}>
                       <strong>{source.publisher}</strong>
-                      <span>{source.state}</span>
+                      <span>{statusText(source.state)}</span>
                     </article>
                   ))}
                 </div>
