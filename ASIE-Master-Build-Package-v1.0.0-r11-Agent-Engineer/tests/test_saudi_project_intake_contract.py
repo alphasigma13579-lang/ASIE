@@ -53,6 +53,9 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("monthlyFixedCostFromInputs", APP)
         self.assertIn("تحسب تلقائيًا", APP)
         self.assertIn("derive_monthly_fixed_cost", REPOSITORY)
+        self.assertIn("other_monthly_costs", APP)
+        self.assertIn("other_monthly_costs", CONTRACTS)
+        self.assertIn("other_monthly_costs", REPOSITORY)
         self.assertIn("merged_inputs[\"monthly_fixed_cost\"]", REPOSITORY)
 
     def test_manual_review_is_grouped_and_optional_details_are_explicit(self):
