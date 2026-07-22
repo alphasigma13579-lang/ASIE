@@ -1,0 +1,399 @@
+خطة التصحيح  للعودة لمسار المعمارية المجمدة 
+
+# ASIE Architecture Correction Plan
+
+Date: 2026-07-18
+Scope: مراجعة معمارية دقيقة لما بُني فعليًا على القرص مقارنةً بـ AAS Frozen Architecture، مع خطة تصحيح تحفظ العمل الحالي وتعيده إلى المسار الأساسي.
+
+## 1. الحكم المختصر
+
+شكّك في محله.
+
+ما بُني حتى الآن ليس واجهات فقط؛ لدينا نواة منتج محلية حقيقية في مجالات Finance, Evidence, Source Governance, Sector Intelligence, Risk, Execution, Decision Pack, Snapshot. لكنها بُنيت كـ **modular local application** وليس كتطبيق كامل لمعمارية AAS التشغيلية المجمدة.
+
+الانحراف الأساسي ليس في الحسابات، بل في **ترتيب البناء**:
+
+المفترض حسب AAS:
+
+```text
+ASIE Kernel
+-> Heart Controller
+-> Primary / Assist / Reserve Hearts
+-> Bus Controller
+-> ASIE System Bus
+-> Socket Contract Layer
+-> Modules
+```
+
+الموجود فعليًا الآن:
+
+```text
+React UI
+-> Python HTTP API
+-> build_overview() direct orchestration
+-> direct calls to finance/evidence/decision/risk/report modules
+-> SQLite snapshots
+```
+
+بمعنى آخر: المنتج الوظيفي تقدم بسرعة، لكن الطبقة التشغيلية الأساسية بقيت غير منفذة.
+
+## 2. مصادر المراجعة
+
+راجعت الملفات التالية كمرجع حاكم:
+
+- `AAS-02-ASIE-Operating-Architecture.md`
+- `AAS-10-ASIE-Kernel-Specification.md`
+- `AAS-12-ASIE-Heart-Controller-Specification.md`
+- `AAS-13-ASIE-Three-Hearts-Specification.md`
+- `AAS-15-ASIE-System-Bus-Specification.md`
+- `AAS-16-ASIE-Socket-Contract-Layer-Specification.md`
+- `AAS-17-ASIE-Module-Specification.md`
+- `AAS-40-ASIE-AI-Integration-Specification.md`
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/contracts.py`
+- `src/contracts.ts`
+- `src/App.tsx`
+- `src/api.ts`
+- `tests/test_local_platform.py`
+
+## 3. ما هو مكتمل فعليًا
+
+| المجال | الموجود على القرص | الحالة |
+|---|---|---|
+| Frontend | React/Vite UI مع landing/legal gate/sidebar/wizard/evidence/readiness/decision/snapshots | مكتمل محليًا كمستوى منتج أولي |
+| API | Python stdlib HTTP API على `8794` | مكتمل محليًا، لكن ليس خلف Bus/Socket |
+| Storage | SQLite مع projects/runs/snapshots/sources/assumptions/datasets/evidence_links/transformations/reviews/action_items | مكتمل محليًا |
+| Snapshot | snapshots immutable تقرأ منها التقارير وDecision Pack | مكتمل وقوي |
+| Finance Engine | NPV/IRR/payback/Monte Carlo/operational finance/DSCR/sensitivity | مكتمل v1 |
+| Source Governance | candidate/blocked/enabled/reference_only ومراجعة صارمة للمصادر | مكتمل v1 |
+| Evidence Ledger | dataset profile, evidence links, coverage matrix, target_type/target_id | مكتمل v1 |
+| Transformation Layer | transformation records/lineage/review/quality and snapshot inclusion | مكتمل v1 |
+| Sector Intelligence | taxonomy/criteria/evidence gaps/candidate sources | مكتمل v1 |
+| Decision Council | خمس شخصيات وحكم حتمي بلا تصويت | مكتمل وظيفيًا |
+| Risk/Execution/Readiness | risk register, readiness gates, execution plan | مكتمل v1 |
+| Decision Pack | review workflow, action items, HTML decision pack/report | مكتمل v1 |
+| Tests | يوجد 49 اختبارًا وظيفيًا وحراسات r10/r11 | جيد، لكنه لا يختبر AAS runtime |
+
+## 4. ما لم يبنَ من المعمارية الأساسية
+
+| مكون AAS | المطلوب حسب AAS | الموجود فعليًا | الحالة |
+|---|---|---|---|
+| ASIE Kernel | يبدأ النظام فقط، يحمل configuration/registry/contracts، لا ينفذ منطق أعمال | غير موجود ككود مستقل | غير مبني |
+| Boot Process | Runtime -> Config -> Registry -> Contracts -> Security -> Heart Bootstrap | تشغيل مباشر للـAPI | غير مبني |
+| Registry | تسجيل contracts/sockets/modules/states/health | SQLite يخزن بيانات الأعمال فقط | غير مبني كـAAS registry |
+| Heart Controller | يدير القلوب ويمنع أي قلب من القرار المنفرد | غير موجود | غير مبني |
+| Primary Heart | القلب الأساسي الدائم | غير موجود | غير مبني |
+| Assist Heart | القلب المساعد عند الحاجة | غير موجود | غير مبني |
+| Reserve Heart | القلب الاحتياطي للطوارئ | غير موجود | غير مبني |
+| Bus Controller | يقبل/يرفض modules/sockets/messages ويتحقق من العقود | غير موجود | غير مبني |
+| ASIE System Bus | المسار الوحيد للرسائل بين modules | غير موجود؛ توجد استدعاءات Python مباشرة | غير مبني |
+| Socket Contract Layer | Socket First, Module Second | توجد TypeScript/Python contracts جزئية، لكن لا توجد socket enforcement | جزئي جدًا |
+| Module Lifecycle | discovery/registration/validation/binding/activation/isolation | الملفات منفصلة لكن غير مسجلة كوحدات AAS | جزئي شكلي |
+| Message Flow | messages with source/target/contract/socket/correlation/audit | لا توجد رسائل تشغيلية؛ يوجد function call chain | غير مبني |
+| AI Integration | AI كقدرة bounded خلف contract، لا يحكم ولا ينتج الحقيقة | لا توجد طبقة AI فعلية؛ فقط حراسات تمنع AI من امتلاك الأرقام | غير مبني |
+| Zero Trust Runtime | تحقق رسائل وصلاحيات وسياق أمني | سياسة مصادر صارمة، لكن لا يوجد Zero Trust runtime عام | جزئي |
+
+## 5. أين وقع الانحراف بالضبط
+
+الملف المركزي الحالي هو:
+
+`backend/asie_local_api.py`
+
+الدالة الحاسمة:
+
+`build_overview(project, repo)`
+
+هذه الدالة تنفذ سلسلة مباشرة:
+
+```text
+finance_result_set
+source_policy
+build_evidence_register
+build_sector_intelligence
+build_evidence_ledger
+build_transformation_lineage
+build_evidence_coverage
+build_readiness_gates
+evaluate_decision_council
+build_execution_plan
+build_risk_register
+project_readiness
+build_acceptance_pack
+build_report
+```
+
+هذا جيد كنموذج منتج محلي، لكنه يخالف شكل AAS لأن:
+
+- لا يوجد Kernel يبدأ النظام.
+- لا يوجد Heart Controller يدير التنفيذ.
+- لا توجد قلوب Primary/Assist/Reserve.
+- لا يوجد Bus Controller يوافق على مشاركة module.
+- لا توجد رسائل عبر ASIE System Bus.
+- لا يوجد Socket Contract Layer يفرض العقود قبل التنفيذ.
+- لا توجد AI Integration Layer، فقط منع لاستخدام AI كمالك حقيقة.
+
+## 6. أين القلوب الثلاثة M1/M2/M3
+
+التسمية الرسمية في AAS ليست M1/M2/M3، بل:
+
+| تسمية المستخدم | تسمية AAS الرسمية | الحالة |
+|---|---|---|
+| M1 | Primary Heart | غير منفذ |
+| M2 | Assist Heart | غير منفذ |
+| M3 | Reserve Heart | غير منفذ |
+
+يجب ألا تكون القلوب مجرد أسماء في الواجهة. يجب أن تظهر ككيانات تشغيلية لها:
+
+- `heart_id`
+- `role`
+- `state`
+- `health`
+- `load`
+- `activation_reason`
+- `last_heartbeat_at`
+- `controlled_by: heart_controller`
+
+## 7. أين طبقات الذكاء الاصطناعي
+
+غير منفذة حاليًا.
+
+الموجود الآن هو حراسة صحيحة تمنع AI من امتلاك الأرقام أو الأحكام، مثل:
+
+- `AI-owned controlled numbers`
+- `provider-neutral guard recorded`
+- `no AI or provider owns controlled outputs`
+
+لكن غير الموجود:
+
+- AI Integration Layer
+- Provider Abstraction
+- Provider Adapter
+- Model Router
+- Prompt Governance
+- Context Governance
+- RAG/Evidence Retrieval
+- Tool Calling Guard
+- Output Validation
+- Human Review Gate
+- AI Observability
+- Degraded/Fallback Mode
+
+التصحيح لا يعني إضافة مفاتيح أو مزود الآن. المرحلة الصحيحة هي بناء **طبقة AI فارغة/محكومة**:
+
+```text
+AI Integration Module
+status: disabled_by_default
+providers: []
+external_calls: blocked
+allowed_use: explain/summarize/draft only
+forbidden_use: finance/legal/final decisions/numeric truth
+```
+
+## 8. لماذا لا نرمي ما تم
+
+العمل الحالي ليس خطأ يجب حذفه. هو يمثل Modules وظيفية جاهزة، لكنها تحتاج أن تُغلف داخل AAS runtime.
+
+إعادة التصحيح الصحيحة:
+
+```text
+current finance_engine.py        -> Finance Module
+current source_registry.py       -> Source Governance Module
+current datasets.py              -> Dataset Module
+current transformations.py       -> Transformation Module
+current evidence_ledger.py       -> Evidence Ledger Module
+current sector_intelligence.py   -> Sector Intelligence Module
+current decision_council.py      -> Decision Council Module
+current risk_engine.py           -> Risk Module
+current execution_engine.py      -> Execution Module
+current reports.py               -> Report Module
+current decision_pack.py         -> Decision Pack Module
+current repository.py            -> Local Persistence Adapter
+```
+
+## 9. خطة التصحيح المقترحة
+
+### Phase 0 - تثبيت الحقيقة الحالية
+
+الهدف: إيقاف التوسع الوظيفي مؤقتًا وتوثيق خط الأساس.
+
+المطلوب:
+
+- حفظ هذه الوثيقة كمرجع تصحيح.
+- اعتماد مخطط صفحة واحدة يوضح ما بُني وما لم يبنَ.
+- عدم إضافة modules منتجية جديدة قبل بناء AAS runtime skeleton.
+
+المخرجات:
+
+- `docs/ASIE-Architecture-Correction-Plan-2026-07-18.md`
+- `docs/ASIE-Architecture-One-Page-Map-2026-07-18.svg`
+
+### Phase 1 - AAS Runtime Skeleton
+
+الهدف: بناء الهيكل التشغيلي دون تغيير نتائج المنتج.
+
+ملفات مقترحة:
+
+```text
+backend/aas_kernel.py
+backend/aas_registry.py
+backend/heart_controller.py
+backend/hearts.py
+backend/bus_controller.py
+backend/system_bus.py
+backend/socket_contracts.py
+backend/module_runtime.py
+backend/ai_integration.py
+```
+
+قواعد:
+
+- Kernel يبدأ فقط ولا يحسب.
+- Registry يسجل modules/contracts/sockets.
+- Heart Controller يدير Primary/Assist/Reserve.
+- Bus لا ينفذ business logic.
+- Socket layer يتحقق من contract قبل استدعاء module.
+- AI module يبقى disabled ولا يملك أرقامًا.
+
+### Phase 2 - تحويل المحركات الحالية إلى Modules
+
+الهدف: الاحتفاظ بالنتائج الحالية مع تغيير طريقة الاستدعاء.
+
+قبل:
+
+```text
+build_overview -> finance_result_set()
+```
+
+بعد:
+
+```text
+build_overview -> SystemBus.dispatch("finance.evaluate", payload)
+             -> SocketContract.validate(...)
+             -> FinanceModule.handle(...)
+```
+
+الوحدات الأولى التي تُغلف:
+
+- Finance Module
+- Source Governance Module
+- Evidence Ledger Module
+- Sector Intelligence Module
+- Decision Council Module
+- Report Module
+
+### Phase 3 - استبدال build_overview بمنسق رسائل
+
+الهدف: يصبح `build_overview` مسارًا تشغيليًا، لا منسق أعمال مباشر.
+
+المسار الجديد:
+
+```text
+API request
+-> Kernel runtime context
+-> Heart Controller assigns task to Primary Heart
+-> Primary Heart submits messages to System Bus
+-> Bus Controller verifies module participation
+-> Socket Contract Layer validates payload
+-> Modules execute
+-> Snapshot Assembler stores immutable snapshot
+```
+
+### Phase 4 - AI Integration Shell
+
+الهدف: بناء حدود AI الآن، دون تشغيل AI خارجي.
+
+المطلوب:
+
+- `AIIntegrationModule`
+- `ProviderRegistry` empty
+- `ModelRouter` returns `disabled_no_provider`
+- `PromptGovernance` rules
+- `OutputValidation` rejects numeric truth/legal/finance ownership
+- `HumanReviewGate` placeholder
+- Audit entries for any AI request attempt
+
+### Phase 5 - واجهة حالة المعمارية
+
+الهدف: تظهر للمستخدم والإدارة حالة تشغيل المنصة، لا فقط نتائج المشروع.
+
+إضافة شاشة:
+
+```text
+Architecture Runtime Status
+- Kernel: ready/not ready
+- Heart Controller: ready/not ready
+- Primary Heart: active
+- Assist Heart: inactive
+- Reserve Heart: reserved
+- Bus Controller: ready
+- System Bus: ready
+- Socket Contract Layer: enforcing
+- AI Integration: disabled/governed
+```
+
+### Phase 6 - اختبارات قبول AAS
+
+إضافة اختبارات جديدة:
+
+- Kernel لا يحتوي business logic.
+- لا يعمل module قبل التسجيل.
+- لا تمر message دون contract_id.
+- لا تمر message دون socket_id.
+- لا توجد direct module-to-module calls في مسار التشغيل الجديد.
+- Primary Heart لا يقرر وحده.
+- Assist/Reserve لا يعملان دائمًا.
+- AI لا ينتج أرقامًا أو أحكامًا.
+- Snapshot لا يعاد حسابه بعد التعديل.
+- المنافذ تبقى `5194` و`8794`.
+
+## 10. قرار العمل التالي
+
+المرحلة التالية يجب أن تكون:
+
+**AAS Runtime Skeleton v1 + Module Wrapping Plan**
+
+وليس إضافة واجهات أو محركات جديدة.
+
+هذه المرحلة لا تضيف مصادر، لا مفاتيح، لا APIs خارجية، ولا AI Provider.
+
+تعريف النجاح:
+
+- يوجد Kernel فعلي.
+- يوجد Heart Controller فعلي.
+- توجد القلوب الثلاثة ككيانات تشغيلية.
+- توجد Registry وBus وSocket Contract Layer.
+- Finance Engine يعمل عبر bus/socket لا باستدعاء مباشر من orchestrator.
+- snapshots والتقارير لا تتغير.
+- كل الاختبارات الحالية تبقى ناجحة.
+- تضاف اختبارات AAS Runtime جديدة.
+
+## 11. المخطط
+
+المخطط المحفوظ:
+
+`docs/ASIE-Architecture-One-Page-Map-2026-07-18.svg`
+
+يمثل:
+
+- المعمارية الأساسية المجمدة.
+- ما بُني فعليًا.
+- فجوة التصحيح.
+- موضع طبقات AI.
+- موضع القلوب الثلاثة.
+
+## 12. خلاصة تنفيذية
+
+بصراحة: نحن لم نبنِ المعمارية الأساسية أولًا. بنينا محصولًا وظيفيًا مهمًا فوق API محلي، ثم بدأنا نشعر بالفجوة من الواجهة لأن المسار يعطي إحساس منتج، لكنه لا يكشف طبقة التشغيل الحاكمة.
+
+التصحيح ليس إعادة بداية. التصحيح هو رفع ما بُني إلى مكانه الصحيح داخل AAS:
+
+```text
+Do not delete the engines.
+Wrap them as AAS Modules.
+Put Kernel/Hearts/Bus/Socket before them.
+Keep AI governed and disabled until formally enabled.
+```
+
+
+

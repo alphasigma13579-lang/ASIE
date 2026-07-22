@@ -1,0 +1,902 @@
+# خطة تحويل بذرة ASIE إلى منتج محلي حقيقي
+
+## الحالة الحالية
+- توقفنا عند بذرة محلية تعمل: واجهة React/Vite + خلفية Python + عقود TypeScript + سياسة مصادر مغلقة افتراضيًا.
+- التحقق الحالي نجح: فحص TypeScript بلا أخطاء، وملف الخلفية Python يُترجم بلا أخطاء.
+- الموجود الآن يعرض مشروعًا تجريبيًا واحدًا ببيانات `DEMO_DATA`، وليس منصة كاملة بعد.
+- لا يوجد مستودع Git صالح حاليًا رغم وجود مجلد `.git` فارغ/غير قابل للاستخدام.
+
+## الملخص
+- المرحلة القادمة ستكون: **مشروع كامل واحد end-to-end محليًا**.
+- الأولوية: **الأساس الكامل للمنصة** لا مجرد واجهات.
+- الواجهة التفصيلية ستستخدم **مسارًا مؤقتًا** من الحزمة إلى أن تزودني بمسار العميل الذي سترسمه.
+- لا مفاتيح داخل الحزمة، ولا مصادر مرخصة/مدفوعة/حكومية غير مفتوحة. كل مصدر يبقى مغلقًا حتى يمر ببوابة مراجعة شروطه.
+
+## تغييرات البناء الأساسية
+- تحويل الخلفية من API تجريبي ثابت إلى نواة منصة محلية:
+  - مشاريع متعددة.
+  - لقطة تشغيل immutable snapshot.
+  - سجل تدقيق لكل نتيجة.
+  - سجل مصادر `Source Registry` بحالات: `candidate`, `blocked`, `enabled`, `reference_only`.
+- تثبيت مسار AAS:
+  - الواجهة لا تحسب ولا تستدعي AI ولا مصادر.
+  - كل رقم يخرج عبر عقد typed envelope.
+  - Finance Engine يملك الحسابات وMonte Carlo.
+  - Decision Council ينسق الشخصيات الخمس والحكم السيادي بلا تصويت.
+- إضافة تخزين محلي افتراضي:
+  - SQLite للمرحلة المحلية.
+  - طبقة Repository واضحة تسمح لاحقًا بالانتقال إلى PostgreSQL دون تغيير الواجهة.
+- بناء مسار مستخدم مؤقت:
+  - إنشاء مشروع.
+  - إدخال بيانات أساسية.
+  - اختيار عمق دراسة مبدئي.
+  - تشغيل التقييم.
+  - عرض الحكم، Monte Carlo، الشخصيات الخمس، العوائق، والأدلة.
+  - توليد تقرير snapshot لا يعيد الحساب.
+- إبقاء `pnpm` هو مدير الحزم، مع استمرار استخدام التشغيل المباشر للأدوات عند الحاجة إذا علّق wrapper الخاص بـ pnpm.
+
+## الواجهات والعقود
+- إضافة عقود TypeScript/JSON للآتي:
+  - `Project`
+  - `Scenario`
+  - `Run`
+  - `Snapshot`
+  - `SourceRecord`
+  - `EvidenceRef`
+  - `AssumptionRef`
+  - `PersonaOutput`
+  - `SovereignVerdict`
+  - `RemediationEnvelope`
+- إضافة API محلي مبدئي:
+  - `POST /api/projects`
+  - `GET /api/projects/:id`
+  - `POST /api/projects/:id/runs`
+  - `GET /api/runs/:runId/overview`
+  - `GET /api/snapshots/:snapshotId/report`
+  - `GET /api/source-policy`
+  - `POST /api/sources/review-record`
+- أي مصدر حكومي أو عام لا يصبح `enabled` إلا بعد توثيق: الرابط الدقيق، شروط الاستخدام، النسبة، التصنيف، PDPL/NCA check، وقرار مراجعة بشري.
+
+## خطة الاختبار
+- اختبارات قبول إلزامية:
+  - `R10-AC-01` إلى `R10-AC-06`.
+  - `R11-AC-01` إلى `R11-AC-07`.
+- اختبارات وظيفية:
+  - إنشاء مشروع وتشغيل تقييم كامل.
+  - إظهار `NOT_READY` عند نقص مدخلات Monte Carlo.
+  - منع أي حساب مالي داخل React.
+  - منع أي مصدر غير مراجع من الجلب الخارجي.
+  - إثبات أن التقرير والواجهة يعرضان نفس snapshot.
+- اختبارات محلية:
+  - TypeScript check.
+  - Python compile/tests.
+  - Vite build.
+  - API smoke test لمسار مشروع كامل.
+
+## الافتراضات المثبتة
+- المرحلة القادمة محلية أولًا، وليست نشرًا إنتاجيًا عامًا.
+- لا تسجيل دخول ولا صلاحيات مستخدمين في هذه المرحلة إلا إذا احتاجها مسار العميل لاحقًا.
+- البيانات المفتوحة لا تعني “أي صفحة عامة”، بل dataset/API محدد ومسموح.
+- الذكاء الاصطناعي لاحقًا يشرح فقط، ولا يملك أرقامًا أو أحكامًا أو تفسيرًا قانونيًا.
+- مسار الواجهة الحالي مؤقت وقابل لإعادة الترتيب عندما تزودني برسم تجربة العميل.
+ 
+# خطة مرحلة Core Engines v1 + Source Governance v1
+
+## الملخص
+- الهدف: نقل ASIE من ملف خلفية واحد بحسابات مبسطة إلى نواة محركات محلية منظمة، مع بقاء التشغيل محليًا وبدون جلب خارجي.
+- النجاح يعني: مشروع واحد يمر عبر Finance Engine أوسع، Decision Council أوضح، Source Registry أكثر صرامة، وتقرير Snapshot غني يطابق الواجهة.
+- سنحافظ على SQLite وPython القياسي وReact/Vite/pnpm، ولن نضيف مفاتيح أو مزودين أو مصادر خارجية في هذه المرحلة.
+
+## تغييرات التنفيذ
+- **تفكيك الخلفية داخليًا** داخل `backend/` إلى طبقات واضحة:
+  - `repository`: التخزين وقراءة/حفظ المشاريع والتشغيلات واللقطات والمصادر.
+  - `contracts`: بناء envelopes والأنواع المشتركة للخلفية.
+  - `finance_engine`: الحسابات المالية وMonte Carlo و`NOT_READY`.
+  - `decision_council`: الشخصيات الخمس والحكم السيادي الحتمي بلا تصويت.
+  - `source_registry`: مراجعة المصادر وحالات `candidate / blocked / enabled / reference_only`.
+  - `reports`: تقرير Snapshot لا يعيد الحساب.
+- **توسيع Finance Engine** بإضافة:
+  - NPV, IRR, payback, contribution margin, working-capital need, debt-service placeholder, sensitivity matrix.
+  - سيناريوهات `baseline / conservative / optimistic`.
+  - Monte Carlo أكثر صرامة: لا يعطي احتمالًا إذا غابت المدخلات أو التوزيعات أو seed أو convergence metadata.
+- **تثبيت Decision Council v1**:
+  - مخرجات مستقلة لكل شخصية: Project Manager, Business Advisor, Technical Auditor, Analyst Coach, Resistance Test.
+  - كل شخصية ترى envelope مسموح فقط.
+  - Sovereign Verdict يصدر من بوابات deterministic، وليس تصويتًا أو AI.
+- **تقوية Source Governance**:
+  - إضافة سجل مراجعة مصدر كامل: `terms_hash`, `license_snapshot_ref`, `classification`, `pdpl_check`, `nca_check`, `lawful_purpose`, `reviewer_decision`.
+  - منع `enabled` إلا إذا اكتملت الحقول الإلزامية.
+  - إضافة endpoint لعرض سجل المصادر وليس السياسة فقط.
+- **تحسين الواجهة دون تغيير الحسابات فيها**:
+  - عرض مؤشرات Finance الجديدة من الخلفية فقط.
+  - عرض حالة كل شخصية وحالة Monte Carlo وسبب `NOT_READY`.
+  - عرض ملخص مصدر/مراجعة المصدر داخل نفس المسار المؤقت.
+
+## الواجهات والعقود
+- تحديث/إضافة TypeScript contracts:
+  - `FinanceResultSet`
+  - `ScenarioResult`
+  - `SensitivityMatrix`
+  - `DecisionCouncilResult`
+  - `PersonaInputScope`
+  - `SourceReviewRecord`
+  - `SnapshotReportSection`
+- تحديث API المحلي:
+  - `GET /api/sources`
+  - `GET /api/projects/:id/runs`
+  - `GET /api/runs/:runId/audit`
+  - الإبقاء على endpoints الحالية دون كسر الواجهة.
+- التقرير سيحتوي على: summary، KPIs، scenarios، sensitivity، personas، blockers، source governance، audit lineage.
+
+## خطة الاختبار
+- توسيع اختبارات Python لتغطي:
+  - NPV/IRR/payback والحساسية.
+  - `NOT_READY` عند نقص التوزيعات أو المدخلات.
+  - عزل الشخصيات ومنع التصويت.
+  - رفض تفعيل مصدر ناقص المراجعة.
+  - تطابق التقرير والواجهة مع نفس snapshot.
+- اختبارات حراسة r10/r11:
+  - لا حساب مالي داخل React.
+  - لا مصدر خارجي مفعّل افتراضيًا.
+  - لا AI أو provider يملك رقمًا أو حكمًا.
+  - لا Dashboard/Feasibility/Procurement module جديد كمالك حقيقة.
+- فحوصات محلية نهائية:
+  - `python -m unittest discover -s tests`
+  - `python -m py_compile`
+  - TypeScript check
+  - Vite build
+  - API smoke test لمسار مشروع كامل.
+
+## الافتراضات
+- سنبقى محليين على المنفذ `8788` لتجنب التصادم الحالي مع `8787`.
+- لن نضيف FastAPI أو PostgreSQL الآن؛ التنظيم الداخلي يكفي لهذه المرحلة.
+- لا نضيف مصادر بيانات فعلية أو جلب خارجي حتى تزودني بمصدر محدد ونراجع شروطه.
+- الواجهة المؤقتة تبقى قابلة لإعادة الترتيب عندما ترسم مسار العميل النهائي.
+
+
+# خطة المرحلة التالية: Product Workflow v1 + Evidence & Report Pack
+
+## الملخص
+- الهدف: تحويل المحركات الحالية إلى تجربة منتج عملية للمستخدم: مسار إدخال منظم، دفتر افتراضات، حوكمة مصادر مرئية، وتقرير Snapshot قابل للاعتماد محليًا.
+- السبب: لدينا الآن Core Engines وSource Governance، لكن المستخدم ما زال يدخل أرقامًا مباشرة في شاشة واحدة، والتقرير موجود كبيانات JSON وليس كحزمة قرار مفهومة للعميل.
+- مخرج المرحلة: مشروع واحد يمر عبر Wizard واضح، ينتج Assumption Book وEvidence Register وSnapshot Report غني داخل الواجهة، مع بقاء كل الحسابات في الخلفية.
+
+## تغييرات التنفيذ
+- **Project Wizard v1**
+  - تقسيم المسار المؤقت إلى خطوات فعلية: تعريف المشروع، نموذج الإيرادات، التكاليف، التمويل، الافتراضات، المصادر، المراجعة، التشغيل.
+  - حفظ المشروع كمسودة قبل التشغيل، وإظهار `NOT_READY` لكل خطوة ناقصة بدل السماح بتشغيل مبهم.
+  - إبقاء الواجهة كمنسق عرض فقط؛ لا حسابات مالية في React.
+
+- **Assumption Book v1**
+  - إضافة سجل افتراضات لكل مشروع: `assumption_id`, `label`, `value`, `unit`, `owner`, `source_type`, `confidence`, `review_status`.
+  - ربط كل KPI بالافتراضات المستخدمة بدل `assumption:local-user-inputs-v1` العامة.
+  - إضافة واجهة تعرض الافتراضات وتبين ما هو مدخل مستخدم، افتراضي محلي، أو يحتاج مراجعة.
+
+- **Evidence & Source Workbench v1**
+  - توسيع Source Registry ليظهر داخل الواجهة كسجل مراجعة لا كمجرد عدادات.
+  - إضافة شاشة مصدر: الحالة، سبب الحجب/الترشيح، حقول المراجعة المطلوبة، وقرار المراجع.
+  - لا جلب خارجي، ولا تفعيل تلقائي. المصدر المفعّل يعني “مسموح لاحقًا” وليس “تم الجلب الآن”.
+
+- **Snapshot Report v1**
+  - تحويل التقرير من ملخص صغير إلى تقرير قرار داخل الواجهة: ملخص تنفيذي، KPIs، السيناريوهات، الحساسية، الشخصيات، العوائق، الافتراضات، المصادر، والتدقيق.
+  - إضافة endpoint لتصدير تقرير HTML محلي من نفس snapshot، بدون إعادة حساب.
+  - إظهار `snapshot_id`, `run_id`, `algorithm_versions`, و`audit_refs` بوضوح.
+
+## الواجهات والعقود
+- إضافة/تحديث عقود:
+  - `ProjectDraft`
+  - `WizardStepStatus`
+  - `AssumptionRecord`
+  - `EvidenceRegister`
+  - `SourceReviewChecklist`
+  - `SnapshotReportView`
+- إضافة API محلي:
+  - `PATCH /api/projects/:id`
+  - `GET /api/projects/:id/readiness`
+  - `GET /api/projects/:id/assumptions`
+  - `POST /api/projects/:id/assumptions`
+  - `GET /api/snapshots/:snapshotId/report-view`
+  - `GET /api/snapshots/:snapshotId/report.html`
+- تحديث التقرير الحالي ليقرأ `AssumptionRecord` و`SourceReviewRecord` من التخزين بدل نصوص عامة.
+
+## خطة الاختبار
+- اختبارات الخلفية:
+  - لا يمكن تشغيل مشروع ناقص إلا ويصدر `BLOCKED_NOT_READY` مع أسباب خطوة-بخطوة.
+  - كل KPI له `assumption_refs` حقيقية.
+  - تقرير HTML يطابق نفس snapshot ولا يعيد الحساب.
+  - Source Review لا يفعّل مصدرًا ناقص الحقول.
+  - تشغيلان لنفس المشروع ينتجان snapshotين منفصلين غير قابلين للتعديل.
+- اختبارات الواجهة:
+  - Wizard يعرض حالة كل خطوة.
+  - التقرير يعرض نفس `snapshot_id` و`run_id` القادم من الخلفية.
+  - لا توجد معادلات مالية أو Monte Carlo داخل React.
+- فحوصات نهائية:
+  - Python unit tests.
+  - Python compile.
+  - TypeScript check.
+  - Vite build.
+  - API smoke test لمسار: draft → assumptions → run → report view → report HTML.
+
+## الافتراضات
+- سنبقى على SQLite وPython القياسي وReact/Vite/pnpm.
+- لا نضيف تسجيل دخول أو صلاحيات مستخدمين في هذه المرحلة.
+- لا نضيف أي مصدر خارجي فعلي أو API حكومي قبل أن تزودني بمصدر محدد ونراجع شروطه.
+- واجهة Wizard ستكون مؤقتة لكنها منظمة، ثم نعيد ترتيبها لاحقًا حسب المسار الذي سترسمه للعميل.
+
+المرحلة التالية المنطقية هي:
+Project Workspace & Review Loop v1
+يعني نحول المنصة من “تشغيل مشروع واحد ثم تقرير” إلى مساحة عمل حقيقية للمشاريع.
+الهدف
+المستخدم يرى قائمة مشاريعه.
+يدخل على مشروع.
+يرى سجل التشغيلات السابقة.
+يقارن بين snapshots.
+يعرف لماذا النتيجة تغيرت.
+يعدل الافتراضات أو المصادر ثم يعيد التشغيل.
+كل ذلك بدون كسر AAS أو نقل الحسابات للواجهة.
+ما سنبنيه
+Project Workspace
+صفحة مشاريع.
+فتح مشروع محفوظ.
+عرض آخر تشغيل وآخر حكم.
+حالة الجاهزية لكل مشروع.
+
+Run History
+سجل التشغيلات لكل مشروع.
+run_id, snapshot_id, التاريخ، الحكم، حالة القبول.
+فتح أي snapshot قديم.
+
+Snapshot Comparison
+مقارنة تشغيلين:تغير NPV
+تغير IRR
+تغير Monte Carlo
+تغير الحكم
+تغير الافتراضات
+
+لا إعادة حساب، فقط مقارنة snapshots محفوظة.
+
+Remediation Loop
+تحويل العوائق إلى مهام واضحة:مدخل ناقص
+افتراض يحتاج مراجعة
+مصدر غير مكتمل
+Monte Carlo غير جاهز
+
+المستخدم يصلح ثم يعيد التشغيل.
+
+Source Review UI
+شاشة مراجعة مصدر كاملة.
+checklist للحقول المطلوبة.
+منع enabled إن نقص أي شرط.
+الجلب الخارجي يبقى مغلقًا.
+
+Report Pack تحسين
+فتح تقارير snapshots القديمة.
+طباعة HTML بشكل أنظف.
+إضافة صفحة “قبول r10/r11” داخل التقرير.
+
+واجهات API المقترحة
+GET /api/projects
+GET /api/projects/:id/workspace
+GET /api/projects/:id/runs
+GET /api/snapshots/:id
+POST /api/snapshots/compare
+GET /api/projects/:id/remediation
+PATCH /api/sources/:id/review
+اختبارات المرحلة
+مشروعان محفوظان لا يختلطان.
+تشغيلان لنفس المشروع ينتجان snapshots مختلفة.
+المقارنة لا تعيد الحساب.
+لا يمكن تفعيل مصدر ناقص.
+تقرير snapshot قديم يبقى مطابقًا حتى بعد تعديل المشروع.
+Acceptance r10/r11 يظهر لكل تشغيل.
+هذه المرحلة ستجعل ASIE تبدو كمنصة عمل فعلية، لا مجرد نموذج تشغيل واحد.
+
+المرحلة التالية المقترحة:
+Open Data Intake & Evidence Activation v1
+الهدف
+نقل المنصة من الاعتماد على مدخلات المستخدم فقط إلى إدخال بيانات مفتوحة مُراجعة، بدون تفعيل أي جلب خارجي عشوائي أو استخدام مصادر غير مصرح بها.
+هذه المرحلة لا تعني ربط حكومي مباشر. تعني بناء المسار الآمن الذي يسمح لاحقًا بتفعيل مصدر مفتوح محدد بعد اكتمال شروطه.
+لماذا هذه المرحلة الآن
+لدينا الآن:
+محركات مالية.
+Wizard.
+Snapshots.
+تقارير.
+Acceptance r10/r11.
+Workspace وسجل تشغيلات ومقارنة.
+الفجوة التالية: الأدلة والبيانات.
+حاليًا النتائج تعتمد على افتراضات المستخدم. لكي تصبح المنصة أقرب لمنتج حقيقي، نحتاج طبقة إدخال بيانات مفتوحة ومراجعتها وربطها بالافتراضات والمؤشرات.
+نطاق التنفيذ
+1. Data Intake Registry
+إضافة سجل لإدخالات البيانات:
+dataset_id
+source_id
+title
+publisher
+license_snapshot_ref
+terms_hash
+import_method
+classification
+review_status
+created_at
+الحالات:
+draft
+review_required
+approved_for_use
+rejected
+archived
+2. Manual Dataset Import
+إدخال بيانات محلي يدوي فقط في هذه المرحلة:
+CSV
+JSON
+pasted table لاحقًا
+بدون fetch خارجي
+بدون crawler
+بدون API حكومي
+الهدف أن المستخدم يستطيع تحميل/إدخال dataset حصل عليه بنفسه من مصدر مفتوح ومراجع.
+3. Evidence Mapping
+ربط البيانات بالافتراضات:
+افتراض سعر
+افتراض طلب
+افتراض تكلفة
+مؤشر سوق
+مصدر ثقة
+كل AssumptionRecord يمكن أن يرتبط بـ:
+dataset_id
+evidence_ref
+transformation_note
+human_review_decision
+4. Data Quality Gate
+قبل استخدام أي dataset:
+هل المصدر مراجع؟
+هل الترخيص موجود؟
+هل التصنيف واضح؟
+هل يوجد بيانات شخصية؟
+هل يوجد terms hash؟
+هل توجد نسبة attribution؟
+هل تم اعتماد المراجع البشري؟
+إذا فشل أي شرط: NOT_READY.
+5. Transformations لا حسابات نهائية
+إضافة طبقة تحويل بسيطة:
+قراءة الأعمدة.
+وصف الوحدات.
+تلخيص إحصائي غير حاكم.
+ربط صفوف dataset بافتراضات.
+لكن:
+لا قرار سيادي من البيانات مباشرة.
+لا AI يفسر قانونيًا.
+لا حساب مالي في الواجهة.
+لا جلب خارجي.
+APIs المقترحة
+POST /api/datasets
+GET /api/datasets
+GET /api/datasets/:id
+POST /api/datasets/:id/review
+POST /api/projects/:id/evidence-links
+GET /api/projects/:id/evidence-register
+GET /api/datasets/:id/quality-gate
+تحديث الواجهة
+إضافة قسم داخل Workspace:
+Datasets
+Source review status
+Data quality gate
+Evidence links
+Assumptions linked to evidence
+أسباب NOT_READY
+الاختبارات
+Dataset بدون ترخيص لا يُستخدم.
+Dataset بدون source review لا يُستخدم.
+Dataset approved يمكن ربطه بافتراض.
+التقرير يعرض evidence links.
+Snapshot قديم لا يتغير بعد تعديل dataset.
+لا يوجد أي external fetch.
+Acceptance r10/r11 يبقى ناجحًا.
+الافتراضات
+لا نربط أي موقع فعلي الآن.
+لا نستخدم مفاتيح.
+لا نستخدم API حكومي.
+الإدخال يدوي ومحلي فقط.
+تفعيل أي مصدر حقيقي لاحقًا يحتاج منك تحديد المصدر والملف/الرابط وشروط الاستخدام.
+
+# خطة المرحلة التالية: Operational Finance Depth v1
+
+## Summary
+- الهدف: تعميق الدراسة ماليًا وتشغيليًا بدل إضافة واجهات فقط.
+- نوسّع Finance Engine من نموذج أرقام عامة إلى نموذج تشغيل أولي: طاقة تشغيل، استخدام، OPEX مفصل، CAPEX مفصل، خدمة دين، ونقاط ضغط.
+- تبقى القواعد الحالية ثابتة: لا حسابات في React، لا جلب خارجي، لا مفاتيح، كل نتيجة داخل snapshot immutable، والتقرير يقرأ نفس snapshot.
+
+## Key Changes
+- توسيع مدخلات المشروع:
+  - إضافة حقول تشغيلية: `use_operating_capacity`, `capacity_units_per_day`, `operating_days_per_month`, `utilization_rate`.
+  - إضافة OPEX مفصل: `payroll_monthly`, `rent_monthly`, `utilities_monthly`, `marketing_monthly`, `maintenance_monthly`.
+  - إضافة CAPEX مفصل: `capex_equipment`, `capex_fitout`, `capex_licenses_local`, `depreciation_years`.
+  - إضافة تمويل أعمق: `equity_contribution`, `loan_grace_months`, مع إبقاء `debt_amount`, `annual_interest_rate`, `loan_years`.
+- تحديث Finance Engine:
+  - إذا `use_operating_capacity=true` يشتق `monthly_units = capacity_units_per_day * operating_days_per_month * utilization_rate`.
+  - إذا لم تُفعّل، يبقى `monthly_units` اليدوي هو المصدر كما هو الآن.
+  - حساب OPEX total من البنود الجديدة مع دعم الحقول القديمة للتوافق.
+  - حساب CAPEX total، depreciation monthly، EBITDA، EBIT، net operating cashflow، DSCR، funding need after equity.
+  - إضافة sensitivity جديدة: utilization × price، وOPEX × demand.
+- تحديث Decision Council:
+  - Project Manager يقرأ readiness/capacity/funding gap.
+  - Business Advisor يقرأ contribution margin وutilization وDSCR.
+  - Technical Auditor يقرأ اكتمال نموذج التشغيل والحساسية.
+  - Resistance Test يضغط utilization وOPEX وdebt service.
+  - الحكم السيادي يبقى deterministic ولا يوجد تصويت.
+- تحديث الواجهة والتقرير:
+  - إضافة قسم “نموذج التشغيل والتمويل” داخل المسار الحالي.
+  - عرض مؤشرات التشغيل والتمويل من الخلفية فقط.
+  - تحديث Snapshot Report ليشمل operational KPIs، CAPEX/OPEX breakdown، DSCR، وutilization sensitivity.
+
+## Public APIs / Types
+- تحديث `ProjectInputs` و`FinanceResultSet` و`ScenarioResult` في TypeScript لإضافة الحقول والمؤشرات الجديدة.
+- لا نكسر endpoints الحالية.
+- `POST/PATCH /api/projects` يقبل الحقول الجديدة داخل `inputs`.
+- `GET /api/runs/:runId/overview` و`GET /api/snapshots/:snapshotId/report-view` يرجعان:
+  - `operating_model`
+  - `capex_breakdown`
+  - `opex_breakdown`
+  - `debt_service_profile`
+  - `operational_sensitivity`
+
+## Test Plan
+- Python tests:
+  - اشتقاق `monthly_units` من capacity عند تفعيل `use_operating_capacity`.
+  - بقاء `monthly_units` اليدوي هو المستخدم عند عدم التفعيل.
+  - صحة OPEX/CAPEX totals وdepreciation وEBITDA/EBIT.
+  - DSCR يصبح `NOT_READY` أو warning عند وجود دين ناقص المدخلات.
+  - Snapshot قديم لا يتغير بعد تعديل مدخلات التشغيل.
+  - Decision Council لا يستخدم تصويتًا ولا AI.
+- Frontend/build guards:
+  - لا توجد معادلات مالية أو تشغيلية داخل React.
+  - TypeScript check.
+  - Vite build.
+- Smoke test:
+  - draft → تشغيل capacity-based run → report-view → report HTML.
+  - التأكد أن المنافذ المستخدمة تبقى `5194` للواجهة و`8794` للـAPI فقط.
+
+## Assumptions
+- الأولوية المختارة: **تشغيلي ومالي**.
+- لا مصادر خارجية جديدة في هذه المرحلة.
+- لا تسجيل دخول أو صلاحيات مستخدمين.
+- لا نضيف PostgreSQL أو FastAPI الآن.
+- الحقول القديمة تبقى مدعومة حتى لا تنكسر المشاريع الموجودة.
+
+
+# خطة المرحلة التالية: Execution & Risk Readiness v1
+
+## Summary
+- الهدف: تحويل نتائج الدراسة المالية والتشغيلية إلى خطة تنفيذ ومخاطر قابلة للقرار، بدل أن تبقى المنصة تعرض أرقامًا فقط.
+- الحالة الحالية: لدينا Finance Engine عميق، Decision Council، Source/Evidence Governance، Snapshot Report، واختبارات قبول. غير الموجود بعد هو سجل مخاطر، مراحل تنفيذ، بوابات جاهزية، وخطة معالجة مرتبطة بالحكم السيادي.
+- المخرج: كل تشغيل ينتج `ExecutionPlan` و`RiskRegister` و`ReadinessGateSet` داخل نفس snapshot، والتقرير يعرض لماذا المشروع قابل/غير قابل للانتقال للمرحلة التالية.
+
+## Key Changes
+- إضافة محرك جديد في الخلفية باسم `execution_engine`:
+  - يبني مراحل تنفيذ محلية: `setup`, `procurement`, `staffing`, `launch`, `stabilization`.
+  - ينتج `milestones`, `dependencies`, `owner_role`, `estimated_duration_days`, `exit_criteria`.
+  - لا يحسب أرقام مالية جديدة، بل يقرأ نتائج Finance Engine وDecision Council.
+- إضافة `risk_engine`:
+  - يولد سجل مخاطر حتمي من المدخلات والنتائج: funding risk, DSCR risk, utilization risk, OPEX pressure, source governance risk, evidence readiness risk.
+  - لكل خطر: `risk_id`, `severity`, `likelihood`, `impact`, `trigger`, `mitigation`, `owner_role`, `status`.
+- إضافة `readiness_gates`:
+  - بوابات: Financial Readiness, Operating Readiness, Evidence Readiness, Source Governance, Debt Service, Launch Readiness.
+  - كل بوابة ترجع `passed / warning / blocked` مع أسباب واضحة.
+- تحديث Decision Council:
+  - الحكم السيادي يقرأ readiness gates بدل الاعتماد على Finance فقط.
+  - لا تصويت، لا AI، ولا مصادر خارجية.
+- تحديث الواجهة والتقرير:
+  - إضافة قسم “خطة التنفيذ والمخاطر”.
+  - عرض أعلى المخاطر، البوابات المحجوبة، ومراحل التنفيذ.
+  - تقرير HTML يعرض نفس `execution_plan`, `risk_register`, `readiness_gates` من snapshot بدون إعادة حساب.
+
+## Public APIs / Types
+- تحديث `ProjectOverview`, `SnapshotReport`, و`SnapshotReportView` لإضافة:
+  - `execution_plan`
+  - `risk_register`
+  - `readiness_gates`
+- إضافة TypeScript contracts:
+  - `ExecutionPlan`
+  - `ExecutionMilestone`
+  - `RiskRegister`
+  - `RiskRecord`
+  - `ReadinessGate`
+  - `ReadinessGateSet`
+- لا endpoints جديدة إلزامية في هذه المرحلة؛ البيانات تظهر عبر endpoints الحالية:
+  - `POST /api/projects/:id/runs`
+  - `GET /api/runs/:runId/overview`
+  - `GET /api/snapshots/:snapshotId/report-view`
+  - `GET /api/snapshots/:snapshotId/report.html`
+
+## Test Plan
+- Python tests:
+  - مشروع مالي جاهز ينتج execution plan بمراحل ثابتة.
+  - نقص Evidence أو Source Governance ينتج بوابات warning/blocked بدون إيقاف snapshot.
+  - DSCR غير جاهز أو أقل من threshold ينتج risk واضح وبوابة Debt Service محجوبة.
+  - تعديل المشروع بعد التشغيل لا يغير risk/execution داخل snapshot القديم.
+  - Decision Council لا يستخدم التصويت ولا AI.
+- Frontend/build guards:
+  - لا توجد حسابات مخاطر أو جاهزية داخل React.
+  - TypeScript check.
+  - Vite build.
+- Smoke test:
+  - draft → run → overview يحتوي execution/risk/readiness → report-view → report HTML.
+  - استمرار استخدام المنافذ فقط: `5194` للواجهة و`8794` للـAPI.
+
+## Assumptions
+- لا مصادر خارجية جديدة.
+- لا تسجيل دخول أو صلاحيات.
+- لا تغيير في SQLite أو Python stdlib.
+- المخاطر والبوابات v1 حتمية ومبنية على outputs الحالية، وليست تفسيرًا قانونيًا أو وعدًا استثماريًا.
+- الواجهة تعرض النتائج فقط؛ المصدر الوحيد للحقيقة هو snapshot الخلفية.
+
+# خطة المرحلة التالية: Decision Pack & Review Workflow v1
+
+## Summary
+- الهدف: تحويل الـsnapshot من “نتائج معروضة” إلى **حزمة قرار محلية قابلة للمراجعة والاعتماد**.
+- الحالة الحالية: المنصة تنتج Finance, Evidence, Risk, Readiness, Execution داخل snapshot. الناقص الآن هو مسار مراجعة واضح: من يراجع؟ ما القرار؟ ما البنود المفتوحة؟ وما النسخة المعتمدة؟
+- المخرج: كل snapshot يمكن فتحه كـDecision Pack يحتوي ملخص القرار، الافتراضات، الأدلة، المخاطر، البوابات، خطة التنفيذ، وسجل اعتماد محلي بدون إعادة حساب.
+
+## Key Changes
+- إضافة `Decision Pack` في الخلفية:
+  - يبني حزمة قراءة من snapshot محفوظ فقط.
+  - يحتوي: executive decision memo, finance highlights, readiness gates, top risks, execution plan, assumptions, evidence, source governance, audit lineage.
+  - لا يعيد الحساب ولا يقرأ المشروع الحالي بعد حفظ snapshot.
+- إضافة Review Workflow محلي:
+  - حالات review: `draft_review`, `needs_changes`, `approved_local`, `rejected_local`.
+  - سجل قرارات: reviewer, decision, notes, created_at, snapshot_id.
+  - لا صلاحيات مستخدمين الآن؛ reviewer نص محلي فقط.
+- تطوير Remediation Loop:
+  - تحويل المخاطر والبوابات المحجوبة إلى action items قابلة للإغلاق محليًا.
+  - كل item يحتفظ بـsource: gate / risk / blocker.
+  - إغلاق item لا يغير snapshot القديم؛ يؤثر فقط على draft/current project review state.
+- تحديث الواجهة:
+  - إضافة قسم “حزمة القرار والمراجعة”.
+  - عرض decision memo، حالة المراجعة، البنود المفتوحة، وأزرار محلية: approve / request changes / reject.
+  - لا توجد حسابات في React.
+- تحديث التقرير:
+  - `report-view` وHTML يعرضان Review Status وDecision Pack Summary.
+  - إضافة رابط HTML محلي لحزمة القرار من نفس snapshot.
+
+## Public APIs / Types
+- إضافة endpoints:
+  - `GET /api/snapshots/:snapshotId/decision-pack`
+  - `GET /api/snapshots/:snapshotId/decision-pack.html`
+  - `POST /api/snapshots/:snapshotId/reviews`
+  - `GET /api/snapshots/:snapshotId/reviews`
+  - `GET /api/projects/:id/action-items`
+  - `PATCH /api/projects/:id/action-items/:itemId`
+- إضافة TypeScript contracts:
+  - `DecisionPack`
+  - `DecisionMemo`
+  - `SnapshotReviewRecord`
+  - `ReviewDecision`
+  - `ActionItem`
+  - `ActionItemSource`
+- تحديث `SnapshotReportView` و`ProjectWorkspace` لإظهار آخر review وأهم action items.
+
+## Test Plan
+- Python tests:
+  - Decision Pack يقرأ snapshot محفوظ فقط ولا يعيد الحساب.
+  - تعديل المشروع بعد snapshot لا يغير decision pack.
+  - review decision يحفظ على snapshot الصحيح.
+  - approved/rejected/needs_changes لا تغير الحكم السيادي الأصلي.
+  - action items تولد من gates/risks/blockers وتغلق محليًا بدون تعديل snapshot.
+  - HTML decision pack يحتوي snapshot_id وrun_id وaudit lineage.
+- Frontend/build guards:
+  - لا توجد حسابات أو قرارات سيادية داخل React.
+  - TypeScript check.
+  - Vite build.
+- Smoke test:
+  - draft → run → decision-pack → review decision → action-items → decision-pack.html.
+  - استمرار المنافذ فقط: `5194` للواجهة و`8794` للـAPI.
+
+## Assumptions
+- لا تسجيل دخول أو صلاحيات في هذه المرحلة.
+- لا مصادر خارجية أو مفاتيح جديدة.
+- SQLite وPython stdlib وReact/Vite/pnpm كما هي.
+- الاعتماد `approved_local` يعني اعتماد محلي للمراجعة فقط، وليس ترخيصًا حكوميًا أو وعدًا استثماريًا.
+- الـsnapshot يبقى immutable، وأي review أو action item يكون سجلًا مرافقًا لا يغير نتائج اللقطة.
+# خطة المرحلة التالية: Sector Intelligence & Evidence Mapping v1
+
+## Summary
+- الهدف: نقل ASIE من تقييم مشروع عام إلى تقييم قطاعي محلي منظم داخل السعودية.
+- المخرج: كل مشروع يرتبط بتصنيف قطاعي رسمي، معايير تقييم قطاعية، مؤشرات استثمار محلية، وخريطة أدلة ومصادر مرشحة بدون أي جلب خارجي.
+- هذه المرحلة لا تضيف مفاتيح، ولا APIs خارجية، ولا تسجيل دخول، ولا تدّعي اعتمادًا حكوميًا.
+
+## Key Changes
+- إضافة `sector_intelligence` في الخلفية:
+  - تصنيف المشروع إلى `primary_sector`, `subsector`, `activity_classification`.
+  - إنتاج `sector_criteria` مثل: حجم السوق، كثافة رأس المال، حساسية الموقع، الاعتماد على العمالة، شدة المنافسة، توافق رؤية 2030.
+  - إنتاج `investment_signal_pack` حتمي من مدخلات المشروع والقطاع، مع حالة `needs_evidence` عندما لا توجد أدلة مراجعة.
+- توسيع Source/Evidence Governance:
+  - ربط كل قطاع بقائمة مصادر مرشحة فقط، مثل GASTAT/SAMA/MOF/Vision 2030 حسب القطاع.
+  - كل مصدر يبقى `candidate` أو `reference_only` حتى تمر مراجعة شروطه الدقيقة.
+  - إضافة `evidence_gap` لكل معيار قطاعي لا يملك dataset أو evidence link معتمد.
+- تحديث Decision Council وReadiness:
+  - Technical Auditor يقرأ اكتمال التصنيف القطاعي وفجوات الأدلة.
+  - Business Advisor يقرأ مؤشرات القطاع بجانب المؤشرات المالية.
+  - Sovereign Verdict يبقى حتميًا، ولا يعتمد على تصويت أو AI.
+- تحديث الواجهة والتقرير:
+  - إضافة قسم “القطاع ومؤشرات الاستثمار”.
+  - عرض التصنيف، المعايير، فجوات الأدلة، والمصادر المرشحة.
+  - Decision Pack وSnapshot Report يعرضان نفس `sector_intelligence` من snapshot بدون إعادة حساب.
+
+## APIs / Types
+- إضافة عقود:
+  - `SectorTaxonomyRecord`
+  - `SectorCriteriaSet`
+  - `InvestmentSignalPack`
+  - `SectorEvidenceMap`
+  - `SectorIntelligenceResult`
+- تحديث `ProjectInputs` أو `Project` لقبول:
+  - `primary_sector_id`
+  - `subsector_id`
+  - `activity_description`
+  - `location_scope`
+- تحديث endpoints الحالية فقط بدون كسرها:
+  - `POST/PATCH /api/projects` يقبل حقول القطاع.
+  - `GET /api/runs/:runId/overview` يرجع `sector_intelligence`.
+  - `GET /api/snapshots/:snapshotId/report-view` و`decision-pack` يرجعان نفس `sector_intelligence`.
+- إضافة endpoint اختياري:
+  - `GET /api/sector-taxonomy`
+  - لعرض قائمة القطاعات والتصنيفات المحلية في الواجهة.
+
+## Test Plan
+- Python tests:
+  - مشروع بقطاع محدد ينتج `sector_intelligence` داخل snapshot.
+  - مشروع بدون قطاع يرجع `NOT_READY` أو warning واضح في readiness.
+  - كل معيار قطاعي يملك `evidence_status`: `supported`, `needs_evidence`, أو `reference_only`.
+  - تعديل القطاع بعد التشغيل لا يغير snapshot قديم.
+  - المصادر المرشحة لا تصبح `enabled` تلقائيًا.
+  - Decision Council لا يستخدم AI ولا تصويت في قراءة مؤشرات القطاع.
+- Frontend/build guards:
+  - لا توجد حسابات قطاعية أو قرارات داخل React.
+  - TypeScript check.
+  - Vite build.
+- Smoke test:
+  - draft → اختيار قطاع → run → overview يحتوي sector intelligence → report-view → decision-pack.
+  - استمرار المنافذ فقط: `5194` للواجهة و`8794` للـAPI`.
+
+## Assumptions
+- الأولوية التالية هي **ذكاء السوق القطاعي المحلي** قبل تسجيل الدخول أو الجلب الخارجي.
+- لا يتم الاتصال بأي موقع حكومي أو عام في هذه المرحلة.
+- التصنيف القطاعي يبدأ من الحزمة المحلية الموجودة، وليس من مصدر خارجي مباشر.
+- أي مصدر مرتبط بالقطاع هو “مرشح للمراجعة” فقط حتى يتم توثيق شروطه الدقيقة.
+- الواجهة تعرض النتائج وتنسقها فقط؛ مصدر الحقيقة يبقى snapshot الخلفية.
+
+# خطة المرحلة التالية: Evidence Ledger & Sector Evidence Binding v1
+
+## Summary
+- الهدف: تحويل الأدلة من “روابط عامة للافتراضات” إلى سجل أدلة محلي قابل للتتبع يغطي الافتراضات ومعايير القطاع.
+- المخرج: المستخدم يستطيع إدخال dataset محليًا، مراجعته، ربطه بافتراض مالي أو معيار قطاعي، ثم يرى تغطية الأدلة داخل snapshot والتقرير وحزمة القرار.
+- لا جلب خارجي، لا مفاتيح، لا API حكومي، ولا تفعيل تلقائي لأي مصدر.
+
+## Key Changes
+- توسيع Evidence Workbench:
+  - دعم إدخال dataset محلي من جدول/CSV نصي محلي داخل الواجهة.
+  - إنشاء `DatasetColumnProfile` من الخلفية فقط: الأعمدة، عدد الصفوف، القيم الناقصة، ونطاقات رقمية بسيطة.
+  - إبقاء dataset غير قابل للاستخدام حتى يجتاز Source/Dataset Quality Gate.
+- إضافة Evidence Ledger:
+  - سجل موحد لكل دليل يوضح: dataset، المصدر، حالة المراجعة، target type، target id، التحويل، والـsnapshot الذي استهلكه.
+  - دعم الربط إلى نوعين: `assumption` و`sector_criterion`.
+  - لا يغيّر أي snapshot قديم عند تعديل dataset أو link لاحقًا.
+- تحديث Sector Intelligence:
+  - `sector_evidence_map` يقرأ روابط `sector_criterion` المعتمدة بدل الاكتفاء بفجوات عامة.
+  - معيار القطاع يصبح `supported` فقط إذا كان مرتبطًا بـdataset معتمد ومصدر مراجع.
+  - بقية المعايير تبقى `needs_evidence` أو `reference_only`.
+- تحديث الواجهة والتقرير:
+  - إضافة شاشة/قسم “سجل الأدلة والتغطية”.
+  - عرض coverage matrix: الافتراضات، معايير القطاع، حالة الدليل، والفجوات.
+  - Snapshot Report وDecision Pack يعرضان نفس evidence ledger من snapshot بدون إعادة حساب.
+
+## APIs / Types
+- إضافة عقود:
+  - `EvidenceLedgerRecord`
+  - `EvidenceBindingTarget`
+  - `DatasetColumnProfile`
+  - `EvidenceCoverageMatrix`
+  - `EvidenceGapRecord`
+- تحديث `EvidenceLink` ليقبل:
+  - `target_type: "assumption" | "sector_criterion"`
+  - `target_id`
+  - مع الحفاظ على `assumption_id` مؤقتًا للتوافق مع الروابط القديمة.
+- إضافة/تحديث endpoints:
+  - `POST /api/datasets/manual-import`
+  - `GET /api/projects/:id/evidence-ledger`
+  - `POST /api/projects/:id/evidence-links`
+  - `GET /api/projects/:id/evidence-coverage`
+  - endpoints الحالية للتقارير والـdecision-pack ترجع `evidence_ledger` و`evidence_coverage`.
+
+## Test Plan
+- Python tests:
+  - dataset محلي ينتج column profile بدون جلب خارجي.
+  - dataset ناقص الترخيص أو مراجعة المصدر لا يمكنه دعم افتراض أو معيار قطاعي.
+  - ربط dataset معتمد بـ`sector_criterion` يحول حالة المعيار إلى `supported`.
+  - كل Evidence Ledger record يحمل source/dataset/target/lineage.
+  - تعديل dataset أو evidence link بعد التشغيل لا يغير snapshot قديم.
+  - التقرير وDecision Pack يعرضان نفس `evidence_ledger` و`evidence_coverage`.
+- Frontend/build guards:
+  - لا حسابات مالية أو قطاعية داخل React.
+  - TypeScript check.
+  - Vite build.
+- Smoke test:
+  - draft → اختيار قطاع → manual dataset → review/link evidence → run → report-view → decision-pack.
+  - استمرار المنافذ فقط: `5194` للواجهة و`8794` للـAPI`.
+
+## Assumptions
+- الإدخال سيكون محليًا يدويًا فقط في هذه المرحلة.
+- لا يتم الاتصال بأي مصدر خارجي أو حكومي.
+- ربط الدليل لا يعني أن المصدر رسمي أو مفعّل إلا إذا اجتاز بوابات Source Registry وDataset Quality Gate.
+- Finance Engine وDecision Council يقرآن evidence coverage كحالة داعمة فقط؛ لا يصبح الدليل مالكًا للحسابات أو الحكم.
+خطة المرحلة التالية: Transformation Layer v1 + File Import Workbench
+الملخص
+الهدف هو إكمال المسار الناقص بعد Evidence Ledger:
+Dataset → Transformation → Evidence → Target
+بدل أن نقول فقط “هذا الدليل جاء من Dataset”، سنسجل أيضًا كيف استُخرجت القيمة من الـDataset: فلترة، تنظيف، تجميع، حساب متوسط، حذف قيم شاذة، أو اشتقاق مؤشر.
+التغييرات الأساسية
+1. إضافة Transformation Layer
+إضافة سجل جديد باسم TransformationRecord.
+كل سجل يحتوي:transformation_id
+dataset_id
+operation_type
+operation_label
+input_columns
+filters
+aggregation_method
+output_value
+output_unit
+review_status
+created_at
+
+العمليات المدعومة في v1:filter
+select_column
+aggregate_average
+aggregate_sum
+remove_outliers
+normalize
+manual_derivation_note
+
+2. ربط Evidence بالتحويل
+تحديث EvidenceLink ليقبل:transformation_id
+
+يصبح المسار:Dataset
+Transformation
+Evidence
+Target
+
+إبقاء الربط القديم بدون transformation_id للتوافق الخلفي.
+3. استيراد ملف بيانات واضح في الواجهة
+استبدال/توسيع مربع CSV محلي يدوي إلى قسم واضح باسم:استيراد ملف بيانات
+
+دعم:CSV file upload
+Excel .xlsx
+إدخال CSV نصي يدوي
+
+بعد الاستيراد تعرض الواجهة:اسم الملف
+عدد الصفوف
+الأعمدة
+القيم الفارغة
+الأعمدة الرقمية والنصية
+حالة الجودة
+
+4. Transformation Workbench في الواجهة
+إضافة قسم:تحويلات البيانات
+
+يسمح للمستخدم محليًا بـ:اختيار Dataset
+اختيار عمود
+اختيار عملية تحويل
+إدخال فلتر بسيط
+إنشاء Transformation
+
+الواجهة لا تحسب ماليًا؛ التحويلات نفسها تُنفذ وتحفظ في الخلفية.
+5. تحديث التقرير وDecision Pack
+Snapshot Report يعرض:Evidence Ledger
+Evidence Coverage
+Transformation Lineage
+
+Decision Pack يعرض:الدليل
+الـDataset
+التحويل المستخدم
+الهدف المرتبط به
+
+لا يعاد الحساب عند فتح التقرير.
+APIs / Types
+عقود جديدة
+TransformationRecord
+TransformationOperation
+TransformationLineage
+FileImportResult
+DatasetImportProfile
+Endpoints جديدة
+POST /api/datasets/file-import
+POST /api/datasets/:datasetId/transformations
+GET /api/datasets/:datasetId/transformations
+GET /api/projects/:id/transformation-lineage
+تحديث endpoints الحالية
+POST /api/projects/:id/evidence-linksيقبل transformation_id
+
+GET /api/runs/:runId/overviewيرجع transformation_lineage
+
+GET /api/snapshots/:snapshotId/report-viewيرجع transformation_lineage
+
+GET /api/snapshots/:snapshotId/decision-packيرجع transformation_lineage
+
+الاختبارات
+Python
+استيراد CSV ينتج DatasetColumnProfile صحيح.
+استيراد Excel .xlsx ينتج نفس البنية.
+Transformation average يحسب من الخلفية فقط.
+Transformation لا يعمل على Dataset فاشل الجودة.
+EvidenceLink يقبل transformation_id.
+Snapshot قديم لا يتغير بعد تعديل Dataset أو Transformation.
+Report وDecision Pack يعرضان نفس transformation_lineage.
+Frontend
+وجود قسم واضح: استيراد ملف بيانات.
+رفع CSV/Excel يظهر profile.
+إنشاء Transformation يظهر في سجل التحويلات.
+لا توجد حسابات مالية أو قرارات داخل React.
+Smoke test
+المسار الكامل:
+draft → import file → profile → transformation → evidence link → run → report-view → decision-pack
+الافتراضات
+كل شيء محلي.
+لا جلب خارجي.
+لا مفاتيح.
+لا APIs حكومية.
+Excel يتم تحليله محليًا فقط.
+Transformation لا يصبح مصدر حقيقة مالي؛ هو سجل اشتقاق دليل فقط.
+المصدر النهائي للحقيقة يبقى Snapshot.
+
+المرحلة التالية المنطقية هي:
+Dataset Review & Quality Gates v1
+الهدف: بعد أن أصبح لدينا استيراد ملفات وتحويلات، نحتاج طبقة مراجعة أقوى قبل السماح لأي Dataset/Transformation أن يدعم افتراضًا أو معيارًا قطاعيًا.
+الخطة:
+Dataset Quality Review
+فحص القيم المفقودة.
+فحص الأعمدة الرقمية/النصية.
+فحص الصفوف المكررة.
+فحص القيم الشاذة.
+إصدار حكم: passed / warning / rejected.
+
+Transformation Review
+كل تحويل يملك:المدخلات المستخدمة.
+العملية.
+الناتج.
+حالة المراجعة.
+سبب الاعتماد أو الرفض.
+
+لا يصبح التحويل داعمًا للدليل إلا إذا اجتاز مراجعة التحويل.
+
+Evidence Confidence Score
+إضافة درجة ثقة للدليل:جودة Dataset.
+حالة المصدر.
+حالة التحويل.
+اكتمال الربط.
+
+لا تكون درجة الثقة حكمًا استثماريًا، بل مؤشر تدقيق.
+
+واجهة المراجعة
+شاشة واضحة تعرض:Dataset profile.
+Missing values.
+Numeric ranges.
+Transformation lineage.
+Quality gate status.
+أزرار مراجعة محلية: approve / reject / needs changes.
+
+
+التقرير وحزمة القرار
+إضافة قسم:جودة البيانات.
+حالة التحويلات.
+درجة تغطية الأدلة.
+فجوات البيانات.
+
+كل ذلك من نفس snapshot بدون إعادة حساب.
+
+اختبارات
+Dataset ناقص أو سيئ لا يدعم الأدلة.
+Transformation غير معتمد لا يدعم الهدف.
+تغيير مراجعة Dataset بعد snapshot لا يغير التقرير القديم.
+التقرير والـDecision Pack يعرضان نفس Quality Gate من snapshot.
+
+هذه المرحلة مهمة لأنها تجعل ASIE لا يكتفي بسؤال: “من أين جاء الرقم؟”
+بل يسأل أيضًا: “هل الدليل نفسه صالح بما يكفي للاعتماد؟”

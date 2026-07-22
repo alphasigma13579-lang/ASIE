@@ -1,0 +1,13 @@
+| المحور | المكتمل فعليًا | غير المكتمل | التقدير |
+|---|---|---|---:|
+| النواة المحلية | Backend + React + SQLite + snapshots | لا توجد بنية إنتاجية بعد | 80% |
+| Finance Engine | NPV, IRR, Payback, OPEX/CAPEX, DSCR, Monte Carlo, Sensitivity | يحتاج تعميق نماذج قطاعية وتشغيلية لاحقًا | 75% |
+| Decision Council | شخصيات خمس + حكم سيادي deterministic بلا AI ولا تصويت | يحتاج ربط أوضح بخطة القرار النهائية | 70% |
+| Source Governance | سجل مصادر، حالات، منع التفعيل التلقائي | لا توجد مراجعة مصادر حقيقية لمصادر محددة بعد | 65% |
+| Sector Intelligence | تصنيف قطاعي ومؤشرات وفجوات أدلة | يحتاج Taxonomy أوسع وربط أدلة حقيقية | 55% |
+| Evidence Ledger | Dataset, Evidence links, coverage matrix, assumption/sector binding | يحتاج ETL أعمق وتدقيق صف/عمود أكثر تفصيلًا | 75% |
+| Transformation Layer | CSV/XLSX import، TransformationRecord، lineage، confidence | التحويلات ما زالت v1 وليست محرك ETL كامل | 60% |
+| Reports & Decision Pack | report-view، HTML، مراجعة محلية، action items | لا يوجد PDF/Word احترافي بعد | 65% |
+| الواجهة | Workbench محلي يعمل | ليست مسار عميل نهائي، تحتاج ترتيب UX | 45% |
+| الاختبارات | 49 Python tests + TS + build + smoke | لا توجد e2e browser tests كافية | 65% |
+| الإنتاج | تشغيل محلي على 5194/8794 | لا auth، لا PostgreSQL، لا deployment production | 25% |
