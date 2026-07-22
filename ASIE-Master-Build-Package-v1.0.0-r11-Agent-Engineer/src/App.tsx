@@ -164,40 +164,46 @@ const wizardStepHelp = [
 ];
 
 const defaultInputs: Required<ProjectInputs> = {
-  primary_sector_id: "SEC-11",
-  subsector_id: "Software",
-  activity_description: "منصة محلية لتقييم جدوى المشاريع",
-  location_scope: "Saudi Arabia",
+  primary_sector_id: "",
+  subsector_id: "",
+  activity_description: "",
+  location_scope: "المملكة العربية السعودية",
+  location_country: "SA",
+  location_region: "",
+  location_city: "",
+  location_district: "",
+  location_latitude: 0,
+  location_longitude: 0,
   gap_statement: "",
   competitive_edge: "",
-  target_audience: "individuals",
+  target_audience: "",
   intake_mode: "manual",
-  capital_available: 300000,
-  startup_cost: 250000,
-  monthly_fixed_cost: 62000,
-  unit_price: 85,
-  variable_cost: 34,
-  monthly_units: 1600,
+  capital_available: 0,
+  startup_cost: 0,
+  monthly_fixed_cost: 0,
+  unit_price: 0,
+  variable_cost: 0,
+  monthly_units: 0,
   use_operating_capacity: false,
-  capacity_units_per_day: 80,
-  operating_days_per_month: 22,
-  utilization_rate: 0.9,
-  payroll_monthly: 28000,
-  rent_monthly: 14000,
-  utilities_monthly: 5500,
-  marketing_monthly: 7000,
-  maintenance_monthly: 3500,
-  capex_equipment: 120000,
-  capex_fitout: 85000,
-  capex_licenses_local: 45000,
-  depreciation_years: 5,
-  equity_contribution: 150000,
+  capacity_units_per_day: 0,
+  operating_days_per_month: 0,
+  utilization_rate: 0,
+  payroll_monthly: 0,
+  rent_monthly: 0,
+  utilities_monthly: 0,
+  marketing_monthly: 0,
+  maintenance_monthly: 0,
+  capex_equipment: 0,
+  capex_fitout: 0,
+  capex_licenses_local: 0,
+  depreciation_years: 0,
+  equity_contribution: 0,
   loan_grace_months: 0,
-  annual_discount_rate: 0.1,
-  working_capital_months: 2,
+  annual_discount_rate: 0,
+  working_capital_months: 0,
   debt_amount: 0,
-  annual_interest_rate: 0.08,
-  loan_years: 5,
+  annual_interest_rate: 0,
+  loan_years: 0,
 };
 
 function formatValue(output: OutputEnvelope): string {
@@ -408,7 +414,8 @@ export function App() {
   const lastStageRef = useRef<AppStage>("dashboard");
   const historyNavigationRef = useRef(false);
   const [wizardStep, setWizardStep] = useState(0);
-  const [locationParts, setLocationParts] = useState({ country: "", region: "", city: "", street: "" });
+  const [showCustomSector, setShowCustomSector] = useState(false);
+  const [showCustomSubsector, setShowCustomSubsector] = useState(false);
   const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedTransformationId, setSelectedTransformationId] = useState("");
@@ -416,17 +423,17 @@ export function App() {
   const [transformationColumn, setTransformationColumn] = useState("value");
   const [fileImportStatus, setFileImportStatus] = useState("");
   const [form, setForm] = useState({
-    name: "مشروع جدوى محلي",
-    sector: "خدمات",
-    jurisdiction: "Saudi Arabia",
+    name: "",
+    sector: "",
+    jurisdiction: "المملكة العربية السعودية",
     depth_profile: "starter",
     inputs: {
       ...defaultInputs,
       gap_statement: "",
       competitive_edge: "",
-      target_audience: "individuals",
+      target_audience: "",
       intake_mode: "manual",
-      capital_available: 300000,
+      capital_available: 0,
     },
   });
 
@@ -471,39 +478,28 @@ export function App() {
     }));
   }
 
-  function updateLocationPart(part: keyof typeof locationParts, value: string) {
-    setLocationParts((current) => {
-      const next = { ...current, [part]: value };
-      const location = [next.street, next.city, next.region, next.country].filter(Boolean).join("، ");
-      updateInputs({ location_scope: location });
-      setForm((currentForm) => ({ ...currentForm, jurisdiction: location || currentForm.jurisdiction }));
-      return next;
+  function updateStructuredLocation(
+    part: "location_region" | "location_city" | "location_district" | "location_latitude" | "location_longitude",
+    value: string | number
+  ) {
+    setForm((current) => {
+      const inputs = { ...current.inputs, [part]: value };
+      const location = [
+        inputs.location_district,
+        inputs.location_city,
+        inputs.location_region,
+        "المملكة العربية السعودية",
+      ].filter(Boolean).join("، ");
+      return {
+        ...current,
+        jurisdiction: "المملكة العربية السعودية",
+        inputs: {
+          ...inputs,
+          location_country: "SA",
+          location_scope: location,
+        },
+      };
     });
-  }
-
-  function handleUseDeviceLocation() {
-    if (!navigator.geolocation) {
-      setError("المتصفح لا يدعم قراءة الموقع. اكتب المدينة يدوياً.");
-      return;
-    }
-    setIsBusy(true);
-    setError(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const nextLocation = `GPS ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
-        setForm((current) => ({
-          ...current,
-          jurisdiction: nextLocation,
-          inputs: { ...current.inputs, location_scope: nextLocation },
-        }));
-        setIsBusy(false);
-      },
-      () => {
-        setError("لم يتم تفعيل الموقع. يمكنك كتابة المدينة يدوياً.");
-        setIsBusy(false);
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
-    );
   }
 
   const mcOutput = useMemo(
@@ -949,14 +945,28 @@ export function App() {
     }
   }
 
-  async function handleSaveAndAdvance() {
-    await handleSaveDraft();
+  function validateWizardStep(): string | null {
+    if (wizardStep === 0 && !form.inputs.location_region?.trim()) return "اختر المنطقة داخل المملكة.";
+    if (wizardStep === 0 && !form.inputs.location_city?.trim()) return "اكتب المدينة داخل المملكة.";
+    if (wizardStep === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
+    if (wizardStep === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
+    if (wizardStep === 3 && !form.name.trim()) return "اكتب اسمًا واضحًا للمشروع.";
+    return null;
+  }
+
+  function handleSaveAndAdvance() {
     setWizardStep((current) => Math.min(current + 1, wizardJourney.length - 1));
   }
 
   async function handleWizardPrimary() {
+    const validationError = validateWizardStep();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
     if (wizardStep < wizardJourney.length - 1) {
-      await handleSaveAndAdvance();
+      handleSaveAndAdvance();
       return;
     }
     await handleSaveDraft();
@@ -2008,36 +2018,18 @@ export function App() {
           <div className="guided-question-card">
             {wizardStep === 0 ? (
               <>
-                <p className="guided-question-card__kicker">السؤال الأول</p>
-                <h3>أين موقع العميل أو المشروع؟</h3>
-                <p>استخدم موقعك بإذنك، أو اكتب المكان يدوياً. لن نطلب قراءة الموقع دون ضغطك.</p>
-                <div className="guided-input-row">
-                  <label className="field">
-                    <span>المدينة أو الدولة</span>
-                    <input
-                      value={form.inputs.location_scope}
-                      placeholder="مثال: الرياض، جدة، القصيم، البحرين"
-                      onChange={(event) => {
-                        setForm({
-                          ...form,
-                          jurisdiction: event.target.value,
-                          inputs: { ...form.inputs, location_scope: event.target.value },
-                        });
-                      }}
-                    />
-                  </label>
-                  <button type="button" className="secondary-action" disabled={isBusy} onClick={handleUseDeviceLocation}>
-                    <MapPin size={18} aria-hidden="true" />
-                    استخدم موقعي
-                  </button>
-                </div>
+                <p className="guided-question-card__kicker">الموقع داخل المملكة</p>
+                <h3>أين سيعمل المشروع؟</h3>
+                <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
                 <div className="location-fields">
-                  <label className="field"><span>الدولة</span><input value={locationParts.country} placeholder="السعودية" onChange={(event) => updateLocationPart("country", event.target.value)} /></label>
-                  <label className="field"><span>المنطقة</span><input value={locationParts.region} placeholder="الرياض" onChange={(event) => updateLocationPart("region", event.target.value)} /></label>
-                  <label className="field"><span>المدينة</span><input value={locationParts.city} placeholder="الرياض" onChange={(event) => updateLocationPart("city", event.target.value)} /></label>
-                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input value={locationParts.street} placeholder="اكتب المكان التقريبي" onChange={(event) => updateLocationPart("street", event.target.value)} /></label>
+                  <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
+                  <label className="field"><span>المنطقة</span><input value={form.inputs.location_region} placeholder="مثال: منطقة الرياض" onChange={(event) => updateStructuredLocation("location_region", event.target.value)} /></label>
+                  <label className="field"><span>المدينة</span><input value={form.inputs.location_city} placeholder="مثال: الرياض" onChange={(event) => updateStructuredLocation("location_city", event.target.value)} /></label>
+                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
+                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
+                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
                 </div>
-                <p className="guided-hint">بعد تحديد المكان اضغط «التالي» للانتقال إلى مجال المشروع.</p>
+                <p className="guided-hint">لا تُقرأ إحداثيات الجهاز تلقائيًا. إدخالها اختياري وتحت سيطرة المستخدم.</p>
               </>
             ) : null}
             {wizardStep === 1 ? (
@@ -2048,14 +2040,21 @@ export function App() {
                 <div className="choice-grid choice-grid--sectors" role="group" aria-label="قطاعات المشروع">
                   {sectorTaxonomy.map((item) => (
                     <button type="button" key={item.sector_id} className={form.inputs.primary_sector_id === item.sector_id ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
-                      setForm((current) => ({ ...current, sector: item.arabic_name, inputs: { ...current.inputs, primary_sector_id: item.sector_id, subsector_id: item.subsectors[0] ?? "" } }));
+                      setShowCustomSector(false);
+                      setForm((current) => ({ ...current, sector: item.arabic_name, inputs: { ...current.inputs, primary_sector_id: item.sector_id, subsector_id: "" } }));
                       advanceWizardFromChoice();
                     }}>
                       <strong>{item.arabic_name}</strong><small>{item.subsectors.length} تصنيفات متاحة</small>
                     </button>
                   ))}
-                  <button type="button" className="choice-card choice-card--add" onClick={() => setError("أضفنا مكاناً لقطاع جديد. سيتم اعتماده بعد مراجعة التصنيف.")}><strong>+ قطاع آخر</strong><small>اكتب مجالك إذا لم تجده</small></button>
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSector(true); setForm((current) => ({ ...current, sector: "", inputs: { ...current.inputs, primary_sector_id: "CUSTOM", subsector_id: "" } })); }}><strong>+ قطاع آخر</strong><small>اكتب مجالك إذا لم تجده</small></button>
                 </div>
+                {showCustomSector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>اسم القطاع</span><input autoFocus value={form.sector} placeholder="مثال: الصناعات الإبداعية" onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value, inputs: { ...current.inputs, primary_sector_id: "CUSTOM" } }))} /></label>
+                    <button type="button" className="primary-button" disabled={!form.sector.trim()} onClick={advanceWizardFromChoice}>حفظ القطاع والمتابعة</button>
+                  </div>
+                ) : null}
               </>
             ) : null}
             {wizardStep === 2 ? (
@@ -2067,8 +2066,14 @@ export function App() {
                   {(selectedSector?.subsectors ?? [form.inputs.subsector_id]).map((item) => (
                     <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{item}</strong><small>اختيار التصنيف</small></button>
                   ))}
-                  <button type="button" className="choice-card choice-card--add" onClick={() => setError("أضف وصف التصنيف الجديد، وسيُحفظ ضمن اقتراحات المنصة بعد المراجعة.")}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSubsector(true); updateInputs({ subsector_id: "" }); }}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
                 </div>
+                {showCustomSubsector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>وصف التصنيف</span><input autoFocus value={form.inputs.subsector_id} placeholder="اكتب النشاط بدقة" onChange={(event) => updateInputs({ subsector_id: event.target.value })} /></label>
+                    <button type="button" className="primary-button" disabled={!form.inputs.subsector_id?.trim()} onClick={advanceWizardFromChoice}>حفظ التصنيف والمتابعة</button>
+                  </div>
+                ) : null}
               </>
             ) : null}
             {wizardStep === 3 ? (
