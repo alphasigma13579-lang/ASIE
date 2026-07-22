@@ -50,5 +50,9 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q backend
 
+      - name: Resolve PDF renderer
+        shell: bash
+        run: echo "ASIE_PDF_RENDERER=$(command -v google-chrome || command -v chromium || command -v chromium-browser)" >> "$GITHUB_ENV"
+
       - name: Run Python tests
         run: python -m unittest discover -s tests
