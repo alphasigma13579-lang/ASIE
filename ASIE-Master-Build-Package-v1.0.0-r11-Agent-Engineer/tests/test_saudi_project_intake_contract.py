@@ -41,6 +41,11 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("اختر المنطقة داخل المملكة", APP)
         self.assertIn("اكتب اسمًا واضحًا للمشروع", APP)
 
+    def test_capital_is_required_before_advancing(self):
+        self.assertIn("wizardStep === 6", APP)
+        self.assertIn("capital_available <= 0", APP)
+        self.assertIn("اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر", APP)
+
 
 if __name__ == "__main__":
     unittest.main()
