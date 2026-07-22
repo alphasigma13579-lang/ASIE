@@ -1621,3 +1621,49 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
     flex-direction: column;
   }
 }
+
+
+/* Editable numeric control: typed input plus explicit increase/decrease buttons. */
+.field .number-input-control {
+  position: relative;
+  display: block;
+  color: inherit;
+  font-size: inherit;
+}
+
+.field .number-input-control input {
+  padding-inline-end: 42px;
+  font-variant-numeric: tabular-nums;
+}
+
+.field .number-input-control__steppers {
+  position: absolute;
+  inset-inline-end: 5px;
+  top: 5px;
+  bottom: 5px;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  width: 30px;
+  overflow: hidden;
+  border-inline-start: 1px solid #d6dfd9;
+  color: #315c49;
+}
+
+.field .number-input-control__steppers button {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: #f5faf7;
+  color: #315c49;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.field .number-input-control__steppers button:hover {
+  background: #e3f3e9;
+  color: #0d6944;
+}
