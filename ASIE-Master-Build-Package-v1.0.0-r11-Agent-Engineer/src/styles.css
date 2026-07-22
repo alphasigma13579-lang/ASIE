@@ -1632,20 +1632,21 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 }
 
 .field .number-input-control input {
-  padding-inline-end: 42px;
+  padding: 10px 10px 10px 44px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .field .number-input-control__steppers {
   position: absolute;
-  inset-inline-end: 5px;
+  left: 5px;
   top: 5px;
   bottom: 5px;
   display: grid;
   grid-template-rows: 1fr 1fr;
   width: 30px;
   overflow: hidden;
-  border-inline-start: 1px solid #d6dfd9;
+  border-right: 1px solid #d6dfd9;
   color: #315c49;
 }
 
@@ -1666,4 +1667,115 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .field .number-input-control__steppers button:hover {
   background: #e3f3e9;
   color: #0d6944;
+}
+
+
+.assumption-review-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.assumption-review-panel__heading,
+.review-group__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.review-progress {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #edf7f0;
+  color: #176744;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.review-group-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d8e3dc;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.review-group--complete {
+  border-color: #b9ddc5;
+  background: #f4fbf6;
+}
+
+.review-group__summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.review-group__summary small {
+  color: #687a70;
+}
+
+.review-group details {
+  border-top: 1px solid #e8eeea;
+  padding-top: 9px;
+}
+
+.review-group summary {
+  color: #24694f;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.review-group__items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.review-group__items > div {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border-radius: 9px;
+  background: #f7faf8;
+}
+
+.review-group__items span,
+.review-group__items small {
+  color: #62736a;
+  font-size: 12px;
+}
+
+.review-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #147044;
+  font-weight: 700;
+}
+
+.review-all-button {
+  justify-self: end;
+}
+
+@media (max-width: 760px) {
+  .assumption-review-panel__heading,
+  .review-group__summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-group__items {
+    grid-template-columns: 1fr;
+  }
+
+  .review-all-button {
+    width: 100%;
+  }
 }
