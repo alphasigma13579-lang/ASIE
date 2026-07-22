@@ -666,7 +666,7 @@ export function App() {
   const commandAction = !project
     ? { label: "ابدأ تعريف المشروع", detail: "لم تُنشأ مسودة مشروع بعد.", stage: "wizard" as AppStage, action: "navigate" as const }
     : !readiness
-      ? { label: "افحص الجاهزية", detail: "احفظ المشروع لعرض بوابات الجاهزية من الخادم.", stage: "wizard" as AppStage, action: "navigate" as const }
+      ? { label: "اربط أدلة المشروع", detail: "أضف ما يثبت أرقامك قبل فحص الجاهزية.", stage: "evidence" as AppStage, action: "navigate" as const }
       : !readiness.ready_to_run
         ? { label: "عالج متطلبات الجاهزية", detail: `${readinessBlocked.length} متطلباً يحتاج انتباهاً قبل التشغيل.`, stage: "readiness" as AppStage, action: "navigate" as const }
         : !snapshotOverview
@@ -1239,7 +1239,7 @@ export function App() {
       return;
     }
     await handleSaveDraft();
-    setStage("readiness");
+    setStage("evidence");
   }
 
   function advanceWizardFromChoice() {
@@ -1757,7 +1757,7 @@ export function App() {
             <div className="next-action-banner__actions">
               <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenDecision() : setStage("readiness")}>
                 <Play size={18} aria-hidden="true" />
-                {canRunCurrentProject ? "شغّل التحليل الآن" : "اعرض ما ينقص المشروع"}
+                {canRunCurrentProject ? "شغّل التحليل الآن" : "انتقل إلى فحص الجاهزية"}
               </button>
             </div>
           </section>
