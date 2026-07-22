@@ -2474,6 +2474,26 @@ export function App() {
                     <NumberField label="تكلفة تقديم الخدمة" value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
                     <NumberField label="عدد العملاء أو الطلبات شهرياً" value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
                   </div>
+                  <details className="manual-advanced-fields">
+                    <summary>إضافة تفاصيل تشغيلية أدق <small>(اختياري)</small></summary>
+                    <p className="muted">لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها.</p>
+                    <strong>تفصيل المصاريف الشهرية</strong>
+                    <div className="guided-finance-lite">
+                      <NumberField label="الرواتب الشهرية" value={form.inputs.payroll_monthly} onChange={(value) => updateInputs({ payroll_monthly: value })} />
+                      <NumberField label="الإيجار الشهري" value={form.inputs.rent_monthly} onChange={(value) => updateInputs({ rent_monthly: value })} />
+                      <NumberField label="المرافق الشهرية" value={form.inputs.utilities_monthly} onChange={(value) => updateInputs({ utilities_monthly: value })} />
+                      <NumberField label="التسويق الشهري" value={form.inputs.marketing_monthly} onChange={(value) => updateInputs({ marketing_monthly: value })} />
+                      <NumberField label="الصيانة الشهرية" value={form.inputs.maintenance_monthly} onChange={(value) => updateInputs({ maintenance_monthly: value })} />
+                    </div>
+                    <strong>تفصيل التأسيس والأصول</strong>
+                    <div className="guided-finance-lite">
+                      <NumberField label="المعدات" value={form.inputs.capex_equipment} onChange={(value) => updateInputs({ capex_equipment: value })} />
+                      <NumberField label="التجهيز والديكور" value={form.inputs.capex_fitout} onChange={(value) => updateInputs({ capex_fitout: value })} />
+                      <NumberField label="التراخيص المحلية" value={form.inputs.capex_licenses_local} onChange={(value) => updateInputs({ capex_licenses_local: value })} />
+                      <NumberField label="سنوات الإهلاك" value={form.inputs.depreciation_years} onChange={(value) => updateInputs({ depreciation_years: value })} />
+                      <NumberField label="المساهمة الذاتية" value={form.inputs.equity_contribution} onChange={(value) => updateInputs({ equity_contribution: value })} />
+                    </div>
+                  </details>
                   <div className="choice-section financing-inputs" id="financing-inputs">
                     <strong>افتراضات التمويل</strong>
                     <p className="muted">إذا لن تستخدم قرضًا، اترك مبلغ القرض صفرًا. معدل الخصم مطلوب لتقييم القيمة الحالية.</p>
