@@ -46,6 +46,13 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("capital_available <= 0", APP)
         self.assertIn("اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر", APP)
 
+    def test_readiness_cards_navigate_to_corrective_inputs(self):
+        self.assertIn("navigateFromReadiness", APP)
+        self.assertIn("العودة إلى أول متطلب ناقص", APP)
+        self.assertIn("انتقل لإكمالها", APP)
+        self.assertIn("معدل الخصم السنوي (%)", APP)
+        self.assertIn("مبلغ القرض — صفر إذا لا يوجد", APP)
+
     def test_all_intake_steps_are_sequential_and_gated(self):
         self.assertIn("maxUnlockedWizardStep", APP)
         self.assertIn("disabled={index > maxUnlockedWizardStep}", APP)
