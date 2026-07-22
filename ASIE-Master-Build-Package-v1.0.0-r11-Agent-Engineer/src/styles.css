@@ -1834,3 +1834,36 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+
+
+.other-monthly-costs {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #dce9e1;
+}
+
+.other-monthly-costs__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.other-monthly-cost-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #dce9e1;
+  border-radius: 10px;
+  background: #fff;
+}
+
+@media (max-width: 760px) {
+  .other-monthly-cost-row {
+    grid-template-columns: 1fr;
+  }
+}
