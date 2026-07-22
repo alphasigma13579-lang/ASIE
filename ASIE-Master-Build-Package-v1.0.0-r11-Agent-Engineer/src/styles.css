@@ -2025,3 +2025,46 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
     min-width: 92px;
   }
 }
+
+
+/* The journey shows the current stage only; future stages appear after automatic advance. */
+.wizard-rail::before {
+  content: none;
+}
+
+.wizard-rail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  overflow: visible;
+  padding: 0;
+}
+
+.wizard-rail > .wizard-progress-label {
+  color: #6a7b71;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.wizard-rail > strong {
+  color: #164b33;
+  font-size: 15px;
+}
+
+.wizard-progress-track {
+  grid-column: 1 / -1;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e1ebe4;
+}
+
+.wizard-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2c7a59, #9bcf77);
+  transition: width .35s ease;
+}
