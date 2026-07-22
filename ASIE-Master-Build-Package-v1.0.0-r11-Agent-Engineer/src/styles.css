@@ -1803,3 +1803,19 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .manual-advanced-fields > strong {
   margin-top: 4px;
 }
+
+
+.field-error,
+.field-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.field-error {
+  color: #a33b3b;
+}
+
+.field-hint {
+  color: #688075;
+}
