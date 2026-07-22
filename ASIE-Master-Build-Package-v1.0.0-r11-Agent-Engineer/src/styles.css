@@ -1819,3 +1819,18 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .field-hint {
   color: #688075;
 }
+
+
+.derived-number-field {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #b9d9c5;
+  border-radius: 8px;
+  background: #eef8f1;
+  color: #145f40;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
