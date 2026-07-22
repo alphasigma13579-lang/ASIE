@@ -5,6 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src" / "App.tsx").read_text(encoding="utf-8")
 CONTRACTS = (ROOT / "src" / "contracts.ts").read_text(encoding="utf-8")
+REPOSITORY = (ROOT / "backend" / "repository.py").read_text(encoding="utf-8")
 
 
 class SaudiProjectIntakeContractTests(unittest.TestCase):
@@ -38,8 +39,21 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
 
     def test_incomplete_steps_are_blocked_before_persistence(self):
         self.assertIn("validateWizardStep", APP)
-        self.assertIn("اختر المنطقة داخل المملكة", APP)
-        self.assertIn("اكتب اسمًا واضحًا للمشروع", APP)
+        self.assertIn("اختر المنطقة من القائمة المعتمدة", APP)
+        self.assertIn("governedNameError", APP)
+        self.assertIn("اسم المشروع", APP)
+
+    def test_review_manifest_contains_only_user_supplied_values(self):
+        self.assertIn("meaningful_assumption_value", REPOSITORY)
+        self.assertIn("SYSTEM_CONTEXT_INPUT_KEYS", REPOSITORY)
+        self.assertIn("not meaningful_assumption_value(value)", REPOSITORY)
+        self.assertIn("DELETE FROM assumptions", REPOSITORY)
+
+    def test_manual_review_is_grouped_and_optional_details_are_explicit(self):
+        self.assertIn("اعتماد المجموعة", APP)
+        self.assertIn("راجعت جميع المجموعات وأعتمدها", APP)
+        self.assertIn("إضافة تفاصيل تشغيلية أدق", APP)
+        self.assertIn("لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها", APP)
 
     def test_capital_is_required_before_advancing(self):
         self.assertIn("step === 6", APP)
