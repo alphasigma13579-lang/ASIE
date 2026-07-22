@@ -292,6 +292,18 @@ function assumptionArabicLabel(item: AssumptionRecord): string {
   return assumptionArabicLabels[item.input_key] ?? item.label;
 }
 
+function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
+  const components = [
+    inputs.payroll_monthly,
+    inputs.rent_monthly,
+    inputs.utilities_monthly,
+    inputs.marketing_monthly,
+    inputs.maintenance_monthly,
+  ].map((value) => Number(value) || 0);
+  const detailedTotal = components.reduce((total, value) => total + Math.max(0, value), 0);
+  return detailedTotal > 0 ? detailedTotal : Number(inputs.monthly_fixed_cost) || 0;
+}
+
 const defaultInputs: Required<ProjectInputs> = {
   primary_sector_id: "",
   subsector_id: "",
@@ -2482,12 +2494,15 @@ export function App() {
                   <>
                   <div className="guided-finance-lite">
                     <NumberField label="تكلفة التأسيس التقريبية" value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
-                    <NumberField label="المصاريف الشهرية" value={form.inputs.monthly_fixed_cost} onChange={(value) => updateInputs({ monthly_fixed_cost: value })} />
+                    <label className="field">
+                      <span>المصاريف الشهرية <small>(تحسب تلقائيًا)</small></span>
+                      <output className="derived-number-field">{monthlyFixedCostFromInputs(form.inputs).toLocaleString("ar-SA")}</output>
+                    </label>
                     <NumberField label="سعر البيع أو الخدمة" value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
                     <NumberField label="تكلفة تقديم الخدمة" value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
                     <NumberField label="عدد العملاء أو الطلبات شهرياً" value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
                   </div>
-                  <details className="manual-advanced-fields">
+                  <details className="manual-advanced-fields" open>
                     <summary>إضافة تفاصيل تشغيلية أدق <small>(اختياري)</small></summary>
                     <p className="muted">لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها.</p>
                     <strong>تفصيل المصاريف الشهرية</strong>
