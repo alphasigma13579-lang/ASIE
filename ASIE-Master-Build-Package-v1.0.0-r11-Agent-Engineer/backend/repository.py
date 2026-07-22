@@ -72,6 +72,30 @@ def meaningful_assumption_value(value: Any) -> bool:
     return True
 
 
+def derive_monthly_fixed_cost(inputs: dict[str, Any]) -> float:
+    """Derive fixed monthly costs from the detailed monthly cost components."""
+    component_keys = (
+        "payroll_monthly",
+        "rent_monthly",
+        "utilities_monthly",
+        "marketing_monthly",
+        "maintenance_monthly",
+    )
+    components = []
+    for key in component_keys:
+        try:
+            components.append(max(0.0, float(inputs.get(key, 0) or 0)))
+        except (TypeError, ValueError):
+            components.append(0.0)
+    detailed_total = sum(components)
+    if detailed_total > 0:
+        return detailed_total
+    try:
+        return max(0.0, float(inputs.get("monthly_fixed_cost", 0) or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, Any]]:
     """Build the human-review manifest from values the user actually supplied.
 
@@ -498,6 +522,7 @@ class Repository:
             return None
         merged_inputs = dict(project.inputs)
         merged_inputs.update(dict(payload.get("inputs") or {}))
+        merged_inputs["monthly_fixed_cost"] = derive_monthly_fixed_cost(merged_inputs)
         updated = ProjectRecord(
             project_id=project.project_id,
             name=str(payload.get("name", project.name) or project.name),
@@ -593,7 +618,10 @@ class Repository:
             sector=str(payload.get("sector") or "خدمات"),
             jurisdiction=str(payload.get("jurisdiction") or "Saudi Arabia"),
             depth_profile=str(payload.get("depth_profile") or "starter"),
-            inputs=dict(payload.get("inputs") or {}),
+            inputs={
+                **dict(payload.get("inputs") or {}),
+                "monthly_fixed_cost": derive_monthly_fixed_cost(dict(payload.get("inputs") or {})),
+            },
             created_at=created_at,
             updated_at=created_at,
             organization_id=str(payload.get("organization_id") or LEGACY_ORGANIZATION_ID),
