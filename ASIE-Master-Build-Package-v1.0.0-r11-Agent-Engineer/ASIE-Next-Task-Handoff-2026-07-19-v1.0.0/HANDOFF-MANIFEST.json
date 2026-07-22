@@ -1,0 +1,50 @@
+{
+  "package_id": "ASIE-NEXT-TASK-HANDOFF-v1.0.0",
+  "created_at": "2026-07-19",
+  "freeze_effective_at": "2026-07-19T00:22:00+03:00",
+  "timezone": "Asia/Riyadh",
+  "baseline": "AAS Runtime Freeze v1.0",
+  "next_scope": [
+    "PF-00",
+    "PF-01"
+  ],
+  "plan_sha256": "8bf37bd12e2e8e862745eb2b5295d3c85ac3784d2ea4cd848db784a11ba7be77",
+  "file_count": 7,
+  "files": [
+    {
+      "path": "01-Work-Plan/ASIE-Post-Freeze-Work-Plan-2026-07-19.md",
+      "size_bytes": 16896,
+      "sha256": "8bf37bd12e2e8e862745eb2b5295d3c85ac3784d2ea4cd848db784a11ba7be77"
+    },
+    {
+      "path": "01-Work-Plan/ASIE-Post-Freeze-Work-Plan-2026-07-19.md.sha256.txt",
+      "size_bytes": 107,
+      "sha256": "93db4221ab59d5349f92855a72687dd22fd83c57956be6784a6f542ecdd46f7b"
+    },
+    {
+      "path": "02-Freeze-Baseline/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json",
+      "size_bytes": 1998,
+      "sha256": "e3967ae0bd961404beead4a239e127587a6e5230435d84af309e904fe74fcc56"
+    },
+    {
+      "path": "02-Freeze-Baseline/ASIE-Architecture-One-Page-Map-2026-07-18.svg",
+      "size_bytes": 9330,
+      "sha256": "f8a833cee1dceef4c910c07b68ff411ad0b023af87c58aba0fe189dd27ea46b8"
+    },
+    {
+      "path": "03-Change-Control/ASIE-Architectural-Change-Request-Template-v1.0.md",
+      "size_bytes": 1295,
+      "sha256": "e43c0f0b217f1ac77ee01c85cb016c42095be64779b9929c1deaf6f1e0855dc8"
+    },
+    {
+      "path": "README-AR.md",
+      "size_bytes": 1234,
+      "sha256": "a5e6b6f1a377977f8769e3c98aa2e03badb2cb4707302e47e3c7ded68cf03326"
+    },
+    {
+      "path": "START-NEXT-TASK.md",
+      "size_bytes": 1008,
+      "sha256": "02537ed27b07015202e9edd804bfc6cbc2351134d52283428cd53a630bb923c4"
+    }
+  ]
+}

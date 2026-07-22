@@ -1,0 +1,69 @@
+services:
+  api:
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      ASIE_ENV: production
+      ASIE_API_HOST: 0.0.0.0
+      ASIE_API_PORT: "8794"
+      ASIE_DB_PATH: /var/lib/asie/asie_local.sqlite3
+      ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
+    volumes:
+      - asie-data:/var/lib/asie
+    expose:
+      - "8794"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8794/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  web:
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+volumes:
+  asie-data:

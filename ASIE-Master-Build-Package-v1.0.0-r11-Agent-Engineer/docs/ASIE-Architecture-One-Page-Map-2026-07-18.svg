@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg { fill: #0f131a; }
+      .title { fill: #f4f7fb; font: 700 34px Arial, sans-serif; }
+      .subtitle { fill: #9aa8ba; font: 18px Arial, sans-serif; }
+      .h { fill: #f4f7fb; font: 700 22px Arial, sans-serif; }
+      .t { fill: #dbe5f2; font: 16px Arial, sans-serif; }
+      .s { fill: #9aa8ba; font: 14px Arial, sans-serif; }
+      .tiny { fill: #9aa8ba; font: 12px Arial, sans-serif; }
+      .box { fill: #171d26; stroke: #2a3442; stroke-width: 2; rx: 10; }
+      .built { fill: #12352a; stroke: #32d583; stroke-width: 2; rx: 10; }
+      .partial { fill: #342a14; stroke: #f6b73c; stroke-width: 2; rx: 10; }
+      .missing { fill: #321923; stroke: #ff5c7a; stroke-width: 2; rx: 10; }
+      .planned { fill: #162943; stroke: #5aa7ff; stroke-width: 2; rx: 10; }
+      .line { stroke: #5b6778; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .green { fill: #32d583; }
+      .amber { fill: #f6b73c; }
+      .red { fill: #ff5c7a; }
+      .blue { fill: #5aa7ff; }
+      .legend { fill: #141a22; stroke: #2a3442; stroke-width: 1.5; rx: 8; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6778" />
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1000" />
+  <text class="title" x="50" y="55">ASIE Architecture Correction Map</text>
+  <text class="subtitle" x="50" y="88">AAS Runtime Freeze v1.0 - 2026-07-19 00:22 Asia/Riyadh - local only, no external fetch, no keys</text>
+
+  <rect class="legend" x="1120" y="35" width="410" height="70" />
+  <circle class="green" cx="1145" cy="58" r="7" /><text class="tiny" x="1160" y="63">Built</text>
+  <circle class="amber" cx="1230" cy="58" r="7" /><text class="tiny" x="1245" y="63">Partial</text>
+  <circle class="red" cx="1325" cy="58" r="7" /><text class="tiny" x="1340" y="63">Missing</text>
+  <circle class="blue" cx="1425" cy="58" r="7" /><text class="tiny" x="1440" y="63">Correction</text>
+  <text class="tiny" x="1145" y="88">Allowed ports only: frontend 5194, API 8794</text>
+
+  <text class="h" x="70" y="150">1. AAS Frozen Architecture</text>
+  <rect class="built" x="70" y="175" width="380" height="58" />
+  <text class="t" x="95" y="210">ASIE Kernel</text>
+  <text class="s" x="250" y="210">implemented v1</text>
+
+  <rect class="built" x="70" y="255" width="380" height="58" />
+  <text class="t" x="95" y="290">Heart Controller</text>
+  <text class="s" x="270" y="290">implemented v1</text>
+
+  <rect class="built" x="70" y="335" width="120" height="58" />
+  <text class="t" x="92" y="360">M1</text>
+  <text class="s" x="88" y="382">Primary</text>
+  <rect class="built" x="200" y="335" width="120" height="58" />
+  <text class="t" x="222" y="360">M2</text>
+  <text class="s" x="224" y="382">Assist</text>
+  <rect class="built" x="330" y="335" width="120" height="58" />
+  <text class="t" x="352" y="360">M3</text>
+  <text class="s" x="350" y="382">Reserve</text>
+
+  <rect class="built" x="70" y="415" width="380" height="58" />
+  <text class="t" x="95" y="450">Bus Controller</text>
+  <text class="s" x="260" y="450">implemented v1</text>
+
+  <rect class="built" x="70" y="495" width="380" height="58" />
+  <text class="t" x="95" y="530">ASIE System Bus</text>
+  <text class="s" x="280" y="530">implemented v1</text>
+
+  <rect class="built" x="70" y="575" width="380" height="58" />
+  <text class="t" x="95" y="610">Socket Contract Layer</text>
+  <text class="s" x="300" y="610">enforcing v1</text>
+
+  <rect class="built" x="70" y="655" width="380" height="58" />
+  <text class="t" x="95" y="690">AAS Modules</text>
+  <text class="s" x="240" y="690">runtime wrapping v1</text>
+
+  <rect class="built" x="70" y="735" width="380" height="58" />
+  <text class="t" x="95" y="770">AI Integration Layer</text>
+  <text class="s" x="270" y="770">governed shell v9</text>
+
+  <path class="line" d="M260 233 L260 255" />
+  <path class="line" d="M260 313 L260 335" />
+  <path class="line" d="M260 393 L260 415" />
+  <path class="line" d="M260 473 L260 495" />
+  <path class="line" d="M260 553 L260 575" />
+  <path class="line" d="M260 633 L260 655" />
+
+  <text class="h" x="610" y="150">2. Built Actually on Disk</text>
+  <rect class="built" x="610" y="175" width="380" height="58" />
+  <text class="t" x="635" y="205">React/Vite UI</text>
+  <text class="s" x="635" y="224">landing, legal, wizard, evidence, decision</text>
+
+  <rect class="built" x="610" y="255" width="380" height="58" />
+  <text class="t" x="635" y="285">Python HTTP API</text>
+  <text class="s" x="635" y="304">backend/asie_local_api.py on 8794</text>
+
+  <rect class="built" x="610" y="335" width="380" height="78" />
+  <text class="t" x="635" y="365">execute_project_run_pipeline()</text>
+  <text class="s" x="635" y="386">closed run envelope; sealed outputs; one snapshot assembly request</text>
+
+  <rect class="built" x="610" y="445" width="180" height="58" />
+  <text class="t" x="630" y="475">Finance</text>
+  <text class="s" x="630" y="494">NPV, IRR, MC</text>
+  <rect class="built" x="810" y="445" width="180" height="58" />
+  <text class="t" x="830" y="475">Evidence</text>
+  <text class="s" x="830" y="494">ledger, dataset</text>
+
+  <rect class="built" x="610" y="525" width="180" height="58" />
+  <text class="t" x="630" y="555">Sector</text>
+  <text class="s" x="630" y="574">criteria, gaps</text>
+  <rect class="built" x="810" y="525" width="180" height="58" />
+  <text class="t" x="830" y="555">Decision</text>
+  <text class="s" x="830" y="574">council, verdict</text>
+
+  <rect class="built" x="610" y="605" width="120" height="58" />
+  <text class="t" x="630" y="635">Risk</text>
+  <text class="s" x="630" y="654">register</text>
+  <rect class="built" x="740" y="605" width="120" height="58" />
+  <text class="t" x="755" y="635">Execution</text>
+  <text class="s" x="755" y="654">plan</text>
+  <rect class="built" x="870" y="605" width="120" height="58" />
+  <text class="t" x="885" y="635">Reports</text>
+  <text class="s" x="885" y="654">projections</text>
+
+  <rect class="built" x="610" y="695" width="380" height="58" />
+  <text class="t" x="635" y="725">SQLite Snapshots</text>
+  <text class="s" x="635" y="744">atomic assembled projections + verified hashes</text>
+
+  <rect class="built" x="610" y="775" width="380" height="58" />
+  <text class="t" x="635" y="805">AI Integration Shell v9</text>
+  <text class="s" x="635" y="824">policy registry + rejection audit; no providers; no network</text>
+
+  <path class="line" d="M800 233 L800 255" />
+  <path class="line" d="M800 313 L800 335" />
+  <path class="line" d="M800 413 L800 445" />
+  <path class="line" d="M800 663 L800 695" />
+  <path class="line" d="M800 753 L800 775" />
+
+  <text class="h" x="1140" y="150">3. Correction Path</text>
+  <rect class="built" x="1140" y="175" width="380" height="58" />
+  <text class="t" x="1165" y="205">Kernel &amp; Registry v1</text>
+  <text class="s" x="1165" y="224">implemented: boot, registry, descriptors</text>
+
+  <rect class="built" x="1140" y="255" width="380" height="58" />
+  <text class="t" x="1165" y="285">Heart Controller + Three Hearts v1</text>
+  <text class="s" x="1165" y="304">implemented: M1 primary, M2 assist, M3 reserve</text>
+
+  <rect class="built" x="1140" y="335" width="380" height="58" />
+  <text class="t" x="1165" y="365">Bus Controller + System Bus v1</text>
+  <text class="s" x="1165" y="384">implemented: admission, correlation, audit</text>
+
+  <rect class="built" x="1140" y="415" width="380" height="58" />
+  <text class="t" x="1165" y="445">Socket Contract Layer v1</text>
+  <text class="s" x="1165" y="464">implemented: Socket First, Module Second</text>
+
+  <rect class="built" x="1140" y="495" width="380" height="78" />
+  <text class="t" x="1165" y="525">Module Runtime Wrapping v1</text>
+  <text class="s" x="1165" y="546">implemented: all core engines registered behind</text>
+  <text class="s" x="1165" y="565">Bus / Socket / ModuleRuntime</text>
+
+  <rect class="built" x="1140" y="605" width="380" height="58" />
+  <text class="t" x="1165" y="635">Snapshot + Decision Pack Runtime v8</text>
+  <text class="s" x="1165" y="654">implemented: immutable projections + separate review overlay</text>
+
+  <rect class="built" x="1140" y="695" width="380" height="58" />
+  <text class="t" x="1165" y="725">AI Integration Shell</text>
+  <text class="s" x="1165" y="744">DISABLED/DENY_ALL policy + metadata-only security audit</text>
+
+  <rect class="built" x="1140" y="775" width="380" height="58" />
+  <text class="t" x="1165" y="805">AAS Runtime Freeze v1.0</text>
+  <text class="s" x="1165" y="824">read-only status; freeze gates; formal ACR required</text>
+
+  <path class="line" d="M990 374 C1075 374 1065 204 1140 204" />
+  <path class="line" d="M450 764 C690 900 990 900 1140 724" />
+
+  <rect class="box" x="70" y="880" width="1450" height="70" />
+  <text class="t" x="95" y="910">Decision: AAS Runtime Freeze v1.0. Kernel, Hearts, Bus, Socket, Module Runtime, and contract order require a formal ACR.</text>
+  <text class="s" x="95" y="932">build_overview() is deprecated parity-only and scheduled for removal in v1.1. AI remains providerless and network-disabled.</text>
+</svg>

@@ -1,0 +1,14 @@
+{
+  "contract_id": "funder.report.projection.v1",
+  "profile_id": "BASE-FUNDING-V1",
+  "readiness_status": "DECISION_READY",
+  "snapshot_id": "snap_sample",
+  "run_id": "run_sample",
+  "projection_hash": "sample",
+  "sections": [
+    {"section_id":"14-financial-expectations","title":"التوقعات المالية","status":"partial","source_refs":["snapshot:snap_sample"],"payload":{"statements":{"income_statement":{"years":[{"year":1,"revenue":1200000,"gross_profit":700000,"ebitda":350000,"ebit":300000,"net_operating_cashflow":350000},{"year":2,"revenue":1200000,"gross_profit":700000,"ebitda":350000,"ebit":300000,"net_operating_cashflow":350000}]}}}},
+    {"section_id":"01-general-information","title":"المعلومات العامة","status":"ready","source_refs":["snapshot:snap_sample"],"payload":{}}
+  ],
+  "evidence": {"evidence_register_id":"evidence_sample","assumption_refs":["assumption:sample"],"transformation_lineage":[]},
+  "gaps": ["balance_sheet"]
+}

@@ -1,0 +1,16 @@
+.git
+.gitignore
+node_modules
+dist
+output
+tmp
+video-review
+**/__pycache__
+*.pyc
+*.sqlite3
+.env
+.env.*
+! .env.example
+*.zip
+*.pdf
+tests

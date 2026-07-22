@@ -1,0 +1,24 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    ASIE_ENV=production \
+    ASIE_API_HOST=0.0.0.0 \
+    ASIE_API_PORT=8794 \
+    ASIE_ALLOW_EXTERNAL_FETCH=false \
+    ASIE_DB_PATH=/var/lib/asie/asie_local.sqlite3
+
+WORKDIR /app
+COPY backend /app/backend
+COPY docs /app/docs
+RUN useradd --create-home --uid 10001 asie \
+    && mkdir -p /var/lib/asie /var/lib/asie/output \
+    && chown -R asie:asie /app /var/lib/asie
+
+USER asie
+VOLUME ["/var/lib/asie"]
+EXPOSE 8794
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8794/api/health', timeout=3)"
+
+CMD ["python", "backend/asie_local_api.py"]

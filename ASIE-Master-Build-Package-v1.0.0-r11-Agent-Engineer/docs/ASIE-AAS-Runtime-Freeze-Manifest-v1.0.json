@@ -1,0 +1,60 @@
+{
+  "manifest_id": "ASIE-AAS-RUNTIME-FREEZE-v1.0",
+  "status": "frozen",
+  "effective_date": "2026-07-19",
+  "effective_at": "2026-07-19T00:22:00+03:00",
+  "timezone": "Asia/Riyadh",
+  "change_control": "architectural_change_request_required",
+  "acr_template": "docs/ASIE-Architectural-Change-Request-Template-v1.0.md",
+  "pipeline_contract_sequence": [
+    "finance.calculate.v1",
+    "sector.intelligence.build.v1",
+    "evidence.ledger.build.v1",
+    "decision.council.evaluate.v1",
+    "risk.register.build.v1",
+    "execution.plan.build.v1",
+    "snapshot.assemble.v1"
+  ],
+  "frozen_files": [
+    {
+      "path": "backend/aas_kernel.py",
+      "sha256": "c68accd500a505eafb6410448d88c1581ee0d3fca260c43f04cdc18b59d69599"
+    },
+    {
+      "path": "backend/aas_registry.py",
+      "sha256": "de5547537ed09e618fa9d9a4977cf8c183a3a3f48fcc2d9ac192f5be56ac6d67"
+    },
+    {
+      "path": "backend/heart_controller.py",
+      "sha256": "cfd63a4d2c9f78a11ae3cf13f91846a258114c5d9073b752f472da9e179e7330"
+    },
+    {
+      "path": "backend/bus_controller.py",
+      "sha256": "a95c07d0b174ef3dafcbde74b1fabbb9742624896aaa04712b635b6d8c2d6ea3"
+    },
+    {
+      "path": "backend/system_bus.py",
+      "sha256": "f0fff72217394d36a470aa3952da395b5808898272973878f800d54c665a0ca3"
+    },
+    {
+      "path": "backend/socket_contracts.py",
+      "sha256": "013caf2fce4e77074ae2a191d33cfd2f09c516ae42b0f42e08128bd527700de4"
+    },
+    {
+      "path": "backend/module_runtime.py",
+      "sha256": "b7306a3db39a9f83900359271bca903212b5f99abc1f1e392316f30446ae05ca"
+    },
+    {
+      "path": "backend/project_run_workflow.py",
+      "sha256": "0a1950732f1638cb5e6bc56ba3a251ae94dc928ed864cb324272bdaf7cf97e58"
+    },
+    {
+      "path": "backend/snapshot_assembly.py",
+      "sha256": "179bc94f01c5f0dec993b7208715e3674af2a899418f79d1568b2fe55cb937a2"
+    },
+    {
+      "path": "backend/runtime_freeze.py",
+      "sha256": "7006d009339acd2bc19f6d50461ea156a96f3576aee1361a2bbd7234ce099540"
+    }
+  ]
+}
