@@ -87,7 +87,14 @@ def derive_monthly_fixed_cost(inputs: dict[str, Any]) -> float:
             components.append(max(0.0, float(inputs.get(key, 0) or 0)))
         except (TypeError, ValueError):
             components.append(0.0)
-    detailed_total = sum(components)
+    other_costs_total = 0.0
+    for row in inputs.get("other_monthly_costs", []) or []:
+        if isinstance(row, dict):
+            try:
+                other_costs_total += max(0.0, float(row.get("amount", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+    detailed_total = sum(components) + other_costs_total
     if detailed_total > 0:
         return detailed_total
     try:
