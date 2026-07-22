@@ -1683,34 +1683,12 @@ export function App() {
               <Rocket size={20} aria-hidden="true" />
               <h2>معالج المشروع</h2>
             </div>
-            <div className="wizard-rail">
-              {wizardJourney.map((item, index) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    className={
-                      index === wizardStep
-                        ? "wizard-node wizard-node--active"
-                        : index < wizardStep
-                          ? "wizard-node wizard-node--done"
-                          : "wizard-node"
-                    }
-                    key={item.label}
-                    disabled={index > maxUnlockedWizardStep}
-                    aria-label={index > maxUnlockedWizardStep ? `${item.label} — أكمل الخطوات السابقة أولًا` : item.label}
-                    onClick={() => {
-                      if (index <= maxUnlockedWizardStep) {
-                        setError(null);
-                        setWizardStep(index);
-                      }
-                    }}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    <span>{index + 1}</span>
-                    <strong>{item.label}</strong>
-                  </button>
-                );
-              })}
+            <div className="wizard-rail" aria-label="تقدم معالج المشروع">
+              <span className="wizard-progress-label">الخطوة {wizardStep + 1} من {wizardJourney.length}</span>
+              <strong>{wizardJourney[wizardStep].label}</strong>
+              <span className="wizard-progress-track" aria-hidden="true">
+                <span style={{ width: `${((wizardStep + 1) / wizardJourney.length) * 100}%` }} />
+              </span>
             </div>
             <div className="wizard-focus">
               <div>
