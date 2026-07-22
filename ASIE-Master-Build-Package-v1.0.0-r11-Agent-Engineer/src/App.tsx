@@ -255,6 +255,7 @@ const assumptionArabicLabels: Record<string, string> = {
   capital_available: "رأس المال المتاح",
   startup_cost: "تكلفة التأسيس",
   monthly_fixed_cost: "المصاريف الشهرية الثابتة",
+  other_monthly_costs: "بنود شهرية أخرى",
   unit_price: "سعر البيع أو الخدمة",
   variable_cost: "تكلفة تقديم الخدمة",
   monthly_units: "العملاء أو الطلبات شهريًا",
@@ -300,7 +301,8 @@ function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
     inputs.marketing_monthly,
     inputs.maintenance_monthly,
   ].map((value) => Number(value) || 0);
-  const detailedTotal = components.reduce((total, value) => total + Math.max(0, value), 0);
+  const otherCostsTotal = (inputs.other_monthly_costs ?? []).reduce((total, item) => total + Math.max(0, Number(item.amount) || 0), 0);
+  const detailedTotal = components.reduce((total, value) => total + Math.max(0, value), 0) + otherCostsTotal;
   return detailedTotal > 0 ? detailedTotal : Number(inputs.monthly_fixed_cost) || 0;
 }
 
@@ -322,6 +324,7 @@ const defaultInputs: Required<ProjectInputs> = {
   capital_available: 0,
   startup_cost: 0,
   monthly_fixed_cost: 0,
+  other_monthly_costs: [],
   unit_price: 0,
   variable_cost: 0,
   monthly_units: 0,
@@ -2506,6 +2509,28 @@ export function App() {
                     <summary>إضافة تفاصيل تشغيلية أدق <small>(اختياري)</small></summary>
                     <p className="muted">لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها.</p>
                     <strong>تفصيل المصاريف الشهرية</strong>
+                    <div className="other-monthly-costs">
+                      <div className="other-monthly-costs__heading">
+                        <strong>بنود شهرية أخرى</strong>
+                        <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: [...(current.inputs.other_monthly_costs ?? []), { name: "", amount: 0 }] } }))}>+ إضافة بند</button>
+                      </div>
+                      <p className="muted">مثل: التأمين، الاشتراكات، النظافة، النقل، الاتصالات أو أي مصروف آخر.</p>
+                      {(form.inputs.other_monthly_costs ?? []).map((item, index) => (
+                        <div className="other-monthly-cost-row" key={index}>
+                          <input maxLength={60} placeholder="اسم المصروف" value={item.name} onChange={(event) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], name: event.target.value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <NumberField label="المبلغ الشهري" value={item.amount} onChange={(value) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], amount: value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: (current.inputs.other_monthly_costs ?? []).filter((_, rowIndex) => rowIndex !== index) } }))}>حذف</button>
+                        </div>
+                      ))}
+                    </div>
                     <div className="guided-finance-lite">
                       <NumberField label="الرواتب الشهرية" value={form.inputs.payroll_monthly} onChange={(value) => updateInputs({ payroll_monthly: value })} />
                       <NumberField label="الإيجار الشهري" value={form.inputs.rent_monthly} onChange={(value) => updateInputs({ rent_monthly: value })} />
