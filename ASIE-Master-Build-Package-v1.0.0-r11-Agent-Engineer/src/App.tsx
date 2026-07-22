@@ -235,6 +235,61 @@ function governedNameError(value: string, label: string, minimumLength = 3, maxi
   return null;
 }
 
+const assumptionArabicLabels: Record<string, string> = {
+  primary_sector_id: "القطاع",
+  subsector_id: "النشاط التفصيلي",
+  activity_description: "وصف النشاط",
+  location_scope: "نطاق السوق",
+  location_country: "الدولة",
+  location_region: "المنطقة",
+  location_city: "المدينة",
+  location_district: "الحي أو الشارع",
+  location_latitude: "خط العرض",
+  location_longitude: "خط الطول",
+  gap_statement: "حاجة السوق",
+  competitive_edge: "الميزة التنافسية",
+  target_audience: "الجمهور المستهدف",
+  intake_mode: "طريقة إدخال التفاصيل",
+  capital_available: "رأس المال المتاح",
+  startup_cost: "تكلفة التأسيس",
+  monthly_fixed_cost: "المصاريف الشهرية الثابتة",
+  unit_price: "سعر البيع أو الخدمة",
+  variable_cost: "تكلفة تقديم الخدمة",
+  monthly_units: "العملاء أو الطلبات شهريًا",
+  use_operating_capacity: "استخدام الطاقة التشغيلية",
+  capacity_units_per_day: "الطاقة التشغيلية اليومية",
+  operating_days_per_month: "أيام التشغيل شهريًا",
+  utilization_rate: "نسبة الاستفادة من الطاقة",
+  payroll_monthly: "الرواتب الشهرية",
+  rent_monthly: "الإيجار الشهري",
+  utilities_monthly: "المرافق الشهرية",
+  marketing_monthly: "التسويق الشهري",
+  maintenance_monthly: "الصيانة الشهرية",
+  capex_equipment: "تكلفة المعدات",
+  capex_fitout: "تكلفة التجهيز",
+  capex_licenses_local: "تكلفة التراخيص",
+  depreciation_years: "سنوات الإهلاك",
+  equity_contribution: "المساهمة الذاتية",
+  loan_grace_months: "فترة السماح",
+  annual_discount_rate: "معدل الخصم السنوي",
+  working_capital_months: "أشهر رأس المال العامل",
+  debt_amount: "مبلغ القرض",
+  annual_interest_rate: "تكلفة التمويل السنوية",
+  loan_years: "مدة القرض",
+};
+
+const assumptionReviewGroups = [
+  { id: "identity", label: "هوية المشروع وموقعه", keys: ["primary_sector_id", "subsector_id", "activity_description", "location_scope", "location_country", "location_region", "location_city", "location_district", "location_latitude", "location_longitude"] },
+  { id: "market", label: "السوق والميزة والجمهور", keys: ["gap_statement", "competitive_edge", "target_audience", "intake_mode"] },
+  { id: "operations", label: "التشغيل والطاقة", keys: ["monthly_units", "use_operating_capacity", "capacity_units_per_day", "operating_days_per_month", "utilization_rate"] },
+  { id: "finance", label: "التكاليف والإيرادات", keys: ["capital_available", "startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "payroll_monthly", "rent_monthly", "utilities_monthly", "marketing_monthly", "maintenance_monthly", "capex_equipment", "capex_fitout", "capex_licenses_local", "depreciation_years", "equity_contribution"] },
+  { id: "funding", label: "التمويل والخصم", keys: ["loan_grace_months", "annual_discount_rate", "working_capital_months", "debt_amount", "annual_interest_rate", "loan_years"] },
+];
+
+function assumptionArabicLabel(item: AssumptionRecord): string {
+  return assumptionArabicLabels[item.input_key] ?? item.label;
+}
+
 const defaultInputs: Required<ProjectInputs> = {
   primary_sector_id: "",
   subsector_id: "",
@@ -755,20 +810,24 @@ export function App() {
     }
   }
 
-  async function handleApproveAssumption(item: AssumptionRecord) {
+  async function handleApproveAssumptions(items: AssumptionRecord[]) {
     if (!project) {
       setError("احفظ بيانات المشروع أولًا قبل اعتماد الافتراضات.");
       return;
     }
+    const pendingItems = items.filter((item) => item.review_status !== "approved");
+    if (!pendingItems.length) return;
     setIsBusy(true);
     setError(null);
     try {
-      await createProjectAssumption(project.project_id, {
-        ...item,
-        source_type: "manual_review",
-        confidence: Math.max(item.confidence, 0.8),
-        review_status: "approved",
-      });
+      for (const item of pendingItems) {
+        await createProjectAssumption(project.project_id, {
+          ...item,
+          source_type: "manual_review",
+          confidence: Math.max(item.confidence, 0.8),
+          review_status: "approved",
+        });
+      }
       await loadProjectWorkspace(project.project_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر حفظ المراجعة البشرية.");
@@ -2435,28 +2494,59 @@ export function App() {
                 ) : null}
                 {project ? (
                   <div className="choice-section assumption-review-panel" id="assumption-human-review">
-                    <strong>المراجعة البشرية للافتراضات</strong>
-                    <p className="muted">راجع كل قيمة أدناه. إذا كانت صحيحة، اضغط «تمت المراجعة واعتمادها» حتى تُغلق خطوة المراجعة.</p>
-                    <div className="assumption-list">
-                      {assumptions.map((item) => (
-                        <article key={item.assumption_id}>
-                          <strong>{item.label}</strong>
-                          <span>{item.value} {item.unit}</span>
-                          <small>{item.review_status === "approved" ? "تمت مراجعتها واعتمادها" : "بانتظار مراجعتك"}</small>
-                          {item.review_status !== "approved" ? (
-                            <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumption(item)}>
-                              تمت المراجعة واعتمادها
-                            </button>
-                          ) : (
-                            <span className="review-complete"><CheckCircle2 size={16} aria-hidden="true" /> مكتملة</span>
-                          )}
-                        </article>
-                      ))}
+                    <div className="assumption-review-panel__heading">
+                      <div>
+                        <strong>المراجعة البشرية للافتراضات</strong>
+                        <p className="muted">راجع الملخصات، وافتح التفاصيل عند الحاجة، ثم اعتمد كل مجموعة.</p>
+                      </div>
+                      <span className="review-progress">
+                        {assumptions.filter((item) => item.review_status === "approved").length} من {assumptions.length} مكتملة
+                      </span>
                     </div>
-                    {!assumptions.length ? <p className="muted">احفظ بيانات المشروع مرة أخرى لإنشاء قائمة الافتراضات المطلوب مراجعتها.</p> : null}
+                    <div className="review-group-list">
+                      {assumptionReviewGroups.map((group) => {
+                        const groupItems = assumptions.filter((item) => group.keys.includes(item.input_key));
+                        if (!groupItems.length) return null;
+                        const pendingCount = groupItems.filter((item) => item.review_status !== "approved").length;
+                        return (
+                          <article className={pendingCount ? "review-group" : "review-group review-group--complete"} key={group.id}>
+                            <div className="review-group__summary">
+                              <div>
+                                <strong>{group.label}</strong>
+                                <small>{groupItems.length} بنود · {pendingCount ? `${pendingCount} بانتظار المراجعة` : "تمت مراجعتها"}</small>
+                              </div>
+                              {pendingCount ? (
+                                <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumptions(groupItems)}>
+                                  اعتماد المجموعة
+                                </button>
+                              ) : (
+                                <span className="review-complete"><CheckCircle2 size={16} aria-hidden="true" /> مكتملة</span>
+                              )}
+                            </div>
+                            <details>
+                              <summary>عرض القيم ومراجعتها</summary>
+                              <div className="review-group__items">
+                                {groupItems.map((item) => (
+                                  <div key={item.assumption_id}>
+                                    <strong>{assumptionArabicLabel(item)}</strong>
+                                    <span>{item.value || "غير محدد"} {item.unit === "unit" ? "" : item.unit}</span>
+                                    <small>{item.review_status === "approved" ? "معتمد" : "بانتظار المراجعة"}</small>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {assumptions.length ? (
+                      <button type="button" className="secondary-action review-all-button" disabled={isBusy || assumptions.every((item) => item.review_status === "approved")} onClick={() => handleApproveAssumptions(assumptions)}>
+                        راجعت جميع المجموعات وأعتمدها
+                      </button>
+                    ) : <p className="muted">احفظ بيانات المشروع مرة أخرى لإنشاء قائمة الافتراضات المطلوب مراجعتها.</p>}
                   </div>
                 ) : (
-                  <p className="guided-hint">احفظ بيانات المشروع أولًا، ثم ستظهر هنا قائمة الافتراضات وزر إتمام المراجعة.</p>
+                  <p className="guided-hint">احفظ بيانات المشروع أولًا، ثم ستظهر هنا مراجعة مختصرة ومجمعة.</p>
                 )}
               </>
             ) : null}
