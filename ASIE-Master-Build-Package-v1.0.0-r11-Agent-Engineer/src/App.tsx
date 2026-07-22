@@ -163,6 +163,48 @@ const wizardStepHelp = [
   "اختر كيف تريد تعبئة باقي الأرقام: بنفسك، من ملف، أو بمساعدة تقديرية عند تفعيلها.",
 ];
 
+const arabicSubsectorLabels: Record<string, string> = {
+  "Heavy Manufacturing": "الصناعات الثقيلة",
+  "Light Manufacturing": "الصناعات الخفيفة",
+  "Food Manufacturing": "الصناعات الغذائية",
+  Pharmaceuticals: "الصناعات الدوائية",
+  "Real Estate Development": "التطوير العقاري",
+  "Commercial Real Estate": "العقارات التجارية",
+  "Residential Real Estate": "العقارات السكنية",
+  "Industrial Real Estate": "العقارات الصناعية",
+  "Land Transport": "النقل البري",
+  Warehousing: "المستودعات والتخزين",
+  "E-commerce Logistics": "خدمات توصيل التجارة الإلكترونية",
+  "Ports & Airports": "الموانئ والمطارات",
+  "Leisure Tourism": "السياحة الترفيهية",
+  "Hotels & Hospitality": "الفنادق والضيافة",
+  "Events & Festivals": "الفعاليات والمهرجانات",
+  "Cinema & Production": "السينما والإنتاج",
+  AI: "الذكاء الاصطناعي",
+  "Cloud Computing": "الحوسبة السحابية",
+  Cybersecurity: "الأمن السيبراني",
+  Software: "البرمجيات",
+  "Data Centers": "مراكز البيانات",
+  Banks: "البنوك",
+  Insurance: "التأمين",
+  Financing: "التمويل",
+  "Capital Markets": "أسواق المال",
+  Investment: "الاستثمار",
+  Hospitals: "المستشفيات",
+  Clinics: "العيادات",
+  HealthTech: "التقنيات الصحية",
+  "Medical Devices": "الأجهزة الطبية",
+  Agriculture: "الزراعة",
+  "Food Security": "الأمن الغذائي",
+  AgriTech: "التقنيات الزراعية",
+  Livestock: "الثروة الحيوانية",
+  "Food Supply Chains": "سلاسل إمداد الغذاء",
+};
+
+function arabicSubsectorLabel(value: string): string {
+  return arabicSubsectorLabels[value] ?? value;
+}
+
 const defaultInputs: Required<ProjectInputs> = {
   primary_sector_id: "",
   subsector_id: "",
@@ -2151,7 +2193,7 @@ export function App() {
                 <p>اختر النوع الذي يصف مشروعك بدقة. إذا لم تجده، أضف وصفك الخاص.</p>
                 <div className="choice-grid" role="group" aria-label="التصنيف الدقيق">
                   {(selectedSector?.subsectors ?? [form.inputs.subsector_id]).map((item) => (
-                    <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{item}</strong><small>اختيار التصنيف</small></button>
+                    <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{arabicSubsectorLabel(item)}</strong><small>اختر هذا النشاط</small></button>
                   ))}
                   <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSubsector(true); updateInputs({ subsector_id: "" }); }}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
                 </div>
@@ -2432,7 +2474,7 @@ export function App() {
                   </div>
                   <div>
                     <dt>التصنيف الفرعي</dt>
-                    <dd>{overview.sector_intelligence.taxonomy_record.subsector_id || "غير محدد"}</dd>
+                    <dd>{overview.sector_intelligence.taxonomy_record.subsector_id ? arabicSubsectorLabel(overview.sector_intelligence.taxonomy_record.subsector_id) : "غير محدد"}</dd>
                   </div>
                   <div>
                     <dt>فجوات الأدلة</dt>
