@@ -1779,3 +1779,27 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
     width: 100%;
   }
 }
+
+
+.manual-advanced-fields {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed #bfd4c7;
+  border-radius: 14px;
+  background: #f8fbf9;
+}
+
+.manual-advanced-fields summary {
+  color: #155f43;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.manual-advanced-fields[open] {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-advanced-fields > strong {
+  margin-top: 4px;
+}
