@@ -49,6 +49,12 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("not meaningful_assumption_value(value)", REPOSITORY)
         self.assertIn("DELETE FROM assumptions", REPOSITORY)
 
+    def test_monthly_expenses_are_derived_from_components(self):
+        self.assertIn("monthlyFixedCostFromInputs", APP)
+        self.assertIn("تحسب تلقائيًا", APP)
+        self.assertIn("derive_monthly_fixed_cost", REPOSITORY)
+        self.assertIn("merged_inputs[\"monthly_fixed_cost\"]", REPOSITORY)
+
     def test_manual_review_is_grouped_and_optional_details_are_explicit(self):
         self.assertIn("اعتماد المجموعة", APP)
         self.assertIn("راجعت جميع المجموعات وأعتمدها", APP)
