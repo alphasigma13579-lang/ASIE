@@ -1,0 +1,106 @@
+{
+  "register_id": "ASIE-CANONICAL-DOCUMENT-REGISTER-v1.0.0",
+  "status": "FINAL_BINDING",
+  "effective_date": "2026-07-22",
+  "timezone": "Asia/Riyadh",
+  "authority_order": [
+    "FINAL_BINDING",
+    "FROZEN_OR_ADOPTED_BASELINE",
+    "EXPLICIT_SUPERSESSION",
+    "CURRENT_AS_BUILT",
+    "HISTORICAL_RECORD",
+    "DRAFT_CANDIDATE_REFERENCE_ARCHIVE"
+  ],
+  "canonical_documents": [
+    {
+      "document_id": "AAS-RUNTIME-FREEZE",
+      "version": "1.0",
+      "path": "docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json",
+      "effective_date": "2026-07-19",
+      "status": "FROZEN_BINDING",
+      "change_gate": "ACR"
+    },
+    {
+      "document_id": "AIA-01",
+      "version": "1.0.0",
+      "path": "docs/AIA-01-Intelligence-Constitution-v1.0.0.md",
+      "sha256": "115114a93fc65ce3ed6652321cf675acbf0cfa99f73fa7ed4b39cfd6e01cc7c0",
+      "status": "FINAL_BINDING",
+      "change_gate": "ICCR"
+    },
+    {
+      "document_id": "AIA-02",
+      "version": "1.2.1",
+      "path": "docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1.md",
+      "sha256": "39a68ddfb88e81c3f7e00ef1df24756ceedcc7aa0d9f06b89b945e0b12c72652",
+      "effective_date": "2026-07-22",
+      "status": "FINAL_ADOPTED_CONTROLLED_BASELINE",
+      "supersedes": ["AIA-02@1.2.0"],
+      "production_activation": "PENDING_STAGED_ACRS",
+      "change_gate": "IACR_OR_ACR_IF_AAS_IMPACT"
+    },
+    {
+      "document_id": "ASIE-AS-BUILT",
+      "version": "r11-local-core-2026-07-21",
+      "path": "docs/ASIE-Complete-System-Architecture-2026-07-21.md",
+      "sha256": "fcbec8c8ff594d4555155045904c04b0e558e10eca4e9d0cb5d7e4f5623991b2",
+      "status": "CURRENT_AS_BUILT_DESCRIPTION"
+    },
+    {
+      "document_id": "ASIE-PROJECT-STATUS",
+      "version": "2026-07-21",
+      "path": "docs/ASIE-Project-Status-Assessment-2026-07-21.md",
+      "sha256": "08fe3a95e464a5c7be2b390e33da0987cc01759bb71a23797a4b24af492302a9",
+      "status": "CURRENT_STATUS_ASSESSMENT",
+      "supersedes": ["ASIE-Platform-Readiness-Assessment@2026-07-20"]
+    },
+    {
+      "document_id": "ASIE-PRODUCT-READINESS-MASTER-PLAN",
+      "version": "2026-07-19",
+      "path": "docs/ASIE-Product-Readiness-Master-Plan-2026-07-19.md",
+      "sha256": "fa8aad456e5d8a687975df6af1bd9d2f1d39a579b74471a1756c3b43f9d915e1",
+      "status": "ACTIVE_MASTER_PLAN",
+      "supersedes_scope": "PF-02_THROUGH_PF-07"
+    }
+  ],
+  "contract_authority": {
+    "registry": "backend/aas_registry.py",
+    "freeze_manifest": "docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json",
+    "current_runtime_contracts": [
+      "project.run.workflow.v1",
+      "finance.calculate.v1",
+      "finance.result.v1",
+      "sector.intelligence.build.v1",
+      "sector.intelligence.v1",
+      "evidence.ledger.build.v1",
+      "evidence.ledger.v1",
+      "decision.council.evaluate.v1",
+      "decision.council.v1",
+      "risk.register.build.v1",
+      "risk.register.v1",
+      "execution.plan.build.v1",
+      "execution.plan.v1",
+      "snapshot.assemble.v1",
+      "decision.pack.project.v1",
+      "decision.pack.v1",
+      "report.snapshot.project.v1",
+      "report.snapshot.v1",
+      "ai.integration.request.v1",
+      "ai.integration.result.v1"
+    ],
+    "v2_contracts_in_aia02": "DEFINED_NOT_IMPLEMENTED_UNLESS_REGISTERED_AFTER_APPROVED_GATE"
+  },
+  "known_record_conflicts": [
+    {
+      "id": "ACR-AIA-02",
+      "status": "HISTORICAL_DUPLICATE_ID_CORRECTED_2026-07-22",
+      "corrected_ids": ["ACR-AIA-02.1", "ACR-AIA-02.2"],
+      "production_authority": false
+    },
+    {
+      "id": "ACR-AIA-04/ACR-AIA-06",
+      "status": "COMBINED_HISTORICAL_RECORD",
+      "production_authority": false
+    }
+  ]
+}

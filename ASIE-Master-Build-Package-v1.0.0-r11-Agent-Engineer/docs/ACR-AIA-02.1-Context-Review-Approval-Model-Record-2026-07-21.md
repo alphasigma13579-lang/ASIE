@@ -1,4 +1,6 @@
-# ACR-AIA-02 — Context / Review / Approval Model
+# ACR-AIA-02.1 — Context / Review / Approval Model
+
+> سجل تاريخي لمرحلة Offline بتاريخ 2026-07-21. أعيد ترقيمه في سجل الاعتماد بتاريخ 2026-07-22 لإزالة تعارض المعرّف مع مرحلة Authorization and Audit. لا يمثل تصريح تفعيل إنتاجي.
 
 ## الحالة
 
