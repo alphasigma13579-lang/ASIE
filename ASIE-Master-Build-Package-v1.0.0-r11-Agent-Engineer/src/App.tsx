@@ -177,7 +177,7 @@ const defaultInputs: Required<ProjectInputs> = {
   gap_statement: "",
   competitive_edge: "",
   target_audience: "",
-  intake_mode: "manual",
+  intake_mode: "",
   capital_available: 0,
   startup_cost: 0,
   monthly_fixed_cost: 0,
@@ -415,6 +415,7 @@ export function App() {
   const lastStageRef = useRef<AppStage>("dashboard");
   const historyNavigationRef = useRef(false);
   const [wizardStep, setWizardStep] = useState(0);
+  const [maxUnlockedWizardStep, setMaxUnlockedWizardStep] = useState(0);
   const [showCustomSector, setShowCustomSector] = useState(false);
   const [showCustomSubsector, setShowCustomSubsector] = useState(false);
   const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
@@ -433,7 +434,7 @@ export function App() {
       gap_statement: "",
       competitive_edge: "",
       target_audience: "",
-      intake_mode: "manual",
+      intake_mode: "",
       capital_available: 0,
     },
   });
@@ -946,20 +947,44 @@ export function App() {
     }
   }
 
-  function validateWizardStep(): string | null {
-    if (wizardStep === 0 && !form.inputs.location_region?.trim()) return "اختر المنطقة داخل المملكة.";
-    if (wizardStep === 0 && !form.inputs.location_city?.trim()) return "اكتب المدينة داخل المملكة.";
-    if (wizardStep === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
-    if (wizardStep === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
-    if (wizardStep === 3 && !form.name.trim()) return "اكتب اسمًا واضحًا للمشروع.";
-    if (wizardStep === 6 && (!Number.isFinite(form.inputs.capital_available) || form.inputs.capital_available <= 0)) {
+  function validateWizardStepAt(step: number): string | null {
+    if (step === 0 && !form.inputs.location_region?.trim()) return "اختر المنطقة داخل المملكة.";
+    if (step === 0 && !form.inputs.location_city?.trim()) return "اكتب المدينة داخل المملكة.";
+    if (step === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
+    if (step === 1 && form.inputs.primary_sector_id === "CUSTOM" && !form.sector.trim()) return "اكتب اسم القطاع.";
+    if (step === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
+    if (step === 3 && !form.name.trim()) return "اكتب اسمًا واضحًا للمشروع.";
+    if (step === 4 && !form.inputs.gap_statement?.trim()) return "حدد الفجوة التي يعالجها المشروع.";
+    if (step === 4 && !form.inputs.competitive_edge?.trim()) return "حدد الميزة التي يقدمها المشروع.";
+    if (step === 5 && !form.inputs.target_audience?.trim()) return "اختر جمهور المشروع.";
+    if (step === 6 && (!Number.isFinite(form.inputs.capital_available) || form.inputs.capital_available <= 0)) {
       return "اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر.";
+    }
+    if (step === 7 && !form.inputs.intake_mode?.trim()) return "اختر طريقة تعبئة تفاصيل المشروع.";
+    if (step === 7 && form.inputs.intake_mode === "file" && !fileImportStatus && datasets.length === 0) {
+      return "ارفع ملف CSV أو Excel قبل فحص النواقص.";
+    }
+    if (step === 7 && form.inputs.intake_mode === "manual") {
+      if (form.inputs.startup_cost <= 0) return "اكتب تكلفة التأسيس التقريبية.";
+      if (form.inputs.unit_price <= 0) return "اكتب سعر البيع أو الخدمة.";
+      if (form.inputs.monthly_units <= 0) return "اكتب عدد العملاء أو الطلبات شهريًا.";
+      if (form.inputs.variable_cost > form.inputs.unit_price) return "تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.";
     }
     return null;
   }
 
+  function validateWizardStep(): string | null {
+    return validateWizardStepAt(wizardStep);
+  }
+
+  function unlockAndOpenWizardStep(nextStep: number) {
+    const bounded = Math.min(nextStep, wizardJourney.length - 1);
+    setMaxUnlockedWizardStep((current) => Math.max(current, bounded));
+    setWizardStep(bounded);
+  }
+
   function handleSaveAndAdvance() {
-    setWizardStep((current) => Math.min(current + 1, wizardJourney.length - 1));
+    unlockAndOpenWizardStep(wizardStep + 1);
   }
 
   async function handleWizardPrimary() {
@@ -978,7 +1003,7 @@ export function App() {
   }
 
   function advanceWizardFromChoice() {
-    setWizardStep((current) => Math.min(current + 1, wizardJourney.length - 1));
+    unlockAndOpenWizardStep(wizardStep + 1);
   }
 
   async function handleRunAndOpenDecision() {
@@ -995,6 +1020,7 @@ export function App() {
       depth_profile: item.depth_profile,
       inputs: { ...defaultInputs, ...item.inputs },
     });
+    setMaxUnlockedWizardStep(wizardJourney.length - 1);
     setStage("wizard");
     void loadProjectWorkspace(item.project_id);
   }
@@ -1375,7 +1401,14 @@ export function App() {
                           : "wizard-node"
                     }
                     key={item.label}
-                    onClick={() => setWizardStep(index)}
+                    disabled={index > maxUnlockedWizardStep}
+                    aria-label={index > maxUnlockedWizardStep ? `${item.label} — أكمل الخطوات السابقة أولًا` : item.label}
+                    onClick={() => {
+                      if (index <= maxUnlockedWizardStep) {
+                        setError(null);
+                        setWizardStep(index);
+                      }
+                    }}
                   >
                     <Icon size={16} aria-hidden="true" />
                     <span>{index + 1}</span>
