@@ -229,7 +229,9 @@ function governedNameError(value: string, label: string, minimumLength = 3, maxi
   if (!/^[\p{L}\p{N}][\p{L}\p{N}\s'’\-ـ]*$/u.test(normalized)) {
     return `${label} يجب أن يحتوي على حروف وأرقام ومسافات فقط.`;
   }
-  if (/(.)\1{2,}/u.test(normalized)) return `${label} يحتوي على تكرار غير مقبول للحروف.`;
+  if (/(.)\1{2,}/u.test(normalized) || /^(.{1,4})\1{2,}$/u.test(normalized)) {
+    return `${label} يحتوي على تكرار غير مقبول للحروف أو المقاطع.`;
+  }
   const distinctLetters = new Set((normalized.match(/\p{L}/gu) ?? []).map((letter) => letter.toLocaleLowerCase("ar-SA")));
   if (distinctLetters.size < 2) return `${label} غير واضح؛ اكتب اسمًا حقيقيًا ومفهومًا.`;
   return null;
@@ -2382,7 +2384,18 @@ export function App() {
                 <h3>وش اسم مشروعك؟</h3>
                 <label className="field">
                   <span>اسم بسيط وواضح</span>
-                  <input maxLength={60} value={form.name} placeholder="مثال: عيادات النخبة" onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                  <input
+                    maxLength={60}
+                    value={form.name}
+                    placeholder="مثال: عيادات النخبة"
+                    aria-invalid={Boolean(form.name.trim() && governedNameError(form.name, "اسم المشروع"))}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  />
+                  {form.name.trim() && governedNameError(form.name, "اسم المشروع") ? (
+                    <small className="field-error">{governedNameError(form.name, "اسم المشروع")}</small>
+                  ) : (
+                    <small className="field-hint">من 3 إلى 60 حرفًا، باسم واضح غير مكرر.</small>
+                  )}
                 </label>
                 <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> اقترح أسماء للمشروع</button><small>ستتصل هذه المساعدة لاحقاً بخدمة الذكاء الاصطناعي المعتمدة.</small></div>
               </>
