@@ -1574,3 +1574,50 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .project-inputs-panel--wizard {
   margin-top: 14px;
 }
+
+
+.readiness-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.readiness-actions button,
+.workflow-step--action {
+  cursor: pointer;
+}
+
+.workflow-step--action {
+  width: 100%;
+  color: inherit;
+  text-align: right;
+}
+
+.workflow-step--action:hover,
+.workflow-step--action:focus-visible {
+  border-color: #168259;
+  box-shadow: 0 0 0 3px rgba(22, 130, 89, 0.12);
+  transform: translateY(-2px);
+}
+
+.workflow-step--action em {
+  color: #168259;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.financing-inputs {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #dfe8e1;
+}
+
+@media (max-width: 720px) {
+  .readiness-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
