@@ -28,6 +28,7 @@ import { BrandLockup } from "./BrandMark";
 import {
   createEvidenceLink,
   createDatasetTransformation,
+  createProjectAssumption,
   createProject,
   createSnapshotReview,
   compareSnapshots,
@@ -720,6 +721,28 @@ export function App() {
       await loadProjectWorkspace(nextProject.project_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر حفظ المسودة.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleApproveAssumption(item: AssumptionRecord) {
+    if (!project) {
+      setError("احفظ بيانات المشروع أولًا قبل اعتماد الافتراضات.");
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      await createProjectAssumption(project.project_id, {
+        ...item,
+        source_type: "manual_review",
+        confidence: Math.max(item.confidence, 0.8),
+        review_status: "approved",
+      });
+      await loadProjectWorkspace(project.project_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر حفظ المراجعة البشرية.");
     } finally {
       setIsBusy(false);
     }
@@ -2374,6 +2397,31 @@ export function App() {
                   </div>
                   </>
                 ) : null}
+                {project ? (
+                  <div className="choice-section assumption-review-panel" id="assumption-human-review">
+                    <strong>المراجعة البشرية للافتراضات</strong>
+                    <p className="muted">راجع كل قيمة أدناه. إذا كانت صحيحة، اضغط «تمت المراجعة واعتمادها» حتى تُغلق خطوة المراجعة.</p>
+                    <div className="assumption-list">
+                      {assumptions.map((item) => (
+                        <article key={item.assumption_id}>
+                          <strong>{item.label}</strong>
+                          <span>{item.value} {item.unit}</span>
+                          <small>{item.review_status === "approved" ? "تمت مراجعتها واعتمادها" : "بانتظار مراجعتك"}</small>
+                          {item.review_status !== "approved" ? (
+                            <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumption(item)}>
+                              تمت المراجعة واعتمادها
+                            </button>
+                          ) : (
+                            <span className="review-complete"><CheckCircle2 size={16} aria-hidden="true" /> مكتملة</span>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                    {!assumptions.length ? <p className="muted">احفظ بيانات المشروع مرة أخرى لإنشاء قائمة الافتراضات المطلوب مراجعتها.</p> : null}
+                  </div>
+                ) : (
+                  <p className="guided-hint">احفظ بيانات المشروع أولًا، ثم ستظهر هنا قائمة الافتراضات وزر إتمام المراجعة.</p>
+                )}
               </>
             ) : null}
           </div>
