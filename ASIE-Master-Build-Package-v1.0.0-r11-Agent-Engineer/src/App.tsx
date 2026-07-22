@@ -206,6 +206,35 @@ function arabicSubsectorLabel(value: string): string {
   return arabicSubsectorLabels[value] ?? value;
 }
 
+const saudiCitiesByRegion: Record<string, string[]> = {
+  "منطقة الرياض": ["الرياض", "الخرج", "الدرعية", "الدوادمي", "المجمعة", "شقراء", "الزلفي", "وادي الدواسر", "عفيف"],
+  "منطقة مكة المكرمة": ["مكة المكرمة", "جدة", "الطائف", "رابغ", "القنفذة", "الليث", "خليص"],
+  "منطقة المدينة المنورة": ["المدينة المنورة", "ينبع", "العلا", "بدر", "مهد الذهب"],
+  "منطقة القصيم": ["بريدة", "عنيزة", "الرس", "البكيرية", "المذنب"],
+  "المنطقة الشرقية": ["الدمام", "الخبر", "الظهران", "الأحساء", "الجبيل", "القطيف", "حفر الباطن", "رأس تنورة"],
+  "منطقة عسير": ["أبها", "خميس مشيط", "بيشة", "محايل عسير", "النماص"],
+  "منطقة تبوك": ["تبوك", "ضباء", "الوجه", "أملج", "حقل"],
+  "منطقة حائل": ["حائل", "بقعاء"],
+  "منطقة الحدود الشمالية": ["عرعر", "رفحاء", "طريف"],
+  "منطقة جازان": ["جازان", "صبيا", "أبو عريش", "صامطة", "بيش"],
+  "منطقة نجران": ["نجران", "شرورة"],
+  "منطقة الباحة": ["الباحة", "بلجرشي", "المندق", "المخواة"],
+  "منطقة الجوف": ["سكاكا", "دومة الجندل", "القريات", "طبرجل"],
+};
+
+function governedNameError(value: string, label: string, minimumLength = 3, maximumLength = 60): string | null {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length < minimumLength) return `${label} قصير جدًا.`;
+  if (normalized.length > maximumLength) return `${label} طويل جدًا؛ الحد الأقصى ${maximumLength} حرفًا.`;
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}\s'’\-ـ]*$/u.test(normalized)) {
+    return `${label} يجب أن يحتوي على حروف وأرقام ومسافات فقط.`;
+  }
+  if (/(.)\1{2,}/u.test(normalized)) return `${label} يحتوي على تكرار غير مقبول للحروف.`;
+  const distinctLetters = new Set((normalized.match(/\p{L}/gu) ?? []).map((letter) => letter.toLocaleLowerCase("ar-SA")));
+  if (distinctLetters.size < 2) return `${label} غير واضح؛ اكتب اسمًا حقيقيًا ومفهومًا.`;
+  return null;
+}
+
 const defaultInputs: Required<ProjectInputs> = {
   primary_sector_id: "",
   subsector_id: "",
@@ -1066,12 +1095,19 @@ export function App() {
   }
 
   function validateWizardStepAt(step: number): string | null {
-    if (step === 0 && !form.inputs.location_region?.trim()) return "اختر المنطقة داخل المملكة.";
-    if (step === 0 && !form.inputs.location_city?.trim()) return "اكتب المدينة داخل المملكة.";
+    if (step === 0 && !saudiCitiesByRegion[form.inputs.location_region]) return "اختر المنطقة من القائمة المعتمدة.";
+    if (step === 0 && !(saudiCitiesByRegion[form.inputs.location_region] ?? []).includes(form.inputs.location_city)) return "اختر المدينة من القائمة.";
+    if (step === 0 && form.inputs.location_district?.trim()) {
+      const districtError = governedNameError(form.inputs.location_district, "اسم الحي أو الشارع", 2, 50);
+      if (districtError) return districtError;
+    }
     if (step === 1 && !form.inputs.primary_sector_id?.trim()) return "اختر القطاع أو أضف قطاعك.";
     if (step === 1 && form.inputs.primary_sector_id === "CUSTOM" && !form.sector.trim()) return "اكتب اسم القطاع.";
     if (step === 2 && !form.inputs.subsector_id?.trim()) return "اختر التصنيف الدقيق أو أضف تصنيفك.";
-    if (step === 3 && !form.name.trim()) return "اكتب اسمًا واضحًا للمشروع.";
+    if (step === 3) {
+      const nameError = governedNameError(form.name, "اسم المشروع");
+      if (nameError) return nameError;
+    }
     if (step === 4 && !form.inputs.gap_statement?.trim()) return "حدد الفجوة التي يعالجها المشروع.";
     if (step === 4 && !form.inputs.competitive_edge?.trim()) return "حدد الميزة التي يقدمها المشروع.";
     if (step === 5 && !form.inputs.target_audience?.trim()) return "اختر جمهور المشروع.";
@@ -2228,9 +2264,9 @@ export function App() {
                 <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
                 <div className="location-fields">
                   <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
-                  <label className="field"><span>المنطقة</span><input value={form.inputs.location_region} placeholder="مثال: منطقة الرياض" onChange={(event) => updateStructuredLocation("location_region", event.target.value)} /></label>
-                  <label className="field"><span>المدينة</span><input value={form.inputs.location_city} placeholder="مثال: الرياض" onChange={(event) => updateStructuredLocation("location_city", event.target.value)} /></label>
-                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
+                  <label className="field"><span>المنطقة</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">اختر المنطقة</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
+                  <label className="field"><span>المدينة</span><select value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => updateStructuredLocation("location_city", event.target.value)}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
+                  <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
                   <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
                   <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
                 </div>
@@ -2287,7 +2323,7 @@ export function App() {
                 <h3>وش اسم مشروعك؟</h3>
                 <label className="field">
                   <span>اسم بسيط وواضح</span>
-                  <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                  <input maxLength={60} value={form.name} placeholder="مثال: عيادات النخبة" onChange={(event) => setForm({ ...form, name: event.target.value })} />
                 </label>
                 <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> اقترح أسماء للمشروع</button><small>ستتصل هذه المساعدة لاحقاً بخدمة الذكاء الاصطناعي المعتمدة.</small></div>
               </>
