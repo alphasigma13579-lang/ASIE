@@ -37,6 +37,7 @@ from backend.project_run_workflow import (
 )
 from backend.readiness_gates import build_readiness_gates
 from backend.identity import Principal
+from backend.input_manifest import build_approved_input_manifest
 from backend.repository import LEGACY_ORGANIZATION_ID, ProjectRecord, Repository
 from backend.reports import build_report_view, remediation, render_report_html, render_funder_report_html
 from backend.report_release import build_release_record
@@ -330,6 +331,12 @@ def finance_via_module_runtime(
     assumption_refs: list[str] | None = None,
     session: RunScopedModuleRuntime | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    approved_input_manifest = build_approved_input_manifest(
+        project.project_id,
+        project.inputs,
+        assumption_refs=assumption_refs or [],
+        legacy_compatibility=True,
+    ).to_public()
     message = BusMessage(
             source_module_id=source_module_for_session(session),
             target_module_id="module.finance",
@@ -342,7 +349,7 @@ def finance_via_module_runtime(
                 "project_id": project.project_id,
                 "run_id": run_id,
                 "snapshot_id": snapshot_id,
-                "inputs": project.inputs,
+                "approved_input_manifest": approved_input_manifest,
                 "assumption_refs": assumption_refs or [],
             },
     )
