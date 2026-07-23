@@ -95,19 +95,19 @@ type AppStage = "dashboard" | "wizard" | "evidence" | "readiness" | "run" | "rea
 const appStages: Array<{ id: AppStage; label: string; description: string }> = [
   { id: "dashboard", label: "الملخص", description: "أين وصلنا الآن؟" },
   { id: "wizard", label: "عرّف مشروعك", description: "الفكرة والموقع والأرقام" },
-  { id: "reality", label: "اختبر السوق", description: "السياق والمنافسون" },
   { id: "evidence", label: "اربط الأدلة", description: "ملفاتك ومصادر الثقة" },
   { id: "readiness", label: "افحص النواقص", description: "ما يمنع التحليل؟" },
   { id: "run", label: "شغّل التحليل", description: "أنشئ مرجع القرار" },
+  { id: "reality", label: "ذكاء السوق والفرص", description: "مقارنات وتوصيات بعد الدراسة" },
   { id: "decision", label: "افهم القرار", description: "الحكم وسببه" },
   { id: "execution", label: "نفّذ التالي", description: "خطوات بعد القرار" },
   { id: "snapshots", label: "التقارير", description: "المخرجات المحفوظة" },
 ];
 
 const appStageGroups: Array<{ label: string; stages: AppStage[] }> = [
-  { label: "مسار القرار", stages: ["dashboard", "wizard", "reality"] },
+  { label: "مسار الدراسة", stages: ["dashboard", "wizard"] },
   { label: "التحقق قبل التشغيل", stages: ["evidence", "readiness"] },
-  { label: "القرار والتنفيذ", stages: ["run", "decision", "execution", "snapshots"] },
+  { label: "القرار والتنفيذ", stages: ["run", "reality", "decision", "execution", "snapshots"] },
 ];
 
 const PRODUCT_ENTRY_STORAGE_KEY = "asie.product_entry.v1";
@@ -150,6 +150,7 @@ const firstMinuteJourney: Array<{ stage: AppStage; title: string; body: string }
   { stage: "wizard", title: "عرّف المشروع", body: "اكتب الفكرة والموقع وأهم الأرقام فقط." },
   { stage: "evidence", title: "اربط ما يثبتها", body: "أضف ملفاً أو دليلاً محلياً يدعم الافتراضات." },
   { stage: "run", title: "شغّل التحليل", body: "تتحقق المنصة من النواقص قبل إنشاء مرجع القرار." },
+  { stage: "reality", title: "ذكاء السوق والفرص", body: "قارن المشروع بالسوق بعد ظهور نتيجة الدراسة." },
   { stage: "decision", title: "افهم القرار", body: "اقرأ الحكم، السبب، المخاطر، والخطوة القادمة." },
 ];
 
@@ -683,7 +684,7 @@ export function App() {
         ? { label: "عالج متطلبات الجاهزية", detail: `${readinessBlocked.length} متطلباً يحتاج انتباهاً قبل التشغيل.`, stage: "readiness" as AppStage, action: "navigate" as const }
         : !snapshotOverview
           ? { label: "شغّل التحليل", detail: "المشروع جاهز لإنشاء أول Snapshot ثابت.", stage: "run" as AppStage, action: "run" as const }
-          : { label: "راجع حزمة القرار", detail: "تتوفر لقطة قرار محفوظة قابلة للمراجعة.", stage: "decision" as AppStage, action: "navigate" as const };
+          : { label: "افتح ذكاء السوق والفرص", detail: "اقرأ المقارنات والتوصيات بعد ظهور نتيجة الدراسة.", stage: "reality" as AppStage, action: "navigate" as const };
 
   function updateInputs(nextInputs: Partial<ProjectInputs>) {
     setForm((current) => ({
@@ -1284,9 +1285,9 @@ export function App() {
     setError(null);
   }
 
-  async function handleRunAndOpenDecision() {
+  async function handleRunAndOpenMarketIntelligence() {
     await handleRunProject();
-    setStage("decision");
+    setStage("reality");
   }
 
   function openProject(item: Project) {
@@ -1525,7 +1526,7 @@ export function App() {
             </div>
             <button className="primary-button" disabled={isBusy} onClick={() => {
               setStage(commandAction.stage);
-              if (commandAction.action === "run") void handleRunAndOpenDecision();
+              if (commandAction.action === "run") void handleRunAndOpenMarketIntelligence();
             }}>
               {commandAction.action === "run" ? <Play size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />}
               {commandAction.label}
@@ -1556,7 +1557,7 @@ export function App() {
                   disabled={isBusy}
                   onClick={() => {
                     setStage(commandAction.stage);
-                    if (commandAction.action === "run") void handleRunAndOpenDecision();
+                    if (commandAction.action === "run") void handleRunAndOpenMarketIntelligence();
                   }}
                 >
                   {commandAction.action === "run" ? <Play size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />}
@@ -1587,7 +1588,8 @@ export function App() {
 
             <div className="first-minute-journey" aria-label="المسار المبسط لأول تحليل">
               {firstMinuteJourney.map((item, index) => {
-                const currentIndex = !project ? 0 : !snapshotOverview ? Math.min(Math.max(activeStageIndex - 1, 1), 2) : 3;
+                // This compact rail is rendered on the dashboard itself; the detailed current step is shown in the destination page.
+                const currentIndex = !project ? 0 : !snapshotOverview ? 1 : 4;
                 return (
                   <button
                     key={item.stage}
@@ -1745,7 +1747,7 @@ export function App() {
               <article><strong>متى أشغّل التحليل؟</strong><span>{canRunCurrentProject ? "المشروع جاهز. شغّل التحليل لإنشاء أول نتيجة محفوظة." : "أكمل متطلبات الجاهزية أولًا؛ سنرشدك إليها خطوة بخطوة."}</span></article>
             </div>
             <div className="next-action-banner__actions">
-              <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenDecision() : setStage("readiness")}>
+              <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenMarketIntelligence() : setStage("readiness")}>
                 <Play size={18} aria-hidden="true" />
                 {canRunCurrentProject ? "شغّل التحليل الآن" : "انتقل إلى فحص الجاهزية"}
               </button>
@@ -1801,7 +1803,7 @@ export function App() {
             <p className="muted">
               عند الضغط على الزر، تنشئ المنصة نتيجة محفوظة من بياناتك الحالية. لا تحتاج إلى معرفة التفاصيل التقنية.
             </p>
-            <button className="primary-button primary-button--large" disabled={!canRunCurrentProject || isBusy} onClick={handleRunAndOpenDecision}>
+            <button className="primary-button primary-button--large" disabled={!canRunCurrentProject || isBusy} onClick={handleRunAndOpenMarketIntelligence}>
               <Play size={20} aria-hidden="true" />
               ابدأ التحليل
             </button>
@@ -1811,13 +1813,19 @@ export function App() {
         ) : null}
 
         {stage === "reality" ? (
-          <section className="reality-page" aria-label="اختبار واقع المشروع">
+          <section className="reality-page" aria-label="ذكاء السوق والفرص بعد الدراسة">
             <header className="page-intro">
-              <p className="eyebrow">اختبار الواقع والسوق</p>
-              <h2>افحص فرضية المشروع قبل أن تصبح قراراً</h2>
-              <p>هذه الصفحة مستقلة عن الحسابات. خريطة السوق والإشارات أدناه محاكاة محلية للتطوير، ولا تدخل Snapshot أو التقرير أو الحكم.</p>
+              <p className="eyebrow">بعد الدراسة المالية · محاكاة تطوير</p>
+              <h2>اقرأ السوق والفرص قبل اعتماد القرار</h2>
+              <p>تأتي هذه المرحلة بعد تشغيل الدراسة. المقارنات والمنافسون والتوصيات المعروضة هنا بيانات تجريبية صريحة؛ لا تدخل اللقطة ولا التقرير ولا الحكم في هذه البيئة.</p>
             </header>
-            <LiveCockpit />
+            <LiveCockpit
+              projectName={project?.name}
+              sector={project?.sector}
+              location={project?.inputs.location_scope}
+              snapshotId={snapshotOverview?.snapshot.snapshot_id}
+              onContinue={() => setStage("decision")}
+            />
           </section>
         ) : null}
 
@@ -1909,9 +1917,9 @@ export function App() {
         {stage === "execution" ? (
           <section className="execution-page" aria-label="خارطة تنفيذ المشروع">
             <header className="page-intro">
-              <p className="eyebrow">خارطة التنفيذ</p>
-              <h2>حوّل القرار إلى خطوات يمكن متابعتها</h2>
-              <p>هذه خطة عرض من الإسقاط المحفوظ. تحديث التقدم يبقى طبقة مستقلة ولا يغيّر Snapshot أو الحكم.</p>
+              <p className="eyebrow">خارطة البدء والتنفيذ · محاكاة تطوير</p>
+              <h2>حوّل القرار إلى بداية مشروع عملية</h2>
+              <p>تجمع هذه الصفحة خطة التنفيذ من اللقطة مع قائمة بدء تجريبية: الجهات والمستندات وفريق البداية. لا تمثل متطلبات تنظيمية حقيقية قبل ربط المصادر الرسمية.</p>
             </header>
             <div className="execution-page__grid">
               <article className="panel">
@@ -1928,6 +1936,14 @@ export function App() {
                 {openActionItems[0]?.status === "open" ? <button className="primary-button" disabled={isBusy} onClick={() => handleCloseActionItem(openActionItems[0].action_item_id)}>إتمام الإجراء</button> : null}
               </article>
             </div>
+            <section className="launch-readiness-demo" aria-label="استعداد بدء المشروع التجريبي">
+              <header><div><p className="eyebrow">ما الذي يحتاجه المشروع للبدء؟</p><h2>قائمة تأسيس تجريبية حسب نوع المشروع</h2></div><span className="demo-badge demo-badge--compact">محاكاة تطوير · غير تنظيمية</span></header>
+              <div className="launch-readiness-demo__grid">
+                <article><KeyRound size={20} aria-hidden="true" /><strong>الجهات والتراخيص</strong><p>سجل تجاري، عنوان، ورخصة قطاعية محتملة. القائمة الفعلية ستتغير حسب القطاع والمدينة ونوع النشاط.</p><small>لا تعتمد هذه القائمة قبل ربط الجهات الرسمية.</small></article>
+                <article><FileText size={20} aria-hidden="true" /><strong>المستندات</strong><p>هوية الملاك، عقد موقع، وصف النشاط، عروض موردين، وخطة تشغيل أولية — أمثلة تجريبية فقط.</p><small>المستندات المطلوبة فعلياً ستأتي من قواعد معتمدة.</small></article>
+                <article><Users size={20} aria-hidden="true" /><strong>فريق البداية</strong><p>هيكل الفريق سيُقترح من الطاقة التشغيلية وساعات العمل والمبيعات المتوقعة، لا من رقم موحّد لكل مشروع.</p><small>لا يوجد تقدير عمالة فعلي في هذه البيئة بعد.</small></article>
+              </div>
+            </section>
           </section>
         ) : null}
 
