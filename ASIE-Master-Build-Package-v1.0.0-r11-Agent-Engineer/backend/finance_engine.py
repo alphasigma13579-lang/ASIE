@@ -476,6 +476,9 @@ def not_ready_monte_carlo(blockers: list[dict[str, str]]) -> dict[str, Any]:
 def finance_result_set(
     inputs: dict[str, Any], *, manifest: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    if manifest is None and isinstance(inputs.get("_approved_input_manifest"), dict):
+        manifest = inputs["_approved_input_manifest"]
+        inputs = {key: value for key, value in inputs.items() if key != "_approved_input_manifest"}
     values, blockers = validate_finance_inputs(inputs, manifest=manifest)
     if manifest:
         known_codes = {blocker["code"] for blocker in blockers}
