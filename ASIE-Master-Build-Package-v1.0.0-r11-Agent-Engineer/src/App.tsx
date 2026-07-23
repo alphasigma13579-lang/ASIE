@@ -2398,3 +2398,776 @@ export function App() {
                         if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
                       }}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
                   <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
+                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
+                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
+                </div>
+                <p className="guided-hint">لا تُقرأ إحداثيات الجهاز تلقائيًا. إدخالها اختياري وتحت سيطرة المستخدم.</p>
+              </>
+            ) : null}
+            {wizardStep === 1 ? (
+              <>
+                <p className="guided-question-card__kicker">القطاع</p>
+                <h3>في أي قطاع تريد اختبار المشروع؟</h3>
+                <p>اضغط على المجال الأقرب لفكرتك، وسننتقل بك مباشرة للنوع الدقيق.</p>
+                <div className="choice-grid choice-grid--sectors" role="group" aria-label="قطاعات المشروع">
+                  {sectorTaxonomy.map((item) => (
+                    <button type="button" key={item.sector_id} className={form.inputs.primary_sector_id === item.sector_id ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
+                      setShowCustomSector(false);
+                      setForm((current) => ({ ...current, sector: item.arabic_name, inputs: { ...current.inputs, primary_sector_id: item.sector_id, subsector_id: "" } }));
+                      advanceWizardFromChoice();
+                    }}>
+                      <strong>{item.arabic_name}</strong><small>{item.subsectors.length} تصنيفات متاحة</small>
+                    </button>
+                  ))}
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSector(true); setForm((current) => ({ ...current, sector: "", inputs: { ...current.inputs, primary_sector_id: "CUSTOM", subsector_id: "" } })); }}><strong>+ قطاع آخر</strong><small>اكتب مجالك إذا لم تجده</small></button>
+                </div>
+                {showCustomSector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>اسم القطاع</span><input autoFocus value={form.sector} placeholder="مثال: الصناعات الإبداعية" onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value, inputs: { ...current.inputs, primary_sector_id: "CUSTOM" } }))} /></label>
+                    <button type="button" className="primary-button" disabled={!form.sector.trim()} onClick={advanceWizardFromChoice}>حفظ القطاع والمتابعة</button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {wizardStep === 2 ? (
+              <>
+                <p className="guided-question-card__kicker">التصنيف الدقيق</p>
+                <h3>ما نوع المشروع داخل هذا القطاع؟</h3>
+                <p>اختر النوع الذي يصف مشروعك بدقة. إذا لم تجده، أضف وصفك الخاص.</p>
+                <div className="choice-grid" role="group" aria-label="التصنيف الدقيق">
+                  {(selectedSector?.subsectors ?? [form.inputs.subsector_id]).map((item) => (
+                    <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{arabicSubsectorLabel(item)}</strong><small>اختر هذا النشاط</small></button>
+                  ))}
+                  <button type="button" className="choice-card choice-card--add" onClick={() => { setShowCustomSubsector(true); updateInputs({ subsector_id: "" }); }}><strong>+ تصنيف آخر</strong><small>أضف نوع مشروعك</small></button>
+                </div>
+                {showCustomSubsector ? (
+                  <div className="guided-input-row">
+                    <label className="field"><span>وصف التصنيف</span><input autoFocus value={form.inputs.subsector_id} placeholder="اكتب النشاط بدقة" onChange={(event) => updateInputs({ subsector_id: event.target.value })} /></label>
+                    <button type="button" className="primary-button" disabled={!form.inputs.subsector_id?.trim()} onClick={advanceWizardFromChoice}>حفظ التصنيف والمتابعة</button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {wizardStep === 3 ? (
+              <>
+                <p className="guided-question-card__kicker">اسم المشروع</p>
+                <h3>وش اسم مشروعك؟</h3>
+                <label className="field">
+                  <span>اسم بسيط وواضح</span>
+                  <input
+                    maxLength={60}
+                    value={form.name}
+                    placeholder="مثال: عيادات النخبة"
+                    aria-invalid={Boolean(form.name.trim() && governedNameError(form.name, "اسم المشروع"))}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    onBlur={() => {
+                      if (!governedNameError(form.name, "اسم المشروع")) setTimeout(() => advanceWizardFromChoice(), 0);
+                    }}
+                  />
+                  {form.name.trim() && governedNameError(form.name, "اسم المشروع") ? (
+                    <small className="field-error">{governedNameError(form.name, "اسم المشروع")}</small>
+                  ) : (
+                    <small className="field-hint">من 3 إلى 60 حرفًا، باسم واضح غير مكرر.</small>
+                  )}
+                </label>
+                <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> اقترح أسماء للمشروع</button><small>ستتصل هذه المساعدة لاحقاً بخدمة الذكاء الاصطناعي المعتمدة.</small></div>
+              </>
+            ) : null}
+            {wizardStep === 4 ? (
+              <>
+                <p className="guided-question-card__kicker">الفجوة والميزة</p>
+                <h3>ما الفجوة التي يحلها مشروعك؟ وما ميزتك؟</h3>
+                <p>لا تحتاج صياغة طويلة. اختر الأقرب، ويمكنك تعديلها أو كتابة خيارك.</p>
+                <div className="choice-section"><strong>ما الفجوة التي لاحظتها؟</strong><div className="choice-grid choice-grid--compact">{["الخدمة غير متوفرة في موقعي", "الانتظار أو الوصول صعب", "السعر مرتفع", "الجودة أو التخصص غير كافٍ"].map((item) => <button type="button" key={item} className={form.inputs.gap_statement === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => updateInputs({ gap_statement: item })}>{item}</button>)}</div></div>
+                <div className="choice-section"><strong>ما ميزتك الأقرب؟</strong><div className="choice-grid choice-grid--compact">{["موقع أفضل", "سرعة أعلى", "تخصص واضح", "سعر منافس", "تجربة أسهل"].map((item) => <button type="button" key={item} className={form.inputs.competitive_edge === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
+                          updateInputs({ competitive_edge: item, activity_description: item });
+                          if (form.inputs.gap_statement) setTimeout(() => advanceWizardFromChoice(), 0);
+                        }}>{item}</button>)}</div></div>
+                <div className="guided-actions"><button type="button" className="secondary-action" disabled><Sparkles size={17} aria-hidden="true" /> ساعدني على فهم الفجوة والميزة</button><small>ستظهر اقتراحات ذكية بعد تفعيل بوابة المساعدة.</small></div>
+              </>
+            ) : null}
+            {wizardStep === 5 ? (
+              <>
+                <p className="guided-question-card__kicker">الجمهور</p>
+                <h3>من هو جمهور المشروع؟</h3>
+                <div className="choice-grid" role="group" aria-label="جمهور المشروع">
+                  {[
+                    ["individuals", "أفراد", "مستهلكون أو مرضى أو زوار"],
+                    ["organizations", "مؤسسات", "جهات ومدارس ومنشآت"],
+                    ["companies", "شركات", "عملاء تجاريون وتعاقدات"],
+                    ["mixed", "مزيج", "أكثر من شريحة"],
+                  ].map(([value, label, detail]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      className={form.inputs.target_audience === value ? "choice-card choice-card--active" : "choice-card"}
+                      onClick={() => { updateInputs({ target_audience: value }); advanceWizardFromChoice(); }}
+                    >
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+            {wizardStep === 6 ? (
+              <>
+                <p className="guided-question-card__kicker">رأس المال</p>
+                <h3>كم رأس المال المتاح عندك تقريباً؟</h3>
+                <div className="choice-grid choice-grid--capital">{[[100000,"100 ألف"],[200000,"200 ألف"],[500000,"500 ألف"],[1000000,"مليون"]].map(([value,label]) => <button type="button" key={value} className={form.inputs.capital_available === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ capital_available: Number(value), equity_contribution: Number(value), startup_cost: Number(value) }); advanceWizardFromChoice(); }}><strong>{label} ريال</strong><small>اختيار سريع</small></button>)}<button type="button" className="choice-card choice-card--add" onClick={() => setError("اكتب المبلغ الحقيقي في الحقل أسفل الخيارات.")}><strong>مبلغ آخر</strong><small>أدخل الرقم بنفسك</small></button></div>
+                <NumberField label="المبلغ الحقيقي المتاح" value={form.inputs.capital_available} onChange={(value) => updateInputs({ capital_available: value, equity_contribution: value, startup_cost: value })} />
+              </>
+            ) : null}
+            {wizardStep === 7 ? (
+              <>
+                <p className="guided-question-card__kicker">طريقة تعبئة التفاصيل</p>
+                <h3>كيف تريد تزويد المنصة بتفاصيل المشروع؟</h3>
+                <div className="choice-grid choice-grid--three" role="group" aria-label="طريقة تعبئة تفاصيل المشروع">
+                  {[
+                    ["manual", "أعبي بنفسي", "أدخل الأرقام الأساسية الآن."],
+                    ["file", "أرفع ملف", "Excel أو CSV يحتوي الأرقام."],
+                    ["assisted_estimate", "مساعدة تقديرية لاحقاً", "غير مفعّلة في النسخة المحلية حتى بوابة AI."],
+                  ].map(([value, label, detail]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      className={form.inputs.intake_mode === value ? "choice-card choice-card--active" : "choice-card"}
+                      onClick={() => updateInputs({ intake_mode: value })}
+                      disabled={value === "assisted_estimate"}
+                    >
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </button>
+                  ))}
+                </div>
+                {form.inputs.intake_mode === "file" ? (
+                  <label className="field file-field">
+                    <span>ارفع ملف الأرقام</span>
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        void handleFileImport(event.target.files?.[0] ?? null);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                ) : null}
+                {form.inputs.intake_mode === "manual" ? (
+                  <>
+                  <div className="guided-finance-lite">
+                    <NumberField label="تكلفة التأسيس التقريبية" value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
+                    <label className="field">
+                      <span>المصاريف الشهرية <small>(تحسب تلقائيًا)</small></span>
+                      <output className="derived-number-field">{monthlyFixedCostFromInputs(form.inputs).toLocaleString("ar-SA")}</output>
+                    </label>
+                    <NumberField label="سعر البيع أو الخدمة" value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
+                    <NumberField label="تكلفة تقديم الخدمة" value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
+                    <NumberField label="عدد العملاء أو الطلبات شهرياً" value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
+                  </div>
+                  <details className="manual-advanced-fields" open>
+                    <summary>إضافة تفاصيل تشغيلية أدق <small>(اختياري)</small></summary>
+                    <p className="muted">لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها.</p>
+                    <strong>تفصيل المصاريف الشهرية</strong>
+                    <div className="other-monthly-costs">
+                      <div className="other-monthly-costs__heading">
+                        <strong>بنود شهرية أخرى</strong>
+                        <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: [...(current.inputs.other_monthly_costs ?? []), { name: "", amount: 0 }] } }))}>+ إضافة بند</button>
+                      </div>
+                      <p className="muted">مثل: التأمين، الاشتراكات، النظافة، النقل، الاتصالات أو أي مصروف آخر.</p>
+                      {(form.inputs.other_monthly_costs ?? []).map((item, index) => (
+                        <div className="other-monthly-cost-row" key={index}>
+                          <input maxLength={60} placeholder="اسم المصروف" value={item.name} onChange={(event) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], name: event.target.value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <NumberField label="المبلغ الشهري" value={item.amount} onChange={(value) => setForm((current) => {
+                            const rows = [...(current.inputs.other_monthly_costs ?? [])];
+                            rows[index] = { ...rows[index], amount: value };
+                            return { ...current, inputs: { ...current.inputs, other_monthly_costs: rows } };
+                          })} />
+                          <button type="button" className="secondary-action" onClick={() => setForm((current) => ({ ...current, inputs: { ...current.inputs, other_monthly_costs: (current.inputs.other_monthly_costs ?? []).filter((_, rowIndex) => rowIndex !== index) } }))}>حذف</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="guided-finance-lite">
+                      <NumberField label="الرواتب الشهرية" value={form.inputs.payroll_monthly} onChange={(value) => updateInputs({ payroll_monthly: value })} />
+                      <NumberField label="الإيجار الشهري" value={form.inputs.rent_monthly} onChange={(value) => updateInputs({ rent_monthly: value })} />
+                      <NumberField label="المرافق الشهرية" value={form.inputs.utilities_monthly} onChange={(value) => updateInputs({ utilities_monthly: value })} />
+                      <NumberField label="التسويق الشهري" value={form.inputs.marketing_monthly} onChange={(value) => updateInputs({ marketing_monthly: value })} />
+                      <NumberField label="الصيانة الشهرية" value={form.inputs.maintenance_monthly} onChange={(value) => updateInputs({ maintenance_monthly: value })} />
+                    </div>
+                    <strong>تفصيل التأسيس والأصول</strong>
+                    <div className="guided-finance-lite">
+                      <NumberField label="المعدات" value={form.inputs.capex_equipment} onChange={(value) => updateInputs({ capex_equipment: value })} />
+                      <NumberField label="التجهيز والديكور" value={form.inputs.capex_fitout} onChange={(value) => updateInputs({ capex_fitout: value })} />
+                      <NumberField label="التراخيص المحلية" value={form.inputs.capex_licenses_local} onChange={(value) => updateInputs({ capex_licenses_local: value })} />
+                      <NumberField label="سنوات الإهلاك" value={form.inputs.depreciation_years} onChange={(value) => updateInputs({ depreciation_years: value })} />
+                      <NumberField label="المساهمة الذاتية" value={form.inputs.equity_contribution} onChange={(value) => updateInputs({ equity_contribution: value })} />
+                    </div>
+                  </details>
+                  <div className="choice-section financing-inputs" id="financing-inputs">
+                    <strong>افتراضات التمويل</strong>
+                    <p className="muted">إذا لن تستخدم قرضًا، اترك مبلغ القرض صفرًا. معدل الخصم مطلوب لتقييم القيمة الحالية.</p>
+                    <div className="guided-finance-lite">
+                      <NumberField label="معدل الخصم السنوي (%)" value={Math.round(form.inputs.annual_discount_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_discount_rate: value / 100 })} />
+                      <NumberField label="أشهر رأس المال العامل" value={form.inputs.working_capital_months} onChange={(value) => updateInputs({ working_capital_months: value })} />
+                      <NumberField label="مبلغ القرض — صفر إذا لا يوجد" value={form.inputs.debt_amount} onChange={(value) => updateInputs({ debt_amount: value })} />
+                      {form.inputs.debt_amount > 0 ? (
+                        <>
+                          <NumberField label="معدل تكلفة التمويل السنوي (%)" value={Math.round(form.inputs.annual_interest_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_interest_rate: value / 100 })} />
+                          <NumberField label="مدة القرض بالسنوات" value={form.inputs.loan_years} onChange={(value) => updateInputs({ loan_years: value })} />
+                          <NumberField label="فترة السماح بالأشهر" value={form.inputs.loan_grace_months} onChange={(value) => updateInputs({ loan_grace_months: value })} />
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  </>
+                ) : null}
+                {project ? (
+                  <div className="choice-section assumption-review-panel" id="assumption-human-review">
+                    <div className="assumption-review-panel__heading">
+                      <div>
+                        <strong>المراجعة البشرية للافتراضات</strong>
+                        <p className="muted">راجع الملخصات، وافتح التفاصيل عند الحاجة، ثم اعتمد كل مجموعة.</p>
+                      </div>
+                      <span className="review-progress">
+                        {assumptions.filter((item) => item.review_status === "approved").length} من {assumptions.length} مكتملة
+                      </span>
+                    </div>
+                    <div className="review-group-list">
+                      {assumptionReviewGroups.map((group) => {
+                        const groupItems = assumptions.filter((item) => group.keys.includes(item.input_key));
+                        if (!groupItems.length) return null;
+                        const pendingCount = groupItems.filter((item) => item.review_status !== "approved").length;
+                        return (
+                          <article className={pendingCount ? "review-group" : "review-group review-group--complete"} key={group.id}>
+                            <div className="review-group__summary">
+                              <div>
+                                <strong>{group.label}</strong>
+                                <small>{groupItems.length} بنود · {pendingCount ? `${pendingCount} بانتظار المراجعة` : "تمت مراجعتها"}</small>
+                              </div>
+                              {pendingCount ? (
+                                <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumptions(groupItems)}>
+                                  اعتماد المجموعة
+                                </button>
+                              ) : (
+                                <span className="review-complete"><CheckCircle2 size={16} aria-hidden="true" /> مكتملة</span>
+                              )}
+                            </div>
+                            <details>
+                              <summary>عرض القيم ومراجعتها</summary>
+                              <div className="review-group__items">
+                                {groupItems.map((item) => (
+                                  <div key={item.assumption_id}>
+                                    <strong>{assumptionArabicLabel(item)}</strong>
+                                    <span>{item.value || "غير محدد"} {item.unit === "unit" ? "" : item.unit}</span>
+                                    <small>{item.review_status === "approved" ? "معتمد" : "بانتظار المراجعة"}</small>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {assumptions.length ? (
+                      <button type="button" className="secondary-action review-all-button" disabled={isBusy || assumptions.every((item) => item.review_status === "approved")} onClick={() => handleApproveAssumptions(assumptions)}>
+                        راجعت جميع المجموعات وأعتمدها
+                      </button>
+                    ) : <p className="muted">احفظ بيانات المشروع مرة أخرى لإنشاء قائمة الافتراضات المطلوب مراجعتها.</p>}
+                  </div>
+                ) : (
+                  <p className="guided-hint">احفظ بيانات المشروع أولًا، ثم ستظهر هنا مراجعة مختصرة ومجمعة.</p>
+                )}
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        <div className={`legacy-projections legacy-projections--${stage}`}>
+        {overview ? (
+          <>
+            {workspace ? (
+              <section className="builder-grid">
+                <div className="panel">
+                  <div className="section-title">
+                    <RefreshCw size={20} aria-hidden="true" />
+                    <h2>سجل التشغيلات</h2>
+                  </div>
+                  <div className="run-list">
+                    {workspace.runs.slice(0, 5).map((run) => (
+                      <article key={run.run_id}>
+                        <strong>{run.sovereign_verdict ?? "UNKNOWN"}</strong>
+                        <span>{run.snapshot_id}</span>
+                        <small>{run.acceptance_status} · {run.created_at}</small>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="section-title">
+                    <Calculator size={20} aria-hidden="true" />
+                    <h2>مقارنة آخر لقطتين</h2>
+                  </div>
+                  {comparison ? (
+                    <div className="comparison-list">
+                      {comparison.metric_deltas.map((item) => (
+                        <article key={item.output_id}>
+                          <strong>{metricTitle(item.output_id)}</strong>
+                          <span>
+                            {item.from ?? "NA"} → {item.to ?? "NA"}
+                          </span>
+                          <small>Delta {item.delta ?? "NA"} {item.unit}</small>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">تحتاج تشغيلين محفوظين للمقارنة.</p>
+                  )}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="decision-band" aria-label="ملخص القرار">
+              <div className="decision-card decision-card--primary">
+                <ShieldCheck size={24} aria-hidden="true" />
+                <span>الحكم السيادي</span>
+                <strong>{statusText(overview.decision.sovereign_verdict)}</strong>
+                <p>{overview.decision.reason}</p>
+              </div>
+              <div className="decision-card">
+                <Calculator size={24} aria-hidden="true" />
+                <span>{overview.monte_carlo.label_ar}</span>
+                <strong>{mcOutput ? formatValue(mcOutput) : "NOT_READY"}</strong>
+                <p>Seed {overview.monte_carlo.seed} · {overview.monte_carlo.iterations} تشغيل</p>
+              </div>
+              <div className="decision-card">
+                <Database size={24} aria-hidden="true" />
+                <span>لقطة التشغيل</span>
+                <strong>{statusText(overview.project.data_badge ?? "")}</strong>
+                <p>{overview.snapshot.snapshot_id}</p>
+              </div>
+            </section>
+
+            <section className="persona-strip" aria-label="مؤشرات الشخصيات الخمس">
+              {overview.personas.map((persona) => (
+                <article key={persona.persona_id}>
+                  <span>{persona.metric}</span>
+                  <strong>{persona.value === null ? "NOT_READY" : `${Math.round(persona.value * 100)}%`}</strong>
+                  <small>{statusText(persona.status)}</small>
+                </article>
+              ))}
+            </section>
+
+            <section className="builder-grid">
+              <div className="panel">
+                <div className="section-title">
+                  <Calculator size={20} aria-hidden="true" />
+                  <h2>سيناريوهات المحرك المالي</h2>
+                </div>
+                <div className="scenario-grid">
+                  {overview.finance.scenarios.map((scenario) => (
+                    <article key={scenario.scenario_id}>
+                      <span>{scenario.scenario_id}</span>
+                      <strong>
+                        {new Intl.NumberFormat("ar-SA", {
+                          style: "currency",
+                          currency: "SAR",
+                          maximumFractionDigits: 0,
+                        }).format(scenario.npv)}
+                      </strong>
+                      <small>NPV · Payback {scenario.payback_months?.toFixed(1) ?? "NOT_READY"} شهر</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <Calculator size={20} aria-hidden="true" />
+                  <h2>نموذج التشغيل والتمويل</h2>
+                </div>
+                {overview.finance.operating_model && overview.finance.capex_breakdown && overview.finance.opex_breakdown ? (
+                  <dl className="audit-list">
+                    <div>
+                      <dt>مصدر الوحدات</dt>
+                      <dd>{overview.finance.operating_model.unit_source}</dd>
+                    </div>
+                    <div>
+                      <dt>الوحدات الشهرية</dt>
+                      <dd>{overview.finance.operating_model.monthly_units}</dd>
+                    </div>
+                    <div>
+                      <dt>OPEX شهري</dt>
+                      <dd>{overview.finance.opex_breakdown.total_monthly_opex}</dd>
+                    </div>
+                    <div>
+                      <dt>CAPEX إجمالي</dt>
+                      <dd>{overview.finance.capex_breakdown.total_capex}</dd>
+                    </div>
+                    <div>
+                      <dt>DSCR</dt>
+                      <dd>{overview.finance.debt_service_profile?.dscr ?? "NOT_READY"}</dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p className="muted">نموذج التشغيل غير جاهز.</p>
+                )}
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <Layers3 size={20} aria-hidden="true" />
+                  <h2>القطاع ومؤشرات الاستثمار</h2>
+                </div>
+                <dl className="audit-list">
+                  <div>
+                    <dt>القطاع</dt>
+                    <dd>
+                      {overview.sector_intelligence.taxonomy_record.primary_sector_ar ||
+                        overview.sector_intelligence.taxonomy_record.primary_sector ||
+                        "غير مصنف"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>التصنيف الفرعي</dt>
+                    <dd>{overview.sector_intelligence.taxonomy_record.subsector_id ? arabicSubsectorLabel(overview.sector_intelligence.taxonomy_record.subsector_id) : "غير محدد"}</dd>
+                  </div>
+                  <div>
+                    <dt>فجوات الأدلة</dt>
+                    <dd>{overview.sector_intelligence.sector_evidence_map.evidence_gaps.length}</dd>
+                  </div>
+                </dl>
+                <div className="source-list">
+                  {overview.sector_intelligence.sector_criteria.criteria.slice(0, 4).map((criterion) => (
+                    <article key={criterion.criterion_id}>
+                      <strong>{criterion.label}</strong>
+                      <span>{criterion.sector_value}</span>
+                      <small>{criterion.evidence_status}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <ShieldCheck size={20} aria-hidden="true" />
+                  <h2>التدقيق والعزل</h2>
+                </div>
+                <dl className="audit-list">
+                  <div>
+                    <dt>المسار</dt>
+                    <dd>{overview.audit.owner_path}</dd>
+                  </div>
+                  <div>
+                    <dt>الشخصيات</dt>
+                    <dd>{overview.decision_council.isolation_order.length}</dd>
+                  </div>
+                  <div>
+                    <dt>الجلب الخارجي</dt>
+                    <dd>{overview.audit.source_fetch_enabled ? "مفتوح" : "مغلق"}</dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
+
+            <section className="builder-grid">
+              <div className="panel">
+                <div className="section-title">
+                  <FileText size={20} aria-hidden="true" />
+                  <h2>دفتر الافتراضات</h2>
+                </div>
+                <div className="assumption-list">
+                  {(overview.assumption_book.length ? overview.assumption_book : assumptions).slice(0, 8).map((item) => (
+                    <article key={item.assumption_id}>
+                      <strong>{item.label}</strong>
+                      <span>{item.value} {item.unit}</span>
+                      <small>{item.source_type} · {statusText(item.review_status)}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <Database size={20} aria-hidden="true" />
+                  <h2>سجل الأدلة والمصادر</h2>
+                </div>
+                <div className="source-list">
+                  {overview.evidence_register.datasets.slice(0, 3).map((dataset) => {
+                    const gate = overview.evidence_register.quality_gates.find((item) => item.dataset_id === dataset.dataset_id);
+                    return (
+                      <article key={dataset.dataset_id}>
+                        <strong>{dataset.title}</strong>
+                        <span>{gate?.status ?? dataset.review_status}</span>
+                        <small>{dataset.row_count} صف · {dataset.import_method}</small>
+                      </article>
+                    );
+                  })}
+                  {overview.evidence_register.source_records.slice(0, 5).map((source) => (
+                    <article key={source.source_id}>
+                      <strong>{source.publisher}</strong>
+                      <span>{statusText(source.state)}</span>
+                    </article>
+                  ))}
+                </div>
+                <p className="muted">
+                  روابط الأدلة {overview.evidence_register.evidence_links.length} · أسباب NOT_READY{" "}
+                  {overview.evidence_register.not_ready_reasons.length}
+                </p>
+                <div className="source-list">
+                  {overview.evidence_ledger.slice(0, 3).map((ledger) => (
+                    <article key={ledger.ledger_id}>
+                      <strong>{ledger.target_id}</strong>
+                      <span>
+                        ثقة {ledger.evidence_confidence_score} · {ledger.evidence_confidence_status}
+                      </span>
+                      <small>
+                        بيانات {ledger.data_quality_status} · تحويل {ledger.transformation_quality_status}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+                <p className="muted">الجلب الخارجي {overview.evidence_register.external_fetch_enabled ? "مفتوح" : "مغلق"}</p>
+              </div>
+            </section>
+
+            <section className="builder-grid">
+              <div className="panel">
+                <div className="section-title">
+                  <ShieldCheck size={20} aria-hidden="true" />
+                  <h2>بوابات الجاهزية</h2>
+                </div>
+                <div className="source-list">
+                  {overview.readiness_gates.gates.map((gate) => (
+                    <article key={gate.gate_id}>
+                      <strong>{gate.label}</strong>
+                      <span>{statusText(gate.status)}</span>
+                      <small>{gate.reasons.length ? gate.reasons.join(" · ") : "passed"}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <Layers3 size={20} aria-hidden="true" />
+                  <h2>خطة التنفيذ</h2>
+                </div>
+                <dl className="source-summary">
+                  <div>
+                    <dt>الحالة</dt>
+                    <dd>{statusText(overview.execution_plan.status)}</dd>
+                  </div>
+                  <div>
+                    <dt>الأيام</dt>
+                    <dd>{overview.execution_plan.estimated_total_duration_days}</dd>
+                  </div>
+                  <div>
+                    <dt>محجوبة</dt>
+                    <dd>{overview.execution_plan.blocked_by_gates.length}</dd>
+                  </div>
+                </dl>
+                <div className="source-list">
+                  {overview.execution_plan.milestones.slice(0, 5).map((milestone) => (
+                    <article key={milestone.phase_id}>
+                      <strong>{milestone.phase_id}</strong>
+                      <span>{milestone.owner_role} · {milestone.estimated_duration_days} يوم</span>
+                      <small>{milestone.dependencies.length ? milestone.dependencies.join(" · ") : "start"}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <AlertTriangle size={20} aria-hidden="true" />
+                  <h2>سجل المخاطر</h2>
+                </div>
+                <div className="source-list">
+                  {overview.risk_register.top_risks.map((risk) => (
+                    <article key={risk.risk_id}>
+                      <strong>{risk.risk_id}</strong>
+                      <span>{risk.severity} · {risk.owner_role}</span>
+                      <small>{risk.mitigation}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="section-title">
+                <ShieldCheck size={20} aria-hidden="true" />
+                <h2>حزمة القبول r10/r11</h2>
+              </div>
+              <div className="acceptance-summary">
+                <article>
+                  <span>الحالة</span>
+                  <strong>{overview.acceptance.status === "passed" ? "مقبولة" : "فشلت"}</strong>
+                </article>
+                <article>
+                  <span>ناجحة</span>
+                  <strong>{overview.acceptance.passed}</strong>
+                </article>
+                <article>
+                  <span>فاشلة</span>
+                  <strong>{overview.acceptance.failed}</strong>
+                </article>
+              </div>
+              <div className="acceptance-list">
+                {overview.acceptance.tests.slice(0, 6).map((test) => (
+                  <article key={test.test_id}>
+                    <strong>{test.test_id}</strong>
+                    <span>{test.status}</span>
+                    <small>{test.evidence}</small>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            {workspace?.remediation ? (
+              <section className="panel">
+                <div className="section-title">
+                  <AlertTriangle size={20} aria-hidden="true" />
+                  <h2>حلقة معالجة العوائق</h2>
+                </div>
+                <div className="remediation-list">
+                  {workspace.remediation.items.length ? (
+                    workspace.remediation.items.map((item) => (
+                      <article key={item.remediation_id}>
+                        <strong>{item.trigger_code}</strong>
+                        <span>{item.message}</span>
+                        <small>{item.target}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <article>
+                      <strong>لا توجد مهام مفتوحة</strong>
+                      <span>آخر snapshot لا يحتوي عوائق معالجة حرجة.</span>
+                    </article>
+                  )}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="panel">
+              <div className="section-title">
+                <ShieldCheck size={20} aria-hidden="true" />
+                <h2>حزمة القرار والمراجعة</h2>
+              </div>
+              {decisionPack ? (
+                <div className="decision-stack">
+                  <div className="report-box">
+                    <strong>{decisionPack.memo.recommendation}</strong>
+                    <p>{decisionPack.memo.rationale}</p>
+                    <small>
+                      Snapshot {decisionPack.snapshot_id} · Review {decisionPack.memo.review_status}
+                    </small>
+                    <a href={`/api/snapshots/${decisionPack.snapshot_id}/decision-pack.html`} target="_blank" rel="noreferrer">
+                      فتح حزمة القرار HTML
+                    </a>
+                  </div>
+                  <div className="button-row">
+                    <button disabled={isBusy} onClick={() => handleReviewDecision("approved_local")}>
+                      اعتماد محلي
+                    </button>
+                    <button disabled={isBusy} onClick={() => handleReviewDecision("needs_changes")}>
+                      طلب تعديل
+                    </button>
+                    <button disabled={isBusy} onClick={() => handleReviewDecision("rejected_local")}>
+                      رفض محلي
+                    </button>
+                  </div>
+                  <div className="remediation-list">
+                    {actionItems.length ? (
+                      actionItems.slice(0, 6).map((item) => (
+                        <article key={item.action_item_id}>
+                          <strong>{item.title}</strong>
+                          <span>{item.message || item.recommended_action}</span>
+                          <small>
+                            {item.source_type} · {item.severity} · {item.status}
+                          </small>
+                          {item.status === "open" ? (
+                            <button disabled={isBusy} onClick={() => handleCloseActionItem(item.action_item_id)}>
+                              إغلاق محلي
+                            </button>
+                          ) : null}
+                        </article>
+                      ))
+                    ) : (
+                      <article>
+                        <strong>لا توجد بنود مفتوحة</strong>
+                        <span>آخر حزمة قرار لا تحتوي بنود معالجة مفتوحة.</span>
+                      </article>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="report-box">
+                  <p>افتح الحزمة لعرض مذكرة القرار، حالة المراجعة، والبنود المفتوحة من نفس snapshot.</p>
+                  <button disabled={isBusy} onClick={handleOpenDecisionPack}>
+                    فتح حزمة القرار
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className="content-grid">
+              <div className="panel panel--wide">
+                <div className="section-title">
+                  <Calculator size={20} aria-hidden="true" />
+                  <h2>مؤشرات محسوبة من الخلفية</h2>
+                </div>
+                <div className="metric-grid">
+                  {overview.kpis.map((output) => (
+                    <MetricCard output={output} key={output.output_id} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <AlertTriangle size={20} aria-hidden="true" />
+                  <h2>العوائق الظاهرة</h2>
+                </div>
+                <div className="blocker-list">
+                  {overview.blockers.map((blocker) => (
+                    <article key={blocker.code}>
+                      <strong>{blocker.code}</strong>
+                      <p>{blocker.message}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="section-title">
+                  <FileText size={20} aria-hidden="true" />
+                  <h2>تقرير اللقطة</h2>
+                </div>
+                {report ? (
+                  <div className="report-box">
+                    <strong>{reportView?.title ?? report.title}</strong>
+                    <p>{reportView?.executive_summary.reason ?? report.sections[0]?.body}</p>
+                    <small>Snapshot {report.snapshot_id}</small>
+                    <a href={`/api/snapshots/${report.snapshot_id}/report.html`} target="_blank" rel="noreferrer">
+                      فتح تقرير HTML المحلي
+                    </a>
+                  </div>
+                ) : (
+                  <p className="muted">شغّل التقرير لقراءة نفس لقطة التشغيل بدون إعادة حساب.</p>
+                )}
+              </div>
+            </section>
+          </>
+        ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
