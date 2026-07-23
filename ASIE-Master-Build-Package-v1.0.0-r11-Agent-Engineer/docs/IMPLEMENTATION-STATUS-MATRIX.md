@@ -19,6 +19,8 @@ being mistaken for executable behavior.
 | Approved Input Manifest | Planned | `ACR-DIB-001` | Finance must receive manifest-derived inputs only |
 | Per-item Market Intelligence research | Planned / simulated first | `ACR-DIB-001` and market socket contracts | Return results to the same blueprint item |
 | Snapshot rerun comparison | Partially implemented | `backend/workspace.py`, snapshot routes | Extend with DIB revision lineage |
+| Tenant isolation negative matrix | Implemented | `tests/test_tenant_isolation_matrix.py` | Every sensitive route fails closed cross-tenant; run in CI |
+| Server-side PDF renderer | Implemented (image-pinned) | `Dockerfile.backend`, `ASIE_PDF_RENDERER`, `tests/test_pdf_renderer_configuration.py` | Export never uses a client browser |
 | Real AI providers | Disabled | runtime policy and local development profile | Requires separate ACR |
 | External network research | Disabled | local API/intelligence controls | Requires separate ACR |
 | Historical workspace bundles | Reference only | `docs/reference/r11-workspace-materials/` | Do not execute or treat as current policy |

@@ -1,0 +1,8 @@
+# ASIE backend requirements — Python 3.13+ is mandatory.
+# (The runtime uses PEP 702 warnings.deprecated, available from Python 3.13.)
+#
+# Core backend is standard-library only by design: no web framework and no
+# supply-chain exposure. Packages below are optional capability runtimes.
+#
+# Document export runtime (funder-report DOCX export). PDF/PPTX need none:
+python-docx>=1.1.2,<2.0

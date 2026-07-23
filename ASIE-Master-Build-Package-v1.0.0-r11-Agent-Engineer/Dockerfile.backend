@@ -6,9 +6,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ASIE_API_HOST=0.0.0.0 \
     ASIE_API_PORT=8794 \
     ASIE_ALLOW_EXTERNAL_FETCH=false \
-    ASIE_DB_PATH=/var/lib/asie/asie_local.sqlite3
+    ASIE_DB_PATH=/var/lib/asie/asie_local.sqlite3 \
+    ASIE_PDF_RENDERER=/usr/bin/chromium
 
 WORKDIR /app
+# Server-side PDF renderer (W0.4): the report pipeline never uses a client
+# browser. Chromium is installed from the pinned base image's distribution and
+# the resolved version is recorded in the build log. fonts-noto-core keeps
+# Arabic glyphs embedded in exported PDFs.
+COPY requirements.txt /app/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /app/requirements.txt \
+    && chromium --version
 COPY backend /app/backend
 COPY docs /app/docs
 RUN useradd --create-home --uid 10001 asie \

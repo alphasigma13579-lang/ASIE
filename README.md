@@ -24,8 +24,11 @@ The AAS Runtime Freeze v1.0 remains mandatory:
 
 ## Local development
 
+Prerequisites: **Python 3.13+** (the runtime uses PEP 702 `warnings.deprecated`) and Node.js 22+ with pnpm.
+
 ```bash
 cd ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+pip install -r requirements.txt
 corepack enable
 pnpm install --frozen-lockfile
 pnpm build
