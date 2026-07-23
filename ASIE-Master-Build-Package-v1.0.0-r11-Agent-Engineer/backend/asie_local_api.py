@@ -349,7 +349,10 @@ def finance_via_module_runtime(
                 "project_id": project.project_id,
                 "run_id": run_id,
                 "snapshot_id": snapshot_id,
-                "approved_input_manifest": approved_input_manifest,
+                # The frozen finance.calculate.v1 contract requires `inputs`.
+                # These are normalized manifest values, never raw UI inputs.
+                "inputs": approved_input_manifest["normalized_inputs"]
+                | {"_approved_input_manifest": approved_input_manifest},
                 "assumption_refs": assumption_refs or [],
             },
     )
