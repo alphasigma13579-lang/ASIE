@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import sys
 import json
-import mimetypes
-import os
-import re
+import sys
 import threading
-import uuid
+import time
 from collections import defaultdict, deque
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
 from warnings import deprecated
 
@@ -22,373 +17,1063 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.acceptance import build_acceptance_pack
 from backend.aas_kernel import AASKernel
-from backend.aas_registry import (
-    APP_ID,
-    AAS_CLI_RELEASE,
-    AAS_RELEASE,
-    AAS_SPEC_VERSION,
-    HEART_COUNT,
-    MANIFEST_PATH,
-    boot_report as aas_boot_report,
-    manifest_text as aas_manifest_text,
-    module_registry,
-)
+from backend.architecture_status import build_architecture_runtime_status
 from backend.bus_controller import BusController
-from backend.decision_council import build_decision_result
-from backend.deployment_profile import build_operations_health, build_release_info
-from backend.decision_council import build_decision_result
-from backend.evidence_ledger import (
-    build_coverage as build_evidence_coverage,
-    build_ledger as build_evidence_ledger_entries,
-    build_register as build_evidence_register_entries,
-    build_transformation_lineage,
-)
-from backend.execution_engine import build_execution_plan
-from backend.finance_engine import FinanceInputs, calculate_finance
-from backend.funder_report import render_funder_report_html
-from backend.funding_readiness import (
-    evaluate_funding_readiness,
-    profile_catalog,
-    profile_readiness_summary,
-    sector_profile_catalog,
-)
-from backend.heart_controller import HeartController, HeartTask
-from backend.identity import Principal
+from backend.contracts import HOST, PORT, PROFILE_ID, SCENARIO_ID, envelope, json_dumps, new_id, now_iso
 from backend.intelligence_prerun_service import IntelligencePreRunService
-from backend.local_intelligence_modules import (
-    evidence_register_from_ledger,
-    local_decision_council,
-    local_evidence_ledger,
-    local_execution_engine,
-    local_finance_engine,
-    local_risk_engine,
-    local_sector_intelligence,
-    local_snapshot_assembly,
+from backend.datasets import dataset_quality_gate, normalize_file_import_payload
+from backend.decision_pack import apply_review_overlay, build_action_items_from_overview, render_decision_pack_html
+from backend.evidence_ledger import build_evidence_coverage
+from backend.funding_readiness import profile_catalog, sector_profile_catalog
+from backend.heart_controller import HeartController, HeartTask
+from backend.module_runtime import ModuleRuntime, RunScopedModuleRuntime
+from backend.operations import local_operational_health
+from backend.project_run_workflow import (
+    PROJECT_RUN_PIPELINE_CONTRACT_SEQUENCE_V1,
+    ProjectRunEnvelope,
+    ProjectRunIdempotencyStore,
+    ProjectRunWorkflow,
+    normalize_project_run_http_request,
 )
-from backend.market_cost_intelligence import build_component_quote_request, build_pricing_components
-from backend.module_runtime import ModuleRuntime, RuntimeModule, module_sealed_output_payload
-from backend.project_run_workflow import ProjectRunWorkflow, RequestError
-from backend.readiness_gates import evaluate_readiness_gates
+from backend.readiness_gates import build_readiness_gates
+from backend.identity import Principal
+from backend.repository import LEGACY_ORGANIZATION_ID, ProjectRecord, Repository
+from backend.reports import build_report_view, remediation, render_report_html, render_funder_report_html
 from backend.report_release import build_release_record
-from backend.repository import ProjectRecord, Repository
-from backend.risk_engine import build_risk_register
-from backend.runtime_freeze import (
-    RUNTIME_FREEZE_SCOPE,
-    runtime_freeze_manifest,
-    runtime_freeze_violations,
-)
-from backend.sector_intelligence import build_sector_context, build_sector_criteria, sector_taxonomy
-from backend.snapshot_assembly import assemble_snapshot
-from backend.socket_contracts import SocketContract
-from backend.system_bus import SystemBus
-from backend.workspace import (
-    build_action_items_from_overview,
-    build_project_remediation,
-    build_project_workspace,
-    compare_snapshots,
-    project_readiness,
-)
+from backend.release_info import release_info
+from backend.runtime_freeze import BUILD_OVERVIEW_REMOVAL_TARGET
+from backend.sector_intelligence import sector_taxonomy
+from backend.source_registry import source_policy, source_review_checklist
+from backend.system_bus import BusMessage, SystemBus
+from backend.snapshot_assembly import canonical_hash, seal_projection_support
+from backend.transformations import build_transformation_lineage
+from backend.workflow import project_readiness
+from backend.workspace import build_project_remediation, build_project_workspace, compare_snapshots
 
-HOST = os.environ.get("ASIE_HOST", "127.0.0.1")
-PORT = int(os.environ.get("ASIE_PORT", "8794"))
-ROOT = Path(__file__).resolve().parent.parent
-STATIC_ROOT = ROOT / "dist"
-LEGACY_ORGANIZATION_ID = "org_alpha_signature"
-PROFILE_ID = "strict_open_data_only_v1"
-LOCAL_FRONTEND_ORIGINS = {
-    "http://localhost:5194",
-    "http://127.0.0.1:5194",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-}
-MAX_BODY_BYTES = 2 * 1024 * 1024
-WINDOW_SECONDS = 60
-RATE_LIMIT = 300
+REPO = Repository()
+RUN_IDEMPOTENCY_STORE = ProjectRunIdempotencyStore()
+MAX_JSON_BODY_BYTES = 1_048_576
+LOCAL_FRONTEND_ORIGINS = {"http://127.0.0.1:5194", "http://localhost:5194"}
 
 
-class RateLimiter:
-    def __init__(self, limit: int, window_seconds: int) -> None:
-        self.limit = limit
+class RequestError(ValueError):
+    def __init__(self, code: str, status: int = 400) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
+class LocalRateLimiter:
+    """Process-local guard for the loopback API; it retains no request content."""
+
+    def __init__(self, *, maximum: int = 120, window_seconds: int = 60) -> None:
+        self.maximum = maximum
         self.window_seconds = window_seconds
-        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._events: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def allow(self, key: str) -> bool:
-        now = datetime.now(timezone.utc).timestamp()
+        now = time.monotonic()
         with self._lock:
-            hits = self._hits[key]
-            while hits and now - hits[0] > self.window_seconds:
-                hits.popleft()
-            if len(hits) >= self.limit:
+            events = self._events[key]
+            while events and events[0] <= now - self.window_seconds:
+                events.popleft()
+            if len(events) >= self.maximum:
                 return False
-            hits.append(now)
+            events.append(now)
             return True
 
 
-REQUEST_RATE_LIMITER = RateLimiter(RATE_LIMIT, WINDOW_SECONDS)
-RUN_IDEMPOTENCY_STORE = None
+REQUEST_RATE_LIMITER = LocalRateLimiter()
+@dataclass(frozen=True)
+class LocalAASRuntimeContext:
+    kernel: AASKernel
+    heart_controller: HeartController
+    bus_controller: BusController
+    bus: SystemBus
+    runtime: ModuleRuntime
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+_LOCAL_RUNTIME_CONTEXT: LocalAASRuntimeContext | None = None
+_LOCAL_RUNTIME_BOOT_COUNT = 0
+BUILD_OVERVIEW_DEPRECATION_MESSAGE = (
+    "Compatibility wrapper for legacy parity tests only; remove in AAS Runtime v1.1 "
+    "after legacy parity fixtures migrate"
+)
 
 
-def new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+class ProjectRunDataAccess(Protocol):
+    def project_assumptions(self, project_id: str) -> list[dict[str, Any]]: ...
+
+    def source_records(self) -> list[dict[str, Any]]: ...
+
+    def project_evidence_links(self, project_id: str) -> list[dict[str, Any]]: ...
+
+    def datasets(self) -> list[dict[str, Any]]: ...
+
+    def project_transformations(self, project_id: str) -> list[dict[str, Any]]: ...
 
 
-def audit_event(action: str, **payload: Any) -> dict:
-    return {"action": action, "at": utc_now(), **payload}
+def output_set(project: ProjectRecord, run_id: str, snapshot_id: str, finance: dict[str, Any]) -> list[dict[str, Any]]:
+    baseline = finance["baseline"]
+    if baseline is None:
+        return [
+            envelope(
+                project=project,
+                run_id=run_id,
+                snapshot_id=snapshot_id,
+                output_id=output_id,
+                owner_module="Finance Engine",
+                contract_id="finance.result.v1",
+                algorithm_id=algorithm_id,
+                value_type=value_type,
+                value=None,
+                unit=unit,
+                period=period,
+                status="needs_input",
+                formula_ref=f"NOT_READY:{output_id}",
+            )
+            for output_id, algorithm_id, value_type, unit, period in [
+                ("startup-cost", "FIN-ALG-01", "calculated", "SAR", "startup"),
+                ("monthly-revenue", "FIN-ALG-01", "calculated", "SAR", "monthly"),
+                ("monthly-profit", "FIN-ALG-01", "calculated", "SAR", "monthly"),
+                ("npv", "FIN-ALG-06", "calculated", "SAR", "5-year"),
+                ("irr", "FIN-ALG-07", "calculated", "percent", "5-year"),
+                ("payback-months", "FIN-ALG-10", "calculated", "months", "run"),
+                ("working-capital-need", "FIN-ALG-08", "calculated", "SAR", "startup"),
+                ("ebitda", "FIN-ALG-13", "calculated", "SAR", "monthly"),
+                ("ebit", "FIN-ALG-13", "calculated", "SAR", "monthly"),
+                ("dscr", "FIN-ALG-13", "calculated", "ratio", "annual"),
+                ("funding-need-after-equity", "FIN-ALG-13", "calculated", "SAR", "startup"),
+                ("mc-feasibility-gate-probability", "FIN-ALG-04", "simulation", "percent", "run"),
+            ]
+        ]
+
+    mc = finance["monte_carlo"]
+    assumption_refs = finance["assumption_refs"]
+    rows = [
+        ("startup-cost", "FIN-ALG-01", baseline["startup_cost"], "SAR", "startup", "startup_cost=user_verified_input"),
+        ("monthly-revenue", "FIN-ALG-01", baseline["revenue"], "SAR", "monthly", "Revenue=unit_price*monthly_units"),
+        (
+            "monthly-profit",
+            "FIN-ALG-01",
+            baseline["monthly_profit"],
+            "SAR",
+            "monthly",
+            "Profit=revenue-variable_costs-fixed_costs",
+        ),
+        ("break-even-units", "FIN-ALG-09", baseline["break_even_units"], "count", "monthly", "fixed_cost/contribution"),
+        ("funding-gap", "FIN-ALG-08", baseline["funding_gap"], "SAR", "startup", "max(0,initial_investment-revenue)"),
+        ("working-capital-need", "FIN-ALG-08", baseline["working_capital_need"], "SAR", "startup", "operating cash buffer"),
+        ("ebitda", "FIN-ALG-13", baseline["ebitda"], "SAR", "monthly", "gross_profit-total_monthly_opex"),
+        ("ebit", "FIN-ALG-13", baseline["ebit"], "SAR", "monthly", "EBITDA-depreciation"),
+        (
+            "net-operating-cashflow",
+            "FIN-ALG-13",
+            baseline["net_operating_cashflow"],
+            "SAR",
+            "monthly",
+            "EBITDA-debt_service_monthly",
+        ),
+        (
+            "funding-need-after-equity",
+            "FIN-ALG-13",
+            baseline["funding_need_after_equity"],
+            "SAR",
+            "startup",
+            "max(0,initial_investment-equity_contribution)",
+        ),
+        ("npv", "FIN-ALG-06", baseline["npv"], "SAR", "5-year", "discounted annual cashflows"),
+        ("irr", "FIN-ALG-07", baseline["irr"], "percent", "5-year", "rate where NPV approaches zero"),
+        ("payback-months", "FIN-ALG-10", baseline["payback_months"], "months", "run", "initial_investment/monthly_profit"),
+        (
+            "contribution-margin",
+            "FIN-ALG-11",
+            baseline["contribution_margin"],
+            "percent",
+            "monthly",
+            "(price-variable_cost)/price",
+        ),
+        (
+            "debt-service-monthly",
+            "FIN-ALG-08",
+            baseline["debt_service_monthly"],
+            "SAR",
+            "monthly",
+            "amortized payment placeholder when debt input exists",
+        ),
+        (
+            "dscr",
+            "FIN-ALG-13",
+            baseline["dscr"],
+            "ratio",
+            "annual",
+            "annual EBITDA / annual debt service",
+        ),
+        (
+            "depreciation-monthly",
+            "FIN-ALG-13",
+            baseline["depreciation_monthly"],
+            "SAR",
+            "monthly",
+            "capex/depreciation_months",
+        ),
+    ]
+    kpis = [
+        envelope(
+            project=project,
+            run_id=run_id,
+            snapshot_id=snapshot_id,
+            output_id=output_id,
+            owner_module="Finance Engine",
+            contract_id="finance.result.v1",
+            algorithm_id=algorithm_id,
+            value_type="calculated",
+            value=value,
+            unit=unit,
+            period=period,
+            status="ready" if value is not None else "needs_input",
+            formula_ref=formula_ref,
+            assumption_refs=assumption_refs,
+        )
+        for output_id, algorithm_id, value, unit, period, formula_ref in rows
+    ]
+    kpis.append(
+        envelope(
+            project=project,
+            run_id=run_id,
+            snapshot_id=snapshot_id,
+            output_id="mc-feasibility-gate-probability",
+            owner_module="Finance Engine",
+            contract_id="finance.mcmc.result.v1",
+            algorithm_id="FIN-ALG-04",
+            value_type="simulation",
+            value=mc["p_pass"],
+            unit="percent",
+            period="run",
+            status="ready" if mc["status"] == "ready" else "needs_input",
+            confidence=0.68 if mc["status"] == "ready" else None,
+            confidence_basis="fixed_seed_local_distributions" if mc["status"] == "ready" else "missing_inputs",
+            formula_ref="P_pass=valid simulations passing deterministic feasibility gates / valid simulations",
+            assumption_refs=assumption_refs if mc["status"] == "ready" else [],
+        )
+    )
+    return kpis
 
 
-def write_json(handler: BaseHTTPRequestHandler, payload: dict, status: int = 200) -> None:
-    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.end_headers()
-    handler.wfile.write(body)
+def local_runtime_context() -> LocalAASRuntimeContext:
+    global _LOCAL_RUNTIME_CONTEXT, _LOCAL_RUNTIME_BOOT_COUNT
+    if _LOCAL_RUNTIME_CONTEXT is not None:
+        return _LOCAL_RUNTIME_CONTEXT
+    kernel = AASKernel()
+    kernel.boot()
+    heart_controller = HeartController(kernel)
+    heart_controller.bootstrap()
+    bus_controller = BusController(kernel, heart_controller)
+    bus_controller.bootstrap()
+    bus = SystemBus(bus_controller)
+    bus.bootstrap()
+    runtime = ModuleRuntime(kernel, bus)
+    runtime.bootstrap()
+    runtime.register_default_handlers()
+    _LOCAL_RUNTIME_CONTEXT = LocalAASRuntimeContext(
+        kernel=kernel,
+        heart_controller=heart_controller,
+        bus_controller=bus_controller,
+        bus=bus,
+        runtime=runtime,
+    )
+    _LOCAL_RUNTIME_BOOT_COUNT += 1
+    return _LOCAL_RUNTIME_CONTEXT
 
 
-def write_html(handler: BaseHTTPRequestHandler, html: str, status: int = 200) -> None:
-    body = html.encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.end_headers()
-    handler.wfile.write(body)
+def local_module_runtime() -> ModuleRuntime:
+    return local_runtime_context().runtime
 
 
-def write_error(handler: BaseHTTPRequestHandler, code: str, status: int) -> None:
-    write_json(handler, {"error": code}, status)
+def local_runtime_boot_count() -> int:
+    return _LOCAL_RUNTIME_BOOT_COUNT
 
 
-def read_json(handler: BaseHTTPRequestHandler) -> dict:
-    length = int(handler.headers.get("Content-Length", "0") or 0)
-    if length > MAX_BODY_BYTES:
-        raise RequestError("payload_too_large", 413)
-    if length == 0:
+def reset_local_module_runtime_for_tests() -> None:
+    global _LOCAL_RUNTIME_CONTEXT, _LOCAL_RUNTIME_BOOT_COUNT
+    _LOCAL_RUNTIME_CONTEXT = None
+    _LOCAL_RUNTIME_BOOT_COUNT = 0
+
+
+def source_module_for_session(session: RunScopedModuleRuntime | None) -> str:
+    return session.source_module_id if session else "aas.heart_controller"
+
+
+def envelope_for_session(session: RunScopedModuleRuntime | None) -> dict[str, str]:
+    if session is None:
         return {}
-    return json.loads(handler.rfile.read(length).decode("utf-8"))
-
-
-REPO = Repository()
-AAS_KERNEL = AASKernel(REPO)
-HEART_CONTROLLER = HeartController()
-SYSTEM_BUS = SystemBus()
-BUS_CONTROLLER = BusController(SYSTEM_BUS)
-
-
-def local_runtime_context() -> Any:
-    return AAS_KERNEL.runtime_context()
-
-
-def heart_source_module_id(heart_assignment: dict) -> str:
-    return heart_assignment.get("module_id", APP_ID)
-
-
-def normalize_project_run_http_request(project_id: str, payload: dict) -> dict:
-    operation_id = str(payload.get("operation_id") or new_id("op"))
-    idempotency_key = str(payload.get("idempotency_key") or operation_id)
-    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
     return {
-        "project_id": project_id,
-        "operation_id": operation_id,
-        "idempotency_key": idempotency_key,
-        "inputs": inputs,
-        "actor": str(payload.get("actor") or "local-operator"),
-        "correlation_id": str(payload.get("correlation_id") or new_id("corr")),
+        "operation_id": session.operation_id,
+        "idempotency_key": session.idempotency_key,
+        "input_hash": session.input_hash,
     }
 
 
-def execute_project_run_pipeline(run_envelope: dict, project: ProjectRecord, data_access: Repository) -> tuple[dict, dict]:
-    inputs = dict(project.inputs)
-    inputs.update(run_envelope.get("inputs", {}))
-    finance_inputs = FinanceInputs(**{key: value for key, value in inputs.items() if key in FinanceInputs.__dataclass_fields__})
-    context = local_runtime_context()
-    runtime = context.runtime
-    finance_result = local_finance_engine(runtime, finance_inputs)
-    sector_context = build_sector_context(project.sector, project.jurisdiction)
-    sector_criteria = build_sector_criteria(project.sector)
-    evidence_register, ledger_entries, coverage = local_evidence_ledger(
-        runtime,
-        project=project,
-        finance_result=finance_result,
-        sector_context=sector_context,
+def heart_source_module_id(assignment: dict[str, Any]) -> str:
+    assigned = assignment.get("assignments", [])
+    if not assigned:
+        raise ValueError("heart_assignment_failed:no_assignment")
+    return f"aas.heart.{assigned[0]['heart_id']}"
+
+
+def finance_via_module_runtime(
+    project: ProjectRecord,
+    *,
+    run_id: str,
+    snapshot_id: str,
+    assumption_refs: list[str] | None = None,
+    session: RunScopedModuleRuntime | None = None,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.finance",
+            contract_id="finance.calculate.v1",
+            socket_id="socket.finance.evaluate",
+            correlation_id=f"corr:{run_id}:finance",
+            audit_ref=f"audit:{snapshot_id}:finance-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project.project_id,
+                "run_id": run_id,
+                "snapshot_id": snapshot_id,
+                "inputs": project.inputs,
+                "assumption_refs": assumption_refs or [],
+            },
     )
-    decision = local_decision_council(
-        runtime,
-        finance_result=finance_result,
-        evidence_coverage=coverage,
-        sector_criteria=sector_criteria,
+    result = session.execute_and_seal("finance_result", message) if session else local_module_runtime().execute(message)
+    output = result.output
+    return output["finance"], output["blockers"]
+
+
+def evidence_ledger_via_module_runtime(
+    *,
+    project_id: str,
+    evidence_register: dict[str, Any],
+    source_records: list[dict[str, Any]],
+    snapshot_id: str,
+    run_id: str | None,
+    transformations: list[dict[str, Any]],
+    session: RunScopedModuleRuntime | None = None,
+) -> list[dict[str, Any]]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.evidence_ledger",
+            contract_id="evidence.ledger.build.v1",
+            socket_id="socket.evidence.ledger",
+            correlation_id=f"corr:{run_id or 'draft'}:evidence-ledger",
+            audit_ref=f"audit:{snapshot_id}:evidence-ledger-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project_id,
+                "snapshot_id": snapshot_id,
+                "run_id": run_id,
+                "evidence_register": evidence_register,
+                "source_records": source_records,
+                "transformations": transformations,
+            },
     )
-    risk_register = local_risk_engine(
-        runtime,
-        finance_result=finance_result,
-        decision=decision,
-        evidence_coverage=coverage,
+    result = session.execute_and_seal("evidence_ledger", message) if session else local_module_runtime().execute(message)
+    return result.output["evidence_ledger"]
+
+
+def sector_intelligence_via_module_runtime(
+    project: ProjectRecord,
+    *,
+    evidence_register: dict[str, Any],
+    source_records: list[dict[str, Any]],
+    snapshot_id: str,
+    run_id: str | None,
+    session: RunScopedModuleRuntime | None = None,
+) -> dict[str, Any]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.sector_intelligence",
+            contract_id="sector.intelligence.build.v1",
+            socket_id="socket.sector.intelligence",
+            correlation_id=f"corr:{run_id or 'draft'}:sector-intelligence",
+            audit_ref=f"audit:{snapshot_id}:sector-intelligence-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project.project_id,
+                "snapshot_id": snapshot_id,
+                "run_id": run_id,
+                "project_name": project.name,
+                "project_sector": project.sector,
+                "project_jurisdiction": project.jurisdiction,
+                "inputs": project.inputs,
+                "evidence_register": evidence_register,
+                "source_records": source_records,
+            },
     )
-    execution_plan = local_execution_engine(
-        runtime,
-        project=project,
-        finance_result=finance_result,
-        decision=decision,
-        risk_register=risk_register,
+    result = session.execute_and_seal("sector_intelligence", message) if session else local_module_runtime().execute(message)
+    return result.output["sector_intelligence"]
+
+
+def decision_council_via_module_runtime(
+    *,
+    project_id: str,
+    run_id: str,
+    snapshot_id: str,
+    finance: dict[str, Any],
+    blockers: list[dict[str, Any]],
+    readiness_gates: dict[str, Any],
+    sector_intelligence: dict[str, Any],
+    session: RunScopedModuleRuntime | None = None,
+) -> dict[str, Any]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.decision_council",
+            contract_id="decision.council.evaluate.v1",
+            socket_id="socket.decision.council",
+            correlation_id=f"corr:{run_id}:decision-council",
+            audit_ref=f"audit:{snapshot_id}:decision-council-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project_id,
+                "run_id": run_id,
+                "snapshot_id": snapshot_id,
+                "input_contract_id": "DecisionCouncilInputEnvelope.v1",
+                "finance": finance,
+                "blockers": blockers,
+                "readiness_gates": readiness_gates,
+                "sector_intelligence": sector_intelligence,
+            },
     )
-    snapshot = local_snapshot_assembly(
-        runtime,
-        project=project,
-        finance_result=finance_result,
-        sector_context=sector_context,
-        evidence_register=evidence_register,
-        evidence_ledger=ledger_entries,
-        evidence_coverage=coverage,
-        decision=decision,
-        risk_register=risk_register,
-        execution_plan=execution_plan,
+    result = session.execute_and_seal("decision_result", message) if session else local_module_runtime().execute(message)
+    return result.output["decision_council"]
+
+
+def risk_register_via_module_runtime(
+    *,
+    project_id: str,
+    run_id: str,
+    snapshot_id: str,
+    finance: dict[str, Any],
+    evidence_register: dict[str, Any],
+    source_policy_result: dict[str, Any],
+    readiness_gates: dict[str, Any],
+    session: RunScopedModuleRuntime | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.risk_engine",
+            contract_id="risk.register.build.v1",
+            socket_id="socket.risk.register",
+            correlation_id=f"corr:{run_id}:risk-register",
+            audit_ref=f"audit:{snapshot_id}:risk-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project_id,
+                "run_id": run_id,
+                "snapshot_id": snapshot_id,
+                "input_contract_id": "RiskRegisterInputEnvelope.v1",
+                "finance": finance,
+                "evidence_register": evidence_register,
+                "source_policy": source_policy_result,
+                "readiness_gates": readiness_gates,
+            },
     )
-    acceptance = build_acceptance_pack(snapshot, decision, coverage)
+    result = session.execute_and_seal("risk_result", message) if session else local_module_runtime().execute(message)
+    return result.output["risk_register"], result.output["risk_advisory_summary"]
+
+
+def execution_plan_via_module_runtime(
+    *,
+    project_id: str,
+    run_id: str,
+    snapshot_id: str,
+    finance: dict[str, Any],
+    decision_council: dict[str, Any],
+    readiness_gates: dict[str, Any],
+    risk_advisory_summary: dict[str, Any],
+    session: RunScopedModuleRuntime | None = None,
+) -> dict[str, Any]:
+    message = BusMessage(
+            source_module_id=source_module_for_session(session),
+            target_module_id="module.execution_engine",
+            contract_id="execution.plan.build.v1",
+            socket_id="socket.execution.plan",
+            correlation_id=f"corr:{run_id}:execution-plan",
+            audit_ref=f"audit:{snapshot_id}:execution-runtime",
+            **envelope_for_session(session),
+            payload={
+                "project_id": project_id,
+                "run_id": run_id,
+                "snapshot_id": snapshot_id,
+                "input_contract_id": "ExecutionPlanInputEnvelope.v1",
+                "finance": finance,
+                "decision_council": decision_council,
+                "readiness_gates": readiness_gates,
+                "risk_advisory_summary": risk_advisory_summary,
+            },
+    )
+    result = session.execute_and_seal("execution_result", message) if session else local_module_runtime().execute(message)
+    return result.output["execution_plan"]
+
+
+def report_via_module_runtime(
+    overview: dict[str, Any],
+    runtime: ModuleRuntime | None = None,
+    source_module_id: str = "aas.heart_controller",
+    operation_id: str = "",
+    idempotency_key: str = "",
+    input_hash: str = "",
+) -> dict[str, Any]:
+    active_runtime = runtime or local_module_runtime()
+    result = active_runtime.execute(
+        BusMessage(
+            source_module_id=source_module_id,
+            target_module_id="module.reports",
+            contract_id="report.snapshot.project.v1",
+            socket_id="socket.report.snapshot",
+            correlation_id=f"corr:{overview['run']['run_id']}:report",
+            audit_ref=f"audit:{overview['snapshot']['snapshot_id']}:report-runtime",
+            operation_id=operation_id or f"op:{overview['run']['run_id']}:report",
+            idempotency_key=idempotency_key or f"idem:{overview['snapshot']['snapshot_id']}:report",
+            input_hash=input_hash or canonical_hash(
+                {
+                    "projection": "report",
+                    "run_id": overview["run"]["run_id"],
+                    "snapshot_id": overview["snapshot"]["snapshot_id"],
+                }
+            ),
+            payload={
+                "project_id": overview["project"]["project_id"],
+                "run_id": overview["run"]["run_id"],
+                "snapshot_id": overview["snapshot"]["snapshot_id"],
+                "input_contract_id": "SnapshotReportInputEnvelope.v1",
+                "overview": overview,
+            },
+        )
+    )
+    return result.output["report"]
+
+
+def decision_pack_via_module_runtime(
+    snapshot_overview: dict[str, Any],
+    snapshot_report: dict[str, Any],
+) -> dict[str, Any]:
+    runtime = local_module_runtime()
+    operation_id = f"op:{snapshot_overview['run']['run_id']}:decision-pack"
+    idempotency_key = f"idem:{snapshot_overview['snapshot']['snapshot_id']}:decision-pack"
+    input_hash = canonical_hash(
+        {
+            "projection": "decision_pack",
+            "run_id": snapshot_overview["run"]["run_id"],
+            "snapshot_id": snapshot_overview["snapshot"]["snapshot_id"],
+            "report_snapshot_id": snapshot_report["snapshot_id"],
+        }
+    )
+    result = runtime.execute(
+        BusMessage(
+            source_module_id="aas.heart_controller",
+            target_module_id="module.decision_pack",
+            contract_id="decision.pack.project.v1",
+            socket_id="socket.decision.pack",
+            correlation_id=f"corr:{snapshot_overview['run']['run_id']}:decision-pack",
+            audit_ref=f"audit:{snapshot_overview['snapshot']['snapshot_id']}:decision-pack-runtime",
+            operation_id=operation_id,
+            idempotency_key=idempotency_key,
+            input_hash=input_hash,
+            payload={
+                "project_id": snapshot_overview["project"]["project_id"],
+                "run_id": snapshot_overview["run"]["run_id"],
+                "snapshot_id": snapshot_overview["snapshot"]["snapshot_id"],
+                "input_contract_id": "DecisionPackInputEnvelope.v1",
+                "snapshot_overview": snapshot_overview,
+                "snapshot_report": snapshot_report,
+            },
+        )
+    )
+    return result.output["decision_pack"]
+
+
+def project_overview_from_assembled_snapshot(assembled: dict[str, Any]) -> dict[str, Any]:
+    support_envelope = assembled.get("supporting_outputs", {}).get("projection_support")
+    if not support_envelope:
+        raise ValueError("assembled snapshot is missing sealed projection support")
+    support = support_envelope.get("projection_support")
+    if not isinstance(support, dict):
+        raise ValueError("assembled snapshot projection support is invalid")
+    required_support = {
+        "project",
+        "run",
+        "snapshot",
+        "kpis",
+        "blockers",
+        "source_policy",
+        "evidence_coverage",
+        "transformation_lineage",
+        "assumption_book",
+        "evidence_register",
+        "readiness_gates",
+        "readiness",
+        "remediation_envelopes",
+        "audit",
+        "acceptance",
+    }
+    missing_support = required_support - set(support)
+    if missing_support:
+        raise ValueError("sealed projection support is missing fields: " + ", ".join(sorted(missing_support)))
+
+    outputs = assembled["module_outputs"]
+    finance = deepcopy(outputs["finance_result"]["finance"])
+    decision_council = deepcopy(outputs["decision_result"]["decision_council"])
+    risk_output = outputs["risk_result"]
+    snapshot = deepcopy(support["snapshot"])
+    snapshot.update(
+        {
+            "snapshot_version": assembled["snapshot_version"],
+            "assembled_at": assembled["assembled_at"],
+            "content_hash": assembled["content_hash"],
+            "integrity_hash": assembled["integrity_hash"],
+        }
+    )
     overview = {
-        "contract_id": "project.run.overview.v1",
-        "run": run_envelope.get("run", {"run_id": run_envelope.get("operation_id")}),
-        "project": project.to_public(),
+        "project": deepcopy(support["project"]),
+        "run": deepcopy(support["run"]),
         "snapshot": snapshot,
-        "acceptance": acceptance,
+        "finance": finance,
+        "decision_council": decision_council,
+        "decision": deepcopy(decision_council["verdict"]),
+        "monte_carlo": deepcopy(finance["monte_carlo"]),
+        "personas": deepcopy(decision_council["personas"]),
+        "kpis": deepcopy(support["kpis"]),
+        "blockers": deepcopy(support["blockers"]),
+        "source_policy": deepcopy(support["source_policy"]),
+        "sector_intelligence": deepcopy(outputs["sector_intelligence"]["sector_intelligence"]),
+        "evidence_ledger": deepcopy(outputs["evidence_ledger"]["evidence_ledger"]),
+        "evidence_coverage": deepcopy(support["evidence_coverage"]),
+        "transformation_lineage": deepcopy(support["transformation_lineage"]),
+        "assumption_book": deepcopy(support["assumption_book"]),
+        "evidence_register": deepcopy(support["evidence_register"]),
+        "readiness_gates": deepcopy(support["readiness_gates"]),
+        "execution_plan": deepcopy(outputs["execution_result"]["execution_plan"]),
+        "risk_register": deepcopy(risk_output["risk_register"]),
+        "risk_advisory_summary": deepcopy(risk_output["risk_advisory_summary"]),
+        "readiness": deepcopy(support["readiness"]),
+        "remediation_envelopes": deepcopy(support["remediation_envelopes"]),
+        "audit": deepcopy(support["audit"]),
+        "acceptance": deepcopy(support["acceptance"]),
+        "snapshot_assembly": {
+            "contract_id": assembled["assembly_contract_id"],
+            "snapshot_version": assembled["snapshot_version"],
+            "assembled_at": assembled["assembled_at"],
+            "content_hash": assembled["content_hash"],
+            "integrity_hash": assembled["integrity_hash"],
+            "lineage": deepcopy(assembled["lineage"]),
+            "correlation_map": deepcopy(assembled["correlation_map"]),
+            "projection_source": "immutable_assembled_snapshot",
+        },
     }
-    report = {
-        "contract_id": "project.report.v1",
-        "snapshot_id": snapshot["snapshot_id"],
-        "funder_report": snapshot.get("funder_report", {}),
-        "html": snapshot.get("report_html", ""),
+    overview["audit"]["snapshot_assembly_ref"] = f"assembly:{assembled['snapshot_id']}:{assembled['integrity_hash']}"
+    overview["snapshot_assembly"]["overview_projection_hash"] = canonical_hash(overview)
+    return overview
+
+
+def execute_project_run_pipeline(
+    run_envelope: ProjectRunEnvelope,
+    *,
+    project: ProjectRecord,
+    data_access: ProjectRunDataAccess,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not isinstance(run_envelope, ProjectRunEnvelope):
+        raise TypeError("execute_project_run_pipeline requires ProjectRunEnvelope")
+    if run_envelope.project_id != project.project_id:
+        raise ValueError("project run envelope project_id mismatch")
+    if run_envelope.pipeline_contract_sequence != PROJECT_RUN_PIPELINE_CONTRACT_SEQUENCE_V1:
+        raise ValueError("unsupported project run pipeline contract sequence")
+    run_id = run_envelope.run_id
+    snapshot_id = run_envelope.snapshot_id
+    created_at = now_iso()
+    assumptions = data_access.project_assumptions(project.project_id)
+    runtime = local_module_runtime()
+    session = RunScopedModuleRuntime(
+        runtime,
+        project_id=project.project_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        source_module_id=run_envelope.source_module_id,
+        operation_id=run_envelope.operation_id,
+        idempotency_key=run_envelope.idempotency_key,
+        input_hash=run_envelope.input_hash,
+    )
+    finance, input_blockers = finance_via_module_runtime(
+        project,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        assumption_refs=[row["assumption_id"] for row in assumptions],
+        session=session,
+    )
+    sources = data_access.source_records()
+    policy = source_policy(sources, PROFILE_ID)
+    blockers = list(input_blockers)
+    blockers.extend(
+        [
+            {
+                "code": "DEMO_OR_USER_INPUT_ONLY",
+                "severity": "high",
+                "message": "النتائج محسوبة من مدخلات محلية/تجريبية وليست من مصدر رسمي مفتوح مفعّل.",
+            },
+            {
+                "code": "OPEN_DATA_NOT_ENABLED",
+                "severity": "medium",
+                "message": "لا يوجد مصدر خارجي مفعّل حتى تكتمل مراجعة الشروط والنسبة والتصنيف.",
+            },
+        ]
+    )
+    kpis = output_set(project, run_id, snapshot_id, finance)
+    audit = {
+        "audit_id": f"audit_{snapshot_id}",
+        "run_id": run_id,
+        "snapshot_id": snapshot_id,
+        "profile_id": PROFILE_ID,
+        "owner_path": "ProjectRunWorkflow -> execute_project_run_pipeline -> RunScopedModuleRuntime",
+        "forbidden_paths": [
+            "React finance calculation",
+            "AI-owned controlled numbers",
+            "direct source fetch without enabled source review",
+            "persona voting for Sovereign Verdict",
+        ],
+        "output_audit_refs": [item["audit_ref"] for item in kpis],
+        "algorithm_versions": sorted({item["algorithm_id"]: item["algorithm_version"] for item in kpis}.items()),
+        "source_fetch_enabled": False,
+        "runtime_source_module_id": run_envelope.source_module_id,
+        "pipeline_policy_id": run_envelope.pipeline_policy_id,
     }
+    evidence_register = build_evidence_register(data_access, project.project_id, snapshot_id, sources)
+    sector_intelligence = sector_intelligence_via_module_runtime(
+        project,
+        evidence_register=evidence_register,
+        source_records=sources,
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+        session=session,
+    )
+    transformations = evidence_register.get("transformations", [])
+    evidence_ledger = evidence_ledger_via_module_runtime(
+        project_id=project.project_id,
+        evidence_register=evidence_register,
+        source_records=sources,
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+        transformations=transformations,
+        session=session,
+    )
+    transformation_lineage = build_transformation_lineage(evidence_ledger, transformations)
+    evidence_coverage = build_evidence_coverage(assumptions, sector_intelligence, evidence_ledger)
+    if sector_intelligence["status"] != "ready":
+        blockers.append(
+            {
+                "code": "SECTOR_CLASSIFICATION_NEEDS_INPUT",
+                "severity": "medium",
+                "message": "التصنيف القطاعي الرسمي غير مكتمل؛ تظهر مؤشرات القطاع كفجوات أدلة حتى يتم اختياره.",
+            }
+        )
+    readiness_gates = build_readiness_gates(finance, blockers, evidence_register, policy)
+    decision_council = decision_council_via_module_runtime(
+        project_id=project.project_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        finance=finance,
+        blockers=blockers,
+        readiness_gates=readiness_gates,
+        sector_intelligence=sector_intelligence,
+        session=session,
+    )
+    risk_register, risk_advisory_summary = risk_register_via_module_runtime(
+        project_id=project.project_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        finance=finance,
+        evidence_register=evidence_register,
+        source_policy_result=policy,
+        readiness_gates=readiness_gates,
+        session=session,
+    )
+    execution_plan = execution_plan_via_module_runtime(
+        project_id=project.project_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        finance=finance,
+        decision_council=decision_council,
+        readiness_gates=readiness_gates,
+        risk_advisory_summary=risk_advisory_summary,
+        session=session,
+    )
+    provisional_overview = {
+        "project": project.to_public()
+        | {
+            "run_id": run_id,
+            "snapshot_id": snapshot_id,
+            "data_badge": "USER_VERIFIED" if finance["status"] == "ready" else "DEMO_DATA",
+            "data_mode": "user_verified" if finance["status"] == "ready" else "demo_simulated_external",
+            "display_badge": "USER VERIFIED" if finance["status"] == "ready" else "DEMO / LOCAL ONLY",
+            "production_admission": "local_only" if finance["status"] == "ready" else "blocked",
+            "status": "local_snapshot_ready" if finance["status"] == "ready" else "needs_input",
+        },
+        "run": {
+            "run_id": run_id,
+            "scenario_id": run_envelope.scenario_id,
+            "status": "completed" if finance["status"] == "ready" else "blocked",
+            "created_at": created_at,
+        },
+        "snapshot": {
+            "snapshot_id": snapshot_id,
+            "immutable": True,
+            "created_at": created_at,
+        },
+        "finance": finance,
+        "decision_council": decision_council,
+        "decision": decision_council["verdict"],
+        "monte_carlo": finance["monte_carlo"],
+        "personas": decision_council["personas"],
+        "kpis": kpis,
+        "blockers": blockers,
+        "source_policy": policy,
+        "sector_intelligence": sector_intelligence,
+        "evidence_ledger": evidence_ledger,
+        "evidence_coverage": evidence_coverage,
+        "transformation_lineage": transformation_lineage,
+        "assumption_book": assumptions,
+        "evidence_register": evidence_register,
+        "readiness_gates": readiness_gates,
+        "execution_plan": execution_plan,
+        "risk_register": risk_register,
+        "risk_advisory_summary": risk_advisory_summary,
+        "readiness": project_readiness(project, assumptions, sources),
+        "remediation_envelopes": remediation(blockers),
+        "audit": audit,
+    }
+    provisional_overview["acceptance"] = build_acceptance_pack(provisional_overview)
+    provisional_overview["audit"]["acceptance_status"] = provisional_overview["acceptance"]["status"]
+    provisional_overview["audit"]["acceptance_id"] = provisional_overview["acceptance"]["acceptance_id"]
+    module_projection_fields = {
+        "finance",
+        "decision_council",
+        "decision",
+        "monte_carlo",
+        "personas",
+        "sector_intelligence",
+        "evidence_ledger",
+        "execution_plan",
+        "risk_register",
+        "risk_advisory_summary",
+    }
+    projection_support = {
+        key: deepcopy(value)
+        for key, value in provisional_overview.items()
+        if key not in module_projection_fields
+    }
+    sealed_projection_support = seal_projection_support(
+        project_id=project.project_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        correlation_id=f"corr:{run_id}:projection-support",
+        audit_ref=f"audit:{snapshot_id}:projection-support",
+        produced_at=created_at,
+        projection_support=projection_support,
+    )
+    assembled = session.assemble(
+        project_context={
+            "project_id": project.project_id,
+            "name": project.name,
+            "sector": project.sector,
+            "jurisdiction": project.jurisdiction,
+        },
+        readiness_state={
+            "workflow": projection_support["readiness"].get("status"),
+            "gates": readiness_gates.get("status"),
+            "run": projection_support["run"]["status"],
+        },
+        blockers=blockers,
+        sealed_supporting_outputs=[sealed_projection_support],
+    ).output["assembled_snapshot"]
+    overview = project_overview_from_assembled_snapshot(assembled)
+    report = report_via_module_runtime(
+        overview,
+        runtime=runtime,
+        source_module_id=run_envelope.source_module_id,
+        operation_id=run_envelope.operation_id,
+        idempotency_key=run_envelope.idempotency_key,
+        input_hash=run_envelope.input_hash,
+    )
     return overview, report
 
 
-def decision_pack_via_module_runtime(overview: dict, report: dict) -> dict:
-    context = local_runtime_context()
-    return {
-        "contract_id": "decision.pack.v1",
-        "snapshot_id": overview["snapshot"]["snapshot_id"],
-        "decision": overview["snapshot"].get("decision", {}),
-        "finance": overview["snapshot"].get("finance", {}),
-        "evidence_coverage": overview["snapshot"].get("evidence_coverage", {}),
-        "risk_register": overview["snapshot"].get("risk_register", {}),
-        "acceptance": overview.get("acceptance", {}),
-    }
-
-
-def apply_review_overlay(pack: dict, reviews: list[dict]) -> dict:
-    updated = deepcopy(pack)
-    updated["reviews"] = reviews
-    if reviews:
-        updated["latest_review"] = reviews[-1]
-    return updated
-
-
-def render_decision_pack_html(pack: dict) -> str:
-    return "\n".join(
-        [
-            "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>حزمة القرار</title></head><body>",
-            f"<h1>حزمة القرار — {pack.get('snapshot_id', '')}</h1>",
-            f"<pre>{json.dumps(pack, ensure_ascii=False, indent=2)}</pre>",
-            "</body></html>",
-        ]
+@deprecated(BUILD_OVERVIEW_DEPRECATION_MESSAGE)
+def build_overview(
+    project: ProjectRecord,
+    repo: Repository,
+    *,
+    source_module_id: str = "aas.heart_controller",
+    operation_id: str = "",
+    idempotency_key: str = "",
+    input_hash: str = "",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Legacy parity wrapper; never use from HTTP routes or ProjectRunWorkflow."""
+    if not isinstance(project, ProjectRecord):
+        raise TypeError("build_overview accepts legacy ProjectRecord fixtures only")
+    if not isinstance(repo, Repository):
+        raise TypeError("build_overview accepts legacy Repository fixtures only")
+    run_id = new_id("run")
+    snapshot_id = new_id("snap")
+    compatibility_envelope = ProjectRunEnvelope(
+        project_id=project.project_id,
+        scenario_id=SCENARIO_ID,
+        operation_id=operation_id or f"op:{run_id}:compatibility-run",
+        idempotency_key=idempotency_key or f"idem:{run_id}:compatibility-run",
+        input_hash=input_hash
+        or canonical_hash(
+            {
+                "project_id": project.project_id,
+                "run_id": run_id,
+                "scenario_id": SCENARIO_ID,
+                "snapshot_id": snapshot_id,
+            }
+        ),
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        source_module_id=source_module_id,
+    )
+    return execute_project_run_pipeline(
+        compatibility_envelope,
+        project=project,
+        data_access=repo,
     )
 
 
-def build_report_view(report: dict, latest_review: dict | None) -> dict:
+def build_evidence_register(
+    repo: ProjectRunDataAccess,
+    project_id: str,
+    snapshot_id: str,
+    sources: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    source_records = sources if sources is not None else repo.source_records()
+    source_by_id = {row["source_id"]: row for row in source_records}
+    links = repo.project_evidence_links(project_id)
+    linked_dataset_ids = {row["dataset_id"] for row in links}
+    datasets = [
+        row for row in repo.datasets() if row["dataset_id"] in linked_dataset_ids or row["review_status"] != "archived"
+    ]
+    gates = [dataset_quality_gate(row, source_by_id.get(row["source_id"])) for row in datasets]
     return {
-        "contract_id": "report.view.v1",
-        "snapshot_id": report.get("snapshot_id", ""),
-        "latest_review": latest_review,
-        "sections": report.get("funder_report", {}).get("sections", []),
-    }
-
-
-def render_report_html(report: dict, latest_review: dict | None) -> str:
-    return "\n".join(
-        [
-            "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>تقرير المشروع</title></head><body>",
-            f"<h1>تقرير المشروع — {report.get('snapshot_id', '')}</h1>",
-            f"<pre>{json.dumps(report.get('funder_report', {}), ensure_ascii=False, indent=2)}</pre>",
-            "</body></html>",
-        ]
-    )
-
-
-def source_policy(records: list[dict], profile_id: str) -> dict:
-    return {
-        "contract_id": "source.policy.v1",
-        "profile_id": profile_id,
-        "sources": records,
+        "evidence_register_id": f"evidence_{snapshot_id}",
+        "snapshot_id": snapshot_id,
+        "source_records": source_records,
+        "source_checklists": [source_review_checklist(row) for row in source_records],
+        "datasets": datasets,
+        "transformations": repo.project_transformations(project_id),
+        "evidence_links": links,
+        "linked_dataset_ids": sorted(linked_dataset_ids),
+        "quality_gates": gates,
+        "not_ready_reasons": [
+            f"{gate['dataset_id']}:{reason}"
+            for gate in gates
+            if gate["status"] != "passed" and gate["dataset_id"] in linked_dataset_ids
+            for reason in gate["reasons"]
+        ],
         "external_fetch_enabled": False,
     }
 
 
-def source_review_checklist(record: dict) -> dict:
-    return {
-        "source_id": record.get("source_id", ""),
-        "review_status": record.get("review_status", ""),
-        "checklist": [
-            "license_verified",
-            "terms_hash_recorded",
-            "human_review_completed",
-        ],
-    }
+def build_project_evidence_state(
+    repo: Repository,
+    project: ProjectRecord,
+    snapshot_id: str,
+    run_id: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    sources = repo.source_records()
+    assumptions = repo.project_assumptions(project.project_id)
+    evidence_register = build_evidence_register(repo, project.project_id, snapshot_id, sources)
+    sector = sector_intelligence_via_module_runtime(
+        project,
+        evidence_register=evidence_register,
+        source_records=sources,
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+    )
+    transformations = evidence_register.get("transformations", [])
+    ledger = evidence_ledger_via_module_runtime(
+        project_id=project.project_id,
+        evidence_register=evidence_register,
+        source_records=sources,
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+        transformations=transformations,
+    )
+    coverage = build_evidence_coverage(assumptions, sector, ledger)
+    return evidence_register, sector, ledger, coverage
 
 
-def dataset_quality_gate(dataset: dict, source: dict | None) -> dict:
-    reasons: list[str] = []
-    if not dataset.get("review_status") == "approved_for_use":
-        reasons.append("dataset_not_approved")
-    if source is not None and source.get("review_status") != "approved":
-        reasons.append("source_not_approved")
-    return {
-        "contract_id": "dataset.quality_gate.v1",
-        "dataset_id": dataset.get("dataset_id", ""),
-        "can_use_for_assumptions": not reasons,
-        "reasons": reasons,
-    }
+def read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+    try:
+        length = int(handler.headers.get("Content-Length", "0") or 0)
+    except ValueError as exc:
+        raise RequestError("invalid_content_length") from exc
+    if length < 0:
+        raise RequestError("invalid_content_length")
+    if length > MAX_JSON_BODY_BYTES:
+        raise RequestError("request_body_too_large", 413)
+    if length == 0:
+        return {}
+    try:
+        raw = handler.rfile.read(length).decode("utf-8")
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RequestError("invalid_json") from exc
+    if not isinstance(payload, dict):
+        raise RequestError("json_object_required")
+    return payload
 
 
-def normalize_file_import_payload(payload: dict) -> dict:
-    normalized = dict(payload)
-    normalized.setdefault("import_method", "file_upload")
-    return normalized
+def _write_security_headers(handler: BaseHTTPRequestHandler) -> None:
+    origin = handler.headers.get("Origin")
+    if origin in LOCAL_FRONTEND_ORIGINS:
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Vary", "Origin")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-ASIE-Organization-Id, X-Request-Id")
+    handler.send_header("Access-Control-Max-Age", "600")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    handler.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+    request_id = getattr(handler, "request_id", None)
+    if request_id:
+        handler.send_header("X-Request-Id", request_id)
 
 
-def build_project_evidence_state(repo: Repository, project: ProjectRecord, status: str, run_id: str | None) -> tuple[dict, dict, list, dict]:
-    sector = build_sector_context(project.sector, project.jurisdiction)
-    ledger = repo.evidence_ledger(project.project_id)
-    register = evidence_register_from_ledger(ledger)
-    coverage = build_evidence_coverage(register, sector)
-    return register, sector, ledger, coverage
+def write_json(handler: BaseHTTPRequestHandler, payload: dict[str, Any], status: int = 200) -> None:
+    raw = json_dumps(payload).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(raw)))
+    _write_security_headers(handler)
+    handler.end_headers()
+    handler.wfile.write(raw)
 
 
-def build_evidence_register(repo: Repository, project_id: str, status: str) -> dict:
-    ledger = repo.evidence_ledger(project_id)
-    return evidence_register_from_ledger(ledger)
+def write_html(handler: BaseHTTPRequestHandler, payload: str, status: int = 200) -> None:
+    raw = payload.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(raw)))
+    _write_security_headers(handler)
+    handler.end_headers()
+    handler.wfile.write(raw)
 
 
-def build_architecture_runtime_status() -> dict:
-    return {
-        "contract_id": "architecture.runtime_status.v1",
-        "scope": RUNTIME_FREEZE_SCOPE,
-        "manifest": runtime_freeze_manifest(),
-        "violations": runtime_freeze_violations(),
-        "boot_report": aas_boot_report(),
-        "read_only": True,
-    }
-
-
-def local_operational_health(repo: Repository) -> dict:
-    return build_operations_health(repo)
-
-
-def release_info() -> dict:
-    return build_release_info()
+def write_error(handler: BaseHTTPRequestHandler, message: str, status: int) -> None:
+    write_json(handler, {"error": message, "status": status, "request_id": getattr(handler, "request_id", None)}, status)
 
 
 def reject_architecture_status_mutation(handler: BaseHTTPRequestHandler) -> None:
