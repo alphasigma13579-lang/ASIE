@@ -11,13 +11,20 @@ When documents disagree, use this order:
 3. An approved ACR for a new product or contract decision.
 4. `docs/reference/` only as provenance and historical context.
 
+## Read first
+
+- [`../AGENTS.md`](../AGENTS.md): repository and agent rules.
+- [`AGENTS.md`](../AGENTS.md): canonical workspace guide.
+- [`PROJECT-ORIENTATION.md`](./PROJECT-ORIENTATION.md): product and implementation map.
+- [`IMPLEMENTATION-STATUS-MATRIX.md`](./IMPLEMENTATION-STATUS-MATRIX.md): status boundary for implementation work.
+
 ## Current documents
 
 - `ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json`: frozen runtime files, contract sequence, and ACR control.
 - `ASIE-Complete-System-Architecture-2026-07-21.md`: current architecture narrative.
 - `ASIE-Post-Freeze-Work-Plan-2026-07-19.md`: post-freeze implementation direction.
 - `ASIE-Project-Status-Assessment-2026-07-21.md`: latest recorded readiness assessment.
-- `ACR-*.md`: architectural or product change records. A draft is not an active runtime rule until approved.
+- `ACR-*.md`: architectural or product change records. `ACR-DIB-001` is merged and governs the Dynamic Input Blueprint implementation.
 
 ## Reference and archive material
 
@@ -27,4 +34,4 @@ Large extracted bundles intentionally remain under that reference boundary. New 
 
 ## Dynamic Input Blueprint
 
-The two user entry paths meet at `Dynamic Input Blueprint` before `Approved Input Manifest` and Finance. The governing record is [ACR-DIB-001](./ACR-DIB-001-Dynamic-Input-Blueprint.md) when PR #7 is merged.
+The two user entry paths meet at `Dynamic Input Blueprint` before `Approved Input Manifest` and Finance. The governing record is [ACR-DIB-001](./ACR-DIB-001-Dynamic-Input-Blueprint.md), merged into `main`.

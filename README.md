@@ -8,14 +8,14 @@ The runnable workspace is kept under:
 
 `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/`
 
-The repository root is intentionally a navigation and governance layer. Runtime code, frontend code, tests, and operational documents live in the canonical workspace above.
+The repository root is intentionally a navigation and governance layer. Start with [`AGENTS.md`](AGENTS.md) and the package guide before editing. Runtime code, frontend code, tests, and operational documents live in the canonical workspace above.
 
 ## What is current
 
 - `backend/`: local API, AAS runtime, modules, finance, evidence, decision, and snapshot assembly.
 - `src/`: React/Vite client.
 - `tests/`: deterministic Python test suite, including runtime-freeze tests.
-- `docs/`: current architecture, release, runbook, and ACR records.
+- `docs/`: current architecture, release, runbook, ACR records, orientation, and implementation status.
 - `docs/reference/`: historical reference material; it is not an executable source or a production policy by itself.
 
 The AAS Runtime Freeze v1.0 remains mandatory:
@@ -43,7 +43,14 @@ The two customer entry paths meet at one governed `Dynamic Input Blueprint`:
 2. Users with numbers, estimates, Excel, PDF, or supplier quotes map their data into the same blueprint.
 3. Only an approved, normalized input manifest may cross into Finance.
 
-The ACR for this decision is tracked in [PR #7](https://github.com/alphasigma13579-lang/ASIE/pull/7) until it is merged into `main`.
+The governing record for this decision is [`ACR-DIB-001`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-DIB-001-Dynamic-Input-Blueprint.md), merged into `main`.
+
+## Read first
+
+- [`AGENTS.md`](AGENTS.md): repository rules for programmers and agents.
+- [`AGENTS.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md): canonical package map and runtime boundaries.
+- [`PROJECT-ORIENTATION.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROJECT-ORIENTATION.md): two entry paths, one blueprint, current gaps, and build order.
+- [`IMPLEMENTATION-STATUS-MATRIX.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/IMPLEMENTATION-STATUS-MATRIX.md): implemented versus planned versus reference.
 
 ## Branch discipline
 
