@@ -92,7 +92,11 @@ def build_approved_input_manifest(
             if not has_value:
                 state = "UNKNOWN"
             elif isinstance(value, (int, float)) and value == 0:
-                state = "UNKNOWN"
+                # Legacy scalar payloads already encoded explicit optional
+                # defaults (notably debt terms). Preserve those values only in
+                # the compatibility path; the dynamic path requires a state
+                # and reason for every intentional zero.
+                state = "VALUE_ENTERED" if legacy_compatibility else "UNKNOWN"
             else:
                 state = "VALUE_ENTERED"
         if state not in ITEM_STATES:
