@@ -1178,6 +1178,14 @@ class Handler(BaseHTTPRequestHandler):
         write_json(self, {"ok": True})
 
     def do_GET(self) -> None:
+        try:
+            self._dispatch_get()
+        except PermissionError as exc:
+            write_error(self, str(exc) or "permission_denied", 403)
+        except RequestError as exc:
+            write_error(self, exc.code, exc.status)
+
+    def _dispatch_get(self) -> None:
         if not self._allow_request():
             return
         path = urlparse(self.path).path
@@ -1942,6 +1950,8 @@ class Handler(BaseHTTPRequestHandler):
                     write_json(self, {"project": project.to_public()})
                     return
             if path.startswith("/api/sources/") and path.endswith("/review"):
+                if self._require_platform_permission("platform.manage") is None:
+                    return
                 source_id = path.split("/")[3]
                 payload["source_id"] = source_id
                 record = REPO.save_source_review(payload)

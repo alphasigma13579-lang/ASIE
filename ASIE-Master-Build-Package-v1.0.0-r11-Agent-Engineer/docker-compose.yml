@@ -10,6 +10,7 @@ services:
       ASIE_API_PORT: "8794"
       ASIE_DB_PATH: /var/lib/asie/asie_local.sqlite3
       ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_PDF_RENDERER: /usr/bin/chromium
       ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
     volumes:
       - asie-data:/var/lib/asie
