@@ -11,7 +11,14 @@ When documents disagree, use this order:
 3. An approved ACR for a new product or contract decision.
 4. `docs/reference/` only as provenance and historical context.
 
-## Read first\n\n- [`../AGENTS.md`](../AGENTS.md): repository and agent rules.\n- [`AGENTS.md`](../AGENTS.md): canonical workspace guide.\n- [`PROJECT-ORIENTATION.md`](./PROJECT-ORIENTATION.md): product and implementation map.\n- [`IMPLEMENTATION-STATUS-MATRIX.md`](./IMPLEMENTATION-STATUS-MATRIX.md): status boundary for implementation work.\n\n## Current documents
+## Read first
+
+- [`../AGENTS.md`](../AGENTS.md): repository and agent rules.
+- [`AGENTS.md`](../AGENTS.md): canonical workspace guide.
+- [`PROJECT-ORIENTATION.md`](./PROJECT-ORIENTATION.md): product and implementation map.
+- [`IMPLEMENTATION-STATUS-MATRIX.md`](./IMPLEMENTATION-STATUS-MATRIX.md): status boundary for implementation work.
+
+## Current documents
 
 - `ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json`: frozen runtime files, contract sequence, and ACR control.
 - `ASIE-Complete-System-Architecture-2026-07-21.md`: current architecture narrative.
