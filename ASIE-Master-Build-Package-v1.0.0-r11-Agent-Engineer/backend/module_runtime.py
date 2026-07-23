@@ -13,6 +13,7 @@ from backend.decision_pack import build_decision_pack_base
 from backend.evidence_ledger import build_evidence_ledger
 from backend.execution_engine import build_execution_plan
 from backend.finance_engine import finance_result_set
+from backend.input_manifest import build_approved_input_manifest
 from backend.reports import build_report
 from backend.risk_engine import build_risk_advisory_summary, build_risk_register
 from backend.sector_intelligence import build_sector_intelligence
@@ -98,15 +99,24 @@ class FinanceModuleAdapter:
     module_id = "module.finance"
 
     def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
-        finance, blockers = finance_result_set(payload.get("inputs", {}))
+        manifest = payload.get("approved_input_manifest")
+        if not isinstance(manifest, dict):
+            # Compatibility for frozen parity fixtures. Production workflow always
+            # supplies a manifest before the message enters the Finance socket.
+            manifest = build_approved_input_manifest(
+                str(payload["project_id"]), payload.get("inputs", {}), legacy_compatibility=True
+            ).to_public()
+        finance, blockers = finance_result_set(manifest.get("normalized_inputs", {}), manifest=manifest)
         if payload.get("assumption_refs"):
             finance["assumption_refs"] = list(payload["assumption_refs"])
+        finance["input_manifest_id"] = manifest.get("manifest_id")
         return {
             "module_id": self.module_id,
             "contract_id": "finance.result.v1",
             "project_id": payload["project_id"],
             "run_id": payload["run_id"],
             "snapshot_id": payload["snapshot_id"],
+            "approved_input_manifest": manifest,
             "finance": finance,
             "blockers": blockers,
             "external_fetch_enabled": False,
