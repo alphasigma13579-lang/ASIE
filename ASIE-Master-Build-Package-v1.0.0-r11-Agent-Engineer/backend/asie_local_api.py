@@ -1,109 +1,144 @@
 from __future__ import annotations
 
-import copy
+import sys
 import json
 import mimetypes
 import os
-import queue
+import re
 import threading
-import time
 import uuid
+from collections import defaultdict, deque
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from warnings import deprecated
 
-from backend import dataset_ingestion
-from backend import local_runtime as runtime
-from backend.decision_pack import build_decision_pack_html, build_decision_pack_projection
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from backend.acceptance import build_acceptance_pack
+from backend.aas_kernel import AASKernel
+from backend.aas_registry import (
+    APP_ID,
+    AAS_CLI_RELEASE,
+    AAS_RELEASE,
+    AAS_SPEC_VERSION,
+    HEART_COUNT,
+    MANIFEST_PATH,
+    boot_report as aas_boot_report,
+    manifest_text as aas_manifest_text,
+    module_registry,
+)
+from backend.bus_controller import BusController
+from backend.decision_council import build_decision_result
 from backend.deployment_profile import build_operations_health, build_release_info
-from backend import export_controls
-from backend.finance_engine import CANONICAL_FINANCE_INPUT_KEYS
-from backend.funder_report import build_funder_report_projection, render_funder_report_html
+from backend.decision_council import build_decision_result
+from backend.evidence_ledger import (
+    build_coverage as build_evidence_coverage,
+    build_ledger as build_evidence_ledger_entries,
+    build_register as build_evidence_register_entries,
+    build_transformation_lineage,
+)
+from backend.execution_engine import build_execution_plan
+from backend.finance_engine import FinanceInputs, calculate_finance
+from backend.funder_report import render_funder_report_html
 from backend.funding_readiness import (
     evaluate_funding_readiness,
     profile_catalog,
     profile_readiness_summary,
     sector_profile_catalog,
 )
-from backend.identity import Principal, ROLE_PERMISSIONS
-from backend import intelligence_runtime
-from backend.intelligence_authorization import authorize_intelligence_action
+from backend.heart_controller import HeartController, HeartTask
+from backend.identity import Principal
 from backend.intelligence_prerun_service import IntelligencePreRunService
-from backend.market_cost_intelligence import build_component_quote_request, build_pricing_components
-from backend.module_runtime import CORE_INPUTS
-from backend.project_run_workflow import ProjectRunWorkflow, RequestError
-from backend.report_release import (
-    build_release_record,
-    render_release_html,
-    release_document_payload,
-    validate_release_record,
+from backend.local_intelligence_modules import (
+    evidence_register_from_ledger,
+    local_decision_council,
+    local_evidence_ledger,
+    local_execution_engine,
+    local_finance_engine,
+    local_risk_engine,
+    local_sector_intelligence,
+    local_snapshot_assembly,
 )
-from backend.reporting import build_dashboard_projection, build_report_projection
-from backend.repository import Project, Repository
+from backend.market_cost_intelligence import build_component_quote_request, build_pricing_components
+from backend.module_runtime import ModuleRuntime, RuntimeModule, module_sealed_output_payload
+from backend.project_run_workflow import ProjectRunWorkflow, RequestError
+from backend.readiness_gates import evaluate_readiness_gates
+from backend.report_release import build_release_record
+from backend.repository import ProjectRecord, Repository
+from backend.risk_engine import build_risk_register
 from backend.runtime_freeze import (
     RUNTIME_FREEZE_SCOPE,
     runtime_freeze_manifest,
     runtime_freeze_violations,
 )
-from backend.snapshot_assembly import canonical_hash
+from backend.sector_intelligence import build_sector_context, build_sector_criteria, sector_taxonomy
+from backend.snapshot_assembly import assemble_snapshot
+from backend.socket_contracts import SocketContract
+from backend.system_bus import SystemBus
 from backend.workspace import (
+    build_action_items_from_overview,
     build_project_remediation,
-    build_project_snapshot_comparison,
     build_project_workspace,
-    generate_action_items,
-    update_action_item_status,
+    compare_snapshots,
+    project_readiness,
 )
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_DATABASE_PATH = ROOT_DIR / ".asie" / "asie_local.sqlite3"
-DATABASE_PATH = Path(os.environ.get("ASIE_DB_PATH", str(DEFAULT_DATABASE_PATH)))
-DIST_DIR = Path(os.environ.get("ASIE_FRONTEND_DIST", str(ROOT_DIR / "dist")))
-API_HOST = os.environ.get("ASIE_API_HOST", "127.0.0.1")
-API_PORT = int(os.environ.get("ASIE_API_PORT", "8794"))
-REQUEST_LOG_PATH = Path(os.environ.get("ASIE_REQUEST_LOG_PATH", "")) if os.environ.get("ASIE_REQUEST_LOG_PATH") else None
-ALLOW_EXTERNAL_FETCH = os.environ.get("ASIE_ALLOW_EXTERNAL_FETCH", "false").lower() == "true"
-EXPORT_DIR = Path(os.environ.get("ASIE_EXPORT_DIR", str(ROOT_DIR / ".asie" / "exports")))
-MAX_REQUEST_BODY_BYTES = 512 * 1024
-LEGACY_ORGANIZATION_ID = "org-alpha-local"
+HOST = os.environ.get("ASIE_HOST", "127.0.0.1")
+PORT = int(os.environ.get("ASIE_PORT", "8794"))
+ROOT = Path(__file__).resolve().parent.parent
+STATIC_ROOT = ROOT / "dist"
+LEGACY_ORGANIZATION_ID = "org_alpha_signature"
+PROFILE_ID = "strict_open_data_only_v1"
 LOCAL_FRONTEND_ORIGINS = {
     "http://localhost:5194",
     "http://127.0.0.1:5194",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
 }
-RATE_LIMIT_RULES: dict[str, tuple[int, int]] = {
-    "POST:/api/auth/local-bootstrap": (8, 3600),
-    "POST:/api/auth/sessions": (12, 3600),
-    "POST:/api/auth/password-recovery-requests": (12, 3600),
-}
+MAX_BODY_BYTES = 2 * 1024 * 1024
+WINDOW_SECONDS = 60
+RATE_LIMIT = 300
 
 
 class RateLimiter:
-    def __init__(self) -> None:
-        self._hits: dict[str, list[float]] = {}
+    def __init__(self, limit: int, window_seconds: int) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def allow(self, key: str, *, maximum: int, window_seconds: int) -> bool:
-        now = time.monotonic()
-        window_start = now - window_seconds
+    def allow(self, key: str) -> bool:
+        now = datetime.now(timezone.utc).timestamp()
         with self._lock:
-            hits = [stamp for stamp in self._hits.get(key, []) if stamp >= window_start]
-            if len(hits) >= maximum:
-                self._hits[key] = hits
+            hits = self._hits[key]
+            while hits and now - hits[0] > self.window_seconds:
+                hits.popleft()
+            if len(hits) >= self.limit:
                 return False
             hits.append(now)
-            self._hits[key] = hits
             return True
 
 
-REQUEST_RATE_LIMITER = RateLimiter()
+REQUEST_RATE_LIMITER = RateLimiter(RATE_LIMIT, WINDOW_SECONDS)
+RUN_IDEMPOTENCY_STORE = None
 
 
 def utc_now() -> str:
-    return runtime.utc_now()
+    return datetime.now(timezone.utc).isoformat()
+
+
+def new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def audit_event(action: str, **payload: Any) -> dict:
+    return {"action": action, "at": utc_now(), **payload}
 
 
 def write_json(handler: BaseHTTPRequestHandler, payload: dict, status: int = 200) -> None:
@@ -111,6 +146,17 @@ def write_json(handler: BaseHTTPRequestHandler, payload: dict, status: int = 200
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def write_html(handler: BaseHTTPRequestHandler, html: str, status: int = 200) -> None:
+    body = html.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -119,394 +165,285 @@ def write_error(handler: BaseHTTPRequestHandler, code: str, status: int) -> None
     write_json(handler, {"error": code}, status)
 
 
-REPO = Repository(DATABASE_PATH)
-WORKFLOW = ProjectRunWorkflow(REPO)
+def read_json(handler: BaseHTTPRequestHandler) -> dict:
+    length = int(handler.headers.get("Content-Length", "0") or 0)
+    if length > MAX_BODY_BYTES:
+        raise RequestError("payload_too_large", 413)
+    if length == 0:
+        return {}
+    return json.loads(handler.rfile.read(length).decode("utf-8"))
 
 
-def deprecated_alias(name: str, replacement: str):
-    import warnings
+REPO = Repository()
+AAS_KERNEL = AASKernel(REPO)
+HEART_CONTROLLER = HeartController()
+SYSTEM_BUS = SystemBus()
+BUS_CONTROLLER = BusController(SYSTEM_BUS)
 
-    @warnings.deprecated(f"{name} is deprecated; use {replacement}")
-    def wrapper(*args, **kwargs):
-        return getattr(runtime, name)(*args, **kwargs)
 
-    wrapper.__name__ = name
-    return wrapper
+def local_runtime_context() -> Any:
+    return AAS_KERNEL.runtime_context()
 
 
-class ModuleFacade:
-    def __init__(self, module_name: str, legacy_module: Any) -> None:
-        self.module_name = module_name
-        self._legacy_module = legacy_module
+def heart_source_module_id(heart_assignment: dict) -> str:
+    return heart_assignment.get("module_id", APP_ID)
 
-    def __getattr__(self, attribute: str) -> Any:
-        import warnings
 
-        value = getattr(self._legacy_module, attribute)
-        if callable(value) and not attribute.startswith("_"):
-            @warnings.deprecated(f"{self.module_name}.{attribute} is deprecated; use AAS Module Runtime")
-            def wrapped(*args, **kwargs):
-                return value(*args, **kwargs)
-
-            wrapped.__name__ = attribute
-            return wrapped
-        return value
-
-
-finance_engine = ModuleFacade("finance_engine", runtime)
-sector_intelligence = ModuleFacade("sector_intelligence", runtime)
-evidence_ledger = ModuleFacade("evidence_ledger", runtime)
-decision_council = ModuleFacade("decision_council", runtime)
-risk_engine = ModuleFacade("risk_engine", runtime)
-execution_engine = ModuleFacade("execution_engine", runtime)
-snapshot_ledger = ModuleFacade("snapshot_ledger", runtime)
-
-
-def legacy_module_call(name: str, *args, **kwargs):
-    import warnings
-
-    value = getattr(runtime, name)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return value(*args, **kwargs)
-
-
-def build_finance_snapshot(*args, **kwargs):
-    return legacy_module_call("build_finance_snapshot", *args, **kwargs)
-
-
-def build_scenarios(*args, **kwargs):
-    return legacy_module_call("build_scenarios", *args, **kwargs)
-
-
-def build_sensitivity(*args, **kwargs):
-    return legacy_module_call("build_sensitivity", *args, **kwargs)
-
-
-def build_decision_matrix(*args, **kwargs):
-    return legacy_module_call("build_decision_matrix", *args, **kwargs)
-
-
-def build_assumption_ledger(*args, **kwargs):
-    return legacy_module_call("build_assumption_ledger", *args, **kwargs)
-
-
-def build_investor_memo(*args, **kwargs):
-    return legacy_module_call("build_investor_memo", *args, **kwargs)
-
-
-def compute_run_fingerprint(*args, **kwargs):
-    return legacy_module_call("compute_run_fingerprint", *args, **kwargs)
-
-
-def build_engine_runs(*args, **kwargs):
-    return legacy_module_call("build_engine_runs", *args, **kwargs)
-
-
-def build_audit_trail(*args, **kwargs):
-    return legacy_module_call("build_audit_trail", *args, **kwargs)
-
-
-def build_risk_register(*args, **kwargs):
-    return legacy_module_call("build_risk_register", *args, **kwargs)
-
-
-def build_acceptance_criteria(*args, **kwargs):
-    return legacy_module_call("build_acceptance_criteria", *args, **kwargs)
-
-
-def validate_acceptance(*args, **kwargs):
-    return legacy_module_call("validate_acceptance", *args, **kwargs)
-
-
-def assemble_snapshot(project, finance, scenarios, sensitivity, decision_matrix, assumption_ledger, sector_context, evidence_ledger_data, risk_register, engines, acceptance, decision) -> dict:
-    return runtime.assemble_snapshot(
-        project,
-        finance,
-        scenarios,
-        sensitivity,
-        decision_matrix,
-        assumption_ledger,
-        sector_context,
-        evidence_ledger_data,
-        risk_register,
-        engines,
-        acceptance,
-        decision,
-    )
-
-
-@deprecated_alias("decide_project", "AAS Module Runtime")
-def decide_project(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("validate_inputs", "AAS Module Runtime")
-def validate_inputs(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("run_engine_pipeline", "AAS Module Runtime")
-def run_engine_pipeline(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("create_snapshot", "AAS Module Runtime")
-def create_snapshot(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("analyze_project", "AAS Module Runtime")
-def analyze_project(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("assess_risks", "AAS Module Runtime")
-def assess_risks(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("load_sector_profile", "AAS Module Runtime")
-def load_sector_profile(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_sector_context", "AAS Module Runtime")
-def build_sector_context(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_evidence_ledger", "AAS Module Runtime")
-def build_evidence_ledger(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_coverage", "AAS Module Runtime")
-def build_coverage(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_report_payload", "AAS Module Runtime")
-def build_report_payload(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_execution_plan", "AAS Module Runtime")
-def build_execution_plan(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_investor_summary", "AAS Module Runtime")
-def build_investor_summary(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_lender_summary", "AAS Module Runtime")
-def build_lender_summary(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_internal_review", "AAS Module Runtime")
-def build_internal_review(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("build_evidence_register", "AAS Module Runtime")
-def build_evidence_register(*args, **kwargs):
-    pass
-
-
-@deprecated_alias("run_project_pipeline", "ProjectRunWorkflow")
-def run_project_pipeline(*args, **kwargs):
-    pass
-
-
-def run_project_modules(project: Project, repo: Repository | None = None) -> dict:
-    return WORKFLOW.run_modules(project)
-
-
-def build_overview(project: Project, repo: Repository | None = None) -> tuple[dict, dict]:
-    import warnings
-
-    warnings.warn(
-        "build_overview() is deprecated; use ProjectRunWorkflow orchestration.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if repo is None:
-        repo = REPO
-    module_outputs = WORKFLOW.run_modules(project)
-    overview = module_outputs["overview"]
-    report = build_report_projection(overview)
-    overview["snapshot"].setdefault("engine_versions", overview["snapshot"].get("engine_versions", {}))
-    return overview, report
-
-
-class WorkflowRunMessage:
-    def __init__(self, workflow: ProjectRunWorkflow, project: Project) -> None:
-        self.workflow = workflow
-        self.project = project
-        self.result: dict | None = None
-        self.error: Exception | None = None
-
-    def run(self) -> dict:
-        try:
-            self.result = self.workflow.run_modules(self.project)
-            return self.result
-        except Exception as exc:  # noqa: BLE001
-            self.error = exc
-            raise
-
-
-class ChangeQueue:
-    def __init__(self) -> None:
-        self._subscribers: list[queue.Queue] = []
-        self._lock = threading.Lock()
-
-    def publish(self, payload: dict) -> None:
-        with self._lock:
-            subscribers = list(self._subscribers)
-        for subscriber in subscribers:
-            try:
-                subscriber.put_nowait(payload)
-            except queue.Full:
-                pass
-
-    def subscribe(self) -> queue.Queue:
-        subscriber: queue.Queue = queue.Queue(maxsize=32)
-        with self._lock:
-            self._subscribers.append(subscriber)
-        return subscriber
-
-    def unsubscribe(self, subscriber: queue.Queue) -> None:
-        with self._lock:
-            if subscriber in self._subscribers:
-                self._subscribers.remove(subscriber)
-
-
-CHANGE_QUEUE = ChangeQueue()
-
-
-def publish_change(event: str, payload: dict) -> None:
-    CHANGE_QUEUE.publish({"event": event, "payload": payload, "timestamp": utc_now()})
-
-
-class ProjectQueue:
-    def __init__(self) -> None:
-        self._queue: queue.Queue[WorkflowRunMessage] = queue.Queue()
-        self._worker = threading.Thread(target=self._work, daemon=True)
-        self._worker.start()
-
-    def _work(self) -> None:
-        while True:
-            message = self._queue.get()
-            try:
-                message.run()
-            except Exception:  # noqa: BLE001
-                pass
-            finally:
-                self._queue.task_done()
-
-    def submit(self, message: WorkflowRunMessage) -> None:
-        self._queue.put(message)
-
-
-PROJECT_QUEUE = ProjectQueue()
-
-
-def build_source_policy_payload(repo: Repository) -> dict:
-    policy = repo.source_policy()
+def normalize_project_run_http_request(project_id: str, payload: dict) -> dict:
+    operation_id = str(payload.get("operation_id") or new_id("op"))
+    idempotency_key = str(payload.get("idempotency_key") or operation_id)
+    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
     return {
-        "policy_id": policy["policy_id"],
-        "strict_open_data_profile": policy["strict_open_data_profile"],
-        "allow_external_fetch": ALLOW_EXTERNAL_FETCH,
-        "review_required_before_import": True,
-        "source_classes": policy["source_classes"],
+        "project_id": project_id,
+        "operation_id": operation_id,
+        "idempotency_key": idempotency_key,
+        "inputs": inputs,
+        "actor": str(payload.get("actor") or "local-operator"),
+        "correlation_id": str(payload.get("correlation_id") or new_id("corr")),
     }
 
 
+def execute_project_run_pipeline(run_envelope: dict, project: ProjectRecord, data_access: Repository) -> tuple[dict, dict]:
+    inputs = dict(project.inputs)
+    inputs.update(run_envelope.get("inputs", {}))
+    finance_inputs = FinanceInputs(**{key: value for key, value in inputs.items() if key in FinanceInputs.__dataclass_fields__})
+    context = local_runtime_context()
+    runtime = context.runtime
+    finance_result = local_finance_engine(runtime, finance_inputs)
+    sector_context = build_sector_context(project.sector, project.jurisdiction)
+    sector_criteria = build_sector_criteria(project.sector)
+    evidence_register, ledger_entries, coverage = local_evidence_ledger(
+        runtime,
+        project=project,
+        finance_result=finance_result,
+        sector_context=sector_context,
+    )
+    decision = local_decision_council(
+        runtime,
+        finance_result=finance_result,
+        evidence_coverage=coverage,
+        sector_criteria=sector_criteria,
+    )
+    risk_register = local_risk_engine(
+        runtime,
+        finance_result=finance_result,
+        decision=decision,
+        evidence_coverage=coverage,
+    )
+    execution_plan = local_execution_engine(
+        runtime,
+        project=project,
+        finance_result=finance_result,
+        decision=decision,
+        risk_register=risk_register,
+    )
+    snapshot = local_snapshot_assembly(
+        runtime,
+        project=project,
+        finance_result=finance_result,
+        sector_context=sector_context,
+        evidence_register=evidence_register,
+        evidence_ledger=ledger_entries,
+        evidence_coverage=coverage,
+        decision=decision,
+        risk_register=risk_register,
+        execution_plan=execution_plan,
+    )
+    acceptance = build_acceptance_pack(snapshot, decision, coverage)
+    overview = {
+        "contract_id": "project.run.overview.v1",
+        "run": run_envelope.get("run", {"run_id": run_envelope.get("operation_id")}),
+        "project": project.to_public(),
+        "snapshot": snapshot,
+        "acceptance": acceptance,
+    }
+    report = {
+        "contract_id": "project.report.v1",
+        "snapshot_id": snapshot["snapshot_id"],
+        "funder_report": snapshot.get("funder_report", {}),
+        "html": snapshot.get("report_html", ""),
+    }
+    return overview, report
+
+
+def decision_pack_via_module_runtime(overview: dict, report: dict) -> dict:
+    context = local_runtime_context()
+    return {
+        "contract_id": "decision.pack.v1",
+        "snapshot_id": overview["snapshot"]["snapshot_id"],
+        "decision": overview["snapshot"].get("decision", {}),
+        "finance": overview["snapshot"].get("finance", {}),
+        "evidence_coverage": overview["snapshot"].get("evidence_coverage", {}),
+        "risk_register": overview["snapshot"].get("risk_register", {}),
+        "acceptance": overview.get("acceptance", {}),
+    }
+
+
+def apply_review_overlay(pack: dict, reviews: list[dict]) -> dict:
+    updated = deepcopy(pack)
+    updated["reviews"] = reviews
+    if reviews:
+        updated["latest_review"] = reviews[-1]
+    return updated
+
+
+def render_decision_pack_html(pack: dict) -> str:
+    return "\n".join(
+        [
+            "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>حزمة القرار</title></head><body>",
+            f"<h1>حزمة القرار — {pack.get('snapshot_id', '')}</h1>",
+            f"<pre>{json.dumps(pack, ensure_ascii=False, indent=2)}</pre>",
+            "</body></html>",
+        ]
+    )
+
+
+def build_report_view(report: dict, latest_review: dict | None) -> dict:
+    return {
+        "contract_id": "report.view.v1",
+        "snapshot_id": report.get("snapshot_id", ""),
+        "latest_review": latest_review,
+        "sections": report.get("funder_report", {}).get("sections", []),
+    }
+
+
+def render_report_html(report: dict, latest_review: dict | None) -> str:
+    return "\n".join(
+        [
+            "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>تقرير المشروع</title></head><body>",
+            f"<h1>تقرير المشروع — {report.get('snapshot_id', '')}</h1>",
+            f"<pre>{json.dumps(report.get('funder_report', {}), ensure_ascii=False, indent=2)}</pre>",
+            "</body></html>",
+        ]
+    )
+
+
+def source_policy(records: list[dict], profile_id: str) -> dict:
+    return {
+        "contract_id": "source.policy.v1",
+        "profile_id": profile_id,
+        "sources": records,
+        "external_fetch_enabled": False,
+    }
+
+
+def source_review_checklist(record: dict) -> dict:
+    return {
+        "source_id": record.get("source_id", ""),
+        "review_status": record.get("review_status", ""),
+        "checklist": [
+            "license_verified",
+            "terms_hash_recorded",
+            "human_review_completed",
+        ],
+    }
+
+
+def dataset_quality_gate(dataset: dict, source: dict | None) -> dict:
+    reasons: list[str] = []
+    if not dataset.get("review_status") == "approved_for_use":
+        reasons.append("dataset_not_approved")
+    if source is not None and source.get("review_status") != "approved":
+        reasons.append("source_not_approved")
+    return {
+        "contract_id": "dataset.quality_gate.v1",
+        "dataset_id": dataset.get("dataset_id", ""),
+        "can_use_for_assumptions": not reasons,
+        "reasons": reasons,
+    }
+
+
+def normalize_file_import_payload(payload: dict) -> dict:
+    normalized = dict(payload)
+    normalized.setdefault("import_method", "file_upload")
+    return normalized
+
+
+def build_project_evidence_state(repo: Repository, project: ProjectRecord, status: str, run_id: str | None) -> tuple[dict, dict, list, dict]:
+    sector = build_sector_context(project.sector, project.jurisdiction)
+    ledger = repo.evidence_ledger(project.project_id)
+    register = evidence_register_from_ledger(ledger)
+    coverage = build_evidence_coverage(register, sector)
+    return register, sector, ledger, coverage
+
+
+def build_evidence_register(repo: Repository, project_id: str, status: str) -> dict:
+    ledger = repo.evidence_ledger(project_id)
+    return evidence_register_from_ledger(ledger)
+
+
+def build_architecture_runtime_status() -> dict:
+    return {
+        "contract_id": "architecture.runtime_status.v1",
+        "scope": RUNTIME_FREEZE_SCOPE,
+        "manifest": runtime_freeze_manifest(),
+        "violations": runtime_freeze_violations(),
+        "boot_report": aas_boot_report(),
+        "read_only": True,
+    }
+
+
+def local_operational_health(repo: Repository) -> dict:
+    return build_operations_health(repo)
+
+
+def release_info() -> dict:
+    return build_release_info()
+
+
+def reject_architecture_status_mutation(handler: BaseHTTPRequestHandler) -> None:
+    write_json(
+        handler,
+        {
+            "error": "architecture_runtime_status_is_read_only",
+            "status": 405,
+            "allowed_methods": ["GET"],
+            "mutability": "read_only_projection",
+            "allows_runtime_mutation": False,
+        },
+        405,
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ASIELocalAPI/1.0"
-    protocol_version = "HTTP/1.1"
-
-    def log_message(self, format: str, *args: Any) -> None:
-        if REQUEST_LOG_PATH:
-            REQUEST_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with REQUEST_LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(f"{utc_now()} {self.address_string()} {format % args}\n")
-
-    def _request_id(self) -> str:
-        return self.headers.get("X-Request-Id", uuid.uuid4().hex)
-
-    def _write_security_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
-        self.send_header("X-Request-Id", self._request_id())
-        origin = self.headers.get("Origin")
-        if origin in LOCAL_FRONTEND_ORIGINS:
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ASIE-Organization-Id, X-Request-Id")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
-
-    def end_headers(self) -> None:
-        self._write_security_headers()
-        super().end_headers()
-
     def _allow_request(self) -> bool:
+        self.request_id = new_id("req")
         origin = self.headers.get("Origin")
         if origin and origin not in LOCAL_FRONTEND_ORIGINS:
             write_error(self, "origin_not_allowed", 403)
             return False
-        route_key = f"{self.command}:{urlparse(self.path).path}"
-        maximum, window = RATE_LIMIT_RULES.get(route_key, (120, 60))
-        key = f"{self.client_address[0]}:{route_key}"
-        if not REQUEST_RATE_LIMITER.allow(key, maximum=maximum, window_seconds=window):
-            write_error(self, "rate_limited", 429)
+        route_key = f"{self.client_address[0]}:{self.command}:{urlparse(self.path).path}"
+        if not REQUEST_RATE_LIMITER.allow(route_key):
+            write_error(self, "rate_limit_exceeded", 429)
             return False
         return True
 
-    def _read_json(self) -> dict:
-        length = int(self.headers.get("Content-Length", "0"))
-        if length > MAX_REQUEST_BODY_BYTES:
-            raise RequestError("request_too_large", 413)
-        if length == 0:
-            return {}
-        raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8"))
+    def _require_platform_permission(self, permission: str) -> Principal | None:
+        principal = self._principal()
+        if principal is None:
+            return None
+        if principal.can(permission) or principal.can("platform.manage"):
+            return principal
+        REPO.audit(actor_user_id=principal.user_id, organization_id=None, action="authorization.check", target_type="platform", target_id=permission, result="denied", reason=permission, correlation_id=self.request_id)
+        write_error(self, "permission_denied", 403)
+        return None
 
     def _bearer_token(self) -> str | None:
-        header = self.headers.get("Authorization", "")
-        if header.startswith("Bearer "):
-            return header[7:]
-        return None
+        value = self.headers.get("Authorization", "")
+        return value[7:].strip() if value.startswith("Bearer ") and value[7:].strip() else None
 
     def _principal(self, organization_id: str | None = None) -> Principal | None:
         token = self._bearer_token()
         principal = REPO.principal_for_token(token, organization_id) if token else None
         if principal is None and REPO.user_count() == 0 and organization_id in {None, LEGACY_ORGANIZATION_ID}:
             return Principal(
-                user_id="legacy-operator",
-                email="legacy@asie.local",
-                display_name="Legacy Local Operator",
+                user_id="local_legacy_operator",
+                session_id="local_legacy_session",
                 organization_id=LEGACY_ORGANIZATION_ID,
                 role="organization_owner",
-                platform_role="platform_admin",
             )
         if principal is None:
             write_error(self, "authentication_required", 401)
-            return None
-        return principal
-
-    def _require_platform_permission(self, permission: str) -> Principal | None:
-        principal = self._principal()
-        if principal is None:
-            return None
-        if not principal.can(permission):
-            write_error(self, "permission_denied", 403)
             return None
         return principal
 
@@ -514,44 +451,46 @@ class Handler(BaseHTTPRequestHandler):
         principal = self._principal(organization_id)
         if principal is None:
             return None
-        if principal.organization_id != organization_id or not (principal.can(permission) or principal.can("platform.manage")):
-            REPO.audit("authorization_denied", organization_id=organization_id, actor_id=principal.user_id, payload={"permission": permission})
-            write_error(self, "permission_denied", 403)
-            return None
-        return principal
+        if principal.can(permission) or principal.can("platform.manage"):
+            return principal
+        REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="authorization.check", target_type="organization", target_id=organization_id, result="denied", reason=permission)
+        write_error(self, "permission_denied", 403)
+        return None
 
-    def _require_project_permission(self, project_id: str, permission: str) -> Principal | None:
+    def _require_project_permission(self, project_id: str, permission: str) -> ProjectRecord | None:
         project = REPO.get_project(project_id)
         if project is None:
             write_error(self, "project_not_found", 404)
             return None
-        return self._require_organization_permission(project.organization_id, permission)
+        if self._require_organization_permission(project.organization_id, permission) is None:
+            return None
+        return project
 
-    def _require_snapshot_permission(self, snapshot_id: str, permission: str = "snapshot.read") -> Principal | None:
+    def _require_snapshot_permission(self, snapshot_id: str, permission: str = "snapshot.read") -> str | None:
         project_id = REPO.snapshot_project_id(snapshot_id)
         if project_id is None:
             write_error(self, "snapshot_not_found", 404)
             return None
-        return self._require_project_permission(project_id, permission)
+        return project_id if self._require_project_permission(project_id, permission) else None
 
-    def _require_run_permission(self, run_id: str, permission: str = "snapshot.read") -> Principal | None:
+    def _require_run_permission(self, run_id: str, permission: str = "snapshot.read") -> str | None:
         project_id = REPO.run_project_id(run_id)
         if project_id is None:
             write_error(self, "run_not_found", 404)
             return None
-        return self._require_project_permission(project_id, permission)
+        return project_id if self._require_project_permission(project_id, permission) else None
 
-    def _require_dataset_permission(self, dataset_id: str, permission: str) -> Principal | None:
-        dataset = REPO.get_dataset(dataset_id)
-        if dataset is None:
+    def _require_dataset_permission(self, dataset_id: str, permission: str = "snapshot.read") -> bool:
+        organization_id = REPO.dataset_organization_id(dataset_id)
+        if organization_id is None:
             write_error(self, "dataset_not_found", 404)
-            return None
-        return self._require_organization_permission(dataset["organization_id"], permission)
+            return False
+        return self._require_organization_permission(organization_id, permission) is not None
 
     def do_OPTIONS(self) -> None:
-        self.send_response(204)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        if not self._allow_request():
+            return
+        write_json(self, {"ok": True})
 
     def do_GET(self) -> None:
         try:
@@ -564,121 +503,118 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch_get(self) -> None:
         if not self._allow_request():
             return
-        parsed = urlparse(self.path)
-        path = parsed.path
+        path = urlparse(self.path).path
         if path == "/api/health":
-            write_json(self, {"status": "ok", "timestamp": utc_now(), "runtime_freeze": RUNTIME_FREEZE_SCOPE})
+            write_json(self, {"ok": True, "service": "asie-local-api", "strict_profile": PROFILE_ID})
             return
         if path == "/api/funding-profiles":
-            write_json(self, {"profiles": profile_catalog()})
+            write_json(self, {"profiles": profile_catalog(), "external_fetch_enabled": False, "reference_only": True})
             return
         if path == "/api/sector-profiles":
-            write_json(self, {"profiles": sector_profile_catalog()})
+            write_json(self, {"profiles": sector_profile_catalog(), "external_fetch_enabled": False, "reference_only": True})
             return
         if path == "/api/architecture/runtime-status":
-            write_json(
-                self,
-                {
-                    "scope": RUNTIME_FREEZE_SCOPE,
-                    "manifest": runtime_freeze_manifest(),
-                    "violations": runtime_freeze_violations(),
-                },
-            )
+            write_json(self, build_architecture_runtime_status())
             return
         if path == "/api/operations/health":
-            if self._require_platform_permission("platform.audit.read") is None:
+            if self._require_platform_permission("platform.manage") is None:
                 return
-            write_json(self, build_operations_health(REPO))
+            write_json(self, local_operational_health(REPO))
             return
         if path == "/api/operations/audit-events":
-            if self._require_platform_permission("platform.audit.read") is None:
+            if self._require_platform_permission("platform.manage") is None:
                 return
-            limit_raw = parse_qs(parsed.query).get("limit", ["50"])[0]
+            requested_limit = parse_qs(urlparse(self.path).query).get("limit", ["100"])[0]
             try:
-                limit = max(1, min(int(limit_raw), 200))
+                limit = int(requested_limit)
             except ValueError:
-                limit = 50
-            write_json(self, {"events": REPO.security_audit_events(limit=limit)})
+                write_error(self, "invalid_limit", 400)
+                return
+            write_json(self, {"events": REPO.security_audit_events(limit=limit), "read_only": True})
             return
         if path == "/api/operations/release-info":
             if self._require_platform_permission("platform.audit.read") is None:
                 return
-            write_json(self, build_release_info())
+            write_json(self, release_info())
             return
-        if path.startswith("/api/admin/organizations/"):
-            parts = path.split("/")
-            if len(parts) == 5 and parts[4] == "subscription":
-                if self._require_platform_permission("platform.manage") is None:
-                    return
-                record = REPO.get_subscription(parts[3])
-                if record is None:
-                    write_error(self, "subscription_not_found", 404)
-                    return
-                write_json(self, {"subscription": record})
-                return
-            if len(parts) == 5 and parts[4] == "notifications":
-                if self._require_platform_permission("platform.manage") is None:
-                    return
-                write_json(self, {"notifications": REPO.list_notifications(parts[3])})
-                return
         if path == "/api/admin/overview":
             if self._require_platform_permission("platform.manage") is None:
                 return
-            write_json(self, REPO.platform_overview())
+            organizations = REPO.control_plane_organizations()
+            write_json(self, {"organizations": organizations, "users": REPO.control_plane_users(), "invoices": REPO.local_invoices(), "health": local_operational_health(REPO), "external_payments_enabled": False, "external_notifications_enabled": False})
+            return
+        if path.startswith("/api/admin/organizations/") and path.endswith("/subscription"):
+            if self._require_platform_permission("platform.manage") is None:
+                return
+            organization_id = path.split("/")[4]
+            subscription = REPO.subscription_for_organization(organization_id)
+            if subscription is None:
+                write_error(self, "organization_not_found", 404)
+                return
+            write_json(self, {"subscription": subscription, "usage": REPO.usage_summary(organization_id), "invoices": REPO.local_invoices(organization_id)})
+            return
+        if path.startswith("/api/admin/organizations/") and path.endswith("/notifications"):
+            if self._require_platform_permission("platform.manage") is None:
+                return
+            organization_id = path.split("/")[4]
+            write_json(self, {"notifications": REPO.notifications_for_organization(organization_id), "external_delivery_enabled": False})
             return
         if path == "/api/auth/me":
-            principal = self._principal(self.headers.get("X-ASIE-Organization-Id") or None)
+            principal = self._principal()
             if principal is None:
                 return
-            write_json(
-                self,
-                {
-                    "user": REPO.get_user(principal.user_id),
-                    "principal": {
-                        "organization_id": principal.organization_id,
-                        "role": principal.role,
-                        "platform_role": principal.platform_role,
-                        "permissions": sorted(principal.permissions()),
-                    },
-                    "memberships": REPO.list_memberships_for_user(principal.user_id),
-                },
-            )
+            write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "external_access_enabled": False})
             return
         if path.startswith("/api/intelligence/contexts/"):
             context_id = path.split("/")[4]
             organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-            project_id = parse_qs(parsed.query).get("project_id", [""])[0]
+            project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
             principal = self._principal(organization_id)
             if not organization_id or not project_id or principal is None:
                 write_error(self, "permission_denied", 403)
                 return
-            context = REPO.get_intelligence_context(
-                context_build_id=context_id,
-                organization_id=organization_id,
-                project_id=project_id,
-                principal=principal,
-            )
+            context = REPO.get_intelligence_context(context_build_id=context_id, organization_id=organization_id, project_id=project_id, principal=principal)
             if context is None:
-                write_error(self, "context_not_found", 404)
+                write_error(self, "intelligence_context_not_found", 404)
                 return
-            write_json(self, context)
+            write_json(self, {"context": context, "snapshot_mutation": False, "external_fetch_enabled": False})
             return
         if self._principal() is None:
             return
+        if path.startswith("/api/projects/"):
+            if self._require_project_permission(path.split("/")[3], "snapshot.read") is None:
+                return
+        elif path.startswith("/api/runs/"):
+            if self._require_run_permission(path.split("/")[3]) is None:
+                return
+        elif path.startswith("/api/snapshots/"):
+            if self._require_snapshot_permission(path.split("/")[3]) is None:
+                return
+        elif path.startswith("/api/datasets/"):
+            if not self._require_dataset_permission(path.split("/")[3]):
+                return
         if path == "/api/source-policy":
-            write_json(self, build_source_policy_payload(REPO))
+            write_json(self, source_policy(REPO.source_records(), PROFILE_ID))
             return
         if path == "/api/sources":
-            write_json(self, {"sources": REPO.source_records()})
+            sources = REPO.source_records()
+            write_json(
+                self,
+                {
+                    "sources": sources,
+                    "checklists": [source_review_checklist(row) for row in sources],
+                    "external_fetch_enabled": False,
+                },
+            )
             return
         if path == "/api/sector-taxonomy":
-            write_json(self, {"taxonomy": REPO.sector_taxonomy()})
+            write_json(self, {"taxonomy": sector_taxonomy(), "external_fetch_enabled": False})
             return
         if path == "/api/datasets":
             organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
             if not organization_id or self._require_organization_permission(organization_id, "snapshot.read") is None:
                 return
-            write_json(self, {"datasets": REPO.list_datasets(organization_id)})
+            write_json(self, {"datasets": REPO.datasets(organization_id), "external_fetch_enabled": False})
             return
         if path.startswith("/api/datasets/"):
             parts = path.split("/")
@@ -691,25 +627,12 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"dataset": dataset})
                 return
             if len(parts) == 5 and parts[4] == "quality-gate":
-                write_json(self, {"quality_gate": REPO.dataset_quality_gate(dataset_id)})
+                source = REPO.get_source_record(dataset["source_id"])
+                write_json(self, dataset_quality_gate(dataset, source))
                 return
             if len(parts) == 5 and parts[4] == "transformations":
-                write_json(self, {"transformations": REPO.list_transformations(dataset_id)})
+                write_json(self, {"transformations": REPO.dataset_transformations(dataset_id)})
                 return
-        if path.startswith("/api/projects/") or path.startswith("/api/runs/") or path.startswith("/api/snapshots/") or path.startswith("/api/datasets/"):
-            if path.startswith("/api/projects/"):
-                project_id = path.split("/")[3]
-                if self._require_project_permission(project_id, "snapshot.read") is None:
-                    return
-            elif path.startswith("/api/runs/"):
-                if self._require_run_permission(path.split("/")[3]) is None:
-                    return
-            elif path.startswith("/api/snapshots/"):
-                if self._require_snapshot_permission(path.split("/")[3]) is None:
-                    return
-            else:
-                if self._require_dataset_permission(path.split("/")[3], "snapshot.read") is None:
-                    return
         if path == "/api/projects":
             organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
             if not organization_id or self._require_organization_permission(organization_id, "snapshot.read") is None:
@@ -726,243 +649,325 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"project": project.to_public()})
                 return
             if len(parts) == 5 and parts[4] == "runs":
-                write_json(self, {"runs": REPO.list_runs(parts[3])})
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                write_json(self, {"runs": REPO.list_project_runs(parts[3])})
                 return
             if len(parts) == 5 and parts[4] == "workspace":
-                write_json(self, build_project_workspace(REPO, parts[3]))
+                workspace = build_project_workspace(REPO, parts[3])
+                if workspace is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                write_json(self, workspace)
                 return
             if len(parts) == 5 and parts[4] == "remediation":
+                if REPO.get_project(parts[3]) is None:
+                    write_error(self, "project_not_found", 404)
+                    return
                 write_json(self, build_project_remediation(REPO, parts[3]))
                 return
             if len(parts) == 5 and parts[4] == "action-items":
-                write_json(self, {"items": REPO.list_action_items(parts[3])})
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                latest_run = REPO.latest_project_run(parts[3])
+                if not latest_run:
+                    write_json(self, {"action_items": []})
+                    return
+                overview = REPO.get_run_overview(latest_run["run_id"]) or {}
+                states = REPO.project_action_item_states(parts[3])
+                write_json(self, {"action_items": build_action_items_from_overview(parts[3], overview, states)})
                 return
             if len(parts) == 5 and parts[4] == "readiness":
                 project = REPO.get_project(parts[3])
                 if project is None:
                     write_error(self, "project_not_found", 404)
                     return
-                write_json(self, {"readiness": project.readiness})
+                write_json(
+                    self,
+                    project_readiness(project, REPO.project_assumptions(parts[3]), REPO.source_records()),
+                )
                 return
             if len(parts) == 5 and parts[4] == "assumptions":
-                write_json(self, {"assumptions": REPO.list_assumptions(parts[3])})
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                write_json(self, {"assumptions": REPO.project_assumptions(parts[3])})
                 return
             if len(parts) == 5 and parts[4] == "evidence-register":
                 project = REPO.get_project(parts[3])
                 if project is None:
                     write_error(self, "project_not_found", 404)
                     return
-                write_json(self, {"evidence_register": legacy_module_call("build_evidence_register", project)})
+                write_json(self, build_evidence_register(REPO, parts[3], "draft"))
                 return
             if len(parts) == 5 and parts[4] == "evidence-ledger":
-                write_json(self, {"evidence_ledger": REPO.evidence_ledger(parts[3])})
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                evidence_register, sector, ledger, coverage = build_project_evidence_state(REPO, project, "draft", None)
+                write_json(
+                    self,
+                    {
+                        "evidence_register": evidence_register,
+                        "sector_intelligence": sector,
+                        "evidence_ledger": ledger,
+                        "evidence_coverage": coverage,
+                        "transformation_lineage": build_transformation_lineage(
+                            ledger,
+                            evidence_register.get("transformations", []),
+                        ),
+                    },
+                )
                 return
             if len(parts) == 5 and parts[4] == "transformation-lineage":
-                write_json(self, {"transformations": REPO.transformation_lineage(parts[3])})
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                evidence_register, _sector, ledger, _coverage = build_project_evidence_state(REPO, project, "draft", None)
+                write_json(
+                    self,
+                    {
+                        "transformations": evidence_register.get("transformations", []),
+                        "transformation_lineage": build_transformation_lineage(
+                            ledger,
+                            evidence_register.get("transformations", []),
+                        ),
+                    },
+                )
                 return
             if len(parts) == 5 and parts[4] == "evidence-coverage":
-                write_json(self, {"evidence_coverage": REPO.evidence_coverage(parts[3])})
-                return
-        if path.startswith("/api/runs/"):
-            parts = path.split("/")
-            if len(parts) == 5 and parts[4] == "overview":
-                overview = REPO.get_run_overview(parts[3])
-                if overview is None:
-                    write_error(self, "run_not_found", 404)
+                project = REPO.get_project(parts[3])
+                if project is None:
+                    write_error(self, "project_not_found", 404)
                     return
-                write_json(self, overview)
+                _evidence_register, _sector, _ledger, coverage = build_project_evidence_state(REPO, project, "draft", None)
+                write_json(self, {"evidence_coverage": coverage})
                 return
-            if len(parts) == 5 and parts[4] == "audit":
-                write_json(self, {"audit": REPO.run_audit(parts[3])})
+        if path.startswith("/api/runs/") and path.endswith("/overview"):
+            run_id = path.split("/")[3]
+            overview = REPO.get_run_overview(run_id)
+            if overview is None:
+                write_error(self, "run_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "acceptance":
-                overview = REPO.get_run_overview(parts[3])
-                if overview is None:
-                    write_error(self, "run_not_found", 404)
-                    return
-                write_json(self, {"acceptance": overview["acceptance"]})
+            write_json(self, overview)
+            return
+        if path.startswith("/api/runs/") and path.endswith("/audit"):
+            run_id = path.split("/")[3]
+            audit = REPO.get_run_audit(run_id)
+            if audit is None:
+                write_error(self, "run_not_found", 404)
                 return
-        if path.startswith("/api/snapshots/"):
-            parts = path.split("/")
-            if len(parts) == 4:
-                overview = REPO.get_snapshot_overview(parts[3])
-                if overview is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                write_json(self, {"snapshot": overview["snapshot"]})
+            write_json(self, audit)
+            return
+        if path.startswith("/api/runs/") and path.endswith("/acceptance"):
+            run_id = path.split("/")[3]
+            overview = REPO.get_run_overview(run_id)
+            if overview is None:
+                write_error(self, "run_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "report":
-                report = REPO.get_snapshot_report(parts[3])
-                if report is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                write_json(self, report)
+            write_json(self, overview["acceptance"])
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/report"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "decision-pack":
-                overview = REPO.get_snapshot_overview(parts[3])
-                if overview is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                projection = build_decision_pack_projection(overview)
-                write_json(self, projection)
+            write_json(self, report)
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/decision-pack"):
+            snapshot_id = path.split("/")[3]
+            overview = REPO.get_snapshot_overview(snapshot_id)
+            report = REPO.get_snapshot_report(snapshot_id)
+            if overview is None or report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "decision-pack.html":
-                overview = REPO.get_snapshot_overview(parts[3])
-                if overview is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                html = build_decision_pack_html(build_decision_pack_projection(overview))
-                body = html.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            base_pack = decision_pack_via_module_runtime(overview, report)
+            write_json(self, apply_review_overlay(base_pack, REPO.snapshot_reviews(snapshot_id)))
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/decision-pack.html"):
+            snapshot_id = path.split("/")[3]
+            overview = REPO.get_snapshot_overview(snapshot_id)
+            report = REPO.get_snapshot_report(snapshot_id)
+            if overview is None or report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "reviews":
-                write_json(self, {"reviews": REPO.list_snapshot_reviews(parts[3])})
+            base_pack = decision_pack_via_module_runtime(overview, report)
+            pack = apply_review_overlay(base_pack, REPO.snapshot_reviews(snapshot_id))
+            write_html(self, render_decision_pack_html(pack))
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/reviews"):
+            snapshot_id = path.split("/")[3]
+            if REPO.get_snapshot_overview(snapshot_id) is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "report-view":
-                report = REPO.get_snapshot_report(parts[3])
-                if report is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                html = report["html"]
-                body = html.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            write_json(self, {"reviews": REPO.snapshot_reviews(snapshot_id)})
+            return
+        if path.startswith("/api/snapshots/") and len(path.split("/")) == 4:
+            snapshot_id = path.split("/")[3]
+            overview = REPO.get_snapshot_overview(snapshot_id)
+            if overview is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "report.html":
-                report = REPO.get_snapshot_report(parts[3])
-                if report is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                html = report["html"]
-                body = html.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            write_json(self, overview)
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/report-view"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "funder-report.html":
-                report = REPO.get_snapshot_report(parts[3])
-                if report is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                html = render_funder_report_html(report["funder_report"])
-                body = html.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            write_json(self, build_report_view(report, REPO.latest_snapshot_review(snapshot_id)))
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/report.html"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
-            if len(parts) == 5 and parts[4] == "release":
-                report = REPO.get_snapshot_report(parts[3])
-                if report is None:
-                    write_error(self, "snapshot_not_found", 404)
-                    return
-                write_json(self, release_document_payload(report["funder_report"]))
+            write_html(self, render_report_html(report, REPO.latest_snapshot_review(snapshot_id)))
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/funder-report.html"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
                 return
+            write_html(self, render_funder_report_html(report.get("funder_report", {})))
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/release"):
+            snapshot_id = path.split("/")[3]
+            overview = REPO.get_snapshot_overview(snapshot_id)
+            report = REPO.get_snapshot_report(snapshot_id)
+            if overview is None or report is None:
+                write_error(self, "snapshot_not_found", 404)
+                return
+            write_json(self, build_release_record(report.get("funder_report", {}), REPO.latest_snapshot_review(snapshot_id)))
+            return
         write_error(self, "not_found", 404)
 
     def do_POST(self) -> None:
         if not self._allow_request():
             return
-        parsed = urlparse(self.path)
-        path = parsed.path
+        path = urlparse(self.path).path
+        if path == "/api/architecture/runtime-status":
+            reject_architecture_status_mutation(self)
+            return
         try:
-            payload = self._read_json()
+            payload = read_json(self)
             if path == "/api/auth/local-bootstrap":
                 if REPO.user_count() != 0:
-                    write_error(self, "bootstrap_unavailable", 409)
+                    write_error(self, "local_bootstrap_already_completed", 409)
                     return
-                email = str(payload.get("email", "")).strip().lower()
-                display_name = str(payload.get("display_name", "")).strip()
-                password = str(payload.get("password", ""))
-                organization_name = str(payload.get("organization_name", "")).strip()
-                if not email or not display_name or not organization_name or len(password) < 12:
-                    write_error(self, "invalid_bootstrap_payload", 422)
-                    return
-                user = REPO.create_user(email=email, display_name=display_name, password=password, platform_role="platform_admin")
-                organization = REPO.create_organization(name=organization_name, owner_user_id=user["user_id"])
-                token, _session = REPO.create_session(email=email, password=password)
-                write_json(
-                    self,
-                    {
-                        "token": token,
-                        "user": user,
-                        "organization": organization,
-                        "memberships": REPO.list_memberships_for_user(user["user_id"]),
-                    },
-                    201,
-                )
+                user = REPO.create_user(email=str(payload.get("email") or ""), display_name=str(payload.get("display_name") or ""), password=str(payload.get("password") or ""), platform_role="platform_admin")
+                organization = REPO.create_organization(name=str(payload.get("organization_name") or "مساحة ASIE المحلية"), owner_user_id=user["user_id"])
+                token, _authenticated_user = REPO.create_session(email=user["email"], password=str(payload.get("password") or ""))
+                REPO.audit(actor_user_id=user["user_id"], organization_id=organization["organization_id"], action="local_bootstrap", target_type="organization", target_id=organization["organization_id"], result="allowed")
+                write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "organization": organization, "external_access_enabled": False}, 201)
                 return
-            if path == "/api/auth/sessions":
+            if path == "/api/auth/login":
+                token, user = REPO.create_session(email=str(payload.get("email") or ""), password=str(payload.get("password") or ""))
+                write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "memberships": REPO.memberships_for_user(user["user_id"]), "external_access_enabled": False})
+                return
+            if path == "/api/auth/password-recovery/request":
+                write_json(self, REPO.create_password_recovery_request(email=str(payload.get("email") or "")))
+                return
+            if path == "/api/auth/password-recovery/complete":
                 try:
-                    token, session = REPO.create_session(email=str(payload.get("email", "")).strip().lower(), password=str(payload.get("password", "")))
-                except ValueError:
-                    REPO.audit("login_failed", payload={"email": str(payload.get("email", "")).strip().lower()})
-                    write_error(self, "invalid_credentials", 401)
+                    result = REPO.consume_password_recovery_token(token=str(payload.get("recovery_token") or ""), password=str(payload.get("new_password") or ""))
+                except ValueError as exc:
+                    write_error(self, str(exc), 400)
                     return
-                write_json(self, {"token": token, "user": REPO.get_user(session["user_id"]), "memberships": REPO.list_memberships_for_user(session["user_id"])}, 201)
-                return
-            if path == "/api/auth/password-recovery-requests":
-                request = REPO.create_password_recovery_request(email=str(payload.get("email", "")).strip().lower())
-                write_json(self, {"request": request}, 201)
-                return
-            if path == "/api/auth/password-recovery-confirmations":
-                try:
-                    REPO.complete_password_recovery(token=str(payload.get("token", "")), new_password=str(payload.get("new_password", "")))
-                except ValueError:
-                    write_error(self, "invalid_recovery_token", 422)
-                    return
-                write_json(self, {"status": "password_updated"})
+                write_json(self, result)
                 return
             if path == "/api/auth/logout":
+                principal = self._principal()
                 token = self._bearer_token()
-                if token:
-                    REPO.revoke_session(token)
-                write_json(self, {"status": "signed_out"})
+                if principal is None or token is None:
+                    return
+                REPO.revoke_session(token)
+                REPO.audit(actor_user_id=principal.user_id, organization_id=None, action="session.logout", target_type="session", target_id=principal.session_id, result="allowed")
+                write_json(self, {"ok": True})
+                return
+            if path.startswith("/api/admin/users/") and path.endswith("/local-password-reset"):
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
+                user_id = path.split("/")[4]
+                user = REPO.reset_local_password(user_id=user_id, password=str(payload.get("new_password") or ""), actor_user_id=principal.user_id)
+                write_json(self, {"user": user, "sessions_revoked": True, "external_delivery_enabled": False})
+                return
+            if path.startswith("/api/admin/organizations/") and path.endswith("/subscription"):
+                organization_id = path.split("/")[4]
+                principal = self._require_platform_permission("subscription.manage")
+                if principal is None:
+                    return
+                subscription = REPO.set_subscription(
+                    organization_id=organization_id,
+                    plan_code=str(payload.get("plan_code") or ""),
+                    lifecycle_status=str(payload.get("lifecycle_status") or ""),
+                    quota=payload.get("quota") if isinstance(payload.get("quota"), dict) else {},
+                    actor_user_id=principal.user_id,
+                    reason=str(payload.get("reason") or ""),
+                )
+                REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="subscription.change", target_type="organization_entitlement", target_id=organization_id, result="allowed", reason=str(payload.get("reason") or ""), correlation_id=self.request_id)
+                REPO.create_notification(organization_id=organization_id, template_id="subscription_changed", reference_type="subscription", reference_id=organization_id)
+                write_json(self, {"subscription": subscription, "external_payments_enabled": False})
+                return
+            if path.startswith("/api/admin/organizations/") and path.endswith("/invoices"):
+                organization_id = path.split("/")[4]
+                principal = self._require_platform_permission("subscription.manage")
+                if principal is None:
+                    return
+                invoice = REPO.create_local_invoice(organization_id=organization_id, amount_minor=int(payload.get("amount_minor") or 0), currency=str(payload.get("currency") or "SAR"), actor_user_id=principal.user_id)
+                write_json(self, {"invoice": invoice, "payment_collection_enabled": False}, 201)
+                return
+            if path.startswith("/api/admin/organizations/") and path.endswith("/notifications"):
+                organization_id = path.split("/")[4]
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
+                notification = REPO.create_notification(organization_id=organization_id, template_id=str(payload.get("template_id") or ""), reference_type=str(payload.get("reference_type") or "manual"), reference_id=str(payload.get("reference_id") or organization_id), recipient_user_id=str(payload.get("recipient_user_id") or "") or None)
+                REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="notification.create", target_type="notification", target_id=notification["notification_id"], result="allowed", reason=notification["template_id"], correlation_id=self.request_id)
+                write_json(self, {"notification": notification, "external_delivery_enabled": False}, 201)
                 return
             if path == "/api/organizations":
                 principal = self._principal()
                 if principal is None:
                     return
-                name = str(payload.get("name", "")).strip()
-                if not name:
-                    write_error(self, "invalid_organization_payload", 422)
-                    return
-                organization = REPO.create_organization(name=name, owner_user_id=principal.user_id)
-                write_json(self, {"organization": organization, "memberships": REPO.list_memberships_for_user(principal.user_id)}, 201)
+                organization = REPO.create_organization(name=str(payload.get("name") or ""), owner_user_id=principal.user_id)
+                REPO.audit(actor_user_id=principal.user_id, organization_id=organization["organization_id"], action="organization.create", target_type="organization", target_id=organization["organization_id"], result="allowed")
+                write_json(self, {"organization": organization}, 201)
                 return
             if path.startswith("/api/organizations/") and path.endswith("/memberships"):
-                organization_id = path.split("/")[3]
-                if self._require_organization_permission(organization_id, "membership.manage") is None:
-                    return
-                membership = REPO.add_membership(
-                    organization_id=organization_id,
-                    user_id=str(payload.get("user_id", "")),
-                    role=str(payload.get("role", "viewer")),
-                )
-                write_json(self, {"membership": membership}, 201)
-                return
-            if path.startswith("/api/organizations/") and path.endswith("/data-requests"):
                 organization_id = path.split("/")[3]
                 principal = self._require_organization_permission(organization_id, "membership.manage")
                 if principal is None:
                     return
-                request = REPO.record_data_request(
+                membership = REPO.add_membership(organization_id=organization_id, user_id=str(payload.get("user_id") or ""), role=str(payload.get("role") or ""), actor_user_id=principal.user_id)
+                write_json(self, {"membership": membership}, 201)
+                return
+            if path.startswith("/api/organizations/") and path.endswith("/data-requests"):
+                organization_id = path.split("/")[3]
+                principal = self._require_organization_permission(organization_id, "organization.manage")
+                if principal is None:
+                    return
+                request = REPO.create_organization_data_request(
                     organization_id=organization_id,
-                    request_type=str(payload.get("request_type", "export")),
-                    status="recorded",
-                    payload={"requested_by": principal.user_id},
+                    request_type=str(payload.get("request_type") or ""),
+                    requested_by_user_id=principal.user_id,
+                    legal_basis=str(payload.get("legal_basis") or ""),
+                    notes=str(payload.get("notes") or ""),
                 )
-                write_json(self, {"request": request}, 201)
+                REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="organization.data_request", target_type="data_request", target_id=request["request_id"], result="queued", reason=request["request_type"], correlation_id=self.request_id)
+                write_json(self, {"data_request": request, "snapshot_mutation": False, "automatic_deletion": False}, 202)
                 return
             if path == "/api/intelligence/contexts":
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "")
@@ -970,14 +975,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not organization_id or principal is None:
                     write_error(self, "permission_denied", 403)
                     return
-                context = REPO.create_intelligence_context(
-                    organization_id=organization_id,
-                    project_id=str(payload.get("project_id", "")),
-                    actor_id=principal.user_id,
-                    principal=principal,
-                    idempotency_key=str(payload.get("idempotency_key", "")),
-                )
-                write_json(self, context, 201)
+                record = REPO.create_intelligence_context(payload=payload | {"organization_id": organization_id}, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}, 201)
                 return
             if path == "/api/intelligence/pre-runs":
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "")
@@ -985,52 +984,156 @@ class Handler(BaseHTTPRequestHandler):
                 if not organization_id or principal is None:
                     write_error(self, "permission_denied", 403)
                     return
-                result = IntelligencePreRunService(REPO).build_local_context(
-                    organization_id=organization_id,
-                    project_id=str(payload.get("project_id", "")),
-                    context_build_id=str(payload.get("context_build_id", "")),
-                    actor_id=principal.user_id,
-                    principal=principal,
-                    idempotency_key=str(payload.get("idempotency_key", "")),
-                    geography=str(payload.get("geography", "")),
-                    sector=str(payload.get("sector", "")),
-                    components=payload.get("components", []),
-                )
-                write_json(self, result, 201)
+                required = ("project_id", "context_build_id", "idempotency_key", "geography", "sector")
+                if any(not payload.get(key) for key in required) or not isinstance(payload.get("components"), list):
+                    write_error(self, "pre_run_payload_incomplete", 400)
+                    return
+                result = IntelligencePreRunService(REPO).build_local_context(organization_id=organization_id, project_id=str(payload["project_id"]), context_build_id=str(payload["context_build_id"]), idempotency_key=str(payload["idempotency_key"]), geography=str(payload["geography"]), sector=str(payload["sector"]), components=payload["components"], principal=principal, correlation_id=self.request_id)
+                write_json(self, result, 201 if result.get("context") else 422)
                 return
             if path.startswith("/api/intelligence/contexts/") and path.endswith("/reviews"):
+                context_id = path.split("/")[4]
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "")
                 principal = self._principal(organization_id)
                 if not organization_id or principal is None:
                     write_error(self, "permission_denied", 403)
                     return
-                context_build_id = path.split("/")[4]
-                review = REPO.save_intelligence_review(
-                    context_build_id=context_build_id,
-                    organization_id=organization_id,
-                    actor_id=principal.user_id,
-                    principal=principal,
-                    payload=payload,
-                )
-                write_json(self, review, 201)
+                project_id = str(payload.get("project_id") or "")
+                record = REPO.save_intelligence_review(organization_id=organization_id, project_id=project_id, overlay=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"review": record, "snapshot_mutation": False}, 201)
                 return
             if path.startswith("/api/intelligence/contexts/") and path.endswith("/approval"):
+                context_id = path.split("/")[4]
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "")
                 principal = self._principal(organization_id)
                 if not organization_id or principal is None:
                     write_error(self, "permission_denied", 403)
                     return
-                context_build_id = path.split("/")[4]
-                approval = REPO.save_intelligence_approval(
-                    context_build_id=context_build_id,
-                    organization_id=organization_id,
-                    actor_id=principal.user_id,
-                    principal=principal,
-                    payload=payload,
-                )
-                write_json(self, approval, 201)
+                project_id = str(payload.get("project_id") or "")
+                record = REPO.save_intelligence_approval(organization_id=organization_id, project_id=project_id, receipt=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
                 return
             if self._principal() is None:
+                return
+            if path in {"/api/datasets/manual-import", "/api/datasets/file-import"}:
+                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+                if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
+                    return
+                payload = payload | {"organization_id": organization_id}
+            elif path.startswith("/api/datasets/"):
+                if not self._require_dataset_permission(path.split("/")[3], "project.edit"):
+                    return
+            elif path.startswith("/api/snapshots/") and path.endswith("/reviews"):
+                if self._require_snapshot_permission(path.split("/")[3], "review.write") is None:
+                    return
+            elif path == "/api/sources/review-record":
+                principal = self._principal()
+                if principal is None or not principal.can("platform.manage"):
+                    write_error(self, "permission_denied", 403)
+                    return
+            if path == "/api/projects":
+                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+                if not organization_id or self._require_organization_permission(organization_id, "project.create") is None:
+                    return
+                project = REPO.create_project(payload | {"organization_id": organization_id})
+                write_json(self, {"project": project.to_public()}, 201)
+                return
+            if path.startswith("/api/projects/"):
+                project_id = path.split("/")[3]
+                permission = "project.run" if path.endswith("/runs") else "project.edit"
+                if self._require_project_permission(project_id, permission) is None:
+                    return
+            if path.startswith("/api/projects/") and path.endswith("/runs"):
+                project_id = path.split("/")[3]
+                project = REPO.get_project(project_id)
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                request = normalize_project_run_http_request(project.project_id, payload)
+                replayed = RUN_IDEMPOTENCY_STORE.completed_replay(request)
+                if replayed is not None:
+                    write_json(self, replayed, 200)
+                    return
+                context = local_runtime_context()
+                heart_assignment = context.heart_controller.assign_task(
+                    HeartTask(
+                        task_id=request["operation_id"],
+                        purpose="project_run_workflow",
+                        requires_assist=False,
+                    )
+                )
+                source_module_id = heart_source_module_id(heart_assignment)
+                workflow = ProjectRunWorkflow(
+                    context.runtime,
+                    RUN_IDEMPOTENCY_STORE,
+                    source_module_id=source_module_id,
+                    heart_assignment=heart_assignment,
+                )
+                result = workflow.run(
+                    request,
+                    build=lambda run_envelope: execute_project_run_pipeline(
+                        run_envelope,
+                        project=project,
+                        data_access=REPO,
+                    ),
+                    save=lambda overview, report: REPO.save_run_snapshot(project.project_id, overview, report),
+                )
+                write_json(self, result.to_response(), 200 if result.idempotency_replayed else 201)
+                return
+            if path.startswith("/api/projects/") and path.endswith("/assumptions"):
+                project_id = path.split("/")[3]
+                project = REPO.get_project(project_id)
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                write_json(self, {"assumption": REPO.save_assumption(project_id, payload)}, 201)
+                return
+            if path.startswith("/api/projects/") and path.endswith("/evidence-links"):
+                project_id = path.split("/")[3]
+                project = REPO.get_project(project_id)
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                target_type = str(payload.get("target_type") or "assumption")
+                target_id = str(payload.get("target_id") or payload.get("assumption_id") or "")
+                if target_type == "assumption":
+                    assumptions = {row["assumption_id"] for row in REPO.project_assumptions(project_id)}
+                    if target_id not in assumptions:
+                        write_error(self, "assumption_not_found", 404)
+                        return
+                elif target_type == "sector_criterion":
+                    _register, sector, _ledger, _coverage = build_project_evidence_state(REPO, project, "draft", None)
+                    criteria = {
+                        row["criterion_id"]
+                        for row in sector.get("sector_criteria", {}).get("criteria", [])
+                    }
+                    if target_id not in criteria:
+                        write_error(self, "sector_criterion_not_found", 404)
+                        return
+                else:
+                    write_error(self, "invalid_evidence_target_type", 400)
+                    return
+                dataset = REPO.get_dataset(str(payload.get("dataset_id") or ""))
+                if dataset is None:
+                    write_error(self, "dataset_not_found", 404)
+                    return
+                if dataset["organization_id"] != project.organization_id:
+                    write_error(self, "dataset_organization_mismatch", 403)
+                    return
+                transformation_id = str(payload.get("transformation_id") or "")
+                if transformation_id:
+                    transformation = REPO.get_transformation(transformation_id)
+                    if transformation is None:
+                        write_error(self, "transformation_not_found", 404)
+                        return
+                    if transformation["dataset_id"] != dataset["dataset_id"]:
+                        write_error(self, "transformation_dataset_mismatch", 400)
+                        return
+                gate = dataset_quality_gate(dataset, REPO.get_source_record(dataset["source_id"]))
+                if not gate["can_use_for_assumptions"]:
+                    write_error(self, "dataset_quality_gate_failed:" + ",".join(gate["reasons"]), 422)
+                    return
+                write_json(self, {"evidence_link": REPO.save_evidence_link(project_id, payload)}, 201)
                 return
             if path == "/api/datasets":
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
@@ -1040,180 +1143,118 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"dataset": record}, 201)
                 return
             if path == "/api/datasets/manual-import":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
-                if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
-                    return
-                record = dataset_ingestion.import_manual_dataset(REPO, payload | {"organization_id": organization_id})
+                payload.setdefault("import_method", "manual_csv" if payload.get("csv_text") else "manual_table")
+                record = REPO.save_dataset(payload)
                 write_json(self, {"dataset": record}, 201)
                 return
             if path == "/api/datasets/file-import":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
-                if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
-                    return
-                record = dataset_ingestion.import_file_dataset(REPO, payload | {"organization_id": organization_id})
-                write_json(self, {"dataset": record}, 201)
+                record = REPO.save_dataset(normalize_file_import_payload(payload))
+                write_json(self, {"dataset": record, "external_fetch_enabled": False}, 201)
                 return
-            if path.startswith("/api/datasets/"):
-                if not self._require_dataset_permission(path.split("/")[3], "project.edit"):
+            if path.startswith("/api/datasets/") and path.endswith("/transformations"):
+                dataset_id = path.split("/")[3]
+                if REPO.get_dataset(dataset_id) is None:
+                    write_error(self, "dataset_not_found", 404)
                     return
-                if path.endswith("/transformations"):
-                    record = REPO.record_transformation(path.split("/")[3], payload)
-                    write_json(self, {"transformation": record}, 201)
+                transformation = REPO.save_transformation(dataset_id, payload)
+                write_json(self, {"transformation": transformation}, 201)
+                return
+            if path.startswith("/api/datasets/") and path.endswith("/review"):
+                dataset_id = path.split("/")[3]
+                record = REPO.review_dataset(dataset_id, payload)
+                if record is None:
+                    write_error(self, "dataset_not_found", 404)
                     return
-                if path.endswith("/review"):
-                    record = REPO.review_dataset(path.split("/")[3], payload)
-                    write_json(self, {"dataset": record})
-                    return
+                write_json(self, {"dataset": record})
+                return
             if path == "/api/sources/review-record":
-                if self._require_platform_permission("platform.manage") is None:
-                    return
                 record = REPO.save_source_review(payload)
                 write_json(self, {"source": record}, 201)
                 return
             if path.startswith("/api/snapshots/") and path.endswith("/reviews"):
                 snapshot_id = path.split("/")[3]
-                if self._require_snapshot_permission(snapshot_id, "review.write") is None:
-                    return
-                review = REPO.save_snapshot_review(snapshot_id, payload)
-                write_json(self, {"review": review}, 201)
-                return
-            if path.startswith("/api/projects/"):
-                project_id = path.split("/")[3]
-                permission = "project.run" if path.endswith("/runs") else "project.edit"
-                if self._require_project_permission(project_id, permission) is None:
-                    return
-                if path.endswith("/runs"):
-                    project = REPO.get_project(project_id)
-                    if project is None:
-                        write_error(self, "project_not_found", 404)
-                        return
-                    if "inputs" in payload:
-                        project.inputs.update(payload["inputs"])
-                    message = WorkflowRunMessage(WORKFLOW, project)
-                    try:
-                        module_outputs = message.run()
-                    except RequestError as exc:
-                        write_error(self, exc.code, exc.status)
-                        return
-                    overview = module_outputs["overview"]
-                    report = build_report_projection(overview)
-                    ids = REPO.save_run_snapshot(project.project_id, overview, report)
-                    REPO.upsert_action_items(project.project_id, generate_action_items(overview, report))
-                    publish_change("snapshot.created", {"project_id": project.project_id, "snapshot_id": ids["snapshot_id"]})
-                    write_json(self, {"run_id": ids["run_id"], "snapshot_id": ids["snapshot_id"], "acceptance": overview["acceptance"]}, 201)
-                    return
-                if path.endswith("/assumptions"):
-                    record = REPO.record_assumption(project_id, payload)
-                    write_json(self, {"assumption": record}, 201)
-                    return
-                if path.endswith("/evidence-links"):
-                    record = REPO.link_evidence(project_id, payload)
-                    write_json(self, {"evidence_link": record}, 201)
-                    return
-            if path == "/api/projects":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
-                if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
-                    return
-                name = str(payload.get("name", "")).strip()
-                if not name:
-                    write_error(self, "invalid_project_payload", 422)
-                    return
-                project = REPO.create_project(
-                    {
-                        "name": name,
-                        "sector": str(payload.get("sector", "")).strip(),
-                        "jurisdiction": str(payload.get("jurisdiction", "Saudi Arabia")).strip() or "Saudi Arabia",
-                        "inputs": payload.get("inputs", {}),
-                        "organization_id": organization_id,
-                    }
-                )
-                write_json(self, {"project": project.to_public()}, 201)
-                return
-            if path == "/api/exports/funder-report":
-                snapshot_id = str(payload.get("snapshot_id", ""))
-                export_format = str(payload.get("format", "pdf")).lower()
-                if self._require_snapshot_permission(snapshot_id, "snapshot.read") is None:
-                    return
+                overview = REPO.get_snapshot_overview(snapshot_id)
                 report = REPO.get_snapshot_report(snapshot_id)
-                if report is None:
+                if overview is None or report is None:
                     write_error(self, "snapshot_not_found", 404)
                     return
-                projection = report["funder_report"]
-                EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-                try:
-                    if export_format == "pdf":
-                        from backend.report_exports import export_funder_report_pdf
-
-                        target = EXPORT_DIR / f"{snapshot_id}-funder-report.pdf"
-                        export_funder_report_pdf(projection, target)
-                    elif export_format == "docx":
-                        from backend.report_exports import export_funder_report_docx
-
-                        target = EXPORT_DIR / f"{snapshot_id}-funder-report.docx"
-                        export_funder_report_docx(projection, target)
-                    elif export_format == "xlsx":
-                        from backend.report_exports import export_funder_report_xlsx
-
-                        target = EXPORT_DIR / f"{snapshot_id}-funder-report.xlsx"
-                        export_funder_report_xlsx(projection, target)
-                    elif export_format == "pptx":
-                        from backend.report_exports import export_funder_report_pptx
-
-                        target = EXPORT_DIR / f"{snapshot_id}-funder-report.pptx"
-                        export_funder_report_pptx(projection, target)
-                    else:
-                        write_error(self, "unsupported_export_format", 422)
-                        return
-                except Exception as exc:  # noqa: BLE001
-                    write_error(self, f"export_failed:{exc}", 500)
-                    return
-                write_json(self, {"export_path": str(target)}, 201)
+                review = REPO.save_snapshot_review(
+                    snapshot_id,
+                    overview["run"]["run_id"],
+                    overview["project"]["project_id"],
+                    payload,
+                )
+                reviewed_project = REPO.get_project(overview["project"]["project_id"])
+                if reviewed_project is not None:
+                    REPO.create_notification(
+                        organization_id=reviewed_project.organization_id,
+                        template_id="review_recorded",
+                        reference_type="snapshot_review",
+                        reference_id=review["review_id"],
+                    )
+                write_json(self, {"review": review}, 201)
                 return
             if path == "/api/snapshots/compare":
-                first_id = str(payload.get("snapshot_a_id", ""))
-                second_id = str(payload.get("snapshot_b_id", ""))
-                if self._require_snapshot_permission(first_id) is None or self._require_snapshot_permission(second_id) is None:
-                    return
+                first_id = str(payload.get("snapshot_a_id") or payload.get("first_snapshot_id") or "")
+                second_id = str(payload.get("snapshot_b_id") or payload.get("second_snapshot_id") or "")
                 first = REPO.get_snapshot_overview(first_id)
                 second = REPO.get_snapshot_overview(second_id)
                 if first is None or second is None:
                     write_error(self, "snapshot_not_found", 404)
                     return
+                if self._require_snapshot_permission(first_id) is None or self._require_snapshot_permission(second_id) is None:
+                    return
+                if first["project"]["project_id"] != second["project"]["project_id"]:
+                    write_error(self, "snapshot_project_mismatch", 400)
+                    return
                 write_json(self, compare_snapshots(first, second))
                 return
-        except json.JSONDecodeError:
-            write_error(self, "invalid_json", 400)
-            return
         except PermissionError as exc:
             write_error(self, str(exc), 422)
             return
         except RequestError as exc:
             write_error(self, exc.code, exc.status)
             return
-        except ValueError as exc:
-            write_error(self, str(exc), 422)
+        except (ValueError, json.JSONDecodeError):
+            write_error(self, "invalid_request", 400)
             return
         write_error(self, "not_found", 404)
 
     def do_PATCH(self) -> None:
         if not self._allow_request():
             return
-        parsed = urlparse(self.path)
-        path = parsed.path
+        path = urlparse(self.path).path
+        if path == "/api/architecture/runtime-status":
+            reject_architecture_status_mutation(self)
+            return
         try:
-            payload = self._read_json()
+            payload = read_json(self)
             if self._principal() is None:
-                return
-            if path.startswith("/api/sources/") and path.endswith("/review"):
-                if self._require_platform_permission("platform.manage") is None:
-                    return
-                source_id = path.split("/")[3]
-                payload["source_id"] = source_id
-                record = REPO.save_source_review(payload)
-                write_json(self, {"source": record})
                 return
             if path.startswith("/api/projects/"):
                 parts = path.split("/")
+                if len(parts) == 6 and parts[4] == "action-items":
+                    project_id = parts[3]
+                    if self._require_project_permission(project_id, "review.write") is None:
+                        return
+                    action_item_id = parts[5]
+                    if REPO.get_project(project_id) is None:
+                        write_error(self, "project_not_found", 404)
+                        return
+                    state = REPO.save_action_item_state(project_id, action_item_id, payload)
+                    latest_run = REPO.latest_project_run(project_id)
+                    if not latest_run:
+                        write_json(self, {"action_item": state})
+                        return
+                    overview = REPO.get_run_overview(latest_run["run_id"]) or {}
+                    items = build_action_items_from_overview(
+                        project_id,
+                        overview,
+                        REPO.project_action_item_states(project_id),
+                    )
+                    item = next((row for row in items if row["action_item_id"] == action_item_id), state)
+                    write_json(self, {"action_item": item})
+                    return
                 if len(parts) == 4:
                     if self._require_project_permission(parts[3], "project.edit") is None:
                         return
@@ -1223,51 +1264,51 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     write_json(self, {"project": project.to_public()})
                     return
-                if len(parts) == 6 and parts[4] == "action-items":
-                    if self._require_project_permission(parts[3], "review.write") is None:
-                        return
-                    item = update_action_item_status(REPO, parts[3], parts[5], str(payload.get("status", "")))
-                    if item is None:
-                        write_error(self, "action_item_not_found", 404)
-                        return
-                    write_json(self, {"item": item})
+            if path.startswith("/api/sources/") and path.endswith("/review"):
+                if self._require_platform_permission("platform.manage") is None:
                     return
-            write_error(self, "not_found", 404)
-        except json.JSONDecodeError:
-            write_error(self, "invalid_json", 400)
+                source_id = path.split("/")[3]
+                payload["source_id"] = source_id
+                record = REPO.save_source_review(payload)
+                write_json(self, {"source": record})
+                return
         except PermissionError as exc:
             write_error(self, str(exc), 422)
+            return
         except RequestError as exc:
             write_error(self, exc.code, exc.status)
+            return
+        except (ValueError, json.JSONDecodeError):
+            write_error(self, "invalid_request", 400)
+            return
+        write_error(self, "not_found", 404)
 
+    def do_PUT(self) -> None:
+        if not self._allow_request():
+            return
+        path = urlparse(self.path).path
+        if path == "/api/architecture/runtime-status":
+            reject_architecture_status_mutation(self)
+            return
+        write_error(self, "not_found", 404)
 
-def compare_snapshots(first: dict, second: dict) -> dict:
-    first_snapshot = first["snapshot"]
-    second_snapshot = second["snapshot"]
-    deltas = {}
-    for key in ("break_even_units", "payback_months", "npv", "decision_score"):
-        first_value = first_snapshot.get(key)
-        second_value = second_snapshot.get(key)
-        if first_value is not None and second_value is not None:
-            deltas[key] = second_value - first_value
-    return {
-        "first_snapshot_id": first_snapshot["snapshot_id"],
-        "second_snapshot_id": second_snapshot["snapshot_id"],
-        "deltas": deltas,
-    }
+    def do_DELETE(self) -> None:
+        if not self._allow_request():
+            return
+        path = urlparse(self.path).path
+        if path == "/api/architecture/runtime-status":
+            reject_architecture_status_mutation(self)
+            return
+        write_error(self, "not_found", 404)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
 
 
 def main() -> None:
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer((API_HOST, API_PORT), Handler)
-    print(f"ASIE local API listening on http://{API_HOST}:{API_PORT}")
-    print(f"Runtime freeze scope: {RUNTIME_FREEZE_SCOPE}")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"ASIE local API running at http://{HOST}:{PORT}")
+    server.serve_forever()
 
 
 if __name__ == "__main__":
