@@ -45,7 +45,14 @@ The two customer entry paths meet at one governed `Dynamic Input Blueprint`:
 
 The governing record for this decision is [`ACR-DIB-001`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-DIB-001-Dynamic-Input-Blueprint.md), merged into `main`.
 
-## Read first\n\n- [`AGENTS.md`](AGENTS.md): repository rules for programmers and agents.\n- [`AGENTS.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md): canonical package map and runtime boundaries.\n- [`PROJECT-ORIENTATION.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROJECT-ORIENTATION.md): two entry paths, one blueprint, current gaps, and build order.\n- [`IMPLEMENTATION-STATUS-MATRIX.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/IMPLEMENTATION-STATUS-MATRIX.md): implemented versus planned versus reference.\n\n## Branch discipline
+## Read first
+
+- [`AGENTS.md`](AGENTS.md): repository rules for programmers and agents.
+- [`AGENTS.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md): canonical package map and runtime boundaries.
+- [`PROJECT-ORIENTATION.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROJECT-ORIENTATION.md): two entry paths, one blueprint, current gaps, and build order.
+- [`IMPLEMENTATION-STATUS-MATRIX.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/IMPLEMENTATION-STATUS-MATRIX.md): implemented versus planned versus reference.
+
+## Branch discipline
 
 - `main` is the integration target.
 - `agent/*` branches are working branches and must not be treated as release branches.
