@@ -752,10 +752,7 @@ class Repository:
                         WHEN assumptions.value = excluded.value THEN assumptions.confidence
                         ELSE excluded.confidence
                     END,
-                    metadata_json = CASE
-                        WHEN assumptions.value = excluded.value THEN assumptions.metadata_json
-                        ELSE excluded.metadata_json
-                    END,
+                    metadata_json = excluded.metadata_json,
                     review_status = CASE
                         WHEN assumptions.value = excluded.value THEN assumptions.review_status
                         ELSE excluded.review_status
