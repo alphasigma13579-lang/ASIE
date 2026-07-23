@@ -1,177 +1,225 @@
 import {
-  ArrowUpLeft,
+  ArrowLeft,
+  BadgeCheck,
+  Bot,
   Building2,
-  ChevronLeft,
-  CircleDollarSign,
+  ClipboardList,
   Compass,
-  Eye,
-  EyeOff,
-  Landmark,
+  Lightbulb,
   MapPinned,
   Route,
-  SlidersHorizontal,
   Sparkles,
-  Store,
   Target,
   Telescope,
+  Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-type DemoMeta = {
-  assumedSource: string;
-  observedAt: string;
-  confidence: "تجريبي";
+type LiveCockpitProps = {
+  projectName?: string;
+  sector?: string;
+  location?: string;
+  snapshotId?: string | null;
+  signals?: StudySignals;
+  onContinue?: () => void;
 };
 
-type DemoCompetitor = {
-  id: string;
-  name: string;
-  sector: string;
-  area: string;
-  x: number;
-  y: number;
-  signal: string;
-  strength: string;
-  meta: DemoMeta;
+type StudySignals = {
+  monthlyProfit?: number | null;
+  paybackMonths?: number | null;
+  fundingGap?: number | null;
+  feasibilityProbability?: number | null;
+  monthlyUnits?: number | null;
 };
 
-type BenchmarkCase = {
-  id: string;
-  title: string;
-  sector: string;
-  geography: string;
-  status: string;
-  observation: string;
-  lesson: string;
-  meta: DemoMeta;
+type ComparisonScope = "السعودية" | "العالم العربي" | "العالم";
+
+const comparisonProfiles: Record<ComparisonScope, { title: string; observation: string; lesson: string }> = {
+  "السعودية": {
+    title: "نموذج محلي مشابه",
+    observation: "محاكاة لمنشأة بدأت بنطاق صغير، ثم توسعت بعد إثبات الطلب والتشغيل.",
+    lesson: "اختبر سبب شراء العميل وتكلفة اكتسابه قبل الالتزام بتوسع كبير.",
+  },
+  "العالم العربي": {
+    title: "نموذج إقليمي مشابه",
+    observation: "محاكاة لمشروع نجح في العرض لكنه تعثر عند التوسع قبل ضبط التشغيل.",
+    lesson: "لا تنقل نموذجاً إقليمياً قبل اختبار الملاءمة للسوق السعودي ومدينتك.",
+  },
+  "العالم": {
+    title: "نموذج عالمي مشابه",
+    observation: "محاكاة لمشروع ركّز على تجربة العميل وكفاءة التشغيل، لا على خفض السعر وحده.",
+    lesson: "خذ المبدأ القابل للتطبيق، لا تفترض أن السوق المحلي يتصرف كالسوق العالمي.",
+  },
 };
 
-type MacroSignal = {
-  id: string;
-  title: string;
-  scope: string;
-  direction: string;
-  implication: string;
-  caveat: string;
-  meta: DemoMeta;
-};
-
-const localMeta = (assumedSource: string): DemoMeta => ({
-  assumedSource,
-  observedAt: "2026-07-20 (local seed)",
-  confidence: "تجريبي",
-});
-
-const demoCompetitors: DemoCompetitor[] = [
-  { id: "demo-1", name: "نقطة قهوة", sector: "مقاهي", area: "وسط المدينة", x: 31, y: 37, signal: "إقبال صباحي مرتفع", strength: "متوسط", meta: localMeta("مسح منافسين افتراضي") },
-  { id: "demo-2", name: "ركن البن", sector: "مقاهي", area: "الواجهة", x: 61, y: 28, signal: "قريب من مكاتب", strength: "مرتفع", meta: localMeta("مسح منافسين افتراضي") },
-  { id: "demo-3", name: "مذاق الحي", sector: "مطاعم", area: "وسط المدينة", x: 49, y: 58, signal: "خدمة توصيل نشطة", strength: "متوسط", meta: localMeta("مسح منافسين افتراضي") },
-  { id: "demo-4", name: "سلة يومية", sector: "تجزئة", area: "الواجهة", x: 73, y: 64, signal: "مواقف متاحة", strength: "منخفض", meta: localMeta("مسح منافسين افتراضي") },
-  { id: "demo-5", name: "مقهى الحديقة", sector: "مقاهي", area: "الحديقة", x: 23, y: 70, signal: "وجهة عائلية", strength: "منخفض", meta: localMeta("مسح منافسين افتراضي") },
-];
-
-const benchmarkCases: BenchmarkCase[] = [
-  { id: "benchmark-local", title: "مقهى خدمة سريعة", sector: "مقاهي", geography: "محلي", status: "نمو منضبط", observation: "بدأ بنطاق محدود ثم اختبر ساعات الذروة قبل التوسع.", lesson: "اختبر حركة الموقع والعرض اليومي بدليل ميداني قبل تثبيت الفرضية.", meta: localMeta("ملف حالة محلي مصطنع") },
-  { id: "benchmark-regional", title: "علامة طعام قريبة", sector: "مطاعم", geography: "إقليمي", status: "تعثر تشغيلي", observation: "توسع أسرع من جاهزية فريقه ومسار التوريد.", lesson: "افصل بين صلاحية الطلب وجاهزية التنفيذ؛ كلاهما يحتاج دليلاً مستقلاً.", meta: localMeta("ملف حالة إقليمي مصطنع") },
-  { id: "benchmark-global", title: "متجر حي متخصص", sector: "تجزئة", geography: "عالمي", status: "ملاءمة موقع قوية", observation: "ربط العرض بسلوك الحي لا بمساحة المتجر فقط.", lesson: "قارن نمط المنطقة وسبب الزيارة، لا أسماء المنافسين وحدها.", meta: localMeta("ملف حالة عالمي مصطنع") },
-];
-
-const macroSignals: MacroSignal[] = [
-  { id: "macro-local", title: "حركة المناطق المكتبية", scope: "محلي", direction: "إشارة تحتاج تحققاً", implication: "قد تدعم تجربة صباحية قصيرة إذا أثبتها الرصد الميداني.", caveat: "ليست قراءة لحظية أو مصدر حكومي؛ مجرد سيناريو عرض.", meta: localMeta("مؤشر حركة محلي مصطنع") },
-  { id: "macro-regional", title: "تفضيل الطلب المريح", scope: "إقليمي", direction: "سياق قابل للمقارنة", implication: "اختبر أثر الطلب المسبق والتوصيل في نموذج الخدمة.", caveat: "لا يمثل سوقاً فعلياً أو توقعات مالية.", meta: localMeta("مذكرة سياق إقليمي مصطنعة") },
-  { id: "macro-global", title: "التركيز على كفاءة التشغيل", scope: "عالمي", direction: "فرضية متابعة", implication: "حوّلها إلى سؤال دليل: ما الذي يحمي الجودة عند الذروة؟", caveat: "ليس توصية أو تنبؤاً خارجياً.", meta: localMeta("موجز سوق عالمي مصطنع") },
-];
-
-const sectors = ["مقاهي", "مطاعم", "تجزئة"];
-
-function DemoProvenance({ meta, compact = false }: { meta: DemoMeta; compact?: boolean }) {
-  return <div className={compact ? "demo-provenance demo-provenance--compact" : "demo-provenance"}>
-    <span>DEMO / LOCAL ONLY</span>
-    {!compact ? <small>مصدر مفترض: {meta.assumedSource} · {meta.observedAt} · الثقة: {meta.confidence}</small> : null}
-  </div>;
+function DemoTag({ compact = false }: { compact?: boolean }) {
+  return <span className={compact ? "demo-badge demo-badge--compact" : "demo-badge"}>محاكاة تطوير · بيانات غير حقيقية</span>;
 }
 
-export function LiveCockpit() {
-  const [sector, setSector] = useState("مقاهي");
-  const [selectedId, setSelectedId] = useState("demo-1");
-  const [selectedBenchmarkId, setSelectedBenchmarkId] = useState("benchmark-local");
-  const [selectedMacroId, setSelectedMacroId] = useState("macro-local");
-  const [visibleWidgets, setVisibleWidgets] = useState({ signals: true, benchmark: true, macro: true, guidance: true });
+function formatStudyNumber(value: number | null | undefined, suffix = "") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "غير متاح";
+  return `${new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(value)}${suffix}`;
+}
 
-  const visibleCompetitors = useMemo(() => demoCompetitors.filter((competitor) => competitor.sector === sector), [sector]);
-  const selectedCompetitor = visibleCompetitors.find((competitor) => competitor.id === selectedId) ?? visibleCompetitors[0];
-  const sectorBenchmark = benchmarkCases.find((item) => item.sector === sector) ?? benchmarkCases[0];
-  const selectedBenchmark = benchmarkCases.find((item) => item.id === selectedBenchmarkId) ?? sectorBenchmark;
-  const selectedMacro = macroSignals.find((item) => item.id === selectedMacroId) ?? macroSignals[0];
-  const toggleWidget = (widget: keyof typeof visibleWidgets) => setVisibleWidgets((current) => ({ ...current, [widget]: !current[widget] }));
+function classifyProject(sector?: string) {
+  const normalized = (sector ?? "").toLowerCase();
+  if (/لوجست|نقل|مستودع|توصيل|تجارة|خدم/.test(normalized)) return "خدمي / تشغيلي";
+  if (/صناع|إنتاج|غذائ|زراع|تصنيع/.test(normalized)) return "إنتاجي";
+  if (/تقن|برمج|رقمي|منص/.test(normalized)) return "تقني / رقمي";
+  return "قيد التصنيف";
+}
 
-  return <section className="live-cockpit live-cockpit--r2" aria-label="مرصد محلي لاختبار واقع المشروع">
+function visionHypothesis(sector?: string) {
+  const normalized = (sector ?? "").toLowerCase();
+  if (/لوجست|نقل|مستودع|توصيل/.test(normalized)) return "المملكة مركزاً لوجستياً";
+  if (/تقن|برمج|رقمي|منص/.test(normalized)) return "التحول الرقمي";
+  if (/صح|عاف|طب/.test(normalized)) return "جودة الحياة";
+  if (/صناع|إنتاج|غذائ|زراع|تصنيع/.test(normalized)) return "تنويع الاقتصاد";
+  return "تنويع الاقتصاد وتمكين المنشآت";
+}
+
+function deriveStudyAdvice(signals?: StudySignals) {
+  const hasStudySignal = Object.values(signals ?? {}).some((value) => typeof value === "number" && Number.isFinite(value));
+  if (!hasStudySignal) {
+    return {
+      hasStudySignal,
+      improvement: "لا توجد نتيجة دراسة محفوظة كافية لصياغة اقتراح تجريبي مخصص.",
+      alternative: "أكمل التشغيل أولاً؛ عندها تعرض المنصة فرضية بديلة مرتبطة بمؤشرات الدراسة.",
+      review: "راجع المدخلات الأساسية والأدلة قبل اعتماد أي فرضية سوقية.",
+      saturation: "غير مقاس",
+      competition: "ينتظر نتيجة الدراسة",
+      opportunity: "غير متاح",
+    };
+  }
+  const fundingPressure = (signals?.fundingGap ?? 0) > 0;
+  const weakProfit = typeof signals?.monthlyProfit === "number" && signals.monthlyProfit <= 0;
+  const longPayback = typeof signals?.paybackMonths === "number" && signals.paybackMonths > 36;
+  const lowFeasibility = typeof signals?.feasibilityProbability === "number" && signals.feasibilityProbability < 0.5;
+  const pressure = weakProfit || longPayback || lowFeasibility || fundingPressure;
+  return {
+    hasStudySignal,
+    improvement: weakProfit
+      ? "تشير نتيجة الربح الشهري التجريبية إلى ضرورة اختبار السعر أو التكلفة أو حجم الطلب قبل التوسع."
+      : longPayback
+        ? "تشير مدة الاسترداد التجريبية إلى اختبار إطلاق أصغر أو مراحل استثمارية متتابعة."
+        : fundingPressure
+          ? "تشير فجوة التمويل التجريبية إلى ترتيب الإنفاق على مراحل قبل الالتزام بكامل رأس المال."
+          : "تسمح مؤشرات الدراسة التجريبية باختبار شريحة عميل أو عرض قيمة محدد قبل التوسع.",
+    alternative: pressure
+      ? "فرضية بديلة: نموذج أخف في الأصول أو إطلاق محدود في نطاقك الجغرافي ثم التوسع بعد إثبات الطلب."
+      : "فرضية بديلة: خدمة أو قناة مبيعات مجاورة تزيد الاستخدام قبل إضافة تكاليف ثابتة جديدة.",
+    review: lowFeasibility
+      ? "احتمال الاجتياز التجريبي منخفض؛ راجع الطلب والسعر والتكلفة، ثم اختبرها ميدانياً قبل القرار."
+      : "ما يغيّر هذه القراءة: عروض أسعار موثقة، زيارة ميدانية، ومقارنة ثلاثة بدائل في موقعك.",
+    saturation: pressure ? "تحتاج اختباراً ميدانياً" : "قابلة للاختبار",
+    competition: pressure ? "تحتاج تمييز العرض" : "تحتاج مقارنة محلية",
+    opportunity: pressure ? "إطلاق متدرج" : "اختبار شريحة محددة",
+  };
+}
+
+function deriveTeamSize(monthlyUnits?: number | null) {
+  if (typeof monthlyUnits !== "number" || monthlyUnits <= 0) return "لا يمكن تقدير الفريق دون طاقة تشغيلية";
+  if (monthlyUnits <= 500) return "٢–٣ أفراد كبداية";
+  if (monthlyUnits <= 1500) return "٤–٦ أفراد كبداية";
+  return "٧–١٠ أفراد كبداية";
+}
+
+export function LiveCockpit({ projectName, sector, location, snapshotId, signals, onContinue }: LiveCockpitProps) {
+  const [scope, setScope] = useState<ComparisonScope>("السعودية");
+  const context = `${sector || "قطاع المشروع"} · ${location || "الموقع المحدد"}`;
+  const studyAdvice = deriveStudyAdvice(signals);
+  const projectType = classifyProject(sector);
+  const vision = visionHypothesis(sector);
+  const teamSize = deriveTeamSize(signals?.monthlyUnits);
+  const competitors = useMemo(
+    () => ["١", "٢", "٣"].map((number, index) => ({
+      name: `${location || "النطاق المحدد"} · منشأة مماثلة ${number}`,
+      signal: ["عرض قريب من العميل", "سعر يحتاج مقارنة", "خدمة أو موقع بديل"][index],
+      pressure: ["متوسط", "مرتفع", "منخفض"][index],
+    })),
+    [location]
+  );
+  const profile = comparisonProfiles[scope];
+
+  return <section className="live-cockpit live-cockpit--r3" aria-label="ذكاء السوق والفرص التجريبي">
     <header className="cockpit-intro">
       <div>
-        <p className="eyebrow"><Sparkles size={15} /> محاكاة السوق والسياق</p>
-        <h2>هل فرضية مشروعك قريبة من الواقع؟</h2>
-        <p>غرفة استكشاف محلية قبل القرار: السوق، نماذج مشابهة، وسياق عمل محتمل. لا توجد بيانات خارجية أو توصية تلقائية في هذه الصفحة.</p>
+        <p className="eyebrow"><Sparkles size={15} aria-hidden="true" /> مرحلة ما بعد الدراسة المالية</p>
+        <h2>ذكاء السوق والفرص</h2>
+        <p>هذه المرحلة تقرأ سياق المشروع واللقطة الناتجة من الدراسة، ثم تعرض محاكاة واضحة للمنافسة والفرص والتوصيات. لا توجد مصادر حية أو حكم استثماري في بيئة التطوير.</p>
       </div>
-      <span className="demo-badge">DEMO · LOCAL ONLY</span>
+      <DemoTag />
     </header>
 
-    <section className="smart-input-hub" aria-label="سياق العرض المحلي">
-      <div className="smart-input-hub__title"><SlidersHorizontal size={20} /><div><strong>سياق مشروعك</strong><span>تغيّر الفلاتر ما تراه فقط، ولا تحفظ أو تحسب قراراً.</span></div></div>
-      <label>القطاع<select value={sector} onChange={(event) => { const nextSector = event.target.value; setSector(nextSector); setSelectedId(demoCompetitors.find((item) => item.sector === nextSector)?.id ?? ""); setSelectedBenchmarkId(benchmarkCases.find((item) => item.sector === nextSector)?.id ?? "benchmark-local"); }}>{sectors.map((item) => <option key={item}>{item}</option>)}</select></label>
-      <label>النطاق<select defaultValue="وسط المدينة"><option>وسط المدينة</option><option>الواجهة</option><option>الحديقة</option></select></label>
-      <label>سؤال الاستكشاف<select defaultValue="اختيار موقع"><option>اختيار موقع</option><option>فهم المنافسين</option><option>استكمال الدليل</option></select></label>
-      <button className="cockpit-location-button" type="button"><Compass size={17} /> موقع تجريبي</button>
+    <section className="market-context-strip" aria-label="سياق التحليل التجريبي">
+      <div><span>المشروع</span><strong>{projectName || "مسودة المشروع"}</strong></div>
+      <div><span>السياق</span><strong>{context}</strong></div>
+      <div><span>مرجع الدراسة</span><strong>{snapshotId ? snapshotId.slice(-10) : "لم تنشأ لقطة بعد"}</strong></div>
+      <DemoTag compact />
     </section>
 
-    <div className="cockpit-toolbar" aria-label="إدارة وحدات العرض">
-      <span>وحدات العمل المستقلة</span>
-      <button type="button" onClick={() => toggleWidget("signals")}>{visibleWidgets.signals ? <EyeOff size={15} /> : <Eye size={15} />}{visibleWidgets.signals ? "إخفاء الإشارات" : "إظهار الإشارات"}</button>
-      <button type="button" onClick={() => toggleWidget("benchmark")}>{visibleWidgets.benchmark ? <EyeOff size={15} /> : <Eye size={15} />}{visibleWidgets.benchmark ? "إخفاء المقارنات" : "إظهار المقارنات"}</button>
-      <button type="button" onClick={() => toggleWidget("macro")}>{visibleWidgets.macro ? <EyeOff size={15} /> : <Eye size={15} />}{visibleWidgets.macro ? "إخفاء السياق" : "إظهار السياق"}</button>
-      <button type="button" onClick={() => toggleWidget("guidance")}>{visibleWidgets.guidance ? <EyeOff size={15} /> : <Eye size={15} />}{visibleWidgets.guidance ? "إخفاء الخطوات" : "إظهار الخطوات"}</button>
-    </div>
-
-    <div className="cockpit-grid cockpit-grid--r2">
+    <div className="cockpit-grid cockpit-grid--r3">
       <article className="market-map-widget">
-        <div className="widget-heading"><div><MapPinned size={20} /><div><span>خريطة السوق</span><strong>المنافسون والموقع المرشح</strong></div></div><small>{visibleCompetitors.length} إشارات محلية</small></div>
-        <div className="local-map" role="application" aria-label="خريطة سوق محلية تجريبية قابلة لاختيار المنافسين">
-          <span className="map-road map-road--one" /><span className="map-road map-road--two" /><span className="map-zone map-zone--one">منطقة أعمال</span><span className="map-zone map-zone--two">واجهة نشطة</span>
-          {visibleCompetitors.map((competitor) => <button key={competitor.id} type="button" className={competitor.id === selectedCompetitor?.id ? "map-marker map-marker--active" : "map-marker"} style={{ left: `${competitor.x}%`, top: `${competitor.y}%` }} onClick={() => setSelectedId(competitor.id)} aria-label={`عرض ${competitor.name}`}><Store size={14} /></button>)}
+        <div className="widget-heading"><div><MapPinned size={20} /><div><span>المنافسة في النطاق</span><strong>إشارات تجريبية حول الموقع</strong></div></div><small>ليست خريطة فعلية</small></div>
+        <div className="local-map local-map--demo" role="img" aria-label="خريطة تجريبية لمنافسين محتملين">
+          <span className="map-road map-road--one" /><span className="map-road map-road--two" /><span className="map-zone map-zone--one">منطقة حركة</span><span className="map-zone map-zone--two">نطاق المشروع</span>
+          {competitors.map((competitor, index) => <div className={`map-marker map-marker--static map-marker--${index + 1}`} key={competitor.name}><Building2 size={14} /></div>)}
           <div className="site-marker" style={{ left: "52%", top: "41%" }}><Target size={15} /><span>موقع مرشح</span></div>
         </div>
-        {selectedCompetitor ? <div className="map-insight"><Building2 size={18} /><div><strong>{selectedCompetitor.name}</strong><span>{selectedCompetitor.area} · ضغط منافسة {selectedCompetitor.strength}</span><small>{selectedCompetitor.signal}</small></div><ChevronLeft size={18} /></div> : null}
-        <DemoProvenance meta={selectedCompetitor?.meta ?? localMeta("مسح افتراضي")} />
+        <div className="market-signal-list">
+          {competitors.map((competitor) => <div key={competitor.name}><strong>{competitor.name}</strong><span>{competitor.signal} · ضغط {competitor.pressure}</span></div>)}
+        </div>
+        <DemoTag compact />
       </article>
 
-      {visibleWidgets.signals ? <article className="cockpit-kpis-widget">
-        <div className="widget-heading"><div><CircleDollarSign size={20} /><div><span>إشارات للمراجعة</span><strong>ليست مؤشرات أداء حقيقية</strong></div></div><small>3 فرضيات</small></div>
+      <article className="cockpit-kpis-widget">
+        <div className="widget-heading"><div><Compass size={20} /><div><span>قراءة الفرصة</span><strong>مؤشرات محاكاة مشتقة من الدراسة</strong></div></div><small>ليست نتائج سوق</small></div>
         <div className="cockpit-kpis">
-          <button type="button" className="cockpit-kpi cockpit-kpi--mint"><span>فرضية الطلب</span><strong>تحتاج رصداً</strong><small>راقب ساعات الذروة والحركة ميدانياً.</small></button>
-          <button type="button" className="cockpit-kpi cockpit-kpi--amber"><span>ضغط المنافسة</span><strong>{selectedCompetitor?.strength ?? "غير محدد"}</strong><small>استكشف العرض والسعر والخدمة، لا تتخذ قراراً من الخريطة.</small></button>
-          <button type="button" className="cockpit-kpi cockpit-kpi--blue"><span>فجوة الدليل</span><strong>زيارة موقع</strong><small>أضف المواقف والوصول والإيجار كدليل منفصل.</small></button>
+          <div className="cockpit-kpi cockpit-kpi--mint"><span>درجة التشبع</span><strong>{studyAdvice.saturation}</strong><small>قالب تطوير، لا يستند إلى تعداد منشآت حقيقي.</small></div>
+          <div className="cockpit-kpi cockpit-kpi--amber"><span>ضغط المنافسة</span><strong>{studyAdvice.competition}</strong><small>اربطه لاحقاً بمقارنة السعر والعرض والوصول ميدانياً.</small></div>
+          <div className="cockpit-kpi cockpit-kpi--blue"><span>إمكان تحسين النموذج</span><strong>{studyAdvice.opportunity}</strong><small>{studyAdvice.hasStudySignal ? "يتغير بحسب مخرجات الدراسة، لا بحسب بيانات سوق حية." : "يظهر بعد اكتمال الدراسة."}</small></div>
         </div>
-        <DemoProvenance meta={localMeta("إشارات عرض محلية مصطنعة")} />
-      </article> : null}
+        <DemoTag compact />
+      </article>
 
-      {visibleWidgets.benchmark ? <article className="benchmark-widget">
-        <div className="widget-heading"><div><Telescope size={20} /><div><span>أين أنت من الواقع؟</span><strong>نماذج مشابهة للمقارنة</strong></div></div><small>ملفات حالة محلية</small></div>
-        <div className="benchmark-tabs" role="tablist" aria-label="نماذج المقارنة">
-          {benchmarkCases.map((item) => <button type="button" key={item.id} role="tab" aria-selected={item.id === selectedBenchmark?.id} className={item.id === selectedBenchmark?.id ? "benchmark-tab benchmark-tab--active" : "benchmark-tab"} onClick={() => setSelectedBenchmarkId(item.id)}>{item.geography}</button>)}
+      <article className="benchmark-widget">
+        <div className="widget-heading"><div><Telescope size={20} /><div><span>مقارنات مرجعية</span><strong>سعودية ثم عربية ثم عالمية</strong></div></div><small>حالات تجريبية</small></div>
+        <div className="benchmark-tabs" role="tablist" aria-label="نطاق المقارنة">
+          {(Object.keys(comparisonProfiles) as ComparisonScope[]).map((item) => <button type="button" key={item} role="tab" aria-selected={scope === item} className={scope === item ? "benchmark-tab benchmark-tab--active" : "benchmark-tab"} onClick={() => setScope(item)}>{item}</button>)}
         </div>
-        {selectedBenchmark ? <div className="benchmark-detail"><span>{selectedBenchmark.status}</span><strong>{selectedBenchmark.title}</strong><p>{selectedBenchmark.observation}</p><div><ArrowUpLeft size={15} /><small>{selectedBenchmark.lesson}</small></div><DemoProvenance meta={selectedBenchmark.meta} /></div> : null}
-      </article> : null}
+        <div className="benchmark-detail"><span>حالة محاكاة</span><strong>{profile.title}</strong><p>{profile.observation}</p><div><ArrowLeft size={15} /><small>{profile.lesson}</small></div></div>
+        <DemoTag compact />
+      </article>
 
-      {visibleWidgets.macro ? <article className="macro-widget">
-        <div className="widget-heading"><div><Landmark size={20} /><div><span>السياق الأكبر</span><strong>إشارات خارج حدود الموقع</strong></div></div><small>محاكاة محلية</small></div>
-        <div className="macro-list">{macroSignals.map((item) => <button type="button" key={item.id} className={item.id === selectedMacro?.id ? "macro-row macro-row--active" : "macro-row"} onClick={() => setSelectedMacroId(item.id)}><span>{item.scope}</span><strong>{item.title}</strong><small>{item.direction}</small></button>)}</div>
-        {selectedMacro ? <div className="macro-detail"><strong>{selectedMacro.implication}</strong><small>{selectedMacro.caveat}</small><DemoProvenance meta={selectedMacro.meta} /></div> : null}
-      </article> : null}
+      <article className="ai-advisory-demo">
+        <div className="widget-heading"><div><Bot size={20} /><div><span>اقتراحات الذكاء الاصطناعي</span><strong>استنتاجات تجريبية من بيانات الدراسة</strong></div></div><small>ليست توصية نهائية</small></div>
+        <div className="ai-advisory-demo__list">
+          <div><Lightbulb size={17} /><div><strong>تحسين الفكرة</strong><small>{studyAdvice.improvement}</small></div></div>
+          <div><Route size={17} /><div><strong>بديل محتمل</strong><small>{studyAdvice.alternative}</small></div></div>
+          <div><ClipboardList size={17} /><div><strong>ما الذي يغيّر الحكم؟</strong><small>{studyAdvice.review}</small></div></div>
+        </div>
+        {studyAdvice.hasStudySignal ? <p>إشارات الدراسة التجريبية: صافي شهري {formatStudyNumber(signals?.monthlyProfit, " ر.س")} · استرداد {formatStudyNumber(signals?.paybackMonths, " شهراً")} · فجوة تمويل {formatStudyNumber(signals?.fundingGap, " ر.س")}.</p> : null}
+        <p>لا يولد الذكاء هنا رقماً أو حكماً سيادياً أو قراراً نيابة عن المستخدم، ولا تدخل هذه المحاكاة في اللقطة أو التقرير.</p>
+        <DemoTag compact />
+      </article>
 
-      {visibleWidgets.guidance ? <article className="guidance-widget guidance-widget--r2">
-        <div className="widget-heading"><div><Route size={20} /><div><span>خطوة التحقق التالية</span><strong>حوّل الإشارة إلى دليل</strong></div></div><small>لا قرار تلقائي</small></div>
-        <ol><li><span>01</span><div><strong>زر الموقع في وقتين مختلفين</strong><small>دوّن الحركة والوصول والمواقف كما تراها، لا كما تفترضها الخريطة.</small></div></li><li><span>02</span><div><strong>قارن عرض ثلاثة منافسين</strong><small>أضف السعر والخدمة والفئة المستهدفة في صفحة الأدلة.</small></div></li><li><span>03</span><div><strong>اربط ما يثبت الفرضية</strong><small>تنتقل الأدلة للمراجعة الخلفية؛ هذه الصفحة لا تغيّر Snapshot.</small></div></li></ol>
-        <DemoProvenance meta={localMeta("قائمة إرشاد محلية مصطنعة")} />
-      </article> : null}
+      <article className="vision-alignment-demo">
+        <div className="widget-heading"><div><BadgeCheck size={20} /><div><span>التوافق الاستراتيجي</span><strong>رؤية 2030 واتجاهات السوق</strong></div></div><small>إطار تجريبي</small></div>
+        <div className="vision-alignment-demo__grid">
+          <div><span>تصنيف تجريبي</span><strong>{projectType}</strong><small>مشتق من وصف القطاع ويحتاج قاعدة تصنيف معتمدة لاحقاً.</small></div>
+          <div><span>فرضية توافق مع رؤية 2030</span><strong>{vision}</strong><small>ليست درجة مواءمة ولا تعتمد على بيانات رسمية حية.</small></div>
+          <div><span>اتجاه السوق</span><strong>{studyAdvice.hasStudySignal ? "فرضية مرتبطة بالدراسة" : "ينتظر الدراسة"}</strong><small>لا يمثل توصية دولية أو مؤشراً وطنياً فعلياً.</small></div>
+        </div>
+        <DemoTag compact />
+      </article>
+
+      <article className="guidance-widget guidance-widget--r3">
+        <div className="widget-heading"><div><Users size={20} /><div><span>ما بعد القرار</span><strong>استعداد البداية والتشغيل</strong></div></div><small>قائمة تجريبية</small></div>
+        <ol><li><span>01</span><div><strong>التراخيص والجهات</strong><small>ستظهر بحسب {location || "الموقع"} والقطاع بعد ربط قواعد الجهات الرسمية.</small></div></li><li><span>02</span><div><strong>المستندات</strong><small>سجل تجاري، عنوان، تراخيص قطاعية، وعقود حسب نوع المشروع — محاكاة فقط الآن.</small></div></li><li><span>03</span><div><strong>فريق البداية التجريبي</strong><small>{teamSize}؛ مشتق من الطاقة التشغيلية المدخلة وليس متطلباً رسمياً.</small></div></li></ol>
+        <DemoTag compact />
+      </article>
     </div>
+
+    {onContinue ? <div className="cockpit-continue"><div><strong>أكملت قراءة محاكاة السوق</strong><span>انتقل الآن إلى حزمة القرار، ثم إلى خارطة البدء.</span></div><button className="primary-button" type="button" onClick={onContinue}>انتقل إلى القرار <ArrowLeft size={17} /></button></div> : null}
   </section>;
 }
