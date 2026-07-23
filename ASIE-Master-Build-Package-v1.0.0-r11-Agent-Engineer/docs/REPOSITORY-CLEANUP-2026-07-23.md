@@ -10,7 +10,7 @@ This cleanup makes the repository easier to enter and safer to maintain without 
 - `main` is the integration branch at the time of this record.
 - The repository settings currently report `agent/asie-r11-ui-foundation` as the default branch. That branch is behind `main` and should be changed to `main` in GitHub repository settings by an owner.
 - `docs/reference/r11-workspace-materials/` contains historical and extracted bundles. They are retained for provenance but are not runtime source.
-- The repository had no root navigation README, root ignore policy, editor policy, or checked-in CI workflow that clearly selected the canonical workspace.
+- The repository had no root navigation README, root ignore policy, or editor policy. The existing `.github/workflows/asie-ci.yml` already selects the canonical workspace and was left unchanged.
 
 ## Changes in this cleanup
 
@@ -18,7 +18,7 @@ This cleanup makes the repository easier to enter and safer to maintain without 
 - Added a root `.gitignore` for Python, Node, local databases, generated output, secrets, and archives.
 - Added `.editorconfig` for consistent text formatting.
 - Added `docs/INDEX.md` with authority order and reference-boundary rules.
-- Added `.github/workflows/ci.yml` for the backend test suite and locked frontend build.
+- Kept the existing `.github/workflows/asie-ci.yml` as the single CI workflow; no duplicate workflow is introduced.
 
 ## Deliberately not changed
 
