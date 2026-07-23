@@ -1,0 +1,47 @@
+flowchart TD
+  A["بداية المستخدم"] --> B["Project Profile<br/>فكرة + موقع + قطاع + مرحلة"]
+  B --> C["مصنف المشروع المحكوم<br/>Template Registry"]
+
+  C --> D{"نوع البداية"}
+  D -->|"فكرة فقط"| E["Product AI Interview<br/>أسئلة جوهرية قصيرة"]
+  D -->|"أرقام / ملفات / عروض"| F["Data Intake<br/>يدوي / Excel / PDF / عرض سعر"]
+
+  E --> G["قائمة احتياجات وبنود مقترحة"]
+  F --> H["مطابقة البنود مع القالب<br/>مع أسئلة تكميلية عند الغموض"]
+
+  G --> I["Dynamic Input Blueprint"]
+  H --> I
+
+  I --> J["بند داخل النموذج"]
+  J --> K{"حالة البند"}
+
+  K -->|"رقم العميل"| L["قيمة مدخلة"]
+  K -->|"رقم تقريبي"| M["تقدير من العميل"]
+  K -->|"صفر مقصود"| N["سبب موثق"]
+  K -->|"غير منطبق"| O["استبعاد مبرر"]
+  K -->|"لا أعرف"| P["طلب بحث للبند المحدد"]
+
+  P --> Q["market.query.request.v1"]
+  Q --> R["Market Intelligence Module<br/>Bus / Socket فقط"]
+  R --> S["Evidence Pack<br/>عينات + تنظيف + P25-P75 + Weighted Median"]
+  S --> T{"قرار العميل"}
+  T -->|"يعتمد"| U["افتراض معتمد"]
+  T -->|"يرفض / يعدل المواصفة"| J
+  T -->|"يدخل رقمه"| L
+
+  L --> V["Approved Input Manifest"]
+  M --> V
+  N --> V
+  O --> V
+  U --> V
+
+  V --> W["Manifest Validation Gate"]
+  W --> X["AAS Runtime Path<br/>Kernel → Heart Controller → Hearts → Bus Controller → ASIE System Bus → Socket Contract Layer → Module Runtime"]
+  X --> Y["Finance Engine Module"]
+  Y --> Z["Snapshot Assembly"]
+  Z --> AA["Snapshot محفوظة"]
+
+  AA --> AB["تعديل لاحق للبنود أو الأسعار"]
+  AB --> AC["Draft Revision جديد"]
+  AC --> I
+  AA --> AD["مقارنة عند وجود Snapshot جديدة"]
