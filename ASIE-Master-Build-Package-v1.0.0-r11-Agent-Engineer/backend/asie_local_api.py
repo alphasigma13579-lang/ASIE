@@ -1237,7 +1237,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
             with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
-                output = Path(temp_dir) / f"asie-funder-report-{safe_id}.{export_format}"
+                output = Path(temp_dir) / f"export.{export_format}"
                 exporter(projection, output)
                 payload = output.read_bytes()
         except RuntimeError as exc:
