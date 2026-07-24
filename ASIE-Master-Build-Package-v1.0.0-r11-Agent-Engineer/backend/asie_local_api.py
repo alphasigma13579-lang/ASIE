@@ -1076,10 +1076,11 @@ def write_html(handler: BaseHTTPRequestHandler, payload: str, status: int = 200)
 
 
 def write_binary(handler: BaseHTTPRequestHandler, payload: bytes, content_type: str, filename: str, status: int = 200) -> None:
+    safe_filename = filename.replace("\r", "").replace("\n", "").replace('"', "")
     handler.send_response(status)
     handler.send_header("Content-Type", content_type)
     handler.send_header("Content-Length", str(len(payload)))
-    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    handler.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
     _write_security_headers(handler)
     handler.end_headers()
     handler.wfile.write(payload)
@@ -1234,8 +1235,9 @@ class Handler(BaseHTTPRequestHandler):
             write_error(self, "unsupported_export_format", 400)
             return
         try:
+            safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
             with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
-                output = Path(temp_dir) / f"asie-funder-report-{snapshot_id}.{export_format}"
+                output = Path(temp_dir) / f"asie-funder-report-{safe_id}.{export_format}"
                 exporter(projection, output)
                 payload = output.read_bytes()
         except RuntimeError as exc:
