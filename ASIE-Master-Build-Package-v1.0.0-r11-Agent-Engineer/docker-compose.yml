@@ -12,6 +12,11 @@ services:
       ASIE_ALLOW_EXTERNAL_FETCH: "false"
       ASIE_PDF_RENDERER: /usr/bin/chromium
       ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
+      # B0: comma-separated public origins of the deployed frontend (e.g.
+      # "https://asie.example.com"). When unset the API only trusts the
+      # loopback Vite dev origins. Must match the scheme/host serving the web
+      # container, otherwise browsers are rejected with origin_not_allowed.
+      ASIE_ALLOWED_ORIGINS: ${ASIE_ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
       - asie-data:/var/lib/asie
     expose:
