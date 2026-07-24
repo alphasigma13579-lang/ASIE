@@ -9,6 +9,10 @@ from backend.contracts import SEED, decimal_from, money
 getcontext().prec = 28
 
 CORE_INPUTS = ["startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost"]
+# ذ-2: Monte Carlo feasibility-gate ceiling, as a share of startup cost.
+# Named and documented so the gate is auditable; surfaced in the MC output
+# via gate_definition so reports can defend p_pass to a reviewer.
+MC_FUNDING_GAP_CEILING_RATIO = Decimal("0.25")
 OPTIONAL_DEFAULTS = {
     "monthly_units": Decimal("0"),
     "annual_discount_rate": Decimal("0.10"),
@@ -381,6 +385,12 @@ def monte_carlo(finance: dict[str, Any], values: dict[str, Any]) -> dict[str, An
     iterations = 4000
     passes = 0
     profits: list[Decimal] = []
+    # ذ-2: the funding-gap ceiling is project-relative, not a fixed absolute.
+    # A run "passes the gate" when it is profitable, value-accretive, and the
+    # residual external funding need stays within MC_FUNDING_GAP_CEILING_RATIO
+    # of the project startup cost — a leverage discipline benchmark common in
+    # SME credit review (the borrower must fund the bulk of the project).
+    gap_ceiling = values["startup_cost"] * MC_FUNDING_GAP_CEILING_RATIO
     for _ in range(iterations):
         demand_factor = Decimal(str(rng.triangular(0.78, 1.18, 1.0)))
         cost_factor = Decimal(str(rng.uniform(0.95, 1.12)))
@@ -388,7 +398,7 @@ def monte_carlo(finance: dict[str, Any], values: dict[str, Any]) -> dict[str, An
         opex_total = opex_breakdown(values)["total_monthly_opex"]
         profit = (values["unit_price"] * units) - ((values["variable_cost"] * cost_factor) * units) - opex_total
         profits.append(profit)
-        if profit > 0 and finance["funding_gap"] <= Decimal("300000") and finance["npv"] > 0:
+        if profit > 0 and finance["funding_gap"] <= gap_ceiling and finance["npv"] > 0:
             passes += 1
     profits.sort()
     probability = Decimal(passes) / Decimal(iterations)
@@ -405,6 +415,12 @@ def monte_carlo(finance: dict[str, Any], values: dict[str, Any]) -> dict[str, An
         "p10_profit": pct(Decimal("0.10")),
         "p50_profit": pct(Decimal("0.50")),
         "p90_profit": pct(Decimal("0.90")),
+        "gate_definition": {
+            "rule": "profit > 0 AND npv > 0 AND funding_gap <= startup_cost * MC_FUNDING_GAP_CEILING_RATIO",
+            "funding_gap_ceiling_ratio": float(MC_FUNDING_GAP_CEILING_RATIO),
+            "funding_gap_ceiling": money(gap_ceiling),
+            "rationale": "leverage discipline: residual external funding need must not exceed a fixed share of project startup cost",
+        },
         "distribution_profile": distribution_profile,
         "correlation_ref": correlation_ref,
         "convergence": {
