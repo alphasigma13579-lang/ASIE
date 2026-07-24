@@ -160,8 +160,14 @@ class Repository:
         self.init_schema()
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        # B2-2: WAL lets readers proceed during a single writer and busy_timeout
+        # makes concurrent writers queue instead of failing with
+        # "database is locked" under beta load. journal_mode persists on the
+        # database file, so setting it on every connection is idempotent.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def init_schema(self) -> None:
