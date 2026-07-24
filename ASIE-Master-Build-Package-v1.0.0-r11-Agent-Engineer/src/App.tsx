@@ -22,7 +22,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { BrandLockup } from "./BrandMark";
 import {
@@ -53,7 +53,30 @@ import {
   runProject,
   updateProjectActionItem,
   updateProject,
+  addMembership,
+  createOrganization,
+  fetchFundingProfiles,
+  fetchMe,
+  fetchReleaseRecord,
+  fetchSectorProfiles,
+  logout,
+  openSnapshotDocument,
+  type AuthUser,
+  type FundingProfile,
+  type LoginResponse,
+  type Membership,
+  type ReleaseRecord,
+  type SectorProfile,
 } from "./api";
+import { AuthScreen } from "./AuthScreens";
+import {
+  clearSession,
+  getActiveOrganizationId,
+  getSessionToken,
+  onSessionExpired,
+  setActiveOrganizationId,
+  setSessionToken,
+} from "./session";
 import type {
   ActionItem,
   AssumptionRecord,
@@ -91,6 +114,13 @@ const workflow = [
 ];
 
 type AppStage = "dashboard" | "wizard" | "evidence" | "readiness" | "run" | "reality" | "decision" | "execution" | "architecture" | "snapshots";
+type AuthState = "probing" | "anonymous" | "legacy" | "authenticated";
+type AppOverlay = "settings" | "profiles" | null;
+
+function overlayFromLocation(): AppOverlay {
+  const raw = window.location.hash.replace(/^#/, "");
+  return raw === "settings" || raw === "profiles" ? raw : null;
+}
 
 const appStages: Array<{ id: AppStage; label: string; description: string }> = [
   { id: "dashboard", label: "الملخص", description: "أين وصلنا الآن؟" },
@@ -623,6 +653,18 @@ export function App() {
   const [architectureStatus, setArchitectureStatus] = useState<ArchitectureRuntimeStatus | null>(null);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [authState, setAuthState] = useState<AuthState>("probing");
+  const [authInitialMode, setAuthInitialMode] = useState<"login" | "bootstrap">("login");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [activeOrganizationId, setActiveOrganizationState] = useState<string>(() => getActiveOrganizationId());
+  const [overlay, setOverlay] = useState<AppOverlay>(() => overlayFromLocation());
+  const [fundingProfiles, setFundingProfiles] = useState<FundingProfile[]>([]);
+  const [sectorProfiles, setSectorProfiles] = useState<SectorProfile[]>([]);
+  const [releaseRecord, setReleaseRecord] = useState<ReleaseRecord | null>(null);
+  const [newOrganizationName, setNewOrganizationName] = useState("");
+  const [memberUserId, setMemberUserId] = useState("");
+  const [memberRole, setMemberRole] = useState("organization_member");
   const [isBusy, setIsBusy] = useState(false);
   const [hasEnteredProduct, setHasEnteredProduct] = useState(() => readLocalFlag(PRODUCT_ENTRY_STORAGE_KEY));
   const [legalAccepted, setLegalAccepted] = useState(() => readLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY));
@@ -760,6 +802,166 @@ export function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function probeSession() {
+      const token = getSessionToken();
+      try {
+        const me = await fetchMe();
+        if (cancelled) return;
+        if (token) {
+          setAuthUser({ user_id: me.user_id, display_name: "", email: "", platform_role: me.platform_role });
+          setMemberships(me.memberships ?? []);
+          const nextOrganization = getActiveOrganizationId() || me.memberships?.[0]?.organization_id || "";
+          if (nextOrganization) setActiveOrganizationId(nextOrganization);
+          setActiveOrganizationState(nextOrganization);
+          setAuthState("authenticated");
+        } else {
+          setAuthState(me.user_id === "local_legacy_operator" ? "legacy" : "anonymous");
+        }
+      } catch {
+        if (!cancelled) setAuthState("anonymous");
+      }
+    }
+    void probeSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setAuthState("anonymous");
+        setAuthUser(null);
+        setMemberships([]);
+        setActiveOrganizationState("");
+      }),
+    []
+  );
+
+  async function handleAuthenticated(response: LoginResponse) {
+    setSessionToken(response.access_token);
+    try {
+      // The server is the source of truth for scope: re-read memberships
+      // instead of trusting the login/bootstrap response shape.
+      const me = await fetchMe();
+      const nextOrganization = me.memberships?.[0]?.organization_id ?? response.organization?.organization_id ?? "";
+      if (nextOrganization) setActiveOrganizationId(nextOrganization);
+      setActiveOrganizationState(nextOrganization);
+      setMemberships(me.memberships ?? []);
+      setAuthUser({ user_id: me.user_id, display_name: response.user.display_name, email: response.user.email, platform_role: me.platform_role });
+    } catch {
+      const fallbackOrganization = response.organization?.organization_id ?? response.memberships?.[0]?.organization_id ?? "";
+      if (fallbackOrganization) setActiveOrganizationId(fallbackOrganization);
+      setActiveOrganizationState(fallbackOrganization);
+      setMemberships(response.memberships ?? []);
+      setAuthUser(response.user);
+    }
+    setAuthState("authenticated");
+    setError(null);
+    void loadPolicy();
+  }
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // The server session may already be gone; local cleanup continues.
+    }
+    clearSession();
+    setAuthState("anonymous");
+    setAuthUser(null);
+    setMemberships([]);
+    setActiveOrganizationState("");
+  }
+
+  function switchOrganization(organizationId: string) {
+    setActiveOrganizationId(organizationId);
+    setActiveOrganizationState(organizationId);
+    setProject(null);
+    setWorkspace(null);
+    setOverview(null);
+    setReport(null);
+    setReportView(null);
+    setDecisionPack(null);
+    setReadiness(null);
+    setComparison(null);
+    setReleaseRecord(null);
+    void loadPolicy();
+  }
+
+  function openOverlay(next: Exclude<AppOverlay, null>) {
+    setOverlay(next);
+    window.history.pushState({ asie_stage: lastStageRef.current, asie_overlay: next }, "", `#${next}`);
+    if (next === "profiles" && !fundingProfiles.length) {
+      void (async () => {
+        try {
+          const [funding, sector] = await Promise.all([fetchFundingProfiles(), fetchSectorProfiles()]);
+          setFundingProfiles(funding);
+          setSectorProfiles(sector);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "تعذر تحميل الفهارس المرجعية.");
+        }
+      })();
+    }
+  }
+
+  function closeOverlay() {
+    setOverlay(null);
+    window.history.pushState({ asie_stage: lastStageRef.current }, "", `#${lastStageRef.current}`);
+  }
+
+  async function handleOpenDocument(snapshotId: string, suffix: string, mode: "open" | "download") {
+    setError(null);
+    try {
+      await openSnapshotDocument(snapshotId, suffix, mode);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر فتح المستند.");
+    }
+  }
+
+  async function handleShowRelease(snapshotId: string) {
+    setError(null);
+    try {
+      setReleaseRecord(await fetchReleaseRecord(snapshotId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر تحميل سجل الإصدار.");
+    }
+  }
+
+  async function handleCreateOrganization(event: FormEvent) {
+    event.preventDefault();
+    if (!newOrganizationName.trim()) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      const organization = await createOrganization(newOrganizationName.trim());
+      setNewOrganizationName("");
+      setMemberships((current) => [...current, { organization_id: organization.organization_id, organization_name: organization.name, role: "organization_owner" }]);
+      switchOrganization(organization.organization_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر إنشاء المنظمة.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleAddMember(event: FormEvent) {
+    event.preventDefault();
+    if (!activeOrganizationId || !memberUserId.trim()) return;
+    setIsBusy(true);
+    setError(null);
+    try {
+      await addMembership(activeOrganizationId, memberUserId.trim(), memberRole);
+      setMemberUserId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر إضافة العضو.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (lastStageRef.current === stage) return;
@@ -1414,6 +1616,14 @@ export function App() {
     );
   }
 
+  if (authState === "probing") {
+    return <LoadingState />;
+  }
+
+  if (authState === "anonymous") {
+    return <AuthScreen initialMode={authInitialMode} onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <main id="main-content" className="app-shell">
       <aside className="sidebar" aria-label="مسار مساحة المشروع">
@@ -1444,6 +1654,14 @@ export function App() {
           <ScrollText size={16} aria-hidden="true" />
           الوثائق القانونية
         </button>
+        <button className="nav-item nav-item--quiet" onClick={() => openOverlay("profiles")}>
+          <BarChart3 size={16} aria-hidden="true" />
+          فهارس التمويل والقطاع
+        </button>
+        <button className="nav-item nav-item--quiet" onClick={() => openOverlay("settings")}>
+          <Users size={16} aria-hidden="true" />
+          الحساب والفريق
+        </button>
         <div className="sidebar-note">
           <Database size={18} aria-hidden="true" />
           <span>{sourcePolicy.profile_id}</span>
@@ -1471,6 +1689,13 @@ export function App() {
           <section className="status-banner status-banner--error" role="alert" aria-live="assertive">
             <AlertTriangle size={18} aria-hidden="true" />
             <span>{error}</span>
+          </section>
+        ) : null}
+
+        {authState === "legacy" ? (
+          <section className="status-banner" role="status">
+            <ShieldCheck size={18} aria-hidden="true" />
+            <span>وضع التشغيل الأول: لا توجد حسابات بعد. أنشئ حساب مدير المنصة من «الحساب والفريق» لتفعيل الجلسات المؤمّنة والعزل بين المنظمات.</span>
           </section>
         ) : null}
 
@@ -1538,6 +1763,8 @@ export function App() {
           </section>
         ) : null}
 
+        {overlay === null ? (
+        <>
         <div className={`client-page-shell client-page-shell--${pageDirection}`} key={stage}>
         {stage === "dashboard" ? (
           <section className="command-center" aria-label="مركز قيادة القرار">
@@ -1967,6 +2194,26 @@ export function App() {
               <p>كل تقرير هنا مرتبط بـ Snapshot ثابت. إذا لم تُنشأ لقطة بعد، ستظهر الحالة بوضوح ولن تعرض المنصة أرقاماً بديلة.</p>
             </header>
 
+            {releaseRecord ? (
+              <section className="panel release-record-panel" aria-label="سجل الإصدار">
+                <div className="section-title">
+                  <BadgeCheck size={20} aria-hidden="true" />
+                  <h2>سجل الإصدار</h2>
+                  <button className="secondary-action" onClick={() => setReleaseRecord(null)}>إغلاق</button>
+                </div>
+                <dl className="release-record-grid">
+                  {Object.entries(releaseRecord)
+                    .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
+                    .map(([key, value]) => (
+                      <div key={key}>
+                        <dt>{key}</dt>
+                        <dd>{value === null ? "—" : String(value)}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+            ) : null}
+
             {workspace?.runs.length ? (
               <div className="snapshot-list">
                 {workspace.runs.map((run) => (
@@ -1984,8 +2231,13 @@ export function App() {
                     <div className="button-row snapshot-card__actions">
                       {run.snapshot_id ? (
                         <>
-                          <a className="secondary-action" href={`/api/snapshots/${run.snapshot_id}/report.html`} target="_blank" rel="noreferrer">فتح التقرير</a>
-                          <a className="secondary-action" href={`/api/snapshots/${run.snapshot_id}/decision-pack.html`} target="_blank" rel="noreferrer">فتح حزمة القرار</a>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "report.html", "open")}>فتح التقرير</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "decision-pack.html", "open")}>فتح حزمة القرار</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.html", "open")}>تقرير الممول</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pdf", "download")}>PDF</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.docx", "download")}>DOCX</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pptx", "download")}>PPTX</button>
+                          <button className="secondary-action" onClick={() => void handleShowRelease(run.snapshot_id!)}>سجل الإصدار</button>
                         </>
                       ) : <span className="muted">لا توجد مخرجات قابلة للفتح.</span>}
                     </div>
@@ -3068,9 +3320,9 @@ export function App() {
                     <small>
                       Snapshot {decisionPack.snapshot_id} · Review {decisionPack.memo.review_status}
                     </small>
-                    <a href={`/api/snapshots/${decisionPack.snapshot_id}/decision-pack.html`} target="_blank" rel="noreferrer">
+                    <button className="secondary-action" onClick={() => void handleOpenDocument(decisionPack.snapshot_id, "decision-pack.html", "open")}>
                       فتح حزمة القرار HTML
-                    </a>
+                    </button>
                   </div>
                   <div className="button-row">
                     <button disabled={isBusy} onClick={() => handleReviewDecision("approved_local")}>
@@ -3155,9 +3407,9 @@ export function App() {
                     <strong>{reportView?.title ?? report.title}</strong>
                     <p>{reportView?.executive_summary.reason ?? report.sections[0]?.body}</p>
                     <small>Snapshot {report.snapshot_id}</small>
-                    <a href={`/api/snapshots/${report.snapshot_id}/report.html`} target="_blank" rel="noreferrer">
+                    <button className="secondary-action" onClick={() => void handleOpenDocument(report.snapshot_id, "report.html", "open")}>
                       فتح تقرير HTML المحلي
-                    </a>
+                    </button>
                   </div>
                 ) : (
                   <p className="muted">شغّل التقرير لقراءة نفس لقطة التشغيل بدون إعادة حساب.</p>
@@ -3167,6 +3419,142 @@ export function App() {
           </>
         ) : null}
         </div>
+        </>
+        ) : (
+          <section className="panel overlay-panel" aria-label={overlay === "settings" ? "الحساب والفريق" : "فهارس التمويل والقطاع"}>
+            <div className="section-title">
+              {overlay === "settings" ? <Users size={20} aria-hidden="true" /> : <BarChart3 size={20} aria-hidden="true" />}
+              <h2>{overlay === "settings" ? "الحساب والفريق" : "الفهارس المرجعية للتمويل والقطاع"}</h2>
+              <button className="secondary-action" onClick={closeOverlay}>عودة إلى المسار</button>
+            </div>
+
+            {overlay === "settings" ? (
+              <div className="overlay-stack">
+                {authState === "legacy" ? (
+                  <article className="admin-panel">
+                    <h3>التهيئة الأولى</h3>
+                    <p className="muted">لا توجد حسابات على هذه النسخة بعد. أنشئ حساب مدير المنصة ومنظمتك الأولى؛ بعدها تُغلق الصلاحيات على الجلسات المؤمّنة.</p>
+                    <button className="primary-button" onClick={() => { setAuthInitialMode("bootstrap"); setAuthState("anonymous"); }}>
+                      <Rocket size={17} aria-hidden="true" /> بدء التهيئة الأولى
+                    </button>
+                  </article>
+                ) : null}
+
+                {authState === "authenticated" ? (
+                  <>
+                    <article className="admin-panel">
+                      <h3>الجلسة الحالية</h3>
+                      <p><strong>{authUser?.display_name || authUser?.email || authUser?.user_id}</strong></p>
+                      <p className="muted">{authUser?.email} {authUser?.platform_role ? `· ${authUser.platform_role}` : ""}</p>
+                      <button className="secondary-action" onClick={() => void handleLogout()}>تسجيل الخروج وإنهاء الجلسة</button>
+                    </article>
+
+                    <article className="admin-panel">
+                      <h3>المنظمة النشطة</h3>
+                      {memberships.length ? (
+                        <div className="org-chip-row">
+                          {memberships.map((membership) => (
+                            <button
+                              key={membership.organization_id}
+                              className={membership.organization_id === activeOrganizationId ? "org-chip org-chip--active" : "org-chip"}
+                              onClick={() => switchOrganization(membership.organization_id)}
+                            >
+                              <strong>{membership.organization_name || membership.organization_id}</strong>
+                              <small>{membership.role}</small>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="muted">لا توجد عضويات بعد — أنشئ منظمتك الأولى أدناه.</p>
+                      )}
+                      <form className="inline-form" onSubmit={handleCreateOrganization}>
+                        <label>
+                          منظمة جديدة
+                          <input maxLength={80} value={newOrganizationName} onChange={(event) => setNewOrganizationName(event.target.value)} placeholder="اسم المنظمة" />
+                        </label>
+                        <button className="primary-button" disabled={isBusy || !newOrganizationName.trim()}>إنشاء والتحويل إليها</button>
+                      </form>
+                    </article>
+
+                    <article className="admin-panel">
+                      <h3>إضافة عضو إلى المنظمة النشطة</h3>
+                      <p className="muted">معرّف المستخدم يُنسخ من لوحة المشغّل (قائمة المستخدمين). الصلاحية تُفرض من الخادم عند كل طلب.</p>
+                      <form className="inline-form" onSubmit={handleAddMember}>
+                        <label>
+                          معرّف المستخدم
+                          <input required value={memberUserId} onChange={(event) => setMemberUserId(event.target.value)} placeholder="usr_…" />
+                        </label>
+                        <label>
+                          الدور
+                          <select value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
+                            <option value="organization_member">عضو</option>
+                            <option value="organization_reviewer">مراجع</option>
+                            <option value="organization_owner">مالك</option>
+                          </select>
+                        </label>
+                        <button className="primary-button" disabled={isBusy || !activeOrganizationId}>إضافة العضو</button>
+                      </form>
+                    </article>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <div className="overlay-stack">
+                <p className="muted">فهارس مرجعية محلية فقط (reference_only) — لا يوجد جلب خارجي، وتظهر للاسترشاد قبل اختيار ملف التمويل أو القطاع.</p>
+                <article className="admin-panel">
+                  <h3>ملفات التمويل</h3>
+                  {fundingProfiles.length ? (
+                    <div className="profile-grid">
+                      {fundingProfiles.map((profile, index) => (
+                        <details key={String(profile.profile_id ?? index)} className="profile-card">
+                          <summary>{String(profile.profile_id ?? `ملف ${index + 1}`)}</summary>
+                          <dl>
+                            {Object.entries(profile)
+                              .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
+                              .slice(0, 12)
+                              .map(([key, value]) => (
+                                <div key={key}>
+                                  <dt>{key}</dt>
+                                  <dd>{value === null ? "—" : String(value)}</dd>
+                                </div>
+                              ))}
+                          </dl>
+                        </details>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">لا توجد ملفات تمويل محمّلة.</p>
+                  )}
+                </article>
+                <article className="admin-panel">
+                  <h3>ملفات القطاعات</h3>
+                  {sectorProfiles.length ? (
+                    <div className="profile-grid">
+                      {sectorProfiles.map((profile, index) => (
+                        <details key={String(profile.profile_id ?? profile.sector_id ?? index)} className="profile-card">
+                          <summary>{String(profile.sector_id ?? profile.profile_id ?? `قطاع ${index + 1}`)}</summary>
+                          <dl>
+                            {Object.entries(profile)
+                              .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
+                              .slice(0, 12)
+                              .map(([key, value]) => (
+                                <div key={key}>
+                                  <dt>{key}</dt>
+                                  <dd>{value === null ? "—" : String(value)}</dd>
+                                </div>
+                              ))}
+                          </dl>
+                        </details>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">لا توجد ملفات قطاعات محمّلة.</p>
+                  )}
+                </article>
+              </div>
+            )}
+          </section>
+        )}
       </section>
     </main>
   );
