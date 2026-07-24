@@ -2108,3 +2108,34 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .wizard-focus { grid-template-columns:1fr; gap:8px; }
   .wizard-focus .button-row { justify-content:flex-start; }
 }
+
+/* W1: session, overlays, org switcher, reference catalogs */
+.auth-links { display: flex; gap: 16px; justify-content: center; margin-top: 4px; }
+.auth-links button { background: none; border: none; cursor: pointer; }
+.auth-security-note { display: flex; align-items: center; gap: 6px; justify-content: center; margin-top: 18px; font-size: .82rem; }
+.overlay-panel { display: grid; gap: 18px; }
+.overlay-panel > .section-title { display: flex; align-items: center; gap: 10px; }
+.overlay-panel > .section-title h2 { margin: 0; flex: 1; }
+.overlay-stack { display: grid; gap: 16px; }
+.overlay-stack h3 { margin: 0 0 8px; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px; }
+.inline-form label { display: grid; gap: 6px; font-weight: 700; flex: 1; min-width: 180px; }
+.inline-form input, .inline-form select { border: 1px solid #c7d6cb; border-radius: 9px; padding: 10px; font: inherit; }
+.org-chip-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.org-chip { display: grid; gap: 3px; text-align: start; border: 1px solid #d6e2d9; border-radius: 12px; background: #fff; padding: 10px 14px; cursor: pointer; font: inherit; }
+.org-chip small { color: #62756a; }
+.org-chip--active { border-color: #197047; background: #eef8f1; box-shadow: inset 0 0 0 1px #197047; }
+.profile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.profile-card { border: 1px solid #d6e2d9; border-radius: 12px; background: #fff; padding: 12px 14px; }
+.profile-card summary { cursor: pointer; font-weight: 800; color: #176443; }
+.profile-card dl { display: grid; gap: 6px; margin: 10px 0 0; }
+.profile-card dl > div { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.profile-card dt { color: #62756a; font-size: .82rem; }
+.profile-card dd { margin: 0; font-weight: 650; word-break: break-word; }
+.release-record-panel { display: grid; gap: 12px; }
+.release-record-panel .section-title { display: flex; align-items: center; gap: 10px; }
+.release-record-panel .section-title h2 { margin: 0; flex: 1; }
+.release-record-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 0; }
+.release-record-grid > div { border: 1px solid #e3ece6; border-radius: 10px; padding: 10px 12px; background: #fbfdfc; }
+.release-record-grid dt { color: #62756a; font-size: .8rem; }
+.release-record-grid dd { margin: 2px 0 0; font-weight: 700; word-break: break-word; }
