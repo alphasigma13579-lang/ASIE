@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict, deque
@@ -41,6 +43,7 @@ from backend.repository import LEGACY_ORGANIZATION_ID, ProjectRecord, Repository
 from backend.reports import build_report_view, remediation, render_report_html, render_funder_report_html
 from backend.report_release import build_release_record
 from backend.release_info import release_info
+from backend.report_exports import export_funder_report_docx, export_funder_report_pdf, export_funder_report_pptx
 from backend.runtime_freeze import BUILD_OVERVIEW_REMOVAL_TARGET
 from backend.sector_intelligence import sector_taxonomy
 from backend.source_registry import source_policy, source_review_checklist
@@ -1072,6 +1075,23 @@ def write_html(handler: BaseHTTPRequestHandler, payload: str, status: int = 200)
     handler.wfile.write(raw)
 
 
+def write_binary(handler: BaseHTTPRequestHandler, payload: bytes, content_type: str, filename: str, status: int = 200) -> None:
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(payload)))
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    _write_security_headers(handler)
+    handler.end_headers()
+    handler.wfile.write(payload)
+
+
+EXPORT_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+
 def write_error(handler: BaseHTTPRequestHandler, message: str, status: int) -> None:
     write_json(handler, {"error": message, "status": status, "request_id": getattr(handler, "request_id", None)}, status)
 
@@ -1171,6 +1191,73 @@ class Handler(BaseHTTPRequestHandler):
             write_error(self, "dataset_not_found", 404)
             return False
         return self._require_organization_permission(organization_id, permission) is not None
+
+    def _organization_from_request(self) -> str | None:
+        """Resolve the organization scope for collection endpoints.
+
+        An explicit X-ASIE-Organization-Id header wins (membership is verified
+        downstream by _require_organization_permission). Otherwise the caller's
+        first membership is used so authenticated clients are not stranded on
+        an empty scope; legacy zero-user mode keeps the legacy organization.
+        Never returns silently: failure modes write a response and return None.
+        """
+        requested = self.headers.get("X-ASIE-Organization-Id", "")
+        if requested:
+            return requested
+        principal = self._principal()
+        if principal is None:
+            return None
+        if principal.organization_id and principal.organization_id != LEGACY_ORGANIZATION_ID:
+            return principal.organization_id
+        memberships = REPO.memberships_for_user(principal.user_id)
+        if memberships:
+            return memberships[0]["organization_id"]
+        if REPO.user_count() == 0:
+            return LEGACY_ORGANIZATION_ID
+        write_error(self, "organization_required", 400)
+        return None
+
+    def _export_snapshot_report(self, snapshot_id: str, report: dict[str, Any], export_format: str) -> None:
+        """Stream a snapshot-bound funder report export; the renderer never sees a client browser."""
+        projection = report.get("funder_report", {})
+        if not projection:
+            write_error(self, "funder_report_not_ready", 422)
+            return
+        exporters = {
+            "pdf": export_funder_report_pdf,
+            "docx": export_funder_report_docx,
+            "pptx": export_funder_report_pptx,
+        }
+        exporter = exporters.get(export_format)
+        content_type = EXPORT_CONTENT_TYPES.get(export_format)
+        if exporter is None or content_type is None:
+            write_error(self, "unsupported_export_format", 400)
+            return
+        try:
+            with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
+                output = Path(temp_dir) / f"asie-funder-report-{snapshot_id}.{export_format}"
+                exporter(projection, output)
+                payload = output.read_bytes()
+        except RuntimeError as exc:
+            write_error(self, str(exc), 503)
+            return
+        except subprocess.CalledProcessError:
+            write_error(self, "PDF renderer failed while producing the export", 503)
+            return
+        principal = self._principal()
+        if principal is None:
+            return
+        REPO.audit(
+            actor_user_id=principal.user_id,
+            organization_id=None,
+            action="report.export",
+            target_type="snapshot",
+            target_id=snapshot_id,
+            result="allowed",
+            reason=export_format,
+            correlation_id=self.request_id,
+        )
+        write_binary(self, payload, content_type, f"asie-funder-report-{snapshot_id}.{export_format}")
 
     def do_OPTIONS(self) -> None:
         if not self._allow_request():
@@ -1296,7 +1383,7 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, {"taxonomy": sector_taxonomy(), "external_fetch_enabled": False})
             return
         if path == "/api/datasets":
-            organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+            organization_id = self._organization_from_request()
             if not organization_id or self._require_organization_permission(organization_id, "snapshot.read") is None:
                 return
             write_json(self, {"datasets": REPO.datasets(organization_id), "external_fetch_enabled": False})
@@ -1319,7 +1406,7 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"transformations": REPO.dataset_transformations(dataset_id)})
                 return
         if path == "/api/projects":
-            organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+            organization_id = self._organization_from_request()
             if not organization_id or self._require_organization_permission(organization_id, "snapshot.read") is None:
                 return
             write_json(self, {"projects": REPO.list_projects(organization_id)})
@@ -1527,6 +1614,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             write_html(self, render_funder_report_html(report.get("funder_report", {})))
             return
+        if path.startswith("/api/snapshots/") and path.endswith("/funder-report.pdf"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
+                return
+            self._export_snapshot_report(snapshot_id, report, "pdf")
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/funder-report.docx"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
+                return
+            self._export_snapshot_report(snapshot_id, report, "docx")
+            return
+        if path.startswith("/api/snapshots/") and path.endswith("/funder-report.pptx"):
+            snapshot_id = path.split("/")[3]
+            report = REPO.get_snapshot_report(snapshot_id)
+            if report is None:
+                write_error(self, "snapshot_not_found", 404)
+                return
+            self._export_snapshot_report(snapshot_id, report, "pptx")
+            return
         if path.startswith("/api/snapshots/") and path.endswith("/release"):
             snapshot_id = path.split("/")[3]
             overview = REPO.get_snapshot_overview(snapshot_id)
@@ -1701,7 +1812,7 @@ class Handler(BaseHTTPRequestHandler):
             if self._principal() is None:
                 return
             if path in {"/api/datasets/manual-import", "/api/datasets/file-import"}:
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+                organization_id = self._organization_from_request()
                 if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
                     return
                 payload = payload | {"organization_id": organization_id}
@@ -1717,7 +1828,7 @@ class Handler(BaseHTTPRequestHandler):
                     write_error(self, "permission_denied", 403)
                     return
             if path == "/api/projects":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+                organization_id = self._organization_from_request()
                 if not organization_id or self._require_organization_permission(organization_id, "project.create") is None:
                     return
                 project = REPO.create_project(payload | {"organization_id": organization_id})
@@ -1821,7 +1932,7 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"evidence_link": REPO.save_evidence_link(project_id, payload)}, 201)
                 return
             if path == "/api/datasets":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "") or (LEGACY_ORGANIZATION_ID if REPO.user_count() == 0 else "")
+                organization_id = self._organization_from_request()
                 if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
                     return
                 record = REPO.save_dataset(payload | {"organization_id": organization_id})
