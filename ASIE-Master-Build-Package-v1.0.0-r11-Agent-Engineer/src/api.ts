@@ -30,20 +30,182 @@ import type {
   TransformationLineageRecord,
   TransformationRecord,
 } from "./contracts";
+import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./session";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  };
+  const token = getSessionToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const organizationId = getActiveOrganizationId();
+  if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
+  const response = await fetch(path, { ...init, headers });
+  if (response.status === 401 && token) {
+    // The server rejected a token we hold: it expired or was revoked.
+    handleUnauthorized();
+  }
   const payload = (await response.json()) as T & { error?: string };
   if (!response.ok) {
     throw new Error(payload.error ?? `تعذر الاتصال بخدمة ASIE المحلية (${response.status})`);
   }
   return payload;
+}
+
+export interface AuthUser {
+  user_id: string;
+  display_name: string;
+  email: string;
+  platform_role: string | null;
+}
+
+export interface Membership {
+  organization_id: string;
+  organization_name?: string;
+  role: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+  memberships: Membership[];
+  organization?: { organization_id: string; name: string };
+  external_access_enabled: boolean;
+}
+
+export interface MeResponse {
+  user_id: string;
+  platform_role: string | null;
+  memberships: Membership[];
+  external_access_enabled: boolean;
+}
+
+export interface FundingProfile {
+  profile_id: string;
+  [key: string]: unknown;
+}
+
+export interface SectorProfile {
+  profile_id?: string;
+  sector_id?: string;
+  [key: string]: unknown;
+}
+
+export interface ReleaseRecord {
+  [key: string]: unknown;
+}
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  return requestJson<LoginResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function localBootstrap(payload: {
+  email: string;
+  display_name: string;
+  password: string;
+  organization_name: string;
+}): Promise<LoginResponse & { organization: { organization_id: string; name: string } }> {
+  return requestJson("/api/auth/local-bootstrap", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await requestJson("/api/auth/logout", { method: "POST", body: JSON.stringify({}) });
+}
+
+export async function fetchMe(): Promise<MeResponse> {
+  return requestJson<MeResponse>("/api/auth/me");
+}
+
+export async function requestPasswordRecovery(email: string): Promise<{
+  accepted: boolean;
+  recovery_token: string | null;
+  external_delivery_enabled: boolean;
+}> {
+  return requestJson("/api/auth/password-recovery/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function completePasswordRecovery(recoveryToken: string, newPassword: string): Promise<{ ok?: boolean }> {
+  return requestJson("/api/auth/password-recovery/complete", {
+    method: "POST",
+    body: JSON.stringify({ recovery_token: recoveryToken, new_password: newPassword }),
+  });
+}
+
+export async function createOrganization(name: string): Promise<{ organization_id: string; name: string }> {
+  const response = await requestJson<{ organization: { organization_id: string; name: string } }>("/api/organizations", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  return response.organization;
+}
+
+export async function addMembership(organizationId: string, userId: string, role: string): Promise<unknown> {
+  const response = await requestJson<{ membership: unknown }>(`/api/organizations/${organizationId}/memberships`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, role }),
+  });
+  return response.membership;
+}
+
+export async function fetchFundingProfiles(): Promise<FundingProfile[]> {
+  const response = await requestJson<{ profiles: FundingProfile[] }>("/api/funding-profiles");
+  return response.profiles;
+}
+
+export async function fetchSectorProfiles(): Promise<SectorProfile[]> {
+  const response = await requestJson<{ profiles: SectorProfile[] }>("/api/sector-profiles");
+  return response.profiles;
+}
+
+export async function fetchReleaseRecord(snapshotId: string): Promise<ReleaseRecord> {
+  return requestJson<ReleaseRecord>(`/api/snapshots/${snapshotId}/release`);
+}
+
+/**
+ * Open or download a snapshot-bound document with the session token attached.
+ * Plain <a href> navigation cannot send the Authorization header, so every
+ * document surface goes through this helper: HTML projections open in a new
+ * tab from a blob URL, binary exports download as attachments.
+ */
+export async function openSnapshotDocument(snapshotId: string, suffix: string, mode: "open" | "download"): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getSessionToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const response = await fetch(`/api/snapshots/${snapshotId}/${suffix}`, { headers });
+  if (!response.ok) {
+    let message = `تعذر فتح المستند (${response.status})`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      // Non-JSON error body; keep the status-based message.
+    }
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  if (mode === "download") {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `asie-funder-report-${snapshotId}.${suffix.split(".").pop()}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export interface CreateProjectPayload {
@@ -247,7 +409,7 @@ export async function createEvidenceLink(
   payload: Pick<
     EvidenceLink,
     "dataset_id" | "evidence_ref" | "transformation_note" | "human_review_decision"
-> &
+  > &
     Partial<Pick<EvidenceLink, "assumption_id" | "target_type" | "target_id" | "transformation_id">>
 ): Promise<EvidenceLink> {
   const response = await requestJson<{ evidence_link: EvidenceLink }>(`/api/projects/${projectId}/evidence-links`, {
