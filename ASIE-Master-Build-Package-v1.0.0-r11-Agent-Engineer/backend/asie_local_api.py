@@ -1039,7 +1039,11 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 def _write_security_headers(handler: BaseHTTPRequestHandler) -> None:
     origin = handler.headers.get("Origin")
     if origin in LOCAL_FRONTEND_ORIGINS:
-        handler.send_header("Access-Control-Allow-Origin", origin)
+        # Echo the request Origin only after confirming it is in the static allowlist; strip
+        # control characters to satisfy header-injection validators even though the allowlist
+        # already guarantees the value is safe.
+        safe_origin = origin.replace("\r", "").replace("\n", "")
+        handler.send_header("Access-Control-Allow-Origin", safe_origin)
         handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-ASIE-Organization-Id, X-Request-Id")
@@ -1234,8 +1238,8 @@ class Handler(BaseHTTPRequestHandler):
         if exporter is None or content_type is None:
             write_error(self, "unsupported_export_format", 400)
             return
+        safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
         try:
-            safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
             with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
                 output = Path(temp_dir) / f"export.{export_format}"
                 exporter(projection, output)
@@ -1259,7 +1263,7 @@ class Handler(BaseHTTPRequestHandler):
             reason=export_format,
             correlation_id=self.request_id,
         )
-        write_binary(self, payload, content_type, f"asie-funder-report-{snapshot_id}.{export_format}")
+        write_binary(self, payload, content_type, f"asie-funder-report-{safe_id}.{export_format}")
 
     def do_OPTIONS(self) -> None:
         if not self._allow_request():
