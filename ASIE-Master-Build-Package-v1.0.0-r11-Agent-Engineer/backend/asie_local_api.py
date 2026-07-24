@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -56,7 +57,26 @@ from backend.workspace import build_project_remediation, build_project_workspace
 REPO = Repository()
 RUN_IDEMPOTENCY_STORE = ProjectRunIdempotencyStore()
 MAX_JSON_BODY_BYTES = 1_048_576
-LOCAL_FRONTEND_ORIGINS = {"http://127.0.0.1:5194", "http://localhost:5194"}
+DEV_FRONTEND_ORIGINS = ("http://127.0.0.1:5194", "http://localhost:5194")
+
+
+def allowed_frontend_origins() -> frozenset[str]:
+    """Resolve the Origin allowlist for the current deployment.
+
+    Development keeps the loopback Vite origins. A deployment sets
+    ASIE_ALLOWED_ORIGINS (comma-separated, e.g. "https://asie.example.com");
+    those entries *replace* the dev origins so a production process never
+    trusts localhost URLs by accident. Values are stripped of whitespace and
+    trailing slashes; control characters are rejected at write time anyway.
+    """
+    configured = os.environ.get("ASIE_ALLOWED_ORIGINS", "")
+    if not configured.strip():
+        return frozenset(DEV_FRONTEND_ORIGINS)
+    origins = {entry.strip().rstrip("/") for entry in configured.split(",") if entry.strip()}
+    return frozenset(origins) if origins else frozenset(DEV_FRONTEND_ORIGINS)
+
+
+LOCAL_FRONTEND_ORIGINS = allowed_frontend_origins()
 
 
 class RequestError(ValueError):
