@@ -5,6 +5,7 @@ from decimal import Decimal, getcontext
 from typing import Any
 
 from backend.contracts import SEED, decimal_from, money
+from backend.input_manifest import manifest_item_map
 
 getcontext().prec = 28
 
@@ -38,19 +39,43 @@ SCENARIO_FACTORS = {
 }
 
 
-def validate_finance_inputs(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+def validate_finance_inputs(
+    inputs: dict[str, Any], *, manifest: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
     values: dict[str, Any] = {}
     blockers: list[dict[str, str]] = []
+    item_map = manifest_item_map(manifest)
+
+    def allows_zero(key: str) -> bool:
+        item = item_map.get(key, {})
+        return item.get("state") in {"INTENTIONAL_ZERO", "NOT_APPLICABLE"} and bool(str(item.get("reason") or "").strip())
+
     use_capacity = bool(inputs.get("use_operating_capacity"))
     values["use_operating_capacity"] = use_capacity
     for key in CORE_INPUTS:
         value = decimal_from(inputs.get(key))
-        if value is None or value <= 0:
+        if value is None:
             blockers.append(
                 {
                     "code": f"MISSING_{key.upper()}",
                     "severity": "critical",
-                    "message": f"المدخل {key} مطلوب كرقم موجب قبل تشغيل الحسابات.",
+                    "message": f"المدخل المطلوب {key} غير معروف بعد.",
+                }
+            )
+        elif value < 0:
+            blockers.append(
+                {
+                    "code": f"INVALID_NEGATIVE_{key.upper()}",
+                    "severity": "critical",
+                    "message": f"المدخل {key} لا يمكن أن يكون سالبًا.",
+                }
+            )
+        elif value == 0 and not allows_zero(key):
+            blockers.append(
+                {
+                    "code": f"UNJUSTIFIED_ZERO_{key.upper()}",
+                    "severity": "critical",
+                    "message": f"الصفر في {key} يحتاج حالة صفر مقصود أو غير منطبق مع سبب.",
                 }
             )
         else:
@@ -82,7 +107,7 @@ def validate_finance_inputs(inputs: dict[str, Any]) -> tuple[dict[str, Any], lis
             values["monthly_units"] = (
                 values["capacity_units_per_day"] * values["operating_days_per_month"] * values["utilization_rate"]
             )
-    elif values["monthly_units"] <= 0:
+    elif values.get("monthly_units", Decimal("0")) <= 0:
         blockers.append(
             {
                 "code": "MISSING_MONTHLY_UNITS",
@@ -91,6 +116,14 @@ def validate_finance_inputs(inputs: dict[str, Any]) -> tuple[dict[str, Any], lis
             }
         )
 
+    if "unit_price" in values and values["unit_price"] <= 0:
+        blockers.append(
+            {
+                "code": "INVALID_UNIT_PRICE",
+                "severity": "critical",
+                "message": "سعر الوحدة يجب أن يكون موجبًا لحساب الإيراد والتعادل.",
+            }
+        )
     if "unit_price" in values and "variable_cost" in values and values["unit_price"] <= values["variable_cost"]:
         blockers.append(
             {
@@ -440,8 +473,18 @@ def not_ready_monte_carlo(blockers: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
-def finance_result_set(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
-    values, blockers = validate_finance_inputs(inputs)
+def finance_result_set(
+    inputs: dict[str, Any], *, manifest: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    if manifest is None and isinstance(inputs.get("_approved_input_manifest"), dict):
+        manifest = inputs["_approved_input_manifest"]
+        inputs = {key: value for key, value in inputs.items() if key != "_approved_input_manifest"}
+    values, blockers = validate_finance_inputs(inputs, manifest=manifest)
+    if manifest:
+        known_codes = {blocker["code"] for blocker in blockers}
+        blockers.extend(
+            blocker for blocker in manifest.get("blockers", []) if blocker.get("code") not in known_codes
+        )
     if blockers:
         return (
             {

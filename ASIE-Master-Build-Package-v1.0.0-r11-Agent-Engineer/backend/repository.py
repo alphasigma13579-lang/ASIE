@@ -106,13 +106,25 @@ def derive_monthly_fixed_cost(inputs: dict[str, Any]) -> float:
 def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, Any]]:
     """Build the human-review manifest from values the user actually supplied.
 
-    Empty, zero, disabled, and system-context fields are intentionally excluded.
-    They must never appear as user assumptions merely because the frontend schema
-    carries safe defaults for them.
+    Empty and system-context fields are excluded, while an explicit blueprint
+    item is retained even when its value is zero. The item metadata preserves
+    the reason and treatment for the manifest boundary.
     """
     rows: dict[str, dict[str, Any]] = {}
+    blueprint = project.inputs.get("blueprint_items", {})
+    if isinstance(blueprint, list):
+        blueprint = {
+            str(row.get("input_key")): row
+            for row in blueprint
+            if isinstance(row, dict) and row.get("input_key")
+        }
+    if not isinstance(blueprint, dict):
+        blueprint = {}
     for key, value in project.inputs.items():
-        if key in SYSTEM_CONTEXT_INPUT_KEYS or not meaningful_assumption_value(value):
+        if key in SYSTEM_CONTEXT_INPUT_KEYS or key == "blueprint_items":
+            continue
+        meta = blueprint.get(key) if isinstance(blueprint.get(key), dict) else {}
+        if not meaningful_assumption_value(value) and not meta:
             continue
         label, unit = ASSUMPTION_META.get(key, (key, "unit"))
         rows[key] = {
@@ -121,9 +133,15 @@ def default_assumption_records(project: "ProjectRecord") -> dict[str, dict[str, 
             "value": value,
             "unit": unit,
             "owner": "Project Wizard",
-            "source_type": "user_input",
-            "confidence": 0.65,
-            "review_status": "draft",
+            "source_type": str(meta.get("source_type") or "user_input"),
+            "confidence": float(meta.get("confidence", 0.65)),
+            "review_status": str(meta.get("approval_status") or "draft"),
+            "metadata": {
+                "state": str(meta.get("state") or "VALUE_ENTERED"),
+                "reason": str(meta.get("reason") or ""),
+                "treatment": str(meta.get("treatment") or "include"),
+                "evidence_refs": list(meta.get("evidence_refs") or []),
+            },
         }
     return rows
 
@@ -434,6 +452,7 @@ class Repository:
                     source_type TEXT NOT NULL,
                     confidence REAL,
                     review_status TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE(project_id, input_key),
@@ -581,6 +600,9 @@ class Repository:
             "transformations": {
                 "review_notes": "TEXT NOT NULL DEFAULT ''",
             },
+            "assumptions": {
+                "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
+            },
         }.items():
             existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for column, declaration in columns.items():
@@ -703,6 +725,7 @@ class Repository:
             "source_type": str(payload.get("source_type") or "user_input"),
             "confidence": float(payload.get("confidence") if payload.get("confidence") is not None else 0.65),
             "review_status": str(payload.get("review_status") or "draft"),
+            "metadata_json": json_dumps(payload.get("metadata") or {}),
             "created_at": now,
             "updated_at": now,
         }
@@ -711,10 +734,10 @@ class Repository:
                 """
                 INSERT INTO assumptions (
                     assumption_id, project_id, input_key, label, value, unit, owner,
-                    source_type, confidence, review_status, created_at, updated_at
+                    source_type, confidence, review_status, metadata_json, created_at, updated_at
                 ) VALUES (
                     :assumption_id, :project_id, :input_key, :label, :value, :unit, :owner,
-                    :source_type, :confidence, :review_status, :created_at, :updated_at
+                    :source_type, :confidence, :review_status, :metadata_json, :created_at, :updated_at
                 )
                 ON CONFLICT(project_id, input_key) DO UPDATE SET
                     label = excluded.label,
@@ -729,6 +752,7 @@ class Repository:
                         WHEN assumptions.value = excluded.value THEN assumptions.confidence
                         ELSE excluded.confidence
                     END,
+                    metadata_json = excluded.metadata_json,
                     review_status = CASE
                         WHEN assumptions.value = excluded.value THEN assumptions.review_status
                         ELSE excluded.review_status

@@ -81,15 +81,22 @@ Kernel -> Heart Controller -> Hearts -> Bus Controller -> ASIE System Bus
 - Dataset/manual/file intake infrastructure and evidence linking.
 - React/Vite client, runtime-freeze tests, and CI build/test workflow.
 
-## What is not implemented yet
+## Current implementation gaps
 
-- The Dynamic Input Blueprint runtime model and editor.
-- Per-item state/reason/source/treatment persisted end to end.
-- Approved Input Manifest and its validation gate before Finance.
+- The Dynamic Input Blueprint editor and governed template/question registries.
+- Full per-item revision persistence and customer approval UI.
+- File/manual mapping into the same blueprint item model.
 - The governed Product AI interview and Template/Question registries.
 - Mapping Excel/PDF/manual data into the same blueprint item model.
 - Per-item research request returning to an editable blueprint item.
-- Finance semantics that accept intentional zero and not-applicable states.
+- Full template-aware Finance readiness for every revenue and operating model.
+
+The first backend milestone is now implemented: `backend/input_manifest.py`
+builds an `Approved Input Manifest` before the existing Finance socket,
+`backend/finance_engine.py` reads its normalized inputs, and repository
+metadata preserves zero reasons and treatment. The legacy scalar input path is
+still retained for frozen parity fixtures and must not be mistaken for the
+finished customer-facing blueprint.
 
 These gaps are intentional and recorded in `ACR-DIB-001`; do not hide them by
 renaming the existing scalar form “dynamic”.

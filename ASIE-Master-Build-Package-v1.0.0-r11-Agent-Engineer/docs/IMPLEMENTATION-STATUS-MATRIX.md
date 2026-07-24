@@ -8,15 +8,15 @@ being mistaken for executable behavior.
 | AAS Runtime Freeze path | Implemented | `docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json`, `backend/module_runtime.py`, `tests/test_runtime_freeze.py` | Preserve the path and tests |
 | Project run orchestration | Implemented | `backend/project_run_workflow.py` | New runs use `ProjectRunWorkflow` |
 | Deterministic Finance calculations | Implemented, legacy input semantics | `backend/finance_engine.py` | Do not claim zero-aware readiness yet |
-| Scalar `ProjectInputs` flow | Implemented | `src/contracts.ts`, local API project run path | This is the current gap DIB must replace before Finance |
-| Repository assumptions | Implemented, legacy zero handling | `backend/repository.py` | Preserve source records; add semantic states |
+| Scalar `ProjectInputs` flow | Implemented, compatibility path | `src/contracts.ts`, local API project run path | DIB manifest now sits before Finance; legacy path remains for parity |
+| Repository assumptions | Partial, semantic metadata added | `backend/repository.py` | Zero reasons and treatment are retained in `metadata_json` |
 | Dataset/manual/file intake | Implemented | `backend/datasets.py`, local API dataset routes | Mapping into DIB is still pending |
 | Evidence and source ledger | Implemented | `backend/evidence_ledger.py`, `backend/source_registry.py` | Reuse for manifest lineage |
 | Simulated Market Intelligence | Implemented as post-study guidance | existing market/intelligence module and contracts | Not an external research provider; keep clearly labeled |
 | Product AI interview | Planned | `ACR-DIB-001` | Needs Template/Question registries and bounded orchestration |
-| Dynamic Input Blueprint | Planned / governing ACR merged | `docs/ACR-DIB-001-Dynamic-Input-Blueprint.md` | First DIB runtime milestone |
-| Blueprint item states and zero semantics | Planned | `ACR-DIB-001` | Requires backend, repository, Finance, and tests |
-| Approved Input Manifest | Planned | `ACR-DIB-001` | Finance must receive manifest-derived inputs only |
+| Dynamic Input Blueprint | Partial / governing ACR merged | `backend/input_manifest.py` and `ACR-DIB-001` | Manifest builder exists; editor and registries remain |
+| Blueprint item states and zero semantics | Partial | `backend/input_manifest.py`, `backend/finance_engine.py`, repository metadata | Intentional zero and not-applicable are accepted with reasons |
+| Approved Input Manifest | Partial | `backend/input_manifest.py`, `backend/asie_local_api.py`, `backend/module_runtime.py` | Finance now receives normalized manifest data; revision persistence remains |
 | Per-item Market Intelligence research | Planned / simulated first | `ACR-DIB-001` and market socket contracts | Return results to the same blueprint item |
 | Snapshot rerun comparison | Partially implemented | `backend/workspace.py`, snapshot routes | Extend with DIB revision lineage |
 | Tenant isolation negative matrix | Implemented | `tests/test_tenant_isolation_matrix.py` | Every sensitive route fails closed cross-tenant; run in CI |
