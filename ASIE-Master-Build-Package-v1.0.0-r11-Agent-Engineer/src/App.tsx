@@ -1000,8 +1000,12 @@ export function App() {
   }
 
   useEffect(() => {
-    void loadPolicy();
-  }, []);
+    // Do not hit scoped routes before the session probe resolves; legacy mode
+    // (zero users) and authenticated sessions load immediately after.
+    if (authState === "authenticated" || authState === "legacy") {
+      void loadPolicy();
+    }
+  }, [authState]);
 
   async function loadProjectWorkspace(projectId: string) {
     const [nextReadiness, nextAssumptions, nextWorkspace, nextEvidenceRegister, nextEvidenceLedger] = await Promise.all([
@@ -1580,6 +1584,17 @@ export function App() {
     );
   }
 
+  // Beta fix: an unauthenticated first visit fails loadPolicy with 401 —
+  // the auth gate below must win over the generic error gate, otherwise the
+  // sign-in screen is unreachable behind "الخدمة المحلية غير جاهزة".
+  if (authState === "probing") {
+    return <LoadingState />;
+  }
+
+  if (authState === "anonymous") {
+    return <AuthScreen initialMode={authInitialMode} onAuthenticated={handleAuthenticated} />;
+  }
+
   if (error && !sourcePolicy) return <ErrorState message={error} onRetry={loadPolicy} />;
   if (!sourcePolicy) return <LoadingState />;
 
@@ -1614,14 +1629,6 @@ export function App() {
         </section>
       </main>
     );
-  }
-
-  if (authState === "probing") {
-    return <LoadingState />;
-  }
-
-  if (authState === "anonymous") {
-    return <AuthScreen initialMode={authInitialMode} onAuthenticated={handleAuthenticated} />;
   }
 
   return (
