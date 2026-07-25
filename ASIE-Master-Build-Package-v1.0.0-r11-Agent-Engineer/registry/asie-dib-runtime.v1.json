@@ -1,0 +1,45 @@
+{
+  "register_id": "ASIE-DIB-RUNTIME-EXTENSION-v1.0.0",
+  "status": "CONTROLLED_IMPLEMENTED",
+  "effective_date": "2026-07-25",
+  "governing_acr": "docs/ACR-DIB-001-Dynamic-Input-Blueprint.md",
+  "frozen_aas_files_modified": false,
+  "contracts": [
+    "product.ai.interview.v1",
+    "file.intake.mapping.v1",
+    "dynamic.input.blueprint.v1",
+    "blueprint.revision.v1",
+    "approved.input.manifest.v1",
+    "manifest.validation.v1",
+    "market.query.request.v1",
+    "market.evidence.pack.v1"
+  ],
+  "sockets": [
+    "socket.market.query"
+  ],
+  "modules": [
+    {
+      "module_id": "module.market_intelligence",
+      "canonical_name": "ASIE Market Intelligence Module",
+      "external_fetch_enabled": false
+    }
+  ],
+  "registries": [
+    "Template Registry",
+    "Question Registry"
+  ],
+  "runtime_rules": {
+    "market_path": [
+      "Kernel",
+      "Heart Controller",
+      "Bus Controller",
+      "ASIE System Bus",
+      "Socket Contract Layer",
+      "ASIE Market Intelligence Module"
+    ],
+    "finance_input": "Approved Input Manifest-derived normalized inputs only",
+    "ai_providers": "DISABLED",
+    "external_network": "DISABLED",
+    "snapshots": "immutable; rerun creates a new snapshot"
+  }
+}

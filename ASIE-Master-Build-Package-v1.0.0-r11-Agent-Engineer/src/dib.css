@@ -1,0 +1,167 @@
+:root {
+  color-scheme: light;
+}
+.dib-shell {
+  min-height: 100vh;
+  background: #f5f7fa;
+  color: #102033;
+  font-family: Inter, "Segoe UI", Tahoma, Arial, sans-serif;
+  padding: 24px;
+}
+.dib-header, .dib-card {
+  max-width: 1320px;
+  margin: 0 auto 18px;
+}
+.dib-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+.dib-header h1 { margin: 6px 0; font-size: clamp(28px, 4vw, 48px); }
+.dib-header p { margin: 0; color: #4c6075; }
+.dib-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #31577f; }
+.dib-back {
+  text-decoration: none;
+  color: #173f69;
+  border: 1px solid #b8c8d8;
+  background: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+.dib-card {
+  background: white;
+  border: 1px solid #d7e0e8;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 30px rgba(17, 42, 70, .05);
+}
+.dib-card h2 { margin: 0 0 14px; font-size: 20px; }
+.dib-card p { color: #526679; }
+.dib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dib-grid label, .dib-item-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.dib-grid .wide, .dib-item-controls .wide { grid-column: 1 / -1; }
+.dib-shell input, .dib-shell select, .dib-shell textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #bfcbd7;
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: white;
+  color: #102033;
+}
+.dib-shell button, .dib-file-button {
+  border: 1px solid #8ea6bc;
+  background: #edf3f8;
+  color: #173f69;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dib-shell button:hover, .dib-file-button:hover { background: #dfeaf3; }
+.dib-shell button:disabled { opacity: .5; cursor: not-allowed; }
+.dib-shell button.primary {
+  background: #173f69;
+  color: white;
+  border-color: #173f69;
+}
+.dib-shell button.secondary { background: white; }
+.dib-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.dib-file-button input { display: none; }
+.dib-notice {
+  max-width: 1320px;
+  margin: 0 auto 18px;
+  border-radius: 10px;
+  padding: 12px 15px;
+  border: 1px solid;
+}
+.dib-notice.ok { background: #ecf8f0; border-color: #9bd0aa; color: #145d2a; }
+.dib-notice.error { background: #fff0f0; border-color: #efaaaa; color: #8c2020; }
+.dib-notice.info { background: #eef6ff; border-color: #a8c9e7; color: #164c78; }
+.dib-guard {
+  border-inline-start: 4px solid #31577f;
+  padding-inline-start: 12px;
+}
+.dib-title-row, .dib-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dib-title-row p { margin: 4px 0 0; }
+.dib-items { display: grid; gap: 12px; }
+.dib-item {
+  border: 1px solid #d7e0e8;
+  border-radius: 13px;
+  padding: 14px;
+  background: #fbfcfd;
+}
+.dib-item-head span { color: #627689; font-size: 12px; }
+.dib-item-head strong { color: #8a3b14; font-size: 12px; }
+.dib-item-label {
+  max-width: 380px;
+  font-weight: 750;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+.dib-item-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.dib-source { color: #65798c; font-size: 12px; }
+.dib-pack {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #eef4f9;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.dib-pack .warning { color: #8a3b14; font-weight: 700; }
+.dib-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0;
+}
+.dib-flow span {
+  background: #eef4f9;
+  border: 1px solid #c3d2df;
+  border-radius: 9px;
+  padding: 9px;
+}
+.dib-comparison {
+  direction: ltr;
+  text-align: left;
+  max-height: 420px;
+  overflow: auto;
+  background: #101923;
+  color: #d8e8f5;
+  padding: 14px;
+  border-radius: 10px;
+}
+.dib-governance { border-color: #9db6cb; }
+.dib-governance li { margin: 7px 0; }
+@media (max-width: 700px) {
+  .dib-shell { padding: 12px; }
+  .dib-header { flex-direction: column; }
+}
