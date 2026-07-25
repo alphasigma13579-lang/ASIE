@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-import csv
 import base64
+import csv
+import re
 import zipfile
+import zlib
 from io import BytesIO, StringIO
 from statistics import mean
 from typing import Any
 from xml.etree import ElementTree
 
 from backend.contracts import json_dumps, new_id, now_iso
+from backend.dib_intake import map_rows_to_blueprint_candidates
 
 DATASET_STATES = {"draft", "review_required", "approved_for_use", "rejected", "archived"}
 IMPORT_METHODS = {"manual_csv", "manual_json", "manual_table"}
@@ -77,6 +80,7 @@ def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] 
                 "profile": profile,
                 "quality_review": quality_review,
                 "external_fetch_allowed": False,
+                "file_intake": payload.get("file_intake") or (existing or {}).get("notes", {}).get("file_intake"),
             }
         ),
         "created_at": str((existing or {}).get("created_at") or now),
@@ -240,7 +244,7 @@ def normalize_evidence_link(project_id: str, payload: dict[str, Any], existing: 
         "project_id": project_id,
         "target_type": target_type,
         "target_id": target_id,
-        "assumption_id": target_id if target_type == "assumption" else target_id,
+        "assumption_id": target_id,
         "dataset_id": str(payload.get("dataset_id") or (existing or {}).get("dataset_id") or ""),
         "transformation_id": str(payload.get("transformation_id") or (existing or {}).get("transformation_id") or ""),
         "evidence_ref": str(payload.get("evidence_ref") or (existing or {}).get("evidence_ref") or ""),
@@ -258,6 +262,15 @@ def normalize_file_import_payload(payload: dict[str, Any]) -> dict[str, Any]:
         raise PermissionError("file import supports local files only; external fetch is blocked")
     file_name = str(payload.get("file_name") or "local-data.csv")
     extension = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    mapping_specs = payload.get("mapping_specs") if isinstance(payload.get("mapping_specs"), list) else []
+
+    def mapped(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return map_rows_to_blueprint_candidates(
+            rows,
+            mapping_specs,
+            dataset_id=str(payload.get("dataset_id") or ""),
+            file_name=file_name,
+        ) if mapping_specs else []
     if extension == "csv" or payload.get("csv_text"):
         csv_text = str(payload.get("csv_text") or "")
         return {
@@ -266,6 +279,7 @@ def normalize_file_import_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "import_method": "manual_csv",
             "csv_text": csv_text,
             "notes": _merge_import_notes(payload, file_name, "csv"),
+            "file_intake": {"file_name": file_name, "file_type": "csv", "mapping_status": "review_required", "mapped_candidates": mapped(_extract_rows({"csv_text": csv_text}, "manual_csv"))},
         }
     if extension == "xlsx" or str(payload.get("file_type") or "").endswith("spreadsheetml.sheet"):
         rows = rows_from_xlsx_base64(str(payload.get("file_base64") or ""))
@@ -275,6 +289,29 @@ def normalize_file_import_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "import_method": "manual_table",
             "rows": rows,
             "notes": _merge_import_notes(payload, file_name, "xlsx"),
+            "file_intake": {"file_name": file_name, "file_type": "xlsx", "mapping_status": "review_required", "mapped_candidates": mapped(rows)},
+        }
+    if extension == "pdf" or str(payload.get("file_type") or "") == "application/pdf":
+        text = str(payload.get("pdf_text") or "").strip()
+        if not text:
+            text = extract_pdf_text_base64(str(payload.get("file_base64") or ""))
+        rows = quote_rows_from_text(text)
+        if not rows:
+            rows = [{"description": line, "amount": "", "currency": "SAR"} for line in text.splitlines() if line.strip()]
+        return {
+            **payload,
+            "title": payload.get("title") or file_name,
+            "import_method": "manual_table",
+            "rows": rows,
+            "notes": _merge_import_notes(payload, file_name, "pdf"),
+            "file_intake": {
+                "file_name": file_name,
+                "file_type": "pdf",
+                "mapping_status": "review_required",
+                "text_extractable": bool(text.strip()),
+                "ocr_used": False,
+                "mapped_candidates": mapped(rows),
+            },
         }
     raise ValueError("unsupported_local_file_type")
 
@@ -302,6 +339,97 @@ def rows_from_xlsx_base64(file_base64: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for values in matrix[1:]:
         rows.append({headers[index]: values[index] if index < len(values) else "" for index in range(len(headers))})
+    return rows
+
+
+def extract_pdf_text_base64(file_base64: str) -> str:
+    if not file_base64:
+        raise ValueError("pdf_file_base64_required")
+    raw = base64.b64decode(file_base64)
+    return extract_pdf_text(raw)
+
+
+def extract_pdf_text(raw: bytes) -> str:
+    chunks: list[str] = []
+    latin = raw.decode("latin-1", errors="ignore")
+    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, flags=re.S):
+        data = match.group(1)
+        prefix = raw[max(0, match.start() - 300):match.start()]
+        if b"FlateDecode" in prefix:
+            try:
+                data = zlib.decompress(data)
+            except zlib.error:
+                try:
+                    data = zlib.decompress(data, -15)
+                except zlib.error:
+                    continue
+        chunks.extend(_pdf_text_operators(data.decode("latin-1", errors="ignore")))
+    chunks.extend(_pdf_text_operators(latin))
+    cleaned = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        line = re.sub(r"\s+", " ", chunk).strip()
+        if len(line) < 2 or line in seen:
+            continue
+        seen.add(line)
+        cleaned.append(line)
+    text = "\n".join(cleaned)
+    if not text:
+        raise ValueError("pdf_text_not_extractable_use_manual_mapping")
+    return text
+
+
+def _pdf_text_operators(text: str) -> list[str]:
+    values: list[str] = []
+    for raw in re.findall(r"\((.*?)(?<!\\)\)\s*Tj", text, flags=re.S):
+        values.append(_unescape_pdf_string(raw))
+    for array in re.findall(r"\[(.*?)\]\s*TJ", text, flags=re.S):
+        parts = re.findall(r"\((.*?)(?<!\\)\)", array, flags=re.S)
+        if parts:
+            values.append("".join(_unescape_pdf_string(part) for part in parts))
+    return values
+
+
+def _unescape_pdf_string(value: str) -> str:
+    replacements = {
+        r"\n": "\n",
+        r"\r": "\n",
+        r"\t": "\t",
+        r"\(": "(",
+        r"\)": ")",
+        r"\\": "\\",
+    }
+    for source, target in replacements.items():
+        value = value.replace(source, target)
+    return re.sub(r"\\([0-7]{1,3})", lambda match: chr(int(match.group(1), 8)), value)
+
+
+def quote_rows_from_text(text: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    amount_pattern = re.compile(r"(?<!\d)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})|\d+(?:\.\d{1,2})?)(?!\d)")
+    for index, raw_line in enumerate(text.splitlines()):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if len(line) < 3:
+            continue
+        matches = list(amount_pattern.finditer(line))
+        if not matches:
+            continue
+        amount_text = matches[-1].group(1)
+        try:
+            amount = float(amount_text.replace(",", ""))
+        except ValueError:
+            continue
+        description = (line[:matches[-1].start()] + line[matches[-1].end():]).strip(" -:|")
+        if not description:
+            description = f"Quote item {index + 1}"
+        rows.append(
+            {
+                "description": description,
+                "amount": amount,
+                "currency": "SAR" if "sar" in line.lower() or "ريال" in line else "",
+                "source_line": line,
+            }
+        )
     return rows
 
 

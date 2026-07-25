@@ -1,0 +1,45 @@
+name: DIB Frontend Diagnose
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dib-frontend-diagnose.yml
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/src/**
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Capture frontend build diagnostic
+        id: frontend
+        continue-on-error: true
+        shell: bash
+        run: |
+          pnpm build > "${GITHUB_WORKSPACE}/dib-build-full.log" 2>&1
+          code=$?
+          tail -160 "${GITHUB_WORKSPACE}/dib-build-full.log" > "${GITHUB_WORKSPACE}/dib-build-errors.txt"
+          exit $code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dib-frontend-build-errors
+          path: dib-build-errors.txt
+          if-no-files-found: error
+      - name: Fail when frontend build failed
+        if: steps.frontend.outcome == 'failure'
+        run: exit 1

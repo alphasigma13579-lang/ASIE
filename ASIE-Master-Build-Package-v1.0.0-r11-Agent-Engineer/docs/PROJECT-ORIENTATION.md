@@ -1,116 +1,132 @@
 # ASIE Project Orientation
 
-This document is the “read this first” map for a programmer or coding agent.
-It describes the product boundary, the current implementation, and the order
-in which a feature should be built.
+This document is the “read this first” map for a programmer or coding agent. It describes the product boundary, the implemented customer flow, and the non-negotiable runtime controls.
 
 ## Purpose
 
-ASIE is a local-first decision platform for turning a project idea or project
-data into a traceable financial and operational analysis. The platform keeps
-Product AI, Market Intelligence, deterministic Finance, and sovereign decision
-separate.
+ASIE is a local-first decision platform for turning a project idea or project data into a traceable financial and operational analysis. Product AI guidance, Market Intelligence, deterministic Finance, and sovereign decision ownership remain separated.
 
-## One product flow, two entry paths
+## One implemented product flow, two entry paths
 
-There are two valid customer starts:
-
-| Entry path | What the customer has | What the platform does |
+| Entry path | Customer input | Implemented behavior |
 | --- | --- | --- |
-| Idea-only | A location, sector, and short idea | A governed classifier selects a template; Product AI asks only decisive questions and proposes a first needs list |
-| Data/file | Numbers, rough estimates, Excel, PDF, or supplier quotes | The platform maps and normalizes the data against the selected template and asks only clarifying questions |
+| Idea-only | Location, sector, stage, and short idea | Template Registry selects a governed template; the bounded Product AI Interview asks decisive Question Registry prompts and creates the first needs/items list |
+| Data/file | Manual numbers, rough estimates, CSV, XLSX, text PDF, or supplier quote | Data Intake extracts rows, maps them to template items, assigns source/confidence, and leaves ambiguous mappings for user review |
 
-Both paths meet at one place: **Dynamic Input Blueprint**. They do not create
-separate financial models and they do not bypass the blueprint.
+Both paths meet at the **Dynamic Input Blueprint**. Neither path creates a separate financial model or sends raw material to Finance.
 
-## The meeting point: Dynamic Input Blueprint
+## Dynamic Input Blueprint
 
-The blueprint is a governed collection of project items, not a universal form.
-It changes with idea, Saudi location, precise sector, revenue model, operating
-nature, project stage, financing, and available data.
+The implemented blueprint is project-specific. It changes with idea, Saudi location, precise sector, operating model, project stage, financing, and available data.
 
-Every item carries:
+Each item contains:
 
-- why it appears;
-- its state (`VALUE_ENTERED`, `CLIENT_ESTIMATE`, `INTENTIONAL_ZERO`,
-  `NOT_APPLICABLE`, `UNKNOWN`, or `EXPERIMENTAL_ESTIMATE`);
-- source and evidence lineage;
-- Finance treatment;
-- approval status.
+- item and finance keys;
+- category, label, unit, and required status;
+- value and state (`VALUE_ENTERED`, `CLIENT_ESTIMATE`, `INTENTIONAL_ZERO`, `NOT_APPLICABLE`, `UNKNOWN`, or `EXPERIMENTAL_ESTIMATE`);
+- reason, source type, confidence, evidence references, and import lineage;
+- Finance treatment and human approval status;
+- item-specific market query and Evidence Pack when used.
 
-Zero is valid when intentional and explained. Unknown is not the same as zero.
-An item can be added, removed, or edited by the customer, including custom
-operating costs, assets, financing, and variable costs.
+Zero is not missing. `INTENTIONAL_ZERO` and `NOT_APPLICABLE` require a documented reason and approval. Unknown required drivers block the manifest before Finance.
 
-## Research loop
+## Product AI Interview
 
-The “search for an average” action stays inside the same item. It is not a
-separate page and it does not send a number directly to Finance.
+The current Product AI Interview is deterministic and registry-bounded:
 
-1. The item has a specific specification and is marked `UNKNOWN`.
-2. A governed `market.query.request.v1` is emitted through Bus/Socket.
-3. Market Intelligence returns an Evidence Pack with samples, links,
-   cleaned units/currencies, P25-P75, weighted median, and outlier notes.
-4. The customer or reviewer accepts a candidate assumption, selects a sample,
-   or enters a different value.
-5. Only the approved result enters the Approved Input Manifest.
+- questions come only from `backend/dib_registry.py` / `src/dibRegistry.ts`;
+- it may classify, ask, explain, and propose items;
+- it does not invoke an external model provider;
+- it does not invent final financial or market values;
+- it cannot issue a sovereign verdict.
 
-Current development mode uses simulated evidence. AI providers are
-`DISABLED` / `DENY_ALL` and external network is disabled.
+## File and supplier-quote intake
 
-## Finance and snapshots
+The implemented Data Intake supports:
 
-Finance must read only the approved, normalized manifest. It remains
-deterministic and does not infer missing values. A run seals a Snapshot. Later
-changes create a Draft Revision, a new run, a new Snapshot, and a comparison of
-financial impact, risks, readiness, payback, and financing.
+- manual rows and JSON;
+- CSV;
+- XLSX;
+- text-extractable PDF and supplier quotes;
+- manual review for low-confidence or unmatched rows.
 
-The frozen runtime path is:
+PDF processing is local and does not use OCR, network access, or an external document service. Non-extractable scanned PDFs fail closed and must be mapped manually; they are never silently guessed.
+
+## Per-item Market Intelligence loop
+
+1. The customer marks a specific item unknown or requests research.
+2. A `market.query.request.v1` message is emitted.
+3. The request crosses Kernel → Heart Controller → Bus Controller → ASIE System Bus → Socket Contract Layer.
+4. `ASIE Market Intelligence Module` returns `market.evidence.pack.v1`.
+5. The pack contains cleaned samples, P25, P75, weighted median, IQR outlier report, source references, confidence, and data-mode labels.
+6. The user approves the weighted median, rejects/modifies the specification, or enters a different number.
+7. Only an approved result remains eligible for the Approved Input Manifest.
+
+Development mode can produce clearly labeled local simulated samples when no user/dataset samples exist. The pack remains a candidate assumption, not a fact or decision.
+
+## Approved Input Manifest and Finance
+
+The implemented order is:
 
 ```text
-Kernel -> Heart Controller -> Hearts -> Bus Controller -> ASIE System Bus
--> Socket Contract Layer -> Module Runtime -> Snapshot Assembly
+Dynamic Input Blueprint
+→ Approved Input Manifest
+→ Manifest Validation Gate
+→ existing AAS Runtime Path
+→ Finance Engine
+→ Snapshot Assembly
 ```
 
-## What is implemented today
+The Manifest Validation Gate verifies:
 
-- AAS runtime path, ModuleRuntime session boundary, and snapshot assembly.
-- Deterministic Finance and existing scalar ProjectInputs flow.
-- Local API, repository, evidence, decision, risk, execution, and report paths.
-- Simulated study-driven Market Intelligence after financial study.
-- Dataset/manual/file intake infrastructure and evidence linking.
-- React/Vite client, runtime-freeze tests, and CI build/test workflow.
+- required items;
+- approval states;
+- intentional-zero and not-applicable reasons;
+- market Evidence Pack identity and user decision;
+- normalized finance keys;
+- revision and content-hash lineage.
 
-## What is not implemented yet
+The Finance adapter invokes deterministic Finance calculations only with manifest-derived normalized inputs. The manifest is included inside the sealed Finance module output and therefore captured in the immutable assembled Snapshot.
 
-- The Dynamic Input Blueprint runtime model and editor.
-- Per-item state/reason/source/treatment persisted end to end.
-- Approved Input Manifest and its validation gate before Finance.
-- The governed Product AI interview and Template/Question registries.
-- Mapping Excel/PDF/manual data into the same blueprint item model.
-- Per-item research request returning to an editable blueprint item.
-- Finance semantics that accept intentional zero and not-applicable states.
+## AAS Runtime Freeze
 
-These gaps are intentional and recorded in `ACR-DIB-001`; do not hide them by
-renaming the existing scalar form “dynamic”.
+The frozen path remains byte-for-byte unchanged:
 
-## Build order for DIB work
+```text
+Kernel
+→ Heart Controller
+→ Hearts M1 / M2 / M3
+→ Bus Controller
+→ ASIE System Bus
+→ Socket Contract Layer
+→ Module Runtime
+→ Snapshot Assembly
+```
 
-1. Backend item/state/source/approval models and revision persistence.
-2. Approved Input Manifest and validation gate.
-3. Zero-aware repository and Finance validation semantics.
-4. Deterministic Template Registry and Question Registry.
-5. Blueprint editor and custom item controls.
-6. Data/file mapping into blueprint items.
-7. Simulated Market Intelligence item research behind existing contracts.
-8. Draft Revision, rerun, and snapshot comparison.
-9. Acceptance tests for both entry paths and runtime-freeze invariants.
+DIB adds pre-run models, an additive runtime registry for item Market Intelligence, and a non-frozen Finance admission adapter. It does not alter frozen files, pipeline order, sealed output keys, or Snapshot Assembly.
 
-## Change control
+## Revisions, reruns, and comparison
 
-Use an ACR before changing the frozen runtime, socket contracts, bus topology,
-external network policy, or AI provider policy. Keep implementation inside the
-canonical workspace and keep historical bundles under `docs/reference/`.
+- Every DIB save creates `blueprint.revision.v1`.
+- Revision records carry parent ID, sequence number, item set, interview answers, timestamp, and content hash.
+- Approved manifests are retained with the corresponding revision.
+- A later item/price change creates a new revision.
+- A rerun creates a new Snapshot.
+- Existing Snapshot comparison reports KPI, decision, acceptance, and assumption changes.
+- Old Snapshots are never edited.
+
+## Governance state
+
+```text
+AI Providers = DISABLED
+Provider Policy = DENY_ALL
+External Network Research = DISABLED
+Market Output Authority = candidate_assumption_only
+Finance Ownership = deterministic engine only
+Snapshot Mutation = forbidden
+```
+
+These are intentional governance controls, not unfinished DIB tasks.
 
 ## Verification
 
@@ -118,9 +134,8 @@ canonical workspace and keep historical bundles under `docs/reference/`.
 pnpm install --frozen-lockfile
 pnpm build
 python -m compileall -q backend
+python tools/audit_dib_runtime.py
 python -m unittest discover -s tests
 ```
 
-If a document says a flow is planned but the status matrix says it is not
-implemented, the status matrix and the code win. Record any new decision in a
-current document or approved ACR.
+The implementation status source is `docs/IMPLEMENTATION-STATUS-MATRIX.md`; the completion record is `docs/ASIE-DIB-COMPLETE-RUNTIME-CLOSURE-2026-07-25.md`.
