@@ -25,6 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { BrandLockup } from "./BrandMark";
+import { Dashboard } from "./Dashboard";
 import {
   createEvidenceLink,
   createDatasetTransformation,
@@ -1622,7 +1623,7 @@ export function App() {
               </article>
             ))}
           </div>
-          <button className="primary-button primary-button--large" onClick={() => { writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, true); setLegalAccepted(true); setStage(project ? "dashboard" : "wizard"); }}>
+          <button className="primary-button primary-button--large" onClick={() => { writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, true); setLegalAccepted(true); setStage("dashboard"); }}>
             <CheckCircle2 size={20} aria-hidden="true" />
             أوافق وأبدأ
           </button>
@@ -1774,148 +1775,47 @@ export function App() {
         <>
         <div className={`client-page-shell client-page-shell--${pageDirection}`} key={stage}>
         {stage === "dashboard" ? (
-          <section className="command-center" aria-label="مركز قيادة القرار">
-            <article className="command-hero">
-              <div className="command-hero__copy">
-                <p className="eyebrow">مركز قيادة العميل · خطوة واحدة واضحة في كل مرة</p>
-                <h2>{project?.name ?? "حوّل فكرتك إلى قرار مفهوم"}</h2>
-                <div className="command-verdict">
-                  <span>أين أنت الآن؟</span>
-                  <strong>{snapshotOverview ? statusText(snapshotOverview.decision.sovereign_verdict) : project ? "المشروع تحت التجهيز" : "لم تبدأ بعد"}</strong>
-                  <p>{snapshotOverview?.decision.reason ?? "لا تحتاج فهم كل الصفحات الآن. ابدأ بتعريف المشروع، وبعدها تظهر لك النواقص والإجراء التالي تلقائياً."}</p>
-                </div>
-              </div>
-              <div className="command-next-action">
-                <span>الإجراء التالي</span>
-                <strong>{commandAction.label}</strong>
-                <p>{commandAction.detail}</p>
-                <button
-                  className="primary-button"
-                  data-testid="primary-command-action"
-                  disabled={isBusy}
-                  onClick={() => {
-                    setStage(commandAction.stage);
-                    if (commandAction.action === "run") void handleRunAndOpenMarketIntelligence();
-                  }}
-                >
-                  {commandAction.action === "run" ? <Play size={18} aria-hidden="true" /> : <ArrowLeft size={18} aria-hidden="true" />}
-                  {commandAction.label}
-                </button>
-              </div>
-            </article>
-
-            <section className="command-context-strip" aria-label="سياق القرار الحالي">
-              <div>
-                <span>المشروع</span>
-                <strong>{project?.name ?? "لم يُنشأ بعد"}</strong>
-                <small>{project ? `${project.sector} · ${project.jurisdiction}` : "يظهر بعد حفظ المسودة"}</small>
-              </div>
-              <div>
-                <span>حالة البيانات</span>
-                <strong>{snapshotOverview ? "مرجع محفوظ" : project ? "مسودة محلية" : "بانتظار البداية"}</strong>
-                <small>{snapshotOverview ? "القيم المعروضة من Snapshot الخادم" : "لا تُعرض قيم تقديرية قبل التشغيل"}</small>
-              </div>
-              <div className="command-context-strip__source">
-                <Database size={17} aria-hidden="true" />
-                <div>
-                  <span>مصدر الحقيقة</span>
-                  <strong>{snapshotOverview ? "Snapshot غير قابل للتغيير" : "حالة المشروع من الخادم"}</strong>
-                </div>
-              </div>
-            </section>
-
-            <div className="first-minute-journey" aria-label="المسار المبسط لأول تحليل">
-              {firstMinuteJourney.map((item, index) => {
-                // This compact rail is rendered on the dashboard itself; the
-                // detailed current step is shown in the destination page.
-                const currentIndex = !project ? 0 : !snapshotOverview ? 1 : 4;
-                return (
-                  <button
-                    key={item.stage}
-                    className={
-                      index === currentIndex
-                        ? "first-minute-step first-minute-step--active"
-                        : index < currentIndex
-                          ? "first-minute-step first-minute-step--done"
-                          : "first-minute-step"
-                    }
-                    onClick={() => setStage(item.stage)}
-                  >
-                    <span>{index + 1}</span>
-                    <strong>{item.title}</strong>
-                    <small>{item.body}</small>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="command-status-grid">
-              <article>
-                <span>هل أستطيع التشغيل؟</span>
-                <strong>{readiness ? (readiness.ready_to_run ? "جاهز للتشغيل" : "يحتاج إكمالاً") : "لم تُفحص بعد"}</strong>
-                <small>{readiness ? `${readinessBlocked.length} عائق ظاهر` : "الحالة من الخادم بعد حفظ المسودة"}</small>
-              </article>
-              <article>
-                <span>هل لدي أدلة؟</span>
-                <strong>{evidenceCoverage ? `${evidenceCoverage.supported} مدعوم` : "غير متاح بعد"}</strong>
-                <small>{evidenceCoverage ? `${evidenceCoverage.needs_evidence} يحتاج دليلاً` : "لا تُستنتج الثقة من الواجهة"}</small>
-              </article>
-              <article>
-                <span>ما أكبر ما يقلقني؟</span>
-                <strong>{snapshotOverview ? `${snapshotOverview.risk_register.top_risks.length} مخاطر عليا` : "غير متاح قبل Snapshot"}</strong>
-                <small>{snapshotOverview ? "من سجل المخاطر المحفوظ" : "سيظهر بعد التشغيل"}</small>
-              </article>
-              <article>
-                <span>مرجع القرار</span>
-                <strong>{snapshotOverview?.snapshot.snapshot_id?.slice(-8) ?? "لا يوجد"}</strong>
-                <small>{snapshotOverview ? "مرجع القرار الحالي" : "لن تظهر قيمة قبل التشغيل"}</small>
-              </article>
-            </div>
-
-            <SnapshotAnalytics overview={snapshotOverview} />
-
-            <div className="command-detail-grid">
-              <article className="panel command-kpis">
-                <div className="section-title"><BarChart3 size={20} aria-hidden="true" /><h2>مؤشرات القرار</h2></div>
-                {commandMetrics.length ? (
-                  <div className="command-kpis__grid">
-                    {commandMetrics.map((metric) => <MetricCard output={metric} key={metric.output_id} />)}
-                  </div>
-                ) : <p className="empty-state">لا توجد مؤشرات قرار محفوظة بعد. لن تعرض المنصة قيماً تقديرية قبل إنشاء Snapshot.</p>}
-              </article>
-              <article className="panel command-snapshot">
-                <div className="section-title"><Layers3 size={20} aria-hidden="true" /><h2>مرجع الحقيقة</h2></div>
-                {snapshotOverview ? (
-                  <>
-                    <strong>Snapshot {snapshotOverview.snapshot.snapshot_id}</strong>
-                    <p>التقرير وحزمة القرار والمراجعة تقرأ من هذه اللقطة، ولا تعيد الواجهة الحساب.</p>
-                    <div className="button-row">
-                      <button onClick={() => { setStage("decision"); void handleOpenDecisionPack(); }} disabled={isBusy}>حزمة القرار</button>
-                      <button onClick={() => { setStage("decision"); void handleOpenReport(); }} disabled={isBusy}>التقرير</button>
-                    </div>
-                  </>
-                ) : <p className="empty-state">عند نجاح التشغيل سيظهر هنا معرف اللقطة المرجعية وسجلها.</p>}
-              </article>
-            </div>
-
-            <div className="command-detail-grid">
-              <article className="panel command-risks">
-                <div className="section-title"><AlertTriangle size={20} aria-hidden="true" /><h2>المخاطر والإجراء التالي</h2></div>
-                {snapshotOverview?.risk_register.top_risks.length ? (
-                  <div className="command-risk-list">
-                    {snapshotOverview.risk_register.top_risks.slice(0, 3).map((risk) => <article key={risk.risk_id}><strong>{risk.trigger}</strong><span>{risk.severity} · {risk.owner_role}</span><small>{risk.mitigation}</small></article>)}
-                  </div>
-                ) : <p className="empty-state">لا يوجد سجل مخاطر محفوظ لعرضه بعد.</p>}
-              </article>
-              <article className="panel command-timeline">
-                <div className="section-title"><RefreshCw size={20} aria-hidden="true" /><h2>سجل اللقطات</h2></div>
-                <div className="run-list">
-                  {(workspace?.runs ?? []).slice(0, 3).map((run) => <article key={run.run_id}><strong>{statusText(run.status)}</strong><span>{run.snapshot_id}</span><small>{run.created_at}</small></article>)}
-                  {!workspace?.runs.length ? <p className="empty-state">لا يوجد تغير محفوظ لمقارنته بعد.</p> : null}
-                </div>
-              </article>
-            </div>
-          </section>
+          <Dashboard
+            onOpenProject={(projectId) => {
+              const target = projects.find((item) => item.project_id === projectId);
+              if (target) openProject(target);
+            }}
+            onNewProject={() => {
+              setProject(null);
+              setWorkspace(null);
+              setReadiness(null);
+              setOverview(null);
+              setReport(null);
+              setReportView(null);
+              setDecisionPack(null);
+              setComparison(null);
+              setForm({
+                name: "",
+                sector: "",
+                jurisdiction: "المملكة العربية السعودية",
+                depth_profile: "starter",
+                inputs: { ...defaultInputs },
+              });
+              setWizardStep(0);
+              setMaxUnlockedWizardStep(0);
+              setStage("wizard");
+            }}
+            onOpenStage={(projectId, targetStage) => {
+              const target = projects.find((item) => item.project_id === projectId);
+              if (!target) return;
+              setProject(target);
+              setForm({
+                name: target.name,
+                sector: target.sector,
+                jurisdiction: target.jurisdiction,
+                depth_profile: target.depth_profile,
+                inputs: { ...defaultInputs, ...target.inputs },
+              });
+              setMaxUnlockedWizardStep(wizardJourney.length - 1);
+              setStage(targetStage);
+              void loadProjectWorkspace(target.project_id);
+            }}
+          />
         ) : null}
 
         {stage === "wizard" ? (
