@@ -8,8 +8,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 from backend.dib_api import DIB_API_ROUTES, DIBApiController, DIBApiError, create_dib_api_controller
+from backend.dib_persistence import create_dib_persistence_store
+from backend.repository import Repository
 
 DIB_HTTP_MOUNTING_ID = "DIB-LIVE-002H-HTTP-MOUNTING-v1"
+DIB_LOCAL_GATEWAY_INTEGRATION_ID = "DIB-LIVE-002I-LOCAL-API-GATEWAY-INTEGRATION-v1"
 DIB_HTTP_MOUNTING_STATUS = "post_freeze_http_mounting_overlay"
 DIB_HTTP_MOUNTING_SOURCE = "docs/EKB/EKB-02-Source-of-Truth-Matrix.md"
 
@@ -79,6 +82,7 @@ class DIBHttpResponse:
             "status": self.status,
             **self.payload,
             "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+            "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -115,20 +119,34 @@ def is_dib_http_route(path: str) -> bool:
     return clean_path in {"/api/dib/status", "/api/dib/sessions"} or clean_path.startswith("/api/dib/sessions/")
 
 
+def _resolved_dib_db_path(db_path: str | None = None) -> str:
+    if db_path is not None:
+        return str(db_path)
+    return os.environ.get("ASIE_DIB_DB_PATH", ":memory:").strip() or ":memory:"
+
+
+def _sidecar_auth_required(path: str) -> bool:
+    if _clean_path(path) == "/api/dib/status":
+        return False
+    configured = os.environ.get("ASIE_DIB_REQUIRE_AUTH", "true").strip().lower()
+    return configured not in {"0", "false", "no", "off"}
+
+
 class DIBHttpMount:
     """Freeze-safe local HTTP mount for the governed DIB API controller.
 
     This object deliberately does not mutate backend/asie_local_api.py at import time,
     does not alter AAS frozen files, and does not start a network listener unless the
-    explicit sidecar runner is called by an operator.
+    explicit sidecar runner is called by an operator or Docker Compose.
     """
 
     def __init__(self, controller: DIBApiController | None = None) -> None:
-        self.controller = controller or create_dib_api_controller()
+        self.controller = controller or create_dib_api_controller(create_dib_persistence_store(_resolved_dib_db_path()))
 
     def status(self) -> dict[str, Any]:
         return {
             "mounting_id": DIB_HTTP_MOUNTING_ID,
+            "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
             "status": DIB_HTTP_MOUNTING_STATUS,
             "source": DIB_HTTP_MOUNTING_SOURCE,
             "route_count": len(DIB_HTTP_ROUTES),
@@ -139,6 +157,9 @@ class DIBHttpMount:
             "local_sidecar_available": True,
             "local_sidecar_host": DIB_HTTP_DEFAULT_HOST,
             "local_sidecar_port": DIB_HTTP_DEFAULT_PORT,
+            "sidecar_auth_required_by_default": True,
+            "sidecar_auth_status_exemption": "/api/dib/status",
+            "persistence": self.controller.store.status(),
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -171,12 +192,15 @@ class DIBHttpMount:
         self.controller.close()
 
 
-def create_dib_http_mount(controller: DIBApiController | None = None) -> DIBHttpMount:
-    return DIBHttpMount(controller)
+def create_dib_http_mount(controller: DIBApiController | None = None, db_path: str | None = None) -> DIBHttpMount:
+    if controller is not None:
+        return DIBHttpMount(controller)
+    return DIBHttpMount(create_dib_api_controller(create_dib_persistence_store(_resolved_dib_db_path(db_path))))
 
 
 class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
     mount = create_dib_http_mount()
+    auth_repo = Repository()
 
     def _read_json_body(self) -> dict[str, Any]:
         try:
@@ -203,14 +227,43 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-ASIE-Organization-Id")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         self.wfile.write(raw)
 
+    def _bearer_token(self) -> str | None:
+        value = self.headers.get("Authorization", "")
+        return value[7:].strip() if value.startswith("Bearer ") and value[7:].strip() else None
+
+    def _require_gateway_auth(self, method: str) -> bool:
+        if method == "OPTIONS" or not _sidecar_auth_required(self.path):
+            return True
+        token = self._bearer_token()
+        organization_id = self.headers.get("X-ASIE-Organization-Id") or None
+        principal = self.auth_repo.principal_for_token(token, organization_id) if token else None
+        if principal is None:
+            self._write_json(
+                {
+                    "error": "authentication_required",
+                    "status": 401,
+                    "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+                    "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
+                    "external_fetch_enabled": False,
+                    "ai_provider_enabled": False,
+                    "finance_wiring_enabled": False,
+                    "snapshot_wiring_enabled": False,
+                },
+                401,
+            )
+            return False
+        return True
+
     def _handle(self, method: str) -> None:
+        if not self._require_gateway_auth(method):
+            return
         try:
             payload = self._read_json_body() if method == "POST" else {}
             response = self.mount.dispatch(method, self.path, payload).to_public()
@@ -221,6 +274,7 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                     "error": exc.code,
                     "status": exc.status,
                     "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+                    "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
                     "external_fetch_enabled": False,
                     "ai_provider_enabled": False,
                     "finance_wiring_enabled": False,
