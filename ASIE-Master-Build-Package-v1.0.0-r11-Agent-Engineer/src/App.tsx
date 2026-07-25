@@ -25,7 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { BrandLockup } from "./BrandMark";
-import { Dashboard } from "./Dashboard";
+import { CommandCenter } from "./CommandCenter";
 import {
   createEvidenceLink,
   createDatasetTransformation,
@@ -1775,7 +1775,7 @@ export function App() {
         <>
         <div className={`client-page-shell client-page-shell--${pageDirection}`} key={stage}>
         {stage === "dashboard" ? (
-          <Dashboard
+          <CommandCenter
             onOpenProject={(projectId) => {
               const target = projects.find((item) => item.project_id === projectId);
               if (target) openProject(target);
