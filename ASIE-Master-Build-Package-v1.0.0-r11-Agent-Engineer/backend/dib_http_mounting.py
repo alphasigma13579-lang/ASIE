@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+from urllib.parse import urlparse
+
+from backend.dib_api import DIB_API_ROUTES, DIBApiController, DIBApiError, create_dib_api_controller
+
+DIB_HTTP_MOUNTING_ID = "DIB-LIVE-002H-HTTP-MOUNTING-v1"
+DIB_HTTP_MOUNTING_STATUS = "post_freeze_http_mounting_overlay"
+DIB_HTTP_MOUNTING_SOURCE = "docs/EKB/EKB-02-Source-of-Truth-Matrix.md"
+
+DIB_HTTP_ALLOWED_METHODS = frozenset({"GET", "POST", "OPTIONS"})
+DIB_HTTP_DEFAULT_HOST = "127.0.0.1"
+DIB_HTTP_DEFAULT_PORT = 8795
+DIB_HTTP_MAX_JSON_BODY_BYTES = 1_048_576
+
+FORBIDDEN_DIB_HTTP_FIELDS = frozenset(
+    {
+        "raw_prompt",
+        "prompt_template",
+        "raw_file",
+        "file_base64",
+        "pdf_text",
+        "api_key",
+        "openai_api_key",
+        "provider_config",
+        "ai_provider",
+        "finance",
+        "finance_result",
+        "finance_inputs",
+        "snapshot",
+        "assembled_snapshot",
+        "sealed_outputs",
+        "decision_pack",
+    }
+)
+
+FORBIDDEN_DIB_HTTP_TRUE_FLAGS = frozenset(
+    {
+        "ai_provider_enabled",
+        "ai_enabled",
+        "external_fetch_enabled",
+        "network_fetch",
+        "network_request",
+        "finance_wiring_enabled",
+        "snapshot_wiring_enabled",
+    }
+)
+
+DIB_HTTP_ROUTES: tuple[dict[str, Any], ...] = tuple(
+    {
+        "method": route["method"],
+        "path": route["path"],
+        "mounting": "direct_controller_dispatch",
+        "source_api": "backend.dib_api.DIBApiController",
+    }
+    for route in DIB_API_ROUTES
+)
+
+
+class DIBHttpMountError(ValueError):
+    def __init__(self, code: str, status: int = 400) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
+@dataclass(frozen=True)
+class DIBHttpResponse:
+    status: int
+    payload: dict[str, Any]
+
+    def to_public(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            **self.payload,
+            "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+            "external_fetch_enabled": False,
+            "ai_provider_enabled": False,
+            "finance_wiring_enabled": False,
+            "snapshot_wiring_enabled": False,
+            "frozen_http_server_mutated": False,
+            "frozen_runtime_files_mutated": False,
+        }
+
+
+def _reject_forbidden_http_payload(payload: Any, *, context: str = "dib_http") -> None:
+    def walk(value: Any, path: str) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                key_text = str(key)
+                if key_text in FORBIDDEN_DIB_HTTP_FIELDS:
+                    raise DIBHttpMountError(f"{context}_forbidden_field:{path}.{key_text}", 422)
+                if key_text in FORBIDDEN_DIB_HTTP_TRUE_FLAGS and item is True:
+                    raise DIBHttpMountError(f"{context}_forbidden_flag:{path}.{key_text}", 422)
+                walk(item, f"{path}.{key_text}")
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, f"{path}[{index}]")
+
+    walk(payload, context)
+
+
+def _clean_path(path: str) -> str:
+    parsed = urlparse(path)
+    return parsed.path.rstrip("/") or "/"
+
+
+def is_dib_http_route(path: str) -> bool:
+    clean_path = _clean_path(path)
+    return clean_path in {"/api/dib/status", "/api/dib/sessions"} or clean_path.startswith("/api/dib/sessions/")
+
+
+class DIBHttpMount:
+    """Freeze-safe local HTTP mount for the governed DIB API controller.
+
+    This object deliberately does not mutate backend/asie_local_api.py at import time,
+    does not alter AAS frozen files, and does not start a network listener unless the
+    explicit sidecar runner is called by an operator.
+    """
+
+    def __init__(self, controller: DIBApiController | None = None) -> None:
+        self.controller = controller or create_dib_api_controller()
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "mounting_id": DIB_HTTP_MOUNTING_ID,
+            "status": DIB_HTTP_MOUNTING_STATUS,
+            "source": DIB_HTTP_MOUNTING_SOURCE,
+            "route_count": len(DIB_HTTP_ROUTES),
+            "routes": list(DIB_HTTP_ROUTES),
+            "allowed_methods": sorted(DIB_HTTP_ALLOWED_METHODS),
+            "mount_strategy": "freeze_safe_dib_http_overlay",
+            "uses_controller": "backend.dib_api.DIBApiController",
+            "local_sidecar_available": True,
+            "local_sidecar_host": DIB_HTTP_DEFAULT_HOST,
+            "local_sidecar_port": DIB_HTTP_DEFAULT_PORT,
+            "external_fetch_enabled": False,
+            "ai_provider_enabled": False,
+            "finance_wiring_enabled": False,
+            "snapshot_wiring_enabled": False,
+            "frozen_http_server_mutated": False,
+            "frozen_runtime_files_mutated": False,
+            "snapshot_assembly_mutated": False,
+            "project_run_workflow_mutated": False,
+        }
+
+    def matches(self, method: str, path: str) -> bool:
+        return method.upper().strip() in DIB_HTTP_ALLOWED_METHODS and is_dib_http_route(path)
+
+    def dispatch(self, method: str, path: str, payload: dict[str, Any] | None = None) -> DIBHttpResponse:
+        method = method.upper().strip()
+        if method not in DIB_HTTP_ALLOWED_METHODS:
+            raise DIBHttpMountError("dib_http_method_not_allowed", 405)
+        clean_path = _clean_path(path)
+        if not is_dib_http_route(clean_path):
+            raise DIBHttpMountError("dib_http_route_not_found", 404)
+        request_payload = dict(payload or {})
+        _reject_forbidden_http_payload(request_payload)
+        try:
+            response = self.controller.dispatch(method, clean_path, request_payload)
+        except DIBApiError as exc:
+            raise DIBHttpMountError(exc.code, exc.status) from exc
+        return DIBHttpResponse(response.status, response.to_public())
+
+    def close(self) -> None:
+        self.controller.close()
+
+
+def create_dib_http_mount(controller: DIBApiController | None = None) -> DIBHttpMount:
+    return DIBHttpMount(controller)
+
+
+class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
+    mount = create_dib_http_mount()
+
+    def _read_json_body(self) -> dict[str, Any]:
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError as exc:
+            raise DIBHttpMountError("invalid_content_length", 400) from exc
+        if length < 0:
+            raise DIBHttpMountError("invalid_content_length", 400)
+        if length > DIB_HTTP_MAX_JSON_BODY_BYTES:
+            raise DIBHttpMountError("request_body_too_large", 413)
+        if length == 0:
+            return {}
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DIBHttpMountError("invalid_json", 400) from exc
+        if not isinstance(payload, dict):
+            raise DIBHttpMountError("json_object_required", 400)
+        return payload
+
+    def _write_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _handle(self, method: str) -> None:
+        try:
+            payload = self._read_json_body() if method == "POST" else {}
+            response = self.mount.dispatch(method, self.path, payload).to_public()
+            self._write_json(response, response["status"])
+        except DIBHttpMountError as exc:
+            self._write_json(
+                {
+                    "error": exc.code,
+                    "status": exc.status,
+                    "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+                    "external_fetch_enabled": False,
+                    "ai_provider_enabled": False,
+                    "finance_wiring_enabled": False,
+                    "snapshot_wiring_enabled": False,
+                },
+                exc.status,
+            )
+
+    def do_OPTIONS(self) -> None:
+        self._write_json({"ok": True, "http_mounting_id": DIB_HTTP_MOUNTING_ID})
+
+    def do_GET(self) -> None:
+        self._handle("GET")
+
+    def do_POST(self) -> None:
+        self._handle("POST")
+
+
+def run_dib_http_sidecar(host: str | None = None, port: int | None = None) -> None:
+    resolved_host = host or os.environ.get("ASIE_DIB_HTTP_HOST", DIB_HTTP_DEFAULT_HOST)
+    resolved_port = int(port or os.environ.get("ASIE_DIB_HTTP_PORT", str(DIB_HTTP_DEFAULT_PORT)))
+    server = ThreadingHTTPServer((resolved_host, resolved_port), DIBHttpSidecarHandler)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    run_dib_http_sidecar()
