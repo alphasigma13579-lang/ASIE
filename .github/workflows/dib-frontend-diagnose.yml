@@ -26,21 +26,20 @@ jobs:
           cache: pnpm
           cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Capture TypeScript diagnostic
-        id: typescript
+      - name: Capture frontend build diagnostic
+        id: frontend
         continue-on-error: true
         shell: bash
         run: |
-          pnpm exec tsc -b --pretty false > /tmp/dib-ts-full.log 2>&1
+          pnpm build > "${GITHUB_WORKSPACE}/dib-build-full.log" 2>&1
           code=$?
-          grep -E 'error TS|src/(DIBWorkspace|dibApi|dibRegistry|main)|contracts\.dib' /tmp/dib-ts-full.log | head -120 > /tmp/dib-ts-errors.txt || true
-          test -s /tmp/dib-ts-errors.txt || cp /tmp/dib-ts-full.log /tmp/dib-ts-errors.txt
+          tail -160 "${GITHUB_WORKSPACE}/dib-build-full.log" > "${GITHUB_WORKSPACE}/dib-build-errors.txt"
           exit $code
       - uses: actions/upload-artifact@v4
         with:
-          name: dib-typescript-errors
-          path: /tmp/dib-ts-errors.txt
+          name: dib-frontend-build-errors
+          path: dib-build-errors.txt
           if-no-files-found: error
-      - name: Fail when TypeScript failed
-        if: steps.typescript.outcome == 'failure'
+      - name: Fail when frontend build failed
+        if: steps.frontend.outcome == 'failure'
         run: exit 1
