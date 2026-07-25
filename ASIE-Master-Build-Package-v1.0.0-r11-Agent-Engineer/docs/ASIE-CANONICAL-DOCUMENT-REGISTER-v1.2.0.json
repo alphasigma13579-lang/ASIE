@@ -1,0 +1,158 @@
+{
+  "register_id": "ASIE-CANONICAL-DOCUMENT-REGISTER-v1.2.0",
+  "status": "CONTROLLED_BASELINE",
+  "effective_date": "2026-07-25",
+  "timezone": "Asia/Riyadh",
+  "supersedes": "ASIE-CANONICAL-DOCUMENT-REGISTER-v1.1.0",
+  "authority_order": [
+    "FINAL_BINDING",
+    "FROZEN_OR_ADOPTED_BASELINE",
+    "CONTROLLED_BASELINE",
+    "EXPLICIT_SUPERSESSION",
+    "CURRENT_AS_BUILT",
+    "HISTORICAL_RECORD",
+    "DRAFT_CANDIDATE_REFERENCE_ARCHIVE"
+  ],
+  "canonical_documents": [
+    {
+      "document_id": "AAS-RUNTIME-FREEZE",
+      "version": "1.0",
+      "path": "docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json",
+      "status": "FROZEN_BINDING",
+      "change_gate": "ACR"
+    },
+    {
+      "document_id": "AIA-01",
+      "version": "1.0.0",
+      "path": "docs/AIA-01-Intelligence-Constitution-v1.0.0.md",
+      "status": "FINAL_BINDING",
+      "change_gate": "ICCR"
+    },
+    {
+      "document_id": "AIA-02",
+      "version": "1.2.1",
+      "path": "docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1.md",
+      "status": "FINAL_ADOPTED_CONTROLLED_BASELINE",
+      "change_gate": "IACR_OR_ACR_IF_AAS_IMPACT"
+    },
+    {
+      "document_id": "ASIE-CANONICAL-TERMINOLOGY",
+      "version": "1.0.0",
+      "path": "docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md",
+      "machine_readable_path": "registry/asie-canonical-terminology.v1.json",
+      "status": "CONTROLLED_BASELINE",
+      "validation_tool": "tools/audit_canonical_terminology.py",
+      "validation_test": "tests/test_canonical_terminology.py"
+    },
+    {
+      "document_id": "ASIE-CANONICAL-API-OUTPUT",
+      "version": "1.0.0",
+      "path": "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+      "machine_readable_path": "registry/asie-canonical-api-output.v1.json",
+      "status": "CONTROLLED_BASELINE",
+      "validation_tool": "tools/audit_canonical_api_output.py",
+      "validation_test": "tests/test_canonical_api_output.py"
+    },
+    {
+      "document_id": "ASIE-CANONICAL-AUDIT-CLOSURE",
+      "version": "2026-07-25",
+      "path": "docs/ASIE-CANONICAL-TERMINOLOGY-AUDIT-CLOSURE-2026-07-25.md",
+      "status": "CLOSURE_RECORD"
+    },
+    {
+      "document_id": "ASIE-AS-BUILT",
+      "version": "r11-local-core-2026-07-21",
+      "path": "docs/ASIE-Complete-System-Architecture-2026-07-21.md",
+      "status": "CURRENT_AS_BUILT_DESCRIPTION"
+    },
+    {
+      "document_id": "ASIE-PROJECT-STATUS",
+      "version": "2026-07-21",
+      "path": "docs/ASIE-Project-Status-Assessment-2026-07-21.md",
+      "status": "CURRENT_STATUS_ASSESSMENT"
+    },
+    {
+      "document_id": "ASIE-PRODUCT-READINESS-MASTER-PLAN",
+      "version": "2026-07-19",
+      "path": "docs/ASIE-Product-Readiness-Master-Plan-2026-07-19.md",
+      "status": "ACTIVE_MASTER_PLAN"
+    }
+  ],
+  "runtime_identifier_authority": {
+    "contracts_sockets_modules": "backend/aas_registry.py",
+    "complete_inventory": "registry/asie-canonical-terminology.v1.json",
+    "sealed_output_keys": "backend/snapshot_assembly.py::REQUIRED_MODULE_OUTPUTS",
+    "api_paths": "backend/asie_local_api.py",
+    "frontend_api_bindings": "src/api.ts",
+    "public_types": ["src/contracts.ts", "src/contracts.canonical.d.ts"],
+    "reports": "backend/reports.py"
+  },
+  "contract_categories": {
+    "aas_infrastructure_contracts": [
+      "aas.kernel.boot.v1",
+      "aas.registry.snapshot.v1",
+      "aas.heart.status.v1",
+      "aas.heart.assignment.v1",
+      "aas.bus.status.v1",
+      "aas.bus.message.v1",
+      "aas.socket.enforcement.v1",
+      "aas.module.execution.v1",
+      "aas.sealed.module.output.v1"
+    ],
+    "workflow_contracts": [
+      "ProjectRunHttpRequest.v1",
+      "project.run.request.v1",
+      "project.run.workflow.v1",
+      "project.run.completed.v1",
+      "snapshot.projection.support.v1",
+      "snapshot.assemble.v1"
+    ],
+    "product_command_contracts": [
+      "finance.calculate.v1",
+      "evidence.ledger.build.v1",
+      "sector.intelligence.build.v1",
+      "decision.council.evaluate.v1",
+      "risk.register.build.v1",
+      "execution.plan.build.v1"
+    ],
+    "product_result_contracts": [
+      "finance.result.v1",
+      "evidence.ledger.v1",
+      "sector.intelligence.v1",
+      "decision.council.v1",
+      "risk.register.v1",
+      "risk.advisory.summary.v1",
+      "execution.plan.v1"
+    ],
+    "projection_contracts": [
+      "decision.pack.project.v1",
+      "decision.pack.v1",
+      "report.snapshot.project.v1",
+      "report.snapshot.v1"
+    ],
+    "disabled_shell_contracts": [
+      "ai.integration.request.v1",
+      "ai.integration.result.v1"
+    ]
+  },
+  "known_controls": [
+    {
+      "identifier": "ProjectRunHttpRequest.v1",
+      "status": "LEGACY_FROZEN_IDENTIFIER",
+      "rename_policy": "NEW_MAJOR_VERSION_ONLY",
+      "release_blocker": false
+    },
+    {
+      "concept": "Engine versus Module",
+      "rule": "Engine is the canonical architectural owner; Module is the runtime registration role"
+    },
+    {
+      "concept": "Snapshot output versus public projection",
+      "rule": "sealed output keys are internal; public projection keys are explicitly mapped and must not be inferred by spelling"
+    }
+  ],
+  "historical_exclusions": [
+    "docs/reference/**",
+    "docs/archive/**"
+  ]
+}
