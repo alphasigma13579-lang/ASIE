@@ -1,3 +1,95 @@
+/* Self-hosted fonts — local-first, no external fetch. */
+/* IBM Plex Sans Arabic 400 arabic */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-400-arabic.woff2) format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+/* IBM Plex Sans Arabic 400 latin */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-400-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* IBM Plex Sans Arabic 500 arabic */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-500-arabic.woff2) format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+/* IBM Plex Sans Arabic 500 latin */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-500-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* IBM Plex Sans Arabic 600 arabic */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-600-arabic.woff2) format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+/* IBM Plex Sans Arabic 600 latin */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-600-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* IBM Plex Sans Arabic 700 arabic */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-700-arabic.woff2) format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+/* IBM Plex Sans Arabic 700 latin */
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/IBMPlexSansArabic-700-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* JetBrains Mono 400 latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/JetBrainsMono-400-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* JetBrains Mono 600 latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/JetBrainsMono-600-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   font-family:
     Inter, "Segoe UI", Tahoma, Arial, sans-serif;
@@ -2139,3 +2231,288 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .release-record-grid > div { border: 1px solid #e3ece6; border-radius: 10px; padding: 10px 12px; background: #fbfdfc; }
 .release-record-grid dt { color: #62756a; font-size: .8rem; }
 .release-record-grid dd { margin: 2px 0 0; font-weight: 700; word-break: break-word; }
+
+/* ============================================================
+   W2 design system — unified visual language
+   Palette + type: paper #f5f7f3, deep #0b3b2d, emerald #1f9d6c,
+   gold #b7791f, ink #1a2e26, line #e0e8e0, tint #e8f4ec,
+   mut #8aa095, red #c0392b. Fonts: IBM Plex Sans Arabic + JetBrains Mono.
+   ============================================================ */
+:root {
+  --paper: #f5f7f3;
+  --card: #ffffff;
+  --deep: #0b3b2d;
+  --em: #1f9d6c;
+  --em-ink: #137a52;
+  --gold: #b7791f;
+  --ink: #1a2e26;
+  --line: #e0e8e0;
+  --tint: #e8f4ec;
+  --mut: #8aa095;
+  --red: #c0392b;
+  --mint: #8fdcb9;
+  --radius: 16px;
+  --shadow: 0 8px 24px rgba(11, 59, 45, 0.07);
+}
+
+body {
+  font-family: 'IBM Plex Sans Arabic', 'Inter', 'Segoe UI', Tahoma, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+code, .mono {
+  font-family: 'JetBrains Mono', 'IBM Plex Sans Arabic', monospace;
+}
+
+/* unify brand surfaces with the deep-green identity */
+.sidebar, .app-sidebar {
+  background: var(--deep) !important;
+}
+.primary-button, button.primary {
+  background: var(--em);
+}
+.primary-button:hover, button.primary:hover {
+  background: var(--em-ink);
+}
+
+/* ---------- لوحة القيادة (control room) ---------- */
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 8px 4px 40px;
+}
+
+.crumb {
+  font-size: 0.8rem;
+  color: var(--mut);
+  letter-spacing: 0.02em;
+}
+.crumb b { color: var(--deep); font-weight: 600; }
+
+.phead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.pt {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 700;
+  color: var(--deep);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.psub {
+  color: var(--mut);
+  font-size: 0.98rem;
+  line-height: 1.9;
+  max-width: 46ch;
+  margin: 0;
+}
+
+.dash-dial {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  box-shadow: var(--shadow);
+}
+.dash-dial__label { display: flex; flex-direction: column; gap: 4px; }
+.dash-dial__label strong { color: var(--deep); font-size: 0.95rem; }
+.dash-dial__label span { color: var(--mut); font-size: 0.8rem; max-width: 22ch; line-height: 1.7; }
+
+/* cards + rows — the advisor readability pattern */
+.dash .card, .card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
+}
+.dash .card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--deep);
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.dash .card .why {
+  color: var(--mut);
+  font-size: 0.85rem;
+  margin: 0 0 16px;
+  line-height: 1.8;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px dashed var(--line);
+}
+.row:first-of-type { border-top: none; }
+.row > div { flex: 1; min-width: 0; }
+.row b {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 3px;
+}
+.row span:not(.st) {
+  color: var(--mut);
+  font-size: 0.82rem;
+  line-height: 1.8;
+}
+
+/* status chips */
+.st {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.st.go   { background: var(--tint); color: var(--em-ink); border: 1px solid var(--mint); }
+.st.warn { background: #fdf6e8; color: var(--gold); border: 1px solid #ecd9b0; }
+.st.dim  { background: #f2f4f1; color: var(--mut); border: 1px solid var(--line); }
+
+/* buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 10px 20px;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  font-family: inherit;
+}
+.btn.main { background: var(--em); color: #fff; }
+.btn.main:hover { background: var(--em-ink); }
+.btn.ghost {
+  background: transparent;
+  color: var(--deep);
+  border-color: var(--line);
+}
+.btn.ghost:hover { border-color: var(--em); color: var(--em-ink); }
+.btn.sm { padding: 7px 14px; font-size: 0.8rem; }
+.btn.lg { padding: 14px 30px; font-size: 1rem; }
+.dash .card > .btn.main { margin-top: 14px; }
+
+/* attention clear state */
+.dash-clear {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--em-ink);
+  background: var(--tint);
+  border: 1px dashed var(--mint);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+}
+
+/* principles strip */
+.dash-principles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.dash-principles article {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: var(--mut);
+}
+.dash-principles svg { color: var(--em); flex-shrink: 0; margin-top: 2px; }
+.dash-principles strong { display: block; color: var(--deep); font-size: 0.88rem; font-weight: 600; margin-bottom: 2px; }
+.dash-principles span { font-size: 0.78rem; line-height: 1.7; }
+
+/* empty state */
+.dash-empty { max-width: 720px; margin: 0 auto; text-align: center; padding: 32px 0; }
+.dash-empty h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  color: var(--deep);
+  font-weight: 700;
+  line-height: 1.6;
+  margin: 12px 0 28px;
+}
+.dash-empty h1 em { font-style: normal; color: var(--em); }
+.dash-empty__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+  text-align: right;
+}
+.dash-empty__steps article {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+.dash-empty__steps span {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--em);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.dash-empty__steps h3 { color: var(--deep); font-size: 0.95rem; font-weight: 700; margin: 6px 0 4px; }
+.dash-empty__steps p { color: var(--mut); font-size: 0.8rem; line-height: 1.8; margin: 0; }
+
+/* error + skeleton */
+.dash-error {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fdf0ee;
+  border: 1px solid #f0d4cf;
+  color: var(--red);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+}
+.dash-error strong { display: block; margin-bottom: 4px; }
+.dash-error p { margin: 0; font-size: 0.85rem; color: #8c554e; }
+.dash-error div { flex: 1; }
+
+.dash-skeleton { display: flex; flex-direction: column; gap: 14px; }
+.dash-skeleton span {
+  height: 110px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #eef2ec 25%, #f8faf6 50%, #eef2ec 75%);
+  background-size: 200% 100%;
+  animation: dash-shimmer 1.4s infinite;
+}
+@keyframes dash-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-skeleton span { animation: none; }
+  .btn { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .phead { flex-direction: column; align-items: flex-start; }
+  .row { flex-wrap: wrap; }
+}
