@@ -40,8 +40,8 @@ class DIBLocalGatewayIntegrationTests(unittest.TestCase):
 
     def test_nginx_routes_dib_prefix_to_sidecar_before_general_api_route(self) -> None:
         nginx = NGINX_CONF.read_text(encoding="utf-8")
-        dib_location = nginx.index("location /api/dib/")
-        api_location = nginx.index("location /api/")
+        dib_location = nginx.index("location /api/dib/ {")
+        api_location = nginx.index("location /api/ {")
         self.assertLess(dib_location, api_location)
         self.assertIn("proxy_pass http://dib-api:8795;", nginx)
         self.assertIn("proxy_pass http://api:8794;", nginx)
