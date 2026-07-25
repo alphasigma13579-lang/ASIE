@@ -12,6 +12,11 @@ concurrency:
   group: asie-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
 jobs:
   build-and-test:
     name: Build frontend and test backend
@@ -23,6 +28,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          show-progress: false
 
       - name: Diagnose canonical API and output registry
         run: python tools/audit_canonical_api_output.py
