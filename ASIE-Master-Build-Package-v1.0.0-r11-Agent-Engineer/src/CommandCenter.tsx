@@ -4,15 +4,14 @@ import {
   ArrowLeft,
   BadgeCheck,
   BarChart3,
-  BookOpen,
   CheckCircle2,
-  ChevronRight,
   Database,
   FileText,
-  FlaskConical,
+  Globe,
   Layers3,
-  LayoutDashboard,
   Lightbulb,
+  MapPin,
+  Newspaper,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -20,11 +19,19 @@ import {
   Target,
   TrendingUp,
 } from "lucide-react";
-import { fetchProjectReadiness, fetchProjectRuns, fetchProjects, fetchRunOverview } from "./api";
-import type { Project, ProjectOverview, ProjectReadiness, Run } from "./contracts";
+import {
+  fetchProjectReadiness,
+  fetchProjectRuns,
+  fetchProjects,
+  fetchRunOverview,
+} from "./api";
+import type { OutputEnvelope, Project, ProjectOverview, ProjectReadiness } from "./contracts";
 
-// ─── Section union ───────────────────────────────────────────────────────────
-type CCSection =
+/* ------------------------------------------------------------------ */
+/* Types                                                                */
+/* ------------------------------------------------------------------ */
+
+export type CCSection =
   | "dashboard"
   | "today"
   | "guide"
@@ -36,38 +43,22 @@ type CCSection =
   | "decision"
   | "reports";
 
-// ─── Props ────────────────────────────────────────────────────────────────────
 type CommandCenterProps = {
   onOpenProject: (projectId: string) => void;
   onNewProject: () => void;
-  onOpenStage: (projectId: string, stage: "evidence" | "readiness" | "snapshots" | "decision") => void;
+  onOpenStage: (projectId: string, stage: "evidence" | "readiness" | "snapshots" | "decision" | "run") => void;
 };
 
-// ─── Internal types ───────────────────────────────────────────────────────────
-type ProjectRow = {
+type Bundle = {
   project: Project;
-  lastRun: Run | null;
-  readiness: ProjectReadiness | null;
   overview: ProjectOverview | null;
-  completedMilestones: number;
-  totalMilestones: number;
+  readiness: ProjectReadiness | null;
 };
 
-type AttentionItem = {
-  id: string;
-  projectId: string;
-  title: string;
-  detail: string;
-  kind: "readiness" | "evidence" | "decision";
-  stage: "evidence" | "readiness" | "snapshots" | "decision";
-};
+/* ------------------------------------------------------------------ */
+/* Small helpers                                                        */
+/* ------------------------------------------------------------------ */
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const MILESTONE_FALLBACK = 8;
-const MAX_PROJECTS = 8;
-const MAX_ATTENTION = 4;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function timeGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return "صباح الخير";
@@ -82,393 +73,101 @@ function formatRelative(iso: string | null | undefined): string {
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
   if (m < 1) return "الآن";
   if (m < 60) return `قبل ${m} دقيقة`;
-  const hr = Math.round(m / 60);
-  if (hr < 24) return `قبل ${hr} ساعة`;
-  const d = Math.round(hr / 24);
+  const h = Math.round(m / 60);
+  if (h < 24) return `قبل ${h} ساعة`;
+  const d = Math.round(h / 24);
   if (d === 1) return "أمس";
   if (d < 30) return `قبل ${d} يوم`;
   return new Date(iso).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" });
 }
 
-function verdictMeta(verdict: string | null | undefined): { label: string; tone: "go" | "warn" | "dim" } | null {
-  if (!verdict) return null;
-  if (verdict === "PRELIMINARY_ONLY") return { label: "قرار أولي متاح", tone: "go" };
-  if (verdict === "REVISE_AND_REASSESS") return { label: "القرار يطلب مراجعة", tone: "warn" };
-  return { label: "محجوب — أكمل النواقص", tone: "warn" };
+function kpiValue(overview: ProjectOverview | null, id: string): number | null {
+  const item = overview?.kpis.find((k) => k.output_id === id);
+  return typeof item?.value === "number" && Number.isFinite(item.value) ? item.value : null;
 }
 
-function kpiValue(overview: ProjectOverview | null, outputId: string): string {
-  if (!overview) return "—";
-  const env = overview.kpis?.find((k) => k.output_id === outputId);
-  if (env?.value !== undefined && env.value !== null) {
-    const v = Number(env.value);
-    return Number.isNaN(v) ? String(env.value) : v.toLocaleString("ar-SA");
-  }
-  return "—";
+function fmtSAR(v: number | null): string {
+  if (v === null) return "—";
+  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(v) + " ر.س";
+}
+function fmtPct(v: number | null): string {
+  if (v === null) return "—";
+  return `${Math.round(v * 100)}%`;
+}
+function fmtMonths(v: number | null): string {
+  if (v === null) return "—";
+  return `${Math.round(v)} شهر`;
 }
 
-function fmtSAR(n: number | null | undefined): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} م.ر`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)} ك.ر`;
-  return `${n.toFixed(0)} ر.س`;
+function verdictMeta(verdict: string | null | undefined): { label: string; tone: "go" | "warn" | "stop" } {
+  if (verdict === "PRELIMINARY_ONLY") return { label: "ابدأ بحذر", tone: "go" };
+  if (verdict === "REVISE_AND_REASSESS") return { label: "عدّل وأعد التقييم", tone: "warn" };
+  if (verdict === "BLOCKED_NOT_READY") return { label: "لا تبدأ بعد", tone: "stop" };
+  return { label: "لم يُقيَّم بعد", tone: "warn" };
 }
 
-function fmtPct(n: number | null | undefined): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return `${(n * 100).toFixed(1)}%`;
-}
+const KPI_TITLES: Record<string, string> = {
+  npv: "صافي القيمة الحالية",
+  irr: "معدل العائد الداخلي",
+  "payback-months": "مدة الاسترداد",
+  "funding-need-after-equity": "احتياج التمويل",
+  "break-even-units": "نقطة التعادل",
+  "monthly-revenue": "الإيراد الشهري",
+  "monthly-profit": "الربح الشهري",
+  dscr: "تغطية خدمة الدين",
+  "contribution-margin": "هامش المساهمة",
+  "mc-feasibility-gate-probability": "احتمال الاجتياز",
+};
 
-function fmtMonths(n: number | null | undefined): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  if (n < 1) return "أقل من شهر";
-  if (n < 12) return `${Math.round(n)} شهر`;
-  return `${(n / 12).toFixed(1)} سنة`;
-}
+/* ------------------------------------------------------------------ */
+/* Sub-components                                                       */
+/* ------------------------------------------------------------------ */
 
-function readinessPercent(row: ProjectRow): number {
-  if (!row.totalMilestones) return 0;
-  return Math.round((row.completedMilestones / row.totalMilestones) * 100);
-}
-
-function nextStepLabel(row: ProjectRow): string {
-  const steps = row.readiness?.steps ?? [];
-  if (!steps.length) return "لم تُفحص الجاهزية بعد";
-  const idx = steps.findIndex((s) => s.status !== "ready");
-  if (idx === -1) return "كل خطوات الجاهزية مكتملة";
-  return `الخطوة ${idx + 1} من ${steps.length} · ${steps[idx].label}`;
-}
-
-// ─── Small UI helpers ─────────────────────────────────────────────────────────
-function Chip({ label, tone }: { label: string; tone: "go" | "warn" | "dim" | "gold" }) {
-  return <span className={`cc-chip cc-chip--${tone}`}>{label}</span>;
-}
-
-function Soon() {
-  return (
-    <div className="cc-soon">
-      <Sparkles size={20} />
-      <div>
-        <strong>قيد التفعيل</strong>
-        <p>هذا القسم سيكون متاحاً عند توصيل مصادر البيانات الخارجية.</p>
-      </div>
-    </div>
-  );
-}
-
-function NeedData({ message }: { message?: string }) {
-  return (
-    <div className="cc-needdata">
-      <Database size={18} />
-      <span>{message ?? "لا توجد بيانات كافية لعرض هذا المقياس بعد."}</span>
-    </div>
-  );
-}
-
-function SectionShell({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="cc-card">
-      <h2 className="cc-section__title">
-        {icon}
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-// ─── Dial ─────────────────────────────────────────────────────────────────────
-function Dial({ percent }: { percent: number }) {
-  const r = 38;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(100, Math.max(0, percent)) / 100) * circ;
+function Dial({ percent, label, caption }: { percent: number; label: string; caption: string }) {
+  const r = 40;
+  const c = 2 * Math.PI * r;
+  const off = c - (Math.min(100, Math.max(0, percent)) / 100) * c;
   return (
     <div className="cc-dial">
-      <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
-        <circle cx="48" cy="48" r={r} fill="none" stroke="var(--line)" strokeWidth="8" />
+      <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(11,59,45,0.12)" strokeWidth="9" />
         <circle
-          cx="48"
-          cy="48"
-          r={r}
-          fill="none"
-          stroke="var(--em)"
-          strokeWidth="8"
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          style={{ transform: "rotate(-90deg)", transformOrigin: "center", transition: "stroke-dashoffset 0.6s ease" }}
+          cx="60" cy="60" r={r} fill="none" stroke="#1f9d6c" strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={off} transform="rotate(-90 60 60)"
+          style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1)" }}
         />
-        <text x="48" y="54" textAnchor="middle" fill="var(--deep)" fontSize="15" fontWeight="700">
-          {percent}%
-        </text>
+        <text x="60" y="57" textAnchor="middle" fontSize="22" fontWeight="700" fill="#0b3b2d">{percent}%</text>
+        <text x="60" y="76" textAnchor="middle" fontSize="9" fill="#8aa095">{label}</text>
       </svg>
-      <p className="cc-datafoot">جاهزية المشروع</p>
+      <div className="cc-dial__cap">{caption}</div>
     </div>
   );
 }
 
-// ─── TopNav ───────────────────────────────────────────────────────────────────
-function TopNav({
-  active,
-  onNav,
-}: {
-  active: CCSection;
-  onNav: (s: CCSection) => void;
-}) {
-  const links: { id: CCSection; label: string }[] = [
-    { id: "dashboard", label: "لوحة القيادة" },
-    { id: "today", label: "قراري اليوم" },
-    { id: "guide", label: "مرشد التأسيس" },
-    { id: "reality", label: "اختبار الواقع" },
-    { id: "market", label: "السوق والاتجاهات" },
-    { id: "decision", label: "فهم القرار" },
-    { id: "reports", label: "تقاريري" },
-  ];
-  return (
-    <nav className="cc-topnav" aria-label="Command Center navigation">
-      <div className="cc-topnav__brand">
-        <LayoutDashboard size={20} />
-        <span>ASIE / المستشار الاستراتيجي التفاعلي</span>
-      </div>
-      <div className="cc-topnav__links">
-        {links.map((l) => (
-          <button
-            key={l.id}
-            className={`cc-navlink${active === l.id ? " cc-navlink--active" : ""}`}
-            onClick={() => onNav(l.id)}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <div className="cc-topnav__mode">
-        <span className="cc-dot" />
-        محلي · LOCAL ONLY
-      </div>
-    </nav>
-  );
+function Chip({ tone, children }: { tone: "go" | "warn" | "stop" | "dim"; children: React.ReactNode }) {
+  return <span className={`cc-chip cc-chip--${tone}`}>{children}</span>;
 }
 
-// ─── AttentionList ────────────────────────────────────────────────────────────
-function AttentionList({
-  items,
-  onOpenStage,
-}: {
-  items: AttentionItem[];
-  onOpenStage: (projectId: string, stage: "evidence" | "readiness" | "snapshots" | "decision") => void;
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="cc-clear">
-        <CheckCircle2 size={20} />
-        لا شيء يحتاج انتباهاً الآن — مشاريعك على المسار.
-      </div>
-    );
-  }
+function Soon({ title, icon, note }: { title: string; icon: React.ReactNode; note: string }) {
   return (
-    <div className="cc-stack">
-      {items.map((item) => (
-        <div className="cc-row" key={item.id}>
-          <div className="cc-row__body">
-            <Chip label={item.kind === "readiness" ? "جاهزية" : item.kind === "evidence" ? "أدلة" : "قرار"} tone={item.kind === "decision" ? "warn" : "dim"} />
-            <div>
-              <b>{item.title}</b>
-              <span>{item.detail}</span>
-            </div>
-          </div>
-          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(item.projectId, item.stage)}>
-            معالجة
-            <ArrowLeft size={14} />
-          </button>
-        </div>
-      ))}
+    <div className="cc-soon">
+      <div className="cc-soon__icon">{icon}</div>
+      <div className="cc-soon__body">
+        <strong>{title}</strong>
+        <span>{note}</span>
+      </div>
+      <Chip tone="dim">قيد التفعيل</Chip>
     </div>
   );
 }
 
-// ─── Section components ───────────────────────────────────────────────────────
+/* ------------------------------------------------------------------ */
+/* Main component                                                       */
+/* ------------------------------------------------------------------ */
 
-function DecisionToday({ rows }: { rows: ProjectRow[] }) {
-  const primary = rows[0] ?? null;
-  if (!primary) return <NeedData message="أنشئ مشروعاً أولاً لترى قرارات اليوم." />;
-  const verdict = verdictMeta(primary.lastRun?.sovereign_verdict);
-  const ov = primary.overview;
-  const baseline = ov?.finance?.baseline ?? null;
-  return (
-    <div className="cc-decision-hero">
-      <div>
-        <p className="cc-crumb">قراري اليوم · {primary.project.name}</p>
-        {verdict ? (
-          <div className={`cc-verdict cc-verdict--${verdict.tone}`}>{verdict.label}</div>
-        ) : (
-          <div className="cc-verdict cc-verdict--dim">لا حكم بعد — شغّل التحليل أولاً</div>
-        )}
-        <div className="cc-decision-metrics">
-          <div className="cc-kpi-cell">
-            <span>الربح الشهري</span>
-            <strong>{baseline ? fmtSAR(baseline.monthly_profit) : "—"}</strong>
-          </div>
-          <div className="cc-kpi-cell">
-            <span>الاستثمار الأولي</span>
-            <strong>{baseline ? fmtSAR(baseline.initial_investment) : "—"}</strong>
-          </div>
-          <div className="cc-kpi-cell">
-            <span>فترة الاسترداد</span>
-            <strong>{baseline ? fmtMonths(baseline.payback_months) : "—"}</strong>
-          </div>
-          <div className="cc-kpi-cell">
-            <span>NPV</span>
-            <strong>{baseline ? fmtSAR(baseline.npv) : "—"}</strong>
-          </div>
-        </div>
-        {!baseline && <NeedData message="شغّل التحليل لترى الأرقام المالية الموثقة." />}
-      </div>
-      {primary && <Dial percent={readinessPercent(primary)} />}
-    </div>
-  );
-}
-
-function GuideSection({ rows }: { rows: ProjectRow[] }) {
-  const primary = rows[0] ?? null;
-  if (!primary) return <NeedData message="أنشئ مشروعاً لترى مرشد التأسيس." />;
-  const steps = primary.readiness?.steps ?? [];
-  const done = steps.filter((s) => s.status === "ready").length;
-  const pending = steps.filter((s) => s.status !== "ready");
-  return (
-    <div>
-      <div className="cc-bars">
-        <div className="cc-bar" style={{ width: `${steps.length ? Math.round((done / steps.length) * 100) : 0}%` }} />
-      </div>
-      <p className="cc-datafoot">{done} من {steps.length} خطوات جاهزية مكتملة · {primary.project.name}</p>
-      {pending.length > 0 && (
-        <div className="cc-stack" style={{ marginTop: "12px" }}>
-          {pending.slice(0, 4).map((s) => (
-            <div className="cc-row" key={s.step_id}>
-              <div className="cc-row__body">
-                <Chip label="ينتظر" tone="warn" />
-                <div>
-                  <b>{s.label}</b>
-                  {s.message && <span>{s.message}</span>}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {pending.length === 0 && (
-        <div className="cc-clear">
-          <CheckCircle2 size={18} />
-          كل خطوات الجاهزية مكتملة — المشروع جاهز للتشغيل.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RealitySection({ rows }: { rows: ProjectRow[] }) {
-  const primary = rows[0] ?? null;
-  const baseline = primary?.overview?.finance?.baseline ?? null;
-  if (!baseline) return <NeedData message="شغّل التحليل لترى اختبار الواقع المالي." />;
-  const mc = primary?.overview?.monte_carlo;
-  const prob = mc?.p_pass ?? null;
-  return (
-    <div className="cc-kpi-grid">
-      <div className="cc-kpi-cell">
-        <span>التعادل (وحدات/شهر)</span>
-        <strong className="cc-row__val">{baseline.break_even_units.toLocaleString("ar-SA")}</strong>
-      </div>
-      <div className="cc-kpi-cell">
-        <span>احتمال النجاح (MC)</span>
-        <strong className="cc-row__val">{prob !== null ? fmtPct(prob) : "—"}</strong>
-      </div>
-      <div className="cc-kpi-cell">
-        <span>EBITDA الشهري</span>
-        <strong className="cc-row__val">{fmtSAR(baseline.ebitda)}</strong>
-      </div>
-      <div className="cc-kpi-cell">
-        <span>الفجوة التمويلية</span>
-        <strong className="cc-row__val">{fmtSAR(baseline.funding_gap)}</strong>
-      </div>
-      <div className="cc-kpi-cell">
-        <span>هامش المساهمة</span>
-        <strong className="cc-row__val">{fmtSAR(baseline.contribution_margin)}</strong>
-      </div>
-      <div className="cc-kpi-cell">
-        <span>IRR</span>
-        <strong className="cc-row__val">{baseline.irr !== null ? fmtPct(baseline.irr) : "—"}</strong>
-      </div>
-    </div>
-  );
-}
-
-function StrategySection() {
-  return <Soon />;
-}
-
-function OpportunitiesSection() {
-  return <Soon />;
-}
-
-function DecisionSection({ rows }: { rows: ProjectRow[] }) {
-  const primary = rows[0] ?? null;
-  const council = primary?.overview?.decision_council ?? null;
-  if (!council) return <NeedData message="شغّل التحليل لترى حزمة القرار." />;
-  const verdict = council.verdict;
-  const meta = verdictMeta(verdict?.sovereign_verdict);
-  return (
-    <div>
-      {meta && (
-        <div className={`cc-verdict cc-verdict--${meta.tone}`} style={{ marginBottom: "12px" }}>
-          {meta.label}
-        </div>
-      )}
-      {verdict?.reason && <p className="cc-reason">{verdict.reason}</p>}
-      <div className="cc-gate">
-        {council.personas?.slice(0, 3).map((p) => (
-          <div className="cc-row" key={p.persona_id}>
-            <div className="cc-row__body">
-              <Chip label={p.persona_id} tone="dim" />
-              <div>
-                <b>{p.metric ?? p.persona_id}</b>
-                {p.note && <span>{p.note}</span>}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReportsSection({ rows }: { rows: ProjectRow[] }) {
-  if (!rows.length) return <NeedData message="أنشئ مشروعاً أولاً لترى التقارير." />;
-  return (
-    <div className="cc-stack">
-      {rows.map((row) => {
-        const verdict = verdictMeta(row.lastRun?.sovereign_verdict);
-        return (
-          <div className="cc-row" key={row.project.project_id}>
-            <div className="cc-row__body">
-              {verdict ? <Chip label={verdict.label} tone={verdict.tone} /> : <Chip label="مسودة" tone="dim" />}
-              <div>
-                <b>{row.project.name}</b>
-                <span>آخر تحديث: {formatRelative(row.project.updated_at)}</span>
-              </div>
-            </div>
-            {row.lastRun?.snapshot_id && (
-              <span className="cc-datafoot">لقطة #{row.lastRun.snapshot_id.slice(0, 8)}</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Main CommandCenter ───────────────────────────────────────────────────────
 export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: CommandCenterProps) {
   const [section, setSection] = useState<CCSection>("dashboard");
-  const [rows, setRows] = useState<ProjectRow[] | null>(null);
+  const [bundles, setBundles] = useState<Bundle[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -476,33 +175,24 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
     setLoadError(null);
     try {
       const projects = await fetchProjects();
-      const limited = projects.slice(0, MAX_PROJECTS);
-      const nextRows = await Promise.all(
+      const limited = projects.slice(0, 6);
+      const next = await Promise.all(
         limited.map(async (project) => {
           const [runs, readiness] = await Promise.all([
-            fetchProjectRuns(project.project_id).catch(() => [] as Run[]),
+            fetchProjectRuns(project.project_id).catch(() => []),
             fetchProjectReadiness(project.project_id).catch(() => null),
           ]);
-          const latest = runs[0] ?? null;
+          const latest = runs[0];
           let overview: ProjectOverview | null = null;
           if (latest?.snapshot_id) {
             overview = await fetchRunOverview(latest.run_id).catch(() => null);
           }
-          const steps = readiness?.steps ?? [];
-          const completed = steps.filter((s) => s.status === "ready").length;
-          return {
-            project,
-            lastRun: latest,
-            readiness,
-            overview,
-            completedMilestones: completed,
-            totalMilestones: steps.length || MILESTONE_FALLBACK,
-          } satisfies ProjectRow;
+          return { project, overview, readiness } satisfies Bundle;
         })
       );
-      setRows(nextRows);
+      setBundles(next);
     } catch (err) {
-      setRows(null);
+      setBundles(null);
       setLoadError(err instanceof Error ? err.message : "تعذر تحميل لوحة القيادة.");
     }
   }, []);
@@ -511,273 +201,555 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
     void load();
   }, [load, reloadKey]);
 
-  const attention = useMemo<AttentionItem[]>(() => {
-    if (!rows) return [];
-    const items: AttentionItem[] = [];
-    for (const row of rows) {
-      for (const blocker of (row.readiness?.blockers ?? []).slice(0, 2)) {
-        items.push({
-          id: `${row.project.project_id}:${blocker.code}`,
-          projectId: row.project.project_id,
-          title: `${row.project.name} — يحتاج استكمال جاهزية`,
-          detail: blocker.message,
-          kind: "readiness",
-          stage: "readiness",
-        });
-      }
-      const sourcesStep = row.readiness?.steps.find((s) => s.step_id === "sources" && s.status !== "ready");
-      if (sourcesStep) {
-        items.push({
-          id: `${row.project.project_id}:evidence`,
-          projectId: row.project.project_id,
-          title: `${row.project.name} — الأدلة غير مكتملة`,
-          detail: sourcesStep.message || "اربط مصدراً أو دليلاً محلياً قبل تشغيل التحليل.",
-          kind: "evidence",
-          stage: "evidence",
-        });
-      }
-      if (row.lastRun?.sovereign_verdict === "REVISE_AND_REASSESS") {
-        items.push({
-          id: `${row.project.project_id}:verdict`,
-          projectId: row.project.project_id,
-          title: `${row.project.name} — القرار يطلب مراجعة`,
-          detail: "آخر حكم سيادي طلب المراجعة وإعادة التقييم. راجع حزمة القرار.",
-          kind: "decision",
-          stage: "decision",
-        });
-      }
-    }
-    return items.slice(0, MAX_ATTENTION);
-  }, [rows]);
+  const primary = useMemo(() => (bundles && bundles.length ? bundles[0] : null), [bundles]);
+  const readinessPercent = useMemo(() => {
+    if (!primary?.readiness) return 0;
+    const steps = primary.readiness.steps ?? [];
+    if (!steps.length) return primary.readiness.ready_to_run ? 100 : 0;
+    const done = steps.filter((s) => s.status === "ready").length;
+    return Math.round((done / steps.length) * 100);
+  }, [primary]);
 
-  // ── loading / error / skeleton states ──────────────────────────────────────
+  /* ---------------- Loading / error / empty states ---------------- */
+
   if (loadError) {
     return (
       <div className="cc">
-        <TopNav active={section} onNav={setSection} />
-        <div className="cc-error">
-          <AlertTriangle size={24} />
-          <div>
-            <strong>تعذر تحميل لوحة القيادة</strong>
-            <p>{loadError}</p>
-          </div>
-          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => setReloadKey((k) => k + 1)}>
-            <RefreshCw size={14} />
-            إعادة المحاولة
+        <div className="cc-error" role="alert">
+          <AlertTriangle size={26} aria-hidden="true" />
+          <div><strong>تعذر تحميل لوحة القيادة</strong><p>{loadError}</p></div>
+          <button className="cc-btn cc-btn--ghost" onClick={() => setReloadKey((k) => k + 1)}>
+            <RefreshCw size={15} aria-hidden="true" /> إعادة المحاولة
           </button>
         </div>
       </div>
     );
   }
 
-  if (rows === null) {
+  if (bundles === null) {
     return (
-      <div className="cc">
-        <TopNav active={section} onNav={setSection} />
-        <div className="cc-skel">
-          <span />
-          <span />
-          <span />
-        </div>
+      <div className="cc" aria-busy="true">
+        <div className="cc-skel"><span /><span /><span /></div>
       </div>
     );
   }
 
-  // ── empty state ────────────────────────────────────────────────────────────
-  if (rows.length === 0) {
+  if (bundles.length === 0) {
     return (
       <div className="cc">
-        <TopNav active={section} onNav={setSection} />
-        <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
+        <TopNav section={section} onNavigate={setSection} />
         <div className="cc-empty">
-          <p>{timeGreeting()} — ابدأ أول مشروع لك</p>
-          <h1>من فكرة إلى <em>قرار موثق</em> خلال جلسة واحدة</h1>
+          <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
+          <h1>{timeGreeting()} — ابدأ أول مشروع لك</h1>
+          <p className="cc-sub">من فكرة إلى قرار موثق خلال جلسة واحدة. عرّف مشروعك، اربط الأدلة، افحص الجاهزية، واستلم القرار.</p>
           <button className="cc-btn cc-btn--main cc-btn--lg" onClick={onNewProject}>
-            <Plus size={18} />
-            ابدأ مشروعك الأول
+            <Plus size={19} aria-hidden="true" /> ابدأ مشروعك الأول
           </button>
         </div>
       </div>
     );
   }
 
-  const primary = rows[0];
-  const primaryPercent = readinessPercent(primary);
-  const baseline = primary.overview?.finance?.baseline ?? null;
+  const ov = primary?.overview ?? null;
+  const verdict = verdictMeta(ov?.decision?.sovereign_verdict);
+  const confidence = ov ? ov.monte_carlo.p_pass : null;
+  const kpis = ov?.kpis ?? [];
 
-  // ── render ─────────────────────────────────────────────────────────────────
+  /* ---------------- Render ---------------- */
+
   return (
     <div className="cc">
-      <TopNav active={section} onNav={setSection} />
-      <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
+      <TopNav section={section} onNavigate={setSection} />
 
-      {/* ── DASHBOARD section ────────────────────────────────────────────── */}
-      {section === "dashboard" && (
-        <div>
-          {/* Hero */}
-          <div className="cc-hero">
-            <div>
-              <h1>{timeGreeting()} — مشاريعك ({rows.length}) بخير</h1>
-              <p>كل ما يحتاج انتباهك اليوم في مكان واحد: جاهزية المشاريع، القرارات المعلقة، والخطوة التالية.</p>
+      {/* ============ DASHBOARD (default landing) ============ */}
+      {section === "dashboard" ? (
+        <>
+          <header className="cc-hero">
+            <Dial percent={readinessPercent} label="جاهزية مشروعك" caption="نحو قرار واثق" />
+            <div className="cc-hero__text">
+              <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
+              <h1>
+                {timeGreeting()} —<br />
+                مشاريعك بخير، وواحد منها <em>ينتظر قرارك</em>
+              </h1>
+              <p className="cc-sub">
+                هذه غرفة القيادة فقط: وضع المشاريع وما يحتاج انتباهاً. التفاصيل والأدلة تعيش في غرفها الخاصة.
+              </p>
             </div>
-            <Dial percent={primaryPercent} />
-          </div>
+          </header>
 
           {/* KPI strip */}
           <div className="cc-kpi-strip">
-            <div className="cc-kpi">
-              <span>الربح الشهري (أساسي)</span>
-              <strong>{baseline ? fmtSAR(baseline.monthly_profit) : "—"}</strong>
-              <small>{baseline ? "من آخر تحليل" : "شغّل التحليل"}</small>
-            </div>
-            <div className="cc-kpi">
-              <span>فترة الاسترداد</span>
-              <strong>{baseline ? fmtMonths(baseline.payback_months) : "—"}</strong>
-              <small>{baseline ? "سيناريو أساسي" : "—"}</small>
-            </div>
-            <div className="cc-kpi">
-              <span>جاهزية المشروع</span>
-              <strong>{primaryPercent}%</strong>
-              <small>{nextStepLabel(primary)}</small>
-            </div>
+            <article className="cc-kpi">
+              <strong>{verdict.label}</strong>
+              <span>آخر حكم سيادي {ov ? `· إسقاط ${ov.snapshot.snapshot_id.slice(-6)}` : ""}</span>
+              <button className="cc-link" onClick={() => setSection("decision")}>افتح تفسير القرار ←</button>
+            </article>
+            <article className="cc-kpi">
+              <strong>{fmtPct(confidence)}</strong>
+              <span>احتمال اجتياز Monte Carlo</span>
+              <button className="cc-link" onClick={() => setSection("reality")}>حفر في السيناريوهات ←</button>
+            </article>
+            <article className="cc-kpi">
+              <strong>{bundles.filter((b) => !b.readiness?.ready_to_run).length}</strong>
+              <span>عائق تنفيذ نشط يحتاج انتباهاً</span>
+              <button className="cc-link" onClick={() => primary && onOpenStage(primary.project.project_id, "readiness")}>افتح العائق ←</button>
+            </article>
           </div>
 
-          {/* 2-col grid */}
           <div className="cc-grid-2">
-            {/* Projects card */}
-            <div className="cc-card">
-              <h3><Layers3 size={18} /> مشاريعي</h3>
-              <p className="cc-why">مشاريعك مرتبة بأحدث تحديث. افتح أي مشروع لمتابعة رحلة القرار.</p>
-              <div className="cc-stack">
-                {rows.map((row) => {
-                  const verdict = verdictMeta(row.lastRun?.sovereign_verdict);
-                  const tone = verdict?.tone ?? (row.readiness?.ready_to_run ? "go" : "dim");
-                  const statusLabel = verdict?.label ?? (row.readiness?.ready_to_run ? "جاهز للتشغيل" : "مسودة");
-                  return (
-                    <div className="cc-row" key={row.project.project_id}>
-                      <div className="cc-row__body">
-                        <Chip label={statusLabel} tone={tone} />
-                        <div>
-                          <b>{row.project.name}</b>
-                          <span>{nextStepLabel(row)} · {formatRelative(row.project.updated_at)}</span>
-                        </div>
-                      </div>
-                      <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenProject(row.project.project_id)}>
-                        فتح <ArrowLeft size={14} />
-                      </button>
+            {/* مشاريعي */}
+            <article className="cc-card">
+              <h3><Layers3 size={18} aria-hidden="true" /> مشاريعي</h3>
+              <p className="cc-why">افتح مشروعاً لمتابعة مساره، أو ابدأ مشروعاً جديداً.</p>
+              {bundles.map((b) => {
+                const steps = b.readiness?.steps ?? [];
+                const done = steps.filter((s) => s.status === "ready").length;
+                const total = steps.length || 9;
+                const v = verdictMeta(b.overview?.decision?.sovereign_verdict);
+                const state = b.overview ? v.label : b.readiness?.ready_to_run ? "جاهز للتشغيل" : "مسودة";
+                const tone = b.overview ? v.tone : b.readiness?.ready_to_run ? "go" : "dim";
+                return (
+                  <div className="cc-row" key={b.project.project_id}>
+                    <Chip tone={tone}>{state}</Chip>
+                    <div className="cc-row__body">
+                      <b>{b.project.name}</b>
+                      <span>الخطوة {done} من {total} · آخر تحديث: {formatRelative(b.project.updated_at)}</span>
                     </div>
-                  );
-                })}
-              </div>
-              <button className="cc-btn cc-btn--main cc-btn--sm" onClick={onNewProject} style={{ marginTop: "12px" }}>
-                <Plus size={14} /> مشروع جديد
+                    <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenProject(b.project.project_id)}>
+                      {b.overview ? "فتح" : "إكمال"} <ArrowLeft size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button className="cc-btn cc-btn--main" onClick={onNewProject}>
+                <Plus size={16} aria-hidden="true" /> ابدأ مشروعاً جديداً
               </button>
-            </div>
+            </article>
 
-            {/* Attention card */}
-            <div className="cc-card">
-              <h3><Sparkles size={18} /> ينتبه له اليوم</h3>
-              <p className="cc-why">عناصر تحتاج إجراء منك — مستخرجة من جاهزية المشاريع وأحكامها المحفوظة فقط.</p>
-              <AttentionList items={attention} onOpenStage={onOpenStage} />
-            </div>
+            {/* ينتبه له اليوم */}
+            <article className="cc-card">
+              <h3><AlertTriangle size={18} aria-hidden="true" /> ينتبه له اليوم</h3>
+              <p className="cc-why">تنبيهات السياق — لا تغيّر الحكم، فقط تلفت نظرك.</p>
+              <AttentionList bundles={bundles} onOpenStage={onOpenStage} />
+              <div className="cc-datafoot">
+                <span>data_mode: live_local</span>
+                <span>source: لقطات محفوظة + جاهزية حية</span>
+                <span>confidence: تتبع السياق</span>
+              </div>
+            </article>
           </div>
 
-          {/* Principles strip */}
+          {/* principles */}
           <div className="cc-principles">
-            <article>
-              <Database size={18} />
-              <div>
-                <strong>لا أرقام بلا مصدر</strong>
-                <span>كل قيمة تعرضها المنصة مرتبطة بلقطة محفوظة أو مدخل موثق.</span>
-              </div>
-            </article>
-            <article>
-              <ShieldCheck size={18} />
-              <div>
-                <strong>بياناتك محلية</strong>
-                <span>لا جلب خارجي ولا مفاتيح داخل الحزمة في هذه المرحلة.</span>
-              </div>
-            </article>
-            <article>
-              <FileText size={18} />
-              <div>
-                <strong>قرار قابل للرجوع</strong>
-                <span>كل حكم يحمل مرجع لقطة ثابت يمكن مراجعته لاحقاً.</span>
-              </div>
-            </article>
-            <article>
-              <BadgeCheck size={18} />
-              <div>
-                <strong>المراجعة لك</strong>
-                <span>المنصة تقترح وتوضح — القرار النهائي واعتماده لك دائماً.</span>
-              </div>
-            </article>
+            {[
+              [ShieldCheck, "لا أرقام بلا مصدر", "كل قيمة مرتبطة بلقطة محفوظة أو مدخل موثق."],
+              [Database, "بياناتك محلية", "لا جلب خارجي ولا مفاتيح داخل الحزمة."],
+              [FileText, "قرار قابل للرجوع", "كل حكم يحمل مرجع لقطة ثابت."],
+              [BadgeCheck, "المراجعة لك", "المنصة تقترح وتوضح — القرار لك دائماً."],
+            ].map(([Icon, t, b]) => {
+              const I = Icon as typeof ShieldCheck;
+              return (
+                <article key={t as string}>
+                  <I size={17} aria-hidden="true" />
+                  <div><strong>{t as string}</strong><span>{b as string}</span></div>
+                </article>
+              );
+            })}
           </div>
-        </div>
-      )}
+        </>
+      ) : null}
 
-      {/* ── TODAY section ─────────────────────────────────────────────────── */}
-      {section === "today" && (
-        <SectionShell title="قراري اليوم" icon={<Target size={20} />}>
-          <DecisionToday rows={rows} />
-        </SectionShell>
-      )}
+      {/* ============ TODAY'S DECISION ============ */}
+      {section === "today" ? (
+        <DecisionToday overview={ov} verdict={verdict} onOpenStage={onOpenStage} projectId={primary!.project.project_id} />
+      ) : null}
 
-      {/* ── GUIDE section ─────────────────────────────────────────────────── */}
-      {section === "guide" && (
-        <SectionShell title="مرشد التأسيس" icon={<BookOpen size={20} />}>
-          <GuideSection rows={rows} />
-        </SectionShell>
-      )}
+      {/* ============ GUIDE (مرشد تأسيس المشروع) ============ */}
+      {section === "guide" ? <GuideSection overview={ov} /> : null}
 
-      {/* ── REALITY section ───────────────────────────────────────────────── */}
-      {section === "reality" && (
-        <SectionShell title="اختبار الواقع" icon={<FlaskConical size={20} />}>
-          <RealitySection rows={rows} />
-        </SectionShell>
-      )}
+      {/* ============ REALITY (اختبار الواقع) ============ */}
+      {section === "reality" ? <RealitySection overview={ov} /> : null}
 
-      {/* ── MARKET section (coming) ───────────────────────────────────────── */}
-      {section === "market" && (
-        <SectionShell title="السوق والاتجاهات" icon={<TrendingUp size={20} />}>
-          <Soon />
+      {/* ============ MARKET ============ */}
+      {section === "market" ? (
+        <SectionShell title="السوق والاتجاهات" crumb="السوق والاتجاهات">
+          <Soon title="حجم السوق ومعدل النمو" icon={<Globe size={20} />} note="يتطلب ربط مصدر بيانات سوق سعودي معتمد (GASTAT / تقارير قطاعية)." />
+          <Soon title="الطلب والعرض والفجوة السوقية" icon={<BarChart3 size={20} />} note="يُفعَّل بعد ربط مؤشرات الطلب القطاعية." />
+          <Soon title="اتجاهات البحث وسلوك العملاء" icon={<TrendingUp size={20} />} note="يتطلب تكامل مصدر اتجاهات خارجي." />
         </SectionShell>
-      )}
+      ) : null}
 
-      {/* ── NEWS section (coming) ─────────────────────────────────────────── */}
-      {section === "news" && (
-        <SectionShell title="آخر الأخبار" icon={<Lightbulb size={20} />}>
-          <Soon />
+      {/* ============ NEWS ============ */}
+      {section === "news" ? (
+        <SectionShell title="الأخبار الذكية" crumb="الأخبار الذكية">
+          <Soon title="أخبار مفلترة حسب قطاع مشروعك" icon={<Newspaper size={20} />} note="تُفعَّل بعد ربط مصدر أخبار مع تقييم تأثير كل خبر." />
         </SectionShell>
-      )}
+      ) : null}
 
-      {/* ── STRATEGY section (coming) ─────────────────────────────────────── */}
-      {section === "strategy" && (
-        <SectionShell title="الاستراتيجية" icon={<ChevronRight size={20} />}>
-          <StrategySection />
-        </SectionShell>
-      )}
+      {/* ============ STRATEGY ============ */}
+      {section === "strategy" ? <StrategySection overview={ov} /> : null}
 
-      {/* ── OPPORTUNITIES section (coming) ────────────────────────────────── */}
-      {section === "opportunities" && (
-        <SectionShell title="الفرص" icon={<BarChart3 size={20} />}>
-          <OpportunitiesSection />
-        </SectionShell>
-      )}
+      {/* ============ OPPORTUNITIES ============ */}
+      {section === "opportunities" ? <OpportunitiesSection overview={ov} /> : null}
 
-      {/* ── DECISION section ──────────────────────────────────────────────── */}
-      {section === "decision" && (
-        <SectionShell title="فهم القرار" icon={<ShieldCheck size={20} />}>
-          <DecisionSection rows={rows} />
-        </SectionShell>
-      )}
+      {/* ============ DECISION (فهم القرار) ============ */}
+      {section === "decision" ? <DecisionSection overview={ov} /> : null}
 
-      {/* ── REPORTS section ───────────────────────────────────────────────── */}
-      {section === "reports" && (
-        <SectionShell title="تقاريري" icon={<FileText size={20} />}>
-          <ReportsSection rows={rows} />
-        </SectionShell>
-      )}
+      {/* ============ REPORTS ============ */}
+      {section === "reports" ? (
+        <ReportsSection bundles={bundles} onOpenStage={onOpenStage} />
+      ) : null}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Top navigation                                                       */
+/* ------------------------------------------------------------------ */
+
+const NAV: Array<{ id: CCSection; label: string }> = [
+  { id: "dashboard", label: "لوحة القيادة" },
+  { id: "today", label: "قراري اليوم" },
+  { id: "guide", label: "مرشد التأسيس" },
+  { id: "reality", label: "اختبار الواقع" },
+  { id: "market", label: "السوق والاتجاهات" },
+  { id: "decision", label: "فهم القرار" },
+  { id: "reports", label: "تقاريري" },
+];
+
+function TopNav({ section, onNavigate }: { section: CCSection; onNavigate: (s: CCSection) => void }) {
+  return (
+    <nav className="cc-topnav" aria-label="أقسام لوحة القيادة">
+      <div className="cc-topnav__brand">
+        <strong>ASIE</strong>
+        <span>المستشار الاستراتيجي التفاعلي</span>
+      </div>
+      <div className="cc-topnav__links">
+        {NAV.map((item) => (
+          <button
+            key={item.id}
+            className={section === item.id ? "cc-navlink cc-navlink--active" : "cc-navlink"}
+            onClick={() => onNavigate(item.id)}
+            aria-current={section === item.id ? "page" : undefined}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="cc-topnav__mode">
+        <span className="cc-dot" /> محلي · LOCAL ONLY
+      </div>
+    </nav>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section shells                                                       */
+/* ------------------------------------------------------------------ */
+
+function SectionShell({ title, crumb, children }: { title: string; crumb: string; children: React.ReactNode }) {
+  return (
+    <div className="cc-section">
+      <p className="cc-crumb">ASIE / لوحة القيادة / <b>{crumb}</b></p>
+      <h2 className="cc-section__title">{title}</h2>
+      <div className="cc-stack">{children}</div>
+    </div>
+  );
+}
+
+function NeedData({ text }: { text: string }) {
+  return (
+    <div className="cc-needdata">
+      <Database size={18} aria-hidden="true" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* قراري اليوم                                                          */
+/* ------------------------------------------------------------------ */
+
+function DecisionToday({
+  overview, verdict, onOpenStage, projectId,
+}: { overview: ProjectOverview | null; verdict: ReturnType<typeof verdictMeta>; onOpenStage: CommandCenterProps["onOpenStage"]; projectId: string }) {
+  if (!overview) {
+    return (
+      <SectionShell title="قراري اليوم" crumb="قراري اليوم">
+        <NeedData text="لا يوجد قرار محفوظ بعد. شغّل التحليل لإنشاء أول لقطة وحكم سيادي." />
+        <button className="cc-btn cc-btn--main" onClick={() => onOpenStage(projectId, "run")}>شغّل التحليل</button>
+      </SectionShell>
+    );
+  }
+  const conf = overview.monte_carlo.p_pass;
+  const risks = overview.risk_register.top_risks.slice(0, 5);
+  const personas = overview.personas;
+  return (
+    <SectionShell title="قراري اليوم" crumb="قراري اليوم">
+      <div className="cc-decision-hero">
+        <div className={`cc-verdict cc-verdict--${verdict.tone}`}>
+          <span>القرار</span>
+          <strong>{verdict.label}</strong>
+          <small>إسقاط {overview.snapshot.snapshot_id.slice(-8)} · {formatRelative(overview.snapshot.created_at)}</small>
+        </div>
+        <div className="cc-decision-metrics">
+          <article><span>درجة الثقة</span><strong>{fmtPct(conf)}</strong></article>
+          <article><span>الربح الوسيط (P50)</span><strong>{fmtSAR(overview.monte_carlo.p50_profit)}</strong></article>
+          <article><span>درجة المخاطرة</span><strong>{overview.monte_carlo.status === "ready" ? "محسوبة" : "—"}</strong></article>
+        </div>
+      </div>
+
+      <div className="cc-grid-2">
+        <article className="cc-card">
+          <h3><AlertTriangle size={17} aria-hidden="true" /> أهم المخاطر</h3>
+          {risks.length ? risks.map((r) => (
+            <div className="cc-row" key={r.risk_id}>
+              <Chip tone={r.severity === "high" || r.severity === "critical" ? "stop" : "warn"}>{r.severity}</Chip>
+              <div className="cc-row__body"><b>{r.trigger}</b><span>{r.mitigation}</span></div>
+            </div>
+          )) : <NeedData text="لا توجد مخاطر مسجلة في هذه اللقطة." />}
+        </article>
+        <article className="cc-card">
+          <h3><Sparkles size={17} aria-hidden="true" /> زوايا التقييم الخمس</h3>
+          {personas.map((p) => (
+            <div className="cc-row" key={p.persona_id}>
+              <div className="cc-row__body"><b>{p.metric}</b><span>{p.note}</span></div>
+              <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value)}</strong>
+            </div>
+          ))}
+        </article>
+      </div>
+      <p className="cc-reason">{overview.decision.reason}</p>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* مرشد تأسيس المشروع                                                   */
+/* ------------------------------------------------------------------ */
+
+function GuideSection({ overview }: { overview: ProjectOverview | null }) {
+  const milestones = overview?.execution_plan.milestones ?? [];
+  return (
+    <SectionShell title="مرشد تأسيس المشروع" crumb="مرشد التأسيس">
+      <article className="cc-card">
+        <h3><CheckCircle2 size={17} aria-hidden="true" /> خطة التنفيذ</h3>
+        <p className="cc-why">من لقطتك المحفوظة — مراحل ومعايير خروج واضحة.</p>
+        {milestones.length ? milestones.map((m) => (
+          <div className="cc-row" key={m.phase_id}>
+            <Chip tone="go">{m.estimated_duration_days} يوم</Chip>
+            <div className="cc-row__body"><b>{m.phase_id}</b><span>{m.exit_criteria[0] ?? m.owner_role}</span></div>
+          </div>
+        )) : <NeedData text="تظهر خطة التنفيذ بعد تشغيل التحليل." />}
+      </article>
+
+      <div className="cc-grid-2">
+        <Soon title="اختيار الموقع" icon={<MapPin size={20} />} note="أفضل المدن والأحياء، الإيجار، الكثافة — يتطلب بيانات جغرافية سعودية." />
+        <Soon title="خارطة المنافسين" icon={<Target size={20} />} note="المنافسون على الخريطة مع تقييماتهم — يتطلب مصدر أماكن/خرائط." />
+        <Soon title="المشاريع المشابهة" icon={<Layers3 size={20} />} note="قصص نجاح وتعثر وفشل — يتطلب قاعدة دراسات حالة." />
+        <Soon title="الموظفون والرواتب" icon={<BadgeCheck size={20} />} note="الهيكل ومتوسط الرواتب — يتطلب بيانات أجور قطاعية." />
+        <Soon title="المعدات والموردون" icon={<Database size={20} />} note="الأسعار والموردون — يتطلب بيانات موردين." />
+        <Soon title="التراخيص" icon={<FileText size={20} />} note="الجهات والرسوم والروابط الرسمية — يتطلب دليل التراخيص الرسمي." />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* اختبار الواقع                                                        */
+/* ------------------------------------------------------------------ */
+
+function RealitySection({ overview }: { overview: ProjectOverview | null }) {
+  if (!overview) {
+    return (
+      <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
+        <NeedData text="شغّل التحليل أولاً لتظهر محاكاة السيناريوهات." />
+      </SectionShell>
+    );
+  }
+  const mc = overview.monte_carlo;
+  const p10 = mc.p10_profit ?? 0;
+  const p50 = mc.p50_profit ?? 0;
+  const p90 = mc.p90_profit ?? 0;
+  const max = Math.max(Math.abs(p10), Math.abs(p50), Math.abs(p90), 1);
+  return (
+    <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
+      <article className="cc-card">
+        <h3><BarChart3 size={17} aria-hidden="true" /> محاكاة Monte Carlo</h3>
+        <p className="cc-why">{mc.iterations.toLocaleString("ar-SA")} تشغيل محفوظ — توزيع الربح الشهري تحت الضغط.</p>
+        <div className="cc-bars">
+          {([["متشائم P10", p10, "#c0392b"], ["وسيط P50", p50, "#1f9d6c"], ["متفائل P90", p90, "#0b3b2d"]] as const).map(([label, v, color]) => (
+            <div className="cc-bar" key={label}>
+              <span>{label}</span>
+              <div className="cc-bar__track"><i style={{ width: `${Math.max(4, (Math.abs(v) / max) * 100)}%`, background: color }} /></div>
+              <strong>{fmtSAR(v)}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="cc-gate">
+          <span>احتمال اجتياز بوابات الجدوى</span>
+          <strong>{fmtPct(mc.p_pass)}</strong>
+        </div>
+      </article>
+      <div className="cc-grid-2">
+        <Soon title="سيناريوهات ضغط إضافية" icon={<TrendingUp size={20} />} note="انخفاض مبيعات، ارتفاع رواتب/إيجار، تضخم — تُفعَّل مع محرك السيناريوهات الموسّع." />
+        <Soon title="تحليل الحساسية" icon={<BarChart3 size={20} />} note="أثر كل افتراض على الربح ونقطة التعادل — يتطلب مصفوفة الحساسية." />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* التوافق الاستراتيجي                                                  */
+/* ------------------------------------------------------------------ */
+
+function StrategySection({ overview }: { overview: ProjectOverview | null }) {
+  const sector = overview?.sector_intelligence;
+  return (
+    <SectionShell title="التوافق الاستراتيجي" crumb="التوافق الاستراتيجي">
+      {sector ? (
+        <article className="cc-card">
+          <h3><Target size={17} aria-hidden="true" /> موقع المشروع قطاعياً</h3>
+          <p className="cc-why">من تحليل القطاع في لقطتك المحفوظة.</p>
+          <div className="cc-row"><div className="cc-row__body"><b>القطاع</b><span>{overview!.project.sector}</span></div></div>
+        </article>
+      ) : <NeedData text="شغّل التحليل لعرض التوافق القطاعي." />}
+      <div className="cc-grid-2">
+        <Soon title="توافق رؤية 2030" icon={<Target size={20} />} note="درجة توافق مع مستهدفات الرؤية — تتطلب مصفوفة المستهدفات الرسمية." />
+        <Soon title="برامج الدعم والمبادرات" icon={<BadgeCheck size={20} />} note="منشآت، بنك التنمية، الصناديق — تتطلب دليل البرامج الرسمي." />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* الفرص الذكية                                                         */
+/* ------------------------------------------------------------------ */
+
+function OpportunitiesSection({ overview }: { overview: ProjectOverview | null }) {
+  return (
+    <SectionShell title="الفرص الذكية" crumb="الفرص الذكية">
+      {overview ? (
+        <article className="cc-card">
+          <h3><Lightbulb size={17} aria-hidden="true" /> من قراءة لقطتك</h3>
+          <p className="cc-why">مؤشرات مستمدة من بياناتك المحفوظة — ليست توصية نهائية.</p>
+          <div className="cc-row"><div className="cc-row__body"><b>احتمال الاجتياز {fmtPct(overview.monte_carlo.p_pass)}</b><span>كلما ارتفع، اتسع هامش المناورة أمام الفرص.</span></div></div>
+        </article>
+      ) : <NeedData text="شغّل التحليل لتظهر مؤشرات الفرص." />}
+      <div className="cc-grid-2">
+        <Soon title="اقتراح موقع/حي أفضل" icon={<MapPin size={20} />} note="يتطلب بيانات جغرافية وسوقية." />
+        <Soon title="منتج/خدمة إضافية وتوسّع" icon={<Lightbulb size={20} />} note="يتطلب محرك توصيات مرتبط ببيانات القطاع." />
+      </div>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* فهم القرار                                                           */
+/* ------------------------------------------------------------------ */
+
+function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
+  if (!overview) {
+    return (
+      <SectionShell title="فهم القرار" crumb="فهم القرار">
+        <NeedData text="لا يوجد قرار محفوظ لتفسيره بعد." />
+      </SectionShell>
+    );
+  }
+  return (
+    <SectionShell title="فهم القرار" crumb="فهم القرار">
+      <article className="cc-card">
+        <h3><FileText size={17} aria-hidden="true" /> لماذا هذا القرار؟</h3>
+        <p className="cc-reason">{overview.decision.reason}</p>
+        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict).label}</b><span>المرجع: {overview.snapshot.snapshot_id}</span></div></div>
+      </article>
+      <article className="cc-card">
+        <h3><BarChart3 size={17} aria-hidden="true" /> المؤشرات المؤثرة</h3>
+        <div className="cc-kpi-grid">
+          {overview.kpis.slice(0, 8).map((k: OutputEnvelope) => (
+            <div className="cc-kpi-cell" key={k.output_id}>
+              <span>{KPI_TITLES[k.output_id] ?? k.output_id}</span>
+              <strong>{typeof k.value === "number" ? (k.unit === "percent" ? fmtPct(k.value) : k.unit === "SAR" ? fmtSAR(k.value) : String(k.value)) : "—"}</strong>
+            </div>
+          ))}
+        </div>
+      </article>
+      <article className="cc-card">
+        <h3><Sparkles size={17} aria-hidden="true" /> تصويت الشخصيات السيادية الخمس</h3>
+        {overview.personas.map((p) => (
+          <div className="cc-row" key={p.persona_id}>
+            <div className="cc-row__body"><b>{p.metric}</b><span>{p.note}</span></div>
+            <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value)}</strong>
+          </div>
+        ))}
+        <p className="cc-why">الشخصيات تفسّر ولا تصوّت على الحكم — الحكم السيادي هو المرجع.</p>
+      </article>
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* تقاريري                                                              */
+/* ------------------------------------------------------------------ */
+
+function ReportsSection({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStage: CommandCenterProps["onOpenStage"] }) {
+  const withRuns = bundles.filter((b) => b.overview);
+  return (
+    <SectionShell title="تقاريري" crumb="تقاريري">
+      <p className="cc-why">مكتبة المشروع — كل تقرير مرتبط بلقطة ثابتة. تُفتح المخرجات من غرفة التقارير لكل مشروع.</p>
+      {withRuns.length ? withRuns.map((b) => (
+        <div className="cc-row" key={b.project.project_id}>
+          <Chip tone="go">{b.overview!.snapshot.snapshot_id.slice(-6)}</Chip>
+          <div className="cc-row__body">
+            <b>{b.project.name}</b>
+            <span>تقرير تنفيذي · دراسة جدوى · Decision Pack · PDF/DOCX/PPTX</span>
+          </div>
+          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(b.project.project_id, "snapshots")}>
+            فتح المخرجات <ArrowLeft size={13} aria-hidden="true" />
+          </button>
+        </div>
+      )) : <NeedData text="لا توجد لقطات محفوظة بعد. شغّل التحليل في أحد مشاريعك لإنشاء أول تقرير." />}
+    </SectionShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Attention list (derived from real data only)                         */
+/* ------------------------------------------------------------------ */
+
+function AttentionList({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStage: CommandCenterProps["onOpenStage"] }) {
+  const items: Array<{ id: string; pid: string; title: string; detail: string; tone: "warn" | "stop" | "dim"; stage: "evidence" | "readiness" | "decision" | "run" }> = [];
+  for (const b of bundles) {
+    for (const bl of (b.readiness?.blockers ?? []).slice(0, 2)) {
+      items.push({ id: `${b.project.project_id}:${bl.code}`, pid: b.project.project_id, title: `${b.project.name} — يحتاج استكمال جاهزية`, detail: bl.message, tone: "warn", stage: "readiness" });
+    }
+    const src = b.readiness?.steps.find((s) => s.step_id === "sources" && s.status !== "ready");
+    if (src) items.push({ id: `${b.project.project_id}:ev`, pid: b.project.project_id, title: `${b.project.name} — الأدلة غير مكتملة`, detail: src.message || "اربط دليلاً قبل التشغيل.", tone: "dim", stage: "evidence" });
+    if (b.overview?.decision.sovereign_verdict === "REVISE_AND_REASSESS") {
+      items.push({ id: `${b.project.project_id}:vd`, pid: b.project.project_id, title: `${b.project.name} — القرار يطلب مراجعة`, detail: "آخر حكم سيادي طلب المراجعة وإعادة التقييم.", tone: "stop", stage: "decision" });
+    }
+  }
+  const shown = items.slice(0, 4);
+  if (!shown.length) {
+    return (
+      <div className="cc-clear">
+        <CheckCircle2 size={19} aria-hidden="true" />
+        <span>لا شيء يحتاج انتباهاً الآن — مشاريعك على المسار.</span>
+      </div>
+    );
+  }
+  return (
+    <>
+      {shown.map((it) => (
+        <div className="cc-row" key={it.id}>
+          <Chip tone={it.tone}>{it.stage === "readiness" ? "جاهزية" : it.stage === "evidence" ? "أدلة" : "قرار"}</Chip>
+          <div className="cc-row__body"><b>{it.title}</b><span>{it.detail}</span></div>
+          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(it.pid, it.stage)}>
+            معالجة <ArrowLeft size={13} aria-hidden="true" />
+          </button>
+        </div>
+      ))}
+    </>
   );
 }
