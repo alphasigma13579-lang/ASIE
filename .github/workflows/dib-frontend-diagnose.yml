@@ -30,7 +30,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          pnpm build > /tmp/dib-build.log 2>&1
+          pnpm exec tsc -b --pretty false > /tmp/dib-ts.log 2>&1
           code=$?
-          tail -120 /tmp/dib-build.log
+          echo '--- TYPESCRIPT ERRORS ---'
+          grep -E 'error TS|src/(DIBWorkspace|dibApi|dibRegistry|main)|contracts\.dib' /tmp/dib-ts.log | head -80 || true
           exit $code
