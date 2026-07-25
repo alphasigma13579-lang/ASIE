@@ -21,19 +21,8 @@ jobs:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
 
     steps:
-      - name: Quiet checkout for diagnosis
-        working-directory: .
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git init -q .
-          git config init.defaultBranch main
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch -q --depth=1 origin "${GITHUB_REF}"
-          git checkout -q FETCH_HEAD
-
-      - name: Diagnose canonical API and output registry
-        run: python tools/audit_canonical_api_output.py
+      - name: Check out repository
+        uses: actions/checkout@v4
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
