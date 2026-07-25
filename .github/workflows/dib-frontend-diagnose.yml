@@ -26,12 +26,21 @@ jobs:
           cache: pnpm
           cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Concise TypeScript diagnostic
+      - name: Capture TypeScript diagnostic
+        id: typescript
+        continue-on-error: true
         shell: bash
         run: |
-          set +e
-          pnpm exec tsc -b --pretty false > /tmp/dib-ts.log 2>&1
+          pnpm exec tsc -b --pretty false > /tmp/dib-ts-full.log 2>&1
           code=$?
-          echo '--- TYPESCRIPT ERRORS ---'
-          grep -E 'error TS|src/(DIBWorkspace|dibApi|dibRegistry|main)|contracts\.dib' /tmp/dib-ts.log | head -80 || true
+          grep -E 'error TS|src/(DIBWorkspace|dibApi|dibRegistry|main)|contracts\.dib' /tmp/dib-ts-full.log | head -120 > /tmp/dib-ts-errors.txt || true
+          test -s /tmp/dib-ts-errors.txt || cp /tmp/dib-ts-full.log /tmp/dib-ts-errors.txt
           exit $code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dib-typescript-errors
+          path: /tmp/dib-ts-errors.txt
+          if-no-files-found: error
+      - name: Fail when TypeScript failed
+        if: steps.typescript.outcome == 'failure'
+        run: exit 1
