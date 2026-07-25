@@ -1,0 +1,36 @@
+name: DIB Frontend Diagnose
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dib-frontend-diagnose.yml
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/src/**
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Concise TypeScript diagnostic
+        shell: bash
+        run: |
+          set +e
+          pnpm build > /tmp/dib-build.log 2>&1
+          code=$?
+          tail -120 /tmp/dib-build.log
+          exit $code
