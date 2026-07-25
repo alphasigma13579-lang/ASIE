@@ -1,0 +1,134 @@
+{
+  "register_id": "ASIE-CANONICAL-DOCUMENT-REGISTER-v1.1.0",
+  "status": "CONTROLLED_CANDIDATE",
+  "effective_date": "PENDING_MERGE",
+  "timezone": "Asia/Riyadh",
+  "supersedes": "ASIE-CANONICAL-DOCUMENT-REGISTER-v1.0.0",
+  "authority_order": [
+    "FINAL_BINDING",
+    "FROZEN_OR_ADOPTED_BASELINE",
+    "EXPLICIT_SUPERSESSION",
+    "CURRENT_AS_BUILT",
+    "HISTORICAL_RECORD",
+    "DRAFT_CANDIDATE_REFERENCE_ARCHIVE"
+  ],
+  "canonical_documents": [
+    {
+      "document_id": "AAS-RUNTIME-FREEZE",
+      "version": "1.0",
+      "path": "docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json",
+      "status": "FROZEN_BINDING",
+      "change_gate": "ACR"
+    },
+    {
+      "document_id": "AIA-01",
+      "version": "1.0.0",
+      "path": "docs/AIA-01-Intelligence-Constitution-v1.0.0.md",
+      "status": "FINAL_BINDING",
+      "change_gate": "ICCR"
+    },
+    {
+      "document_id": "AIA-02",
+      "version": "1.2.1",
+      "path": "docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1.md",
+      "status": "FINAL_ADOPTED_CONTROLLED_BASELINE",
+      "change_gate": "IACR_OR_ACR_IF_AAS_IMPACT"
+    },
+    {
+      "document_id": "ASIE-CANONICAL-TERMINOLOGY",
+      "version": "1.0.0",
+      "path": "docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md",
+      "machine_readable_path": "registry/asie-canonical-terminology.v1.json",
+      "status": "CONTROLLED_BASELINE",
+      "validation_tool": "tools/audit_canonical_terminology.py",
+      "validation_test": "tests/test_canonical_terminology.py"
+    },
+    {
+      "document_id": "ASIE-AS-BUILT",
+      "version": "r11-local-core-2026-07-21",
+      "path": "docs/ASIE-Complete-System-Architecture-2026-07-21.md",
+      "status": "CURRENT_AS_BUILT_DESCRIPTION"
+    },
+    {
+      "document_id": "ASIE-PROJECT-STATUS",
+      "version": "2026-07-21",
+      "path": "docs/ASIE-Project-Status-Assessment-2026-07-21.md",
+      "status": "CURRENT_STATUS_ASSESSMENT"
+    },
+    {
+      "document_id": "ASIE-PRODUCT-READINESS-MASTER-PLAN",
+      "version": "2026-07-19",
+      "path": "docs/ASIE-Product-Readiness-Master-Plan-2026-07-19.md",
+      "status": "ACTIVE_MASTER_PLAN"
+    }
+  ],
+  "contract_authority": {
+    "runtime_registry": "backend/aas_registry.py",
+    "complete_machine_readable_inventory": "registry/asie-canonical-terminology.v1.json",
+    "categories": {
+      "aas_infrastructure_contracts": [
+        "aas.kernel.boot.v1",
+        "aas.registry.snapshot.v1",
+        "aas.heart.status.v1",
+        "aas.heart.assignment.v1",
+        "aas.bus.status.v1",
+        "aas.bus.message.v1",
+        "aas.socket.enforcement.v1",
+        "aas.module.execution.v1",
+        "aas.sealed.module.output.v1"
+      ],
+      "workflow_contracts": [
+        "ProjectRunHttpRequest.v1",
+        "project.run.request.v1",
+        "project.run.workflow.v1",
+        "project.run.completed.v1",
+        "snapshot.projection.support.v1",
+        "snapshot.assemble.v1"
+      ],
+      "product_command_contracts": [
+        "finance.calculate.v1",
+        "evidence.ledger.build.v1",
+        "sector.intelligence.build.v1",
+        "decision.council.evaluate.v1",
+        "risk.register.build.v1",
+        "execution.plan.build.v1"
+      ],
+      "product_result_contracts": [
+        "finance.result.v1",
+        "evidence.ledger.v1",
+        "sector.intelligence.v1",
+        "decision.council.v1",
+        "risk.register.v1",
+        "risk.advisory.summary.v1",
+        "execution.plan.v1"
+      ],
+      "projection_contracts": [
+        "decision.pack.project.v1",
+        "decision.pack.v1",
+        "report.snapshot.project.v1",
+        "report.snapshot.v1"
+      ],
+      "disabled_shell_contracts": [
+        "ai.integration.request.v1",
+        "ai.integration.result.v1"
+      ]
+    },
+    "planned_contracts": "DEFINED_NOT_IMPLEMENTED unless registered after an approved change gate"
+  },
+  "known_terminology_controls": [
+    {
+      "identifier": "ProjectRunHttpRequest.v1",
+      "status": "LEGACY_FROZEN_IDENTIFIER",
+      "rename_policy": "NEW_MAJOR_VERSION_ONLY"
+    },
+    {
+      "concept": "AI Integration",
+      "canonical_name": "AI Integration Shell",
+      "legacy_alias": "AI Integration Module"
+    },
+    {
+      "concept": "Engine versus Module",
+      "rule": "Engine is the canonical architectural owner; Module is the runtime registration role"
+    }
+  ]
+}
