@@ -1,0 +1,71 @@
+name: Apply DIB Complete Runtime Payload
+
+on:
+  push:
+    branches:
+      - feat/dib-complete-runtime-v1
+    paths:
+      - .github/workflows/apply-dib-complete-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/dib-complete-runtime-v1
+          fetch-depth: 0
+
+      - name: Restore current main and apply complete DIB payload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+
+          # Undo stale replacements inherited from the old unmerged PR before
+          # applying the additive DIB implementation on top of current main.
+          git checkout origin/main -- \
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/asie_local_api.py \
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/finance_engine.py \
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/repository.py \
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/src/App.tsx \
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/src/contracts.ts
+
+          fetch_chunk() {
+            local sha="$1"
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/${sha}" \
+            | python -c 'import sys,json,base64; d=json.load(sys.stdin); sys.stdout.write(base64.b64decode(d["content"]).decode())'
+          }
+
+          : > /tmp/dib-complete.tar.gz.b64
+          fetch_chunk ad7d4c63ad43690b02a0b0a4d1f9e4ff92794a46 >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 93f480f2e20f408e9d13f26ef23df44fd0d1b5af >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 2f012e9809d76457c54b1558182f1121f9c7d39f >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 1373faf66c5571d250d7a1df49b05f622920245c >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 5218fb63cab59caaad99b01f16ea42b42925be46 >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk d0054c3b44473914aa45ca2c73f1a02c4e5a3618 >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 0d8378dafcb1232aa614b0b254db9e0d4fa098a5 >> /tmp/dib-complete.tar.gz.b64
+          fetch_chunk 4c2783203598d5f25737b88b55ea01693d274347 >> /tmp/dib-complete.tar.gz.b64
+
+          test "$(wc -c < /tmp/dib-complete.tar.gz.b64)" -eq 62892
+          base64 --decode /tmp/dib-complete.tar.gz.b64 > /tmp/dib-complete.tar.gz
+          tar -tzf /tmp/dib-complete.tar.gz >/dev/null
+          tar -xzf /tmp/dib-complete.tar.gz -C .
+
+          rm -f ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/DIB-COMPLETE-RUNTIME-WORKING.md
+          rm -f .github/workflows/apply-dib-complete-runtime.yml
+
+          git config user.name "ASIE DIB Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(dib): implement complete governed input blueprint runtime"
+          git push origin HEAD:feat/dib-complete-runtime-v1
