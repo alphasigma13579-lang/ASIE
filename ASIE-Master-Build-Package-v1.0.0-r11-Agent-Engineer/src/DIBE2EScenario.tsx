@@ -125,7 +125,7 @@ export function DIBE2EScenario() {
   return (
     <main dir="rtl" className="dib-workspace">
       <section className="cc-card dib-hero">
-        <p className="eyebrow">{DIB_E2E_SCENARIO_UI_ID}</p>
+        <p className="eyebrow">DIB Completion Package G · {DIB_E2E_SCENARIO_UI_ID}</p>
         <h1>سيناريو DIB الكامل · End-to-End</h1>
         <p>
           هذه الصفحة تختبر تسلسل DIB الكامل من Session إلى Blueprint ثم Manifest وValidation وControlled Finance وSnapshot Projection Handoff.
