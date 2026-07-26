@@ -13,6 +13,8 @@ import {
   Target,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { fetchProjects } from "./api";
+import type { Project, ProjectInputs } from "./contracts";
 import {
   DIB_UI_LIVE_API_WIRING_ID,
   type DIBApprovedManifestPayload,
@@ -35,6 +37,7 @@ import {
 } from "./dibApi";
 
 const DIB_UI_ID = "DIB-LIVE-002E-ARABIC-UI-WORKSPACE-v1";
+const DIB_UI_PROJECT_CONTEXT_BINDING_ID = "DIB-LIVE-002K-USER-PROJECT-CONTEXT-BINDING-v1";
 
 const dibApiRoutes = [
   "GET /api/dib/status",
@@ -55,63 +58,83 @@ const forbiddenBoundaries = [
   "لا قبول raw prompt أو مفاتيح API",
 ] as const;
 
-const initialItems: DIBBlueprintItem[] = [
-  {
-    input_key: "startup_cost",
-    label: "تكلفة التأسيس",
-    value_state: "USER_PROVIDED",
-    value: 155000,
-    evidence_refs: ["ui-live-manual:startup_cost"],
-    source_type: "user_input",
-    value_source: "user_input",
-    review_status: "draft",
-    required: true,
-  },
-  {
-    input_key: "monthly_fixed_cost",
-    label: "التكاليف الشهرية الثابتة",
-    value_state: "USER_PROVIDED",
-    value: 36000,
-    evidence_refs: ["ui-live-manual:monthly_fixed_cost"],
-    source_type: "user_input",
-    value_source: "user_input",
-    review_status: "draft",
-    required: true,
-  },
-  {
-    input_key: "unit_price",
-    label: "سعر الوجبة",
-    value_state: "USER_PROVIDED",
-    value: 18,
-    evidence_refs: ["ui-live-manual:unit_price"],
-    source_type: "user_input",
-    value_source: "user_input",
-    review_status: "draft",
-    required: true,
-  },
-  {
-    input_key: "variable_cost",
-    label: "تكلفة المواد للوجبة",
-    value_state: "USER_PROVIDED",
-    value: 7,
-    evidence_refs: ["ui-live-manual:variable_cost"],
-    source_type: "user_input",
-    value_source: "user_input",
-    review_status: "draft",
-    required: true,
-  },
-  {
-    input_key: "monthly_units",
-    label: "عدد الطلبات الشهري",
-    value_state: "USER_PROVIDED",
-    value: 4200,
-    evidence_refs: ["ui-live-manual:monthly_units"],
-    source_type: "user_input",
-    value_source: "user_input",
-    review_status: "draft",
-    required: true,
-  },
-];
+const requiredFinanceInputKeys = ["startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "monthly_units"] as const;
+const recommendedProjectInputKeys = ["capex_equipment", "rent_monthly", "payroll_monthly", "utilities_monthly"] as const;
+
+const inputLabels: Record<string, string> = {
+  startup_cost: "تكلفة التأسيس",
+  monthly_fixed_cost: "التكاليف الشهرية الثابتة",
+  unit_price: "سعر الوحدة / الوجبة",
+  variable_cost: "التكلفة المتغيرة للوحدة",
+  monthly_units: "عدد الوحدات الشهري",
+  capex_equipment: "معدات المشروع",
+  rent_monthly: "الإيجار الشهري",
+  payroll_monthly: "الرواتب الشهرية",
+  utilities_monthly: "المرافق الشهرية",
+};
+
+const currencyInputKeys = new Set(["startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "capex_equipment", "rent_monthly", "payroll_monthly", "utilities_monthly"]);
+
+function hashProjectIdFromLocation(): string {
+  try {
+    const fromSearch = new URLSearchParams(window.location.search).get("project_id");
+    if (fromSearch?.trim()) return fromSearch.trim();
+    const [, hashQuery = ""] = window.location.hash.split("?", 2);
+    const fromHash = new URLSearchParams(hashQuery).get("project_id");
+    return fromHash?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function asRecord(inputs: ProjectInputs): Record<string, unknown> {
+  return inputs as Record<string, unknown>;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(numeric) ? numeric : undefined;
+  }
+  return undefined;
+}
+
+function itemStateForProjectInput(inputs: ProjectInputs, inputKey: string): DIBItemState {
+  const rawInputs = asRecord(inputs);
+  if (!(inputKey in rawInputs)) return "UNKNOWN";
+  const value = asNumber(rawInputs[inputKey]);
+  if (value === undefined) return "UNKNOWN";
+  if (value === 0) return "INTENTIONAL_ZERO";
+  return "USER_PROVIDED";
+}
+
+function projectInputItem(project: Project, inputKey: string, required: boolean): DIBBlueprintItem {
+  const rawInputs = asRecord(project.inputs);
+  const value = asNumber(rawInputs[inputKey]);
+  const state = itemStateForProjectInput(project.inputs, inputKey);
+  return {
+    input_key: inputKey,
+    label: inputLabels[inputKey] ?? inputKey,
+    value_state: state,
+    value,
+    unit: inputKey === "monthly_units" ? "unit" : currencyInputKeys.has(inputKey) ? "SAR" : "unit",
+    evidence_refs: [`project_context:${project.project_id}:${inputKey}`],
+    source_type: "project_context",
+    value_source: "asie_project_inputs",
+    review_status: state === "UNKNOWN" ? "draft" : "approved",
+    required,
+    reason: state === "UNKNOWN" ? "missing_from_user_project_context" : "bound_from_user_project_context",
+  };
+}
+
+function itemsFromProject(project: Project | null): DIBBlueprintItem[] {
+  if (!project) return [];
+  return [
+    ...requiredFinanceInputKeys.map((key) => projectInputItem(project, key, true)),
+    ...recommendedProjectInputKeys.map((key) => projectInputItem(project, key, false)),
+  ];
+}
 
 function formatCurrency(value: number | string | null | undefined, unit?: string): string {
   if (typeof value !== "number") return value ? String(value) : "غير محدد";
@@ -146,20 +169,30 @@ function eventLabel(eventType: string): string {
   return labels[eventType] ?? eventType;
 }
 
-function projectProfile() {
+function projectProfileFromProject(project: Project) {
+  const inputs = project.inputs;
   return {
-    project_id: "project_dib_workspace_live_shawarma",
-    name: "محل شاورما — DIB Live API",
-    sector: "Food Service",
-    activity: "shawarma shop",
-    location_country: "SA",
-    location_scope: "city",
-    intake_mode: "manual_ui_live_api",
+    project_id: project.project_id,
+    name: project.name,
+    sector: project.sector,
+    jurisdiction: project.jurisdiction,
+    depth_profile: project.depth_profile,
+    activity: inputs.activity_description || project.name,
+    primary_sector_id: inputs.primary_sector_id || project.sector,
+    location_country: inputs.location_country || "SA",
+    location_region: inputs.location_region || "",
+    location_city: inputs.location_city || "",
+    location_district: inputs.location_district || "",
+    location_scope: inputs.location_scope || "project_context",
+    intake_mode: inputs.intake_mode || "project_context_binding",
+    source: "asie_user_project_context",
   };
 }
 
 export function DIBWorkspace() {
-  const [items, setItems] = useState<DIBBlueprintItem[]>(initialItems);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [items, setItems] = useState<DIBBlueprintItem[]>([]);
   const [status, setStatus] = useState<DIBStatusPayload | null>(null);
   const [session, setSession] = useState<DIBSessionRecord | null>(null);
   const [blueprint, setBlueprint] = useState<DIBPersistedEntity<DIBBlueprintPayload> | null>(null);
@@ -171,20 +204,28 @@ export function DIBWorkspace() {
 
   useEffect(() => {
     void loadDIBStatus();
+    void loadUserProjects();
   }, []);
 
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.project_id === selectedProjectId) ?? projects[0] ?? null,
+    [projects, selectedProjectId]
+  );
+  const boundProjectProfile = selectedProject ? projectProfileFromProject(selectedProject) : null;
   const visibleItems = blueprint?.payload.items ?? session?.current_blueprint?.items ?? items;
   const approvedManifest = manifest?.payload ?? session?.approved_manifest ?? null;
   const gatePayload = validationGate?.payload ?? session?.validation_gate ?? null;
   const sessionStatus = session?.status ?? "not_started";
   const approvedCount = visibleItems.filter((item) => item.value_state !== "UNKNOWN" && item.value_state !== "REJECTED").length;
   const blockedCount = visibleItems.filter((item) => item.value_state === "UNKNOWN" || item.value_state === "REJECTED").length;
-  const canSaveBlueprint = Boolean(session && !operationBusy);
+  const canBeginSession = Boolean(selectedProject && !operationBusy);
+  const canSaveBlueprint = Boolean(session && selectedProject && !operationBusy);
   const canApproveManifest = Boolean(session && (blueprint || session.current_blueprint) && !operationBusy);
   const canRunGate = Boolean(session && approvedManifest?.status === "approved" && !operationBusy);
 
   const timeline = useMemo(
     () => [
+      { label: "User Project Context", status: selectedProject ? selectedProject.project_id : "لا يوجد مشروع", done: Boolean(selectedProject) },
       { label: "DIB Session", status: sessionStatus, done: Boolean(session) },
       {
         label: "Dynamic Input Blueprint",
@@ -202,7 +243,7 @@ export function DIBWorkspace() {
         done: gatePayload?.status === "passed",
       },
     ],
-    [approvedManifest?.status, blueprint, gatePayload?.status, session, sessionStatus]
+    [approvedManifest?.status, blueprint, gatePayload?.status, selectedProject, session, sessionStatus]
   );
 
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
@@ -223,6 +264,32 @@ export function DIBWorkspace() {
     if (result) setStatus(result);
   }
 
+  async function loadUserProjects() {
+    const loaded = await withOperation("load-projects", fetchProjects);
+    if (!loaded) return;
+    setProjects(loaded);
+    const requestedProjectId = hashProjectIdFromLocation();
+    const nextProject = loaded.find((project) => project.project_id === requestedProjectId) ?? loaded[0] ?? null;
+    setSelectedProjectId(nextProject?.project_id ?? "");
+    setItems(itemsFromProject(nextProject));
+    setSession(null);
+    setBlueprint(null);
+    setManifest(null);
+    setValidationGate(null);
+    setEvents([]);
+  }
+
+  function selectProject(projectId: string) {
+    const nextProject = projects.find((project) => project.project_id === projectId) ?? null;
+    setSelectedProjectId(nextProject?.project_id ?? "");
+    setItems(itemsFromProject(nextProject));
+    setSession(null);
+    setBlueprint(null);
+    setManifest(null);
+    setValidationGate(null);
+    setEvents([]);
+  }
+
   async function refreshSession(nextSessionId = session?.session_id) {
     if (!nextSessionId) return;
     const loaded = await fetchDIBSession(nextSessionId);
@@ -234,7 +301,8 @@ export function DIBWorkspace() {
   }
 
   async function beginSession() {
-    const started = await withOperation("start-session", () => startDIBSession(projectProfile()));
+    if (!boundProjectProfile) return;
+    const started = await withOperation("start-session", () => startDIBSession(boundProjectProfile));
     if (!started) return;
     setSession(started);
     setBlueprint(null);
@@ -247,9 +315,9 @@ export function DIBWorkspace() {
     if (!session) return;
     const saved = await withOperation("save-blueprint", () =>
       saveDIBBlueprint(session.session_id, {
-        source: "dib_ui_live_api",
+        source: "dib_ui_user_project_context_binding",
         intake_payload: {
-          file_name: "dib-ui-live-manual-table",
+          file_name: `project-context-${selectedProject?.project_id ?? session.project_id}`,
           rows: items.map((item) => ({ input_key: item.input_key, label: item.label, value: item.value ?? "" })),
         },
       })
@@ -291,8 +359,10 @@ export function DIBWorkspace() {
         return {
           ...item,
           value: value === "" || Number.isNaN(numeric) ? undefined : numeric,
-          value_state: value === "" ? "UNKNOWN" : "USER_PROVIDED",
+          value_state: value === "" ? "UNKNOWN" : numeric === 0 ? "INTENTIONAL_ZERO" : "USER_PROVIDED",
           review_status: value === "" ? "draft" : "approved",
+          source_type: "project_context_override",
+          value_source: "user_project_context_override",
         };
       })
     );
@@ -306,8 +376,8 @@ export function DIBWorkspace() {
               ...item,
               value_state: item.value === 0 ? "INTENTIONAL_ZERO" : "USER_PROVIDED",
               review_status: "approved",
-              value_source: "user_input",
-              source_type: "user_input",
+              value_source: item.value_source || "asie_project_inputs",
+              source_type: item.source_type || "project_context",
             }
           : item
       )
@@ -330,18 +400,19 @@ export function DIBWorkspace() {
   }
 
   return (
-    <main id="main-content" className="app-shell dib-workspace" dir="rtl" data-ui-id={DIB_UI_LIVE_API_WIRING_ID} data-parent-ui-id={DIB_UI_ID}>
+    <main id="main-content" className="app-shell dib-workspace" dir="rtl" data-ui-id={DIB_UI_PROJECT_CONTEXT_BINDING_ID} data-parent-ui-id={DIB_UI_ID} data-live-api-id={DIB_UI_LIVE_API_WIRING_ID}>
       <section className="page-intro">
-        <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB-LIVE-002J · واجهة عربية متصلة فعليًا بالـAPI</p>
+        <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB-LIVE-002K · ربط DIB بسياق مشروع المستخدم</p>
         <h1>مساحة Dynamic Input Blueprint</h1>
         <p>
-          هذه الواجهة تستدعي مسارات <code>/api/dib/...</code> عبر طبقة API الأمامية، وترسل Bearer token وبيئة المنظمة تلقائيًا. لا تشغل الحساب المالي، ولا تنشئ Snapshot، ولا تستخدم AI أو شبكة خارجية.
+          هذه الواجهة تقرأ مشاريع ASIE الفعلية من <code>/api/projects</code>، وتبدأ DIB Session باستخدام <code>project_id</code> وبيانات المشروع المختار. لا تشغل الحساب المالي، ولا تنشئ Snapshot، ولا تستخدم AI أو شبكة خارجية.
         </p>
         {errorMessage ? <p className="error-banner"><AlertTriangle size={16} aria-hidden="true" /> {errorMessage}</p> : null}
         <div className="button-row">
           <a className="secondary-button" href="#dashboard"><ArrowLeft size={16} aria-hidden="true" /> العودة للمنصة</a>
           <button type="button" className="secondary-button" onClick={() => void loadDIBStatus()} disabled={Boolean(operationBusy)}><RefreshCcw size={16} aria-hidden="true" /> تحديث حالة DIB</button>
-          <button type="button" className="primary-button" onClick={() => void beginSession()} disabled={Boolean(operationBusy)}><Send size={16} aria-hidden="true" /> بدء Session عبر API</button>
+          <button type="button" className="secondary-button" onClick={() => void loadUserProjects()} disabled={Boolean(operationBusy)}><RefreshCcw size={16} aria-hidden="true" /> تحديث المشاريع</button>
+          <button type="button" className="primary-button" onClick={() => void beginSession()} disabled={!canBeginSession}><Send size={16} aria-hidden="true" /> بدء Session للمشروع</button>
           <button type="button" disabled={!canSaveBlueprint} onClick={() => void persistBlueprint()}>حفظ Blueprint عبر API</button>
           <button type="button" disabled={!canApproveManifest} onClick={() => void persistManifest()}>اعتماد Manifest عبر API</button>
           <button type="button" disabled={!canRunGate} onClick={() => void persistValidationGate()}>تشغيل Validation Gate عبر API</button>
@@ -349,10 +420,33 @@ export function DIBWorkspace() {
         </div>
       </section>
 
+      <section className="panel" aria-label="سياق مشروع المستخدم">
+        <div className="section-title"><Target size={20} aria-hidden="true" /><h2>المشروع المرتبط</h2></div>
+        {projects.length > 0 ? (
+          <div className="button-row">
+            <label htmlFor="dib-project-select">اختر مشروع ASIE</label>
+            <select id="dib-project-select" value={selectedProject?.project_id ?? ""} onChange={(event) => selectProject(event.target.value)} disabled={Boolean(operationBusy || session)}>
+              {projects.map((project) => (
+                <option key={project.project_id} value={project.project_id}>{project.name} · {project.project_id}</option>
+              ))}
+            </select>
+          </div>
+        ) : <p className="muted">لا توجد مشاريع متاحة. أنشئ مشروعًا أولًا من منصة ASIE ثم عد إلى هذه المساحة.</p>}
+        {selectedProject ? (
+          <ul className="lineage-list">
+            <li>project_id: <code>{selectedProject.project_id}</code></li>
+            <li>name: {selectedProject.name}</li>
+            <li>sector: {selectedProject.sector}</li>
+            <li>jurisdiction: {selectedProject.jurisdiction}</li>
+            <li>intake_mode: <code>{selectedProject.inputs.intake_mode ?? "غير محدد"}</code></li>
+          </ul>
+        ) : null}
+      </section>
+
       <section className="dashboard-grid" aria-label="مؤشرات DIB">
         <article className="metric-card"><span>حالة الجلسة</span><strong>{sessionStatus}</strong><small>{session?.session_id ?? "لم تبدأ بعد"}</small></article>
+        <article className="metric-card"><span>المشروع</span><strong>{selectedProject ? "مرتبط" : "غير مرتبط"}</strong><small>{selectedProject?.project_id ?? "لا يوجد project_id"}</small></article>
         <article className="metric-card"><span>البنود القابلة للـManifest</span><strong>{approvedCount.toLocaleString("ar-SA")}</strong><small>تدخل في Approved Input Manifest فقط</small></article>
-        <article className="metric-card"><span>البنود المحجوبة</span><strong>{blockedCount.toLocaleString("ar-SA")}</strong><small>تظهر كـblockers عند الاعتماد</small></article>
         <article className="metric-card"><span>Gateway</span><strong>{status?.local_gateway_integration_id ? "Sidecar" : "status فقط"}</strong><small>finance_wiring_enabled=false</small></article>
       </section>
 
@@ -370,13 +464,13 @@ export function DIBWorkspace() {
       </section>
 
       <section className="panel" aria-label="بنود Dynamic Input Blueprint">
-        <div className="section-title"><Target size={20} aria-hidden="true" /><h2>بنود Blueprint</h2></div>
+        <div className="section-title"><Target size={20} aria-hidden="true" /><h2>بنود Blueprint من سياق المشروع</h2></div>
         <div className="remediation-list">
           {items.map((item) => (
             <article key={item.input_key}>
               <strong>{item.label}</strong>
               <span>{item.input_key} · {arabicState(item.value_state)} · {formatCurrency(item.value, item.unit)}</span>
-              <small>{(item.evidence_refs ?? ["ui-live-manual"]).join(" · ")}</small>
+              <small>{(item.evidence_refs ?? ["project_context"]).join(" · ")}</small>
               <div className="button-row">
                 <input aria-label={`قيمة ${item.label}`} type="number" value={item.value ?? ""} onChange={(event) => updateItemValue(item.input_key, event.target.value)} />
                 <button type="button" onClick={() => approveItem(item.input_key)}><CheckCircle2 size={15} aria-hidden="true" /> اعتماد البند</button>
@@ -384,6 +478,7 @@ export function DIBWorkspace() {
               </div>
             </article>
           ))}
+          {items.length === 0 ? <p className="muted">اختر مشروعًا حتى يتم توليد بنود Blueprint من مدخلاته.</p> : null}
         </div>
       </section>
 
@@ -437,13 +532,12 @@ export function DIBWorkspace() {
         </article>
       </section>
 
-      <section className="panel" aria-label="أحداث DIB">
-        <div className="section-title"><RefreshCcw size={20} aria-hidden="true" /><h2>DIB Events</h2></div>
-        {events.length ? (
-          <ul className="lineage-list">
-            {events.map((event) => <li key={event.event_id}>{eventLabel(event.event_type)} · <code>{event.payload_hash.slice(0, 12)}</code></li>)}
-          </ul>
-        ) : <p className="muted">لا توجد أحداث بعد.</p>}
+      <section className="panel" aria-label="سجل أحداث DIB">
+        <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>أحداث DIB</h2></div>
+        <ul className="lineage-list">
+          {events.map((event) => <li key={event.event_id}>{eventLabel(event.event_type)} · <code>{event.payload_hash}</code></li>)}
+        </ul>
+        {events.length === 0 ? <p className="muted">لا توجد أحداث بعد.</p> : null}
       </section>
     </main>
   );
