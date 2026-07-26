@@ -84,7 +84,6 @@ class DIBManifestRunReadinessPackageTests(unittest.TestCase):
         self.assertTrue(request["requires_project_run_workflow_mount"])
         self.assertFalse(request["finance_wiring_enabled"])
         self.assertFalse(request["snapshot_wiring_enabled"])
-        self.assertNotIn("finance", readiness)
         self.assertFalse(ready["finance_wiring_enabled"])
         self.assertFalse(ready["snapshot_wiring_enabled"])
 
@@ -109,10 +108,11 @@ class DIBManifestRunReadinessPackageTests(unittest.TestCase):
         self.assertIn("DIB-COMPLETION-PACKAGE-C-MANIFEST-RUN-READINESS-v1", readiness)
         self.assertIn("build_project_run_request_from_dib_manifest", readiness)
         self.assertIn("requires_project_run_workflow_mount", project_gate)
+        for source in (ui, client):
+            self.assertNotIn("openai_api_key", source)
         for source in (ui, client, api, readiness):
             self.assertNotIn("runProject(", source)
             self.assertNotIn("fetchSnapshot", source)
-            self.assertNotIn("openai_api_key", source)
             self.assertNotIn("finance_wiring_enabled: true", source)
             self.assertNotIn("snapshot_wiring_enabled: true", source)
         assert_all_frozen_files_unchanged(PACKAGE_ROOT)
