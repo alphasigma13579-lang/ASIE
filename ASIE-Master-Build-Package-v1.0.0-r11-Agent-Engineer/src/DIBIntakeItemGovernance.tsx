@@ -21,6 +21,12 @@ const forbiddenBoundaries = [
   "لا قبول raw prompt أو مفاتيح API أو ملف خام",
 ] as const;
 
+const packageBRoutes = [
+  "POST /api/dib/sessions/{session_id}/template-registry",
+  "POST /api/dib/sessions/{session_id}/intake-items",
+  "POST /api/dib/sessions/{session_id}/item-decisions",
+] as const;
+
 function projectProfileFromProject(project: Project): Record<string, unknown> {
   const inputs = project.inputs;
   return {
@@ -216,9 +222,7 @@ export function DIBIntakeItemGovernance() {
         <article className="panel">
           <div className="section-title"><Database size={20} aria-hidden="true" /><h2>مسارات Package B</h2></div>
           <ul className="lineage-list">
-            <li><code>POST /api/dib/sessions/{session_id}/template-registry</code></li>
-            <li><code>POST /api/dib/sessions/{session_id}/intake-items</code></li>
-            <li><code>POST /api/dib/sessions/{session_id}/item-decisions</code></li>
+            {packageBRoutes.map((route) => <li key={route}><code>{route}</code></li>)}
           </ul>
         </article>
         <article className="panel">
