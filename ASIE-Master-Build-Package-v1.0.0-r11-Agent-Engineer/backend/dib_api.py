@@ -45,7 +45,6 @@ FORBIDDEN_DIB_API_TRUE_FLAGS = frozenset(
 DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "GET", "path": "/api/dib/status", "purpose": "Read DIB API status and disabled wiring flags."},
     {"method": "POST", "path": "/api/dib/sessions", "purpose": "Start a DIB session from a governed project profile."},
-    {"method": "GET", "path": "/api/dib/sessions", "purpose": "List resumable DIB sessions for one ASIE project using project_id query."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}", "purpose": "Load a persisted DIB session."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/blueprints", "purpose": "Build or save a Dynamic Input Blueprint."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/approved-manifests", "purpose": "Build or save an Approved Input Manifest."},
