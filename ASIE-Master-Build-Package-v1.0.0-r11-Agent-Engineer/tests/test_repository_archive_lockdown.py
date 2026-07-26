@@ -45,7 +45,8 @@ class RepositoryArchiveLockdownTests(unittest.TestCase):
         for source in (root_agents, package_agents):
             self.assertIn("Archive lockdown", source)
             self.assertIn("docs/reference", source)
-            self.assertIn("not current source" if source is root_agents else "provenance only", source)
+            self.assertIn("provenance only", source)
+            self.assertIn("DANGEROUS_DUPLICATE" if source is root_agents else "If an archived file conflicts", source)
 
     def test_live_backend_and_frontend_do_not_reference_archive_locked_zones(self) -> None:
         offenders: list[str] = []
