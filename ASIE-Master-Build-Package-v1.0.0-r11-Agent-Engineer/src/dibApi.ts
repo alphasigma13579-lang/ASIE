@@ -5,6 +5,7 @@ export const DIB_SESSION_CONTINUITY_UI_ID = "DIB-COMPLETION-PACKAGE-A-SESSION-CO
 export const DIB_INTAKE_ITEM_GOVERNANCE_UI_ID = "DIB-COMPLETION-PACKAGE-B-INTAKE-ITEM-GOVERNANCE-v1";
 export const DIB_MANIFEST_RUN_READINESS_UI_ID = "DIB-COMPLETION-PACKAGE-C-MANIFEST-RUN-READINESS-v1";
 export const DIB_CONTROLLED_FINANCE_WIRING_UI_ID = "DIB-COMPLETION-PACKAGE-D-CONTROLLED-FINANCE-WIRING-v1";
+export const DIB_SNAPSHOT_PROJECTION_HANDOFF_UI_ID = "DIB-COMPLETION-PACKAGE-E-SNAPSHOT-PROJECTION-HANDOFF-v1";
 
 async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -52,6 +53,7 @@ export interface DIBStatusPayload {
   intake_item_governance_id?: string;
   manifest_run_readiness_id?: string;
   controlled_finance_wiring_id?: string;
+  snapshot_projection_handoff_id?: string;
   status: string;
   route_count: number;
   routes: DIBRouteRef[];
@@ -253,6 +255,38 @@ export interface DIBControlledFinanceResponse {
   [key: string]: unknown;
 }
 
+export interface DIBSnapshotProjectionHandoffPayload {
+  snapshot_projection_handoff_id: string;
+  contract_id: string;
+  status: "prepared" | "blocked" | string;
+  project_id: string;
+  session_id: string;
+  scenario_id: string;
+  run_id?: string;
+  planned_snapshot_id?: string;
+  lineage?: Record<string, unknown> | null;
+  projection_support?: Record<string, unknown> | null;
+  controlled_finance_reference?: Record<string, unknown> | null;
+  blockers: Array<{ code: string; severity: string; message: string }>;
+  ready_for_snapshot_projection_handoff: boolean;
+  sealed_envelope_created: boolean;
+  snapshot_assembly_mount: string;
+  project_run_workflow_mount: string;
+  input_source: string;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export interface DIBSnapshotProjectionHandoffResponse {
+  snapshot_projection_handoff: DIBSnapshotProjectionHandoffPayload;
+  snapshot_projection_handoff_prepared: boolean;
+  sealed_envelope_created: boolean;
+  snapshot_mutation: boolean;
+  finance_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
 export async function fetchDIBStatus(): Promise<DIBStatusPayload> {
   const response = await requestDibJson<{ dib_api?: DIBStatusPayload; status?: DIBStatusPayload }>("/api/dib/status");
   return response.dib_api ?? response.status ?? (response as unknown as DIBStatusPayload);
@@ -338,6 +372,16 @@ export async function executeDIBControlledFinance(
   scenarioId = "baseline"
 ): Promise<DIBControlledFinanceResponse> {
   return requestDibJson<DIBControlledFinanceResponse>(`/api/dib/sessions/${sessionId}/controlled-finance`, {
+    method: "POST",
+    body: JSON.stringify({ scenario_id: scenarioId }),
+  });
+}
+
+export async function buildDIBSnapshotProjectionHandoff(
+  sessionId: string,
+  scenarioId = "baseline"
+): Promise<DIBSnapshotProjectionHandoffResponse> {
+  return requestDibJson<DIBSnapshotProjectionHandoffResponse>(`/api/dib/sessions/${sessionId}/snapshot-projection-handoff`, {
     method: "POST",
     body: JSON.stringify({ scenario_id: scenarioId }),
   });
