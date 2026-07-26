@@ -183,7 +183,7 @@ class DIBHttpMount:
         request_payload = dict(payload or {})
         _reject_forbidden_http_payload(request_payload)
         try:
-            response = self.controller.dispatch(method, clean_path, request_payload)
+            response = self.controller.dispatch(method, path, request_payload)
         except DIBApiError as exc:
             raise DIBHttpMountError(exc.code, exc.status) from exc
         return DIBHttpResponse(response.status, response.to_public())
