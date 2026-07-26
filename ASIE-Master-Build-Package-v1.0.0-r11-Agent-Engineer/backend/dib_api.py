@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from backend.dib_controlled_finance_wiring import (
+    DIB_CONTROLLED_FINANCE_WIRING_ID,
+    controlled_finance_wiring_status,
+    execute_controlled_finance_from_dib_session,
+)
 from backend.dib_intake_item_governance import (
     DIB_INTAKE_ITEM_GOVERNANCE_ID,
     apply_governed_item_decision,
@@ -69,6 +74,7 @@ DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/approved-manifests", "purpose": "Build or save an Approved Input Manifest."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/validation-gates", "purpose": "Build or save a Manifest Validation Gate."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/project-run-readiness", "purpose": "Build Manifest-to-Run readiness without executing Finance or Snapshot."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/controlled-finance", "purpose": "Execute controlled Finance from Approved Input Manifest only, without ProjectRunWorkflow or Snapshot."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}/events", "purpose": "List DIB session events and audit hashes."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/close", "purpose": "Close a DIB session without snapshot mutation."},
 )
@@ -94,6 +100,7 @@ class DIBApiResponse:
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
             "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
+            "controlled_finance_wiring_id": DIB_CONTROLLED_FINANCE_WIRING_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -150,8 +157,10 @@ class DIBApiController:
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
             "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
+            "controlled_finance_wiring_id": DIB_CONTROLLED_FINANCE_WIRING_ID,
             "intake_item_governance": intake_item_governance_status(),
             "manifest_run_readiness": manifest_run_readiness_status(),
+            "controlled_finance_wiring": controlled_finance_wiring_status(),
             "status": DIB_API_STATUS,
             "source": DIB_API_SOURCE,
             "route_count": len(DIB_API_ROUTES),
@@ -198,6 +207,8 @@ class DIBApiController:
                     return self._save_or_build_gate(session_id, request_payload)
                 if method == "POST" and tail == ["project-run-readiness"]:
                     return self._build_project_run_readiness(session_id, request_payload)
+                if method == "POST" and tail == ["controlled-finance"]:
+                    return self._execute_controlled_finance(session_id, request_payload)
                 if method == "POST" and tail == ["close"]:
                     return DIBApiResponse(200, {"session": self.store.close_session(session_id), "snapshot_mutation": False})
         except DIBPersistenceError as exc:
@@ -284,6 +295,20 @@ class DIBApiController:
                 "project_run_readiness": readiness,
                 "ready_for_project_run": bool(readiness.get("ready_for_project_run")),
                 "project_run_request": readiness.get("project_run_request"),
+                "finance_wiring_enabled": False,
+                "snapshot_mutation": False,
+            },
+        )
+
+    def _execute_controlled_finance(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        session = self.store.load_session(session_id)
+        controlled = execute_controlled_finance_from_dib_session(session, scenario_id=str(payload.get("scenario_id") or "baseline"))
+        return DIBApiResponse(
+            200,
+            {
+                "controlled_finance": controlled,
+                "controlled_finance_executed": controlled.get("status") == "executed",
+                "finance_engine_execution_status": controlled.get("finance_engine_execution_status"),
                 "finance_wiring_enabled": False,
                 "snapshot_mutation": False,
             },
