@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project, ProjectInputs } from "./contracts";
 import {
+  DIB_SESSION_CONTINUITY_UI_ID,
   DIB_UI_LIVE_API_WIRING_ID,
   type DIBApprovedManifestPayload,
   type DIBBlueprintItem,
@@ -29,6 +30,7 @@ import {
   closeDIBSession,
   fetchDIBEvents,
   fetchDIBSession,
+  fetchDIBSessionsForProject,
   fetchDIBStatus,
   saveDIBApprovedManifest,
   saveDIBBlueprint,
@@ -42,6 +44,7 @@ const DIB_UI_PROJECT_CONTEXT_BINDING_ID = "DIB-LIVE-002K-USER-PROJECT-CONTEXT-BI
 const dibApiRoutes = [
   "GET /api/dib/status",
   "POST /api/dib/sessions",
+  "GET /api/dib/sessions?project_id={project_id}",
   "GET /api/dib/sessions/{session_id}",
   "POST /api/dib/sessions/{session_id}/blueprints",
   "POST /api/dib/sessions/{session_id}/approved-manifests",
@@ -73,7 +76,16 @@ const inputLabels: Record<string, string> = {
   utilities_monthly: "المرافق الشهرية",
 };
 
-const currencyInputKeys = new Set(["startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "capex_equipment", "rent_monthly", "payroll_monthly", "utilities_monthly"]);
+const currencyInputKeys = new Set([
+  "startup_cost",
+  "monthly_fixed_cost",
+  "unit_price",
+  "variable_cost",
+  "capex_equipment",
+  "rent_monthly",
+  "payroll_monthly",
+  "utilities_monthly",
+]);
 
 function hashProjectIdFromLocation(): string {
   try {
@@ -189,12 +201,20 @@ function projectProfileFromProject(project: Project) {
   };
 }
 
+function shortDate(value?: string): string {
+  if (!value) return "غير معروف";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
+}
+
 export function DIBWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [items, setItems] = useState<DIBBlueprintItem[]>([]);
   const [status, setStatus] = useState<DIBStatusPayload | null>(null);
   const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [resumableSessions, setResumableSessions] = useState<DIBSessionRecord[]>([]);
   const [blueprint, setBlueprint] = useState<DIBPersistedEntity<DIBBlueprintPayload> | null>(null);
   const [manifest, setManifest] = useState<DIBPersistedEntity<DIBApprovedManifestPayload> | null>(null);
   const [validationGate, setValidationGate] = useState<DIBPersistedEntity<DIBValidationGatePayload> | null>(null);
@@ -215,10 +235,12 @@ export function DIBWorkspace() {
   const visibleItems = blueprint?.payload.items ?? session?.current_blueprint?.items ?? items;
   const approvedManifest = manifest?.payload ?? session?.approved_manifest ?? null;
   const gatePayload = validationGate?.payload ?? session?.validation_gate ?? null;
+  const latestResumeSession = resumableSessions[0] ?? null;
   const sessionStatus = session?.status ?? "not_started";
   const approvedCount = visibleItems.filter((item) => item.value_state !== "UNKNOWN" && item.value_state !== "REJECTED").length;
   const blockedCount = visibleItems.filter((item) => item.value_state === "UNKNOWN" || item.value_state === "REJECTED").length;
   const canBeginSession = Boolean(selectedProject && !operationBusy);
+  const canResumeSession = Boolean(latestResumeSession && !session && !operationBusy);
   const canSaveBlueprint = Boolean(session && selectedProject && !operationBusy);
   const canApproveManifest = Boolean(session && (blueprint || session.current_blueprint) && !operationBusy);
   const canRunGate = Boolean(session && approvedManifest?.status === "approved" && !operationBusy);
@@ -226,6 +248,7 @@ export function DIBWorkspace() {
   const timeline = useMemo(
     () => [
       { label: "User Project Context", status: selectedProject ? selectedProject.project_id : "لا يوجد مشروع", done: Boolean(selectedProject) },
+      { label: "DIB Session Continuity", status: resumableSessions.length ? `${resumableSessions.length} جلسة قابلة للاستئناف` : "لا توجد جلسة سابقة", done: resumableSessions.length > 0 || Boolean(session) },
       { label: "DIB Session", status: sessionStatus, done: Boolean(session) },
       {
         label: "Dynamic Input Blueprint",
@@ -243,7 +266,7 @@ export function DIBWorkspace() {
         done: gatePayload?.status === "passed",
       },
     ],
-    [approvedManifest?.status, blueprint, gatePayload?.status, selectedProject, session, sessionStatus]
+    [approvedManifest?.status, blueprint, gatePayload?.status, selectedProject, session, sessionStatus, resumableSessions.length]
   );
 
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
@@ -259,9 +282,35 @@ export function DIBWorkspace() {
     }
   }
 
+  function clearLiveSessionState(project: Project | null) {
+    setItems(itemsFromProject(project));
+    setSession(null);
+    setBlueprint(null);
+    setManifest(null);
+    setValidationGate(null);
+    setEvents([]);
+  }
+
+  function restoreSessionState(loaded: DIBSessionRecord, project: Project | null = selectedProject) {
+    setSession(loaded);
+    setBlueprint(loaded.current_blueprint ? { payload: loaded.current_blueprint } : null);
+    setManifest(loaded.approved_manifest ? { payload: loaded.approved_manifest } : null);
+    setValidationGate(loaded.validation_gate ? { payload: loaded.validation_gate } : null);
+    setItems(loaded.current_blueprint?.items ?? itemsFromProject(project));
+  }
+
   async function loadDIBStatus() {
     const result = await withOperation("status", fetchDIBStatus);
     if (result) setStatus(result);
+  }
+
+  async function loadProjectSessions(projectId: string) {
+    if (!projectId) {
+      setResumableSessions([]);
+      return;
+    }
+    const loaded = await withOperation("load-project-sessions", () => fetchDIBSessionsForProject(projectId));
+    if (loaded) setResumableSessions(loaded);
   }
 
   async function loadUserProjects() {
@@ -271,44 +320,40 @@ export function DIBWorkspace() {
     const requestedProjectId = hashProjectIdFromLocation();
     const nextProject = loaded.find((project) => project.project_id === requestedProjectId) ?? loaded[0] ?? null;
     setSelectedProjectId(nextProject?.project_id ?? "");
-    setItems(itemsFromProject(nextProject));
-    setSession(null);
-    setBlueprint(null);
-    setManifest(null);
-    setValidationGate(null);
-    setEvents([]);
+    clearLiveSessionState(nextProject);
+    if (nextProject) void loadProjectSessions(nextProject.project_id);
+    else setResumableSessions([]);
   }
 
   function selectProject(projectId: string) {
     const nextProject = projects.find((project) => project.project_id === projectId) ?? null;
     setSelectedProjectId(nextProject?.project_id ?? "");
-    setItems(itemsFromProject(nextProject));
-    setSession(null);
-    setBlueprint(null);
-    setManifest(null);
-    setValidationGate(null);
-    setEvents([]);
+    clearLiveSessionState(nextProject);
+    if (nextProject) void loadProjectSessions(nextProject.project_id);
+    else setResumableSessions([]);
   }
 
   async function refreshSession(nextSessionId = session?.session_id) {
     if (!nextSessionId) return;
     const loaded = await fetchDIBSession(nextSessionId);
-    setSession(loaded);
-    if (loaded.current_blueprint) setBlueprint({ payload: loaded.current_blueprint });
-    if (loaded.approved_manifest) setManifest({ payload: loaded.approved_manifest });
-    if (loaded.validation_gate) setValidationGate({ payload: loaded.validation_gate });
+    restoreSessionState(loaded);
     setEvents(await fetchDIBEvents(nextSessionId));
+  }
+
+  async function resumeSession(sessionId: string) {
+    const loaded = await withOperation("resume-session", () => fetchDIBSession(sessionId));
+    if (!loaded) return;
+    restoreSessionState(loaded);
+    setEvents(await fetchDIBEvents(sessionId));
   }
 
   async function beginSession() {
     if (!boundProjectProfile) return;
     const started = await withOperation("start-session", () => startDIBSession(boundProjectProfile));
     if (!started) return;
-    setSession(started);
-    setBlueprint(null);
-    setManifest(null);
-    setValidationGate(null);
+    restoreSessionState(started);
     await refreshSession(started.session_id);
+    await loadProjectSessions(started.project_id);
   }
 
   async function persistBlueprint() {
@@ -325,6 +370,7 @@ export function DIBWorkspace() {
     if (!saved) return;
     setBlueprint(saved);
     await refreshSession(session.session_id);
+    await loadProjectSessions(session.project_id);
   }
 
   async function persistManifest() {
@@ -333,6 +379,7 @@ export function DIBWorkspace() {
     if (!saved) return;
     setManifest(saved);
     await refreshSession(session.session_id);
+    await loadProjectSessions(session.project_id);
   }
 
   async function persistValidationGate() {
@@ -341,14 +388,16 @@ export function DIBWorkspace() {
     if (!saved) return;
     setValidationGate(saved);
     await refreshSession(session.session_id);
+    await loadProjectSessions(session.project_id);
   }
 
   async function closeSession() {
     if (!session) return;
     const closed = await withOperation("close-session", () => closeDIBSession(session.session_id));
     if (!closed) return;
-    setSession(closed);
+    restoreSessionState(closed);
     await refreshSession(closed.session_id);
+    await loadProjectSessions(closed.project_id);
   }
 
   function updateItemValue(inputKey: string, value: string) {
@@ -400,12 +449,20 @@ export function DIBWorkspace() {
   }
 
   return (
-    <main id="main-content" className="app-shell dib-workspace" dir="rtl" data-ui-id={DIB_UI_PROJECT_CONTEXT_BINDING_ID} data-parent-ui-id={DIB_UI_ID} data-live-api-id={DIB_UI_LIVE_API_WIRING_ID}>
+    <main
+      id="main-content"
+      className="app-shell dib-workspace"
+      dir="rtl"
+      data-ui-id={DIB_UI_PROJECT_CONTEXT_BINDING_ID}
+      data-parent-ui-id={DIB_UI_ID}
+      data-live-api-id={DIB_UI_LIVE_API_WIRING_ID}
+      data-session-continuity-id={DIB_SESSION_CONTINUITY_UI_ID}
+    >
       <section className="page-intro">
-        <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB-LIVE-002K · ربط DIB بسياق مشروع المستخدم</p>
+        <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB Completion Package A · Session Continuity</p>
         <h1>مساحة Dynamic Input Blueprint</h1>
         <p>
-          هذه الواجهة تقرأ مشاريع ASIE الفعلية من <code>/api/projects</code>، وتبدأ DIB Session باستخدام <code>project_id</code> وبيانات المشروع المختار. لا تشغل الحساب المالي، ولا تنشئ Snapshot، ولا تستخدم AI أو شبكة خارجية.
+          هذه الواجهة تقرأ مشاريع ASIE الفعلية من <code>/api/projects</code>، وتفتح أو تستأنف DIB Session باستخدام <code>project_id</code> وبيانات المشروع المختار. لا تشغل الحساب المالي، ولا تنشئ Snapshot، ولا تستخدم AI أو شبكة خارجية.
         </p>
         {errorMessage ? <p className="error-banner"><AlertTriangle size={16} aria-hidden="true" /> {errorMessage}</p> : null}
         <div className="button-row">
@@ -443,10 +500,38 @@ export function DIBWorkspace() {
         ) : null}
       </section>
 
+      <section className="panel" aria-label="استئناف DIB Session">
+        <div className="section-title"><Layers3 size={20} aria-hidden="true" /><h2>استئناف الجلسة السابقة</h2></div>
+        <p className="muted">Package A يضيف البحث عن آخر جلسات DIB المرتبطة بنفس <code>project_id</code>، ثم يسمح بالاستئناف أو بدء جلسة جديدة.</p>
+        <div className="button-row">
+          <button type="button" className="primary-button" disabled={!canResumeSession} onClick={() => latestResumeSession && void resumeSession(latestResumeSession.session_id)}>
+            <Send size={16} aria-hidden="true" /> استئناف آخر Session
+          </button>
+          <button type="button" disabled={!canBeginSession} onClick={() => void beginSession()}>بدء Session جديدة</button>
+          <button type="button" disabled={!selectedProject || Boolean(operationBusy)} onClick={() => selectedProject && void loadProjectSessions(selectedProject.project_id)}>
+            <RefreshCcw size={16} aria-hidden="true" /> تحديث الجلسات السابقة
+          </button>
+        </div>
+        <div className="remediation-list">
+          {resumableSessions.map((item) => (
+            <article key={item.session_id}>
+              <strong>{item.status}</strong>
+              <span>session_id: <code>{item.session_id}</code></span>
+              <small>updated_at: {shortDate(item.updated_at)} · blueprint: <code>{item.current_blueprint_id ?? "—"}</code> · manifest: <code>{item.approved_manifest_id ?? "—"}</code></small>
+              <div className="button-row">
+                <button type="button" onClick={() => void resumeSession(item.session_id)} disabled={Boolean(operationBusy || session)}>استئناف هذه الجلسة</button>
+              </div>
+            </article>
+          ))}
+          {resumableSessions.length === 0 ? <p className="muted">لا توجد جلسة سابقة قابلة للاستئناف لهذا المشروع.</p> : null}
+        </div>
+      </section>
+
       <section className="dashboard-grid" aria-label="مؤشرات DIB">
         <article className="metric-card"><span>حالة الجلسة</span><strong>{sessionStatus}</strong><small>{session?.session_id ?? "لم تبدأ بعد"}</small></article>
         <article className="metric-card"><span>المشروع</span><strong>{selectedProject ? "مرتبط" : "غير مرتبط"}</strong><small>{selectedProject?.project_id ?? "لا يوجد project_id"}</small></article>
-        <article className="metric-card"><span>البنود القابلة للـManifest</span><strong>{approvedCount.toLocaleString("ar-SA")}</strong><small>تدخل في Approved Input Manifest فقط</small></article>
+        <article className="metric-card"><span>الجلسات السابقة</span><strong>{resumableSessions.length.toLocaleString("ar-SA")}</strong><small>استئناف أو بدء جديد</small></article>
+        <article className="metric-card"><span>البنود القابلة للـManifest</span><strong>{approvedCount.toLocaleString("ar-SA")}</strong><small>المحجوبة: {blockedCount.toLocaleString("ar-SA")}</small></article>
         <article className="metric-card"><span>Gateway</span><strong>{status?.local_gateway_integration_id ? "Sidecar" : "status فقط"}</strong><small>finance_wiring_enabled=false</small></article>
       </section>
 
@@ -478,7 +563,7 @@ export function DIBWorkspace() {
               </div>
             </article>
           ))}
-          {items.length === 0 ? <p className="muted">اختر مشروعًا حتى يتم توليد بنود Blueprint من مدخلاته.</p> : null}
+          {items.length === 0 ? <p className="muted">اختر مشروعًا حتى يتم توليد بنود Blueprint من مدخلاته أو استئناف جلسة محفوظة.</p> : null}
         </div>
       </section>
 
