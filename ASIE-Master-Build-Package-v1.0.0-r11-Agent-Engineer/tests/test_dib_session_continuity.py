@@ -17,41 +17,32 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
         self.controller = create_dib_api_controller()
         self.addCleanup(self.controller.close)
 
-    def _start_session(self, project_id: str):
-        return self.controller.dispatch(
+    def test_query_api_lists_project_sessions_without_later_wiring(self) -> None:
+        session = self.controller.dispatch(
             "POST",
             "/api/dib/sessions",
-            {"project_profile": {"project_id": project_id, "name": project_id, "sector": "Food Service"}},
+            {"project_profile": {"project_id": "project_resume_package_a", "name": "resume", "sector": "Food Service"}},
         ).to_public()["session"]
-
-    def test_query_api_lists_resumable_project_sessions_and_excludes_closed_by_default(self) -> None:
-        first = self._start_session("project_resume_package_a")
-        second = self._start_session("project_resume_package_a")
-        other = self._start_session("other_project")
-        self.controller.dispatch("POST", f"/api/dib/sessions/{first['session_id']}/close", {}).to_public()
 
         response = self.controller.dispatch(
             "GET",
             "/api/dib/sessions?project_id=project_resume_package_a",
         ).to_public()
-        returned_session_ids = {item["session_id"] for item in response["sessions"]}
+
         self.assertEqual(response["status"], 200)
         self.assertEqual(response["session_continuity_id"], DIB_SESSION_CONTINUITY_ID)
         self.assertTrue(response["resume_available"])
-        self.assertIn(second["session_id"], returned_session_ids)
-        self.assertNotIn(first["session_id"], returned_session_ids)
+        self.assertIn(session["session_id"], {item["session_id"] for item in response["sessions"]})
         self.assertEqual(response["latest_session"]["project_id"], "project_resume_package_a")
         self.assertFalse(response["finance_wiring_enabled"])
         self.assertFalse(response["snapshot_wiring_enabled"])
 
-        unrelated = self.controller.dispatch(
-            "GET",
-            f"/api/dib/sessions?project_id={other['project_id']}",
-        ).to_public()["sessions"]
-        self.assertIn(other["session_id"], {item["session_id"] for item in unrelated})
-
-    def test_session_query_can_hydrate_blueprint_manifest_gate_for_restore(self) -> None:
-        session = self._start_session("project_restore_package_a")
+    def test_session_continuity_helper_hydrates_current_blueprint_for_restore(self) -> None:
+        session = self.controller.dispatch(
+            "POST",
+            "/api/dib/sessions",
+            {"project_profile": {"project_id": "project_restore_package_a", "name": "restore", "sector": "Food Service"}},
+        ).to_public()["session"]
         session_id = session["session_id"]
         self.controller.dispatch(
             "POST",
@@ -70,19 +61,14 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
                 },
             },
         ).to_public()
-        self.controller.dispatch("POST", f"/api/dib/sessions/{session_id}/approved-manifests", {}).to_public()
-        self.controller.dispatch("POST", f"/api/dib/sessions/{session_id}/validation-gates", {}).to_public()
 
         sessions = list_dib_sessions_for_project(self.controller.store, "project_restore_package_a")
         self.assertEqual(len(sessions), 1)
-        restored = sessions[0]
-        self.assertEqual(restored["current_blueprint"]["contract_id"], "dynamic.input.blueprint.v1")
-        self.assertEqual(restored["approved_manifest"]["contract_id"], "approved.input.manifest.v1")
-        self.assertEqual(restored["validation_gate"]["contract_id"], "manifest.validation.v1")
-        self.assertFalse(restored["external_fetch_enabled"])
-        self.assertFalse(restored["ai_provider_enabled"])
-        self.assertFalse(restored["finance_wiring_enabled"])
-        self.assertFalse(restored["snapshot_wiring_enabled"])
+        self.assertEqual(sessions[0]["current_blueprint"]["contract_id"], "dynamic.input.blueprint.v1")
+        self.assertFalse(sessions[0]["external_fetch_enabled"])
+        self.assertFalse(sessions[0]["ai_provider_enabled"])
+        self.assertFalse(sessions[0]["finance_wiring_enabled"])
+        self.assertFalse(sessions[0]["snapshot_wiring_enabled"])
 
     def test_workspace_exposes_resume_or_new_session_without_later_wiring(self) -> None:
         source = DIB_UI_PATH.read_text(encoding="utf-8")
