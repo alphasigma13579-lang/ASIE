@@ -4,6 +4,13 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from backend.dib_intake_item_governance import (
+    DIB_INTAKE_ITEM_GOVERNANCE_ID,
+    apply_governed_item_decision,
+    intake_item_governance_status,
+    preview_intake_item_mapping,
+    resolve_template_registry_surface,
+)
 from backend.dib_module_adapters import execute_dib_module_adapter
 from backend.dib_persistence import DIBPersistenceError, DIBPersistenceStore, create_dib_persistence_store
 from backend.dib_session_continuity import DIB_SESSION_CONTINUITY_ID, list_dib_sessions_for_project
@@ -16,6 +23,9 @@ FORBIDDEN_DIB_API_FIELDS = frozenset(
     {
         "raw_prompt",
         "prompt_template",
+        "raw_file",
+        "file_base64",
+        "pdf_text",
         "api_key",
         "openai_api_key",
         "provider_config",
@@ -45,7 +55,11 @@ FORBIDDEN_DIB_API_TRUE_FLAGS = frozenset(
 DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "GET", "path": "/api/dib/status", "purpose": "Read DIB API status and disabled wiring flags."},
     {"method": "POST", "path": "/api/dib/sessions", "purpose": "Start a DIB session from a governed project profile."},
+    {"method": "GET", "path": "/api/dib/sessions?project_id={project_id}", "purpose": "List resumable DIB sessions for one ASIE project."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}", "purpose": "Load a persisted DIB session."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/template-registry", "purpose": "Resolve Template Registry and Question Registry for the session project."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/intake-items", "purpose": "Preview governed manual, CSV, or supplier quote text intake items."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/item-decisions", "purpose": "Apply a governed Customer Item Decision before Manifest approval."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/blueprints", "purpose": "Build or save a Dynamic Input Blueprint."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/approved-manifests", "purpose": "Build or save an Approved Input Manifest."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/validation-gates", "purpose": "Build or save a Manifest Validation Gate."},
@@ -72,6 +86,7 @@ class DIBApiResponse:
             **self.payload,
             "api_id": DIB_API_ID,
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
+            "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -126,6 +141,8 @@ class DIBApiController:
         return {
             "api_id": DIB_API_ID,
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
+            "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
+            "intake_item_governance": intake_item_governance_status(),
             "status": DIB_API_STATUS,
             "source": DIB_API_SOURCE,
             "route_count": len(DIB_API_ROUTES),
@@ -158,6 +175,12 @@ class DIBApiController:
                     return DIBApiResponse(200, {"session": self.store.load_session(session_id)})
                 if method == "GET" and tail == ["events"]:
                     return DIBApiResponse(200, {"events": self.store.list_events(session_id)})
+                if method == "POST" and tail == ["template-registry"]:
+                    return self._resolve_template_registry(session_id, request_payload)
+                if method == "POST" and tail == ["intake-items"]:
+                    return self._preview_intake_items(session_id, request_payload)
+                if method == "POST" and tail == ["item-decisions"]:
+                    return self._apply_item_decision(session_id, request_payload)
                 if method == "POST" and tail == ["blueprints"]:
                     return self._save_or_build_blueprint(session_id, request_payload)
                 if method == "POST" and tail == ["approved-manifests"]:
@@ -167,6 +190,8 @@ class DIBApiController:
                 if method == "POST" and tail == ["close"]:
                     return DIBApiResponse(200, {"session": self.store.close_session(session_id), "snapshot_mutation": False})
         except DIBPersistenceError as exc:
+            raise DIBApiError(str(exc), 422) from exc
+        except ValueError as exc:
             raise DIBApiError(str(exc), 422) from exc
         raise DIBApiError("dib_api_route_not_found", 404)
 
@@ -198,6 +223,46 @@ class DIBApiController:
             raise DIBApiError("dib_session_requires_project_profile", 400)
         session = self.store.start_session(dict(project_profile))
         return DIBApiResponse(201, {"session": session, "snapshot_mutation": False})
+
+    def _resolve_template_registry(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        session = self.store.load_session(session_id)
+        project_profile = payload.get("project_profile") if isinstance(payload.get("project_profile"), dict) else session["project_profile"]
+        resolved = resolve_template_registry_surface(dict(project_profile), str(payload.get("template_id") or "") or None)
+        return DIBApiResponse(200, {"template_registry": resolved, "snapshot_mutation": False})
+
+    def _preview_intake_items(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        session = self.store.load_session(session_id)
+        existing_items = payload.get("existing_items")
+        if not isinstance(existing_items, list):
+            existing_items = list((session.get("current_blueprint") or {}).get("items") or [])
+        intake = preview_intake_item_mapping(payload, [dict(item) for item in existing_items if isinstance(item, dict)])
+        return DIBApiResponse(
+            200,
+            {
+                "intake": intake,
+                "mapped_items": list(intake.get("mapped_items") or []),
+                "unmatched_rows": list(intake.get("unmatched_rows") or []),
+                "snapshot_mutation": False,
+                "finance_wiring_enabled": False,
+            },
+        )
+
+    def _apply_item_decision(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        self.store.load_session(session_id)
+        item = payload.get("item")
+        decision = payload.get("decision")
+        if not isinstance(item, dict) or not isinstance(decision, dict):
+            raise DIBApiError("customer_item_decision_requires_item_and_decision", 400)
+        result = apply_governed_item_decision(dict(item), dict(decision))
+        return DIBApiResponse(
+            200,
+            {
+                "item_decision": result,
+                "item": result.get("item"),
+                "snapshot_mutation": False,
+                "finance_wiring_enabled": False,
+            },
+        )
 
     def _save_or_build_blueprint(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
         if isinstance(payload.get("blueprint"), dict):
