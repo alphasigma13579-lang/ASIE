@@ -39,7 +39,7 @@ class DIBArabicUIWorkspaceTests(unittest.TestCase):
     def test_dib_workspace_is_hash_mounted_without_local_api_mutation(self) -> None:
         main = MAIN_PATH.read_text(encoding="utf-8")
         self.assertIn("DIBWorkspace", main)
-        self.assertIn('window.location.hash === "#dib"', main)
+        self.assertIn('currentHash.startsWith("#dib")', main)
         assert_all_frozen_files_unchanged(PACKAGE_ROOT)
 
 
