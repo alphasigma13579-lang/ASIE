@@ -1,10 +1,10 @@
-import { AlertTriangle, ArrowLeft, BadgeCheck, Database, FileText, RefreshCcw, Send, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BadgeCheck, Database, RefreshCcw, Send, Sparkles, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project } from "./contracts";
 import {
   DIB_MANIFEST_RUN_READINESS_UI_ID,
-  type DIBProjectRunReadinessPayload,
+  type DIBManifestRunReadinessPayload,
   type DIBSessionRecord,
   buildDIBProjectRunReadiness,
   fetchDIBSession,
@@ -58,7 +58,7 @@ export function DIBManifestRunReadiness() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sessions, setSessions] = useState<DIBSessionRecord[]>([]);
   const [session, setSession] = useState<DIBSessionRecord | null>(null);
-  const [readiness, setReadiness] = useState<DIBProjectRunReadinessPayload | null>(null);
+  const [readiness, setReadiness] = useState<DIBManifestRunReadinessPayload | null>(null);
   const [operationBusy, setOperationBusy] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -217,7 +217,7 @@ export function DIBManifestRunReadiness() {
               <li>readiness_id: <code>{readiness.readiness_id}</code></li>
               <li>status: <code>{readiness.status}</code></li>
               <li>ready_for_project_run: <code>{String(readiness.ready_for_project_run)}</code></li>
-              <li>input_source: <code>{readiness.input_source}</code></li>
+              <li>input_source: <code>{String(readiness.input_source ?? "approved_input_manifest_only")}</code></li>
               <li>workflow_mount: <code>{readiness.project_run_workflow_mount}</code></li>
               <li>finance_execution: <code>{readiness.finance_engine_execution_status}</code></li>
             </ul>
@@ -228,7 +228,7 @@ export function DIBManifestRunReadiness() {
           <ul className="lineage-list">
             {(readiness?.blockers ?? []).map((blocker) => <li key={blocker.code}>{blocker.severity}: <code>{blocker.code}</code> · {blocker.message}</li>)}
           </ul>
-          {readiness && readiness.blockers.length === 0 ? <p className="muted">لا توجد موانع في readiness gate.</p> : null}
+          {readiness && (readiness.blockers ?? []).length === 0 ? <p className="muted">لا توجد موانع في readiness gate.</p> : null}
         </article>
       </section>
 
@@ -238,29 +238,17 @@ export function DIBManifestRunReadiness() {
           <ul className="lineage-list">
             <li>approved_input_manifest_id: <code>{shortValue(readiness.project_run_request.approved_input_manifest_id)}</code></li>
             <li>manifest_validation_gate_id: <code>{shortValue(readiness.project_run_request.manifest_validation_gate_id)}</code></li>
-            <li>manifest_gate_id: <code>{shortValue(readiness.project_run_request.manifest_gate_id)}</code></li>
-            <li>requires_project_run_workflow_mount: <code>{shortValue(readiness.project_run_request.requires_project_run_workflow_mount)}</code></li>
-            <li>input_hash: <code>{shortValue(readiness.project_run_request.input_hash)}</code></li>
+            <li>input_contract_id: <code>{shortValue(readiness.project_run_request.input_contract_id)}</code></li>
+            <li>input_source: <code>{shortValue(readiness.project_run_request.input_source)}</code></li>
           </ul>
-        ) : <p className="muted">لا يوجد Project Run Request Preview إلا إذا أصبحت الجاهزية ready.</p>}
+        ) : <p className="muted">لا يوجد Project Run Request Preview حتى تنجح الجاهزية.</p>}
       </section>
 
-      <section className="decision-command__grid" aria-label="Package C boundaries">
-        <article className="panel">
-          <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>مسار Package C</h2></div>
-          <ul className="lineage-list">
-            <li><code>Approved Input Manifest</code></li>
-            <li><code>Manifest Validation Gate</code></li>
-            <li><code>POST /api/dib/sessions/{"{session_id}"}/project-run-readiness</code></li>
-            <li><code>dib.project_run.manifest_gate.v1</code></li>
-          </ul>
-        </article>
-        <article className="panel">
-          <div className="section-title"><ShieldCheck size={20} aria-hidden="true" /><h2>الممنوع</h2></div>
-          <ul className="lineage-list">
-            {forbiddenBoundaries.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </article>
+      <section className="panel" aria-label="Package C boundaries">
+        <div className="section-title"><AlertTriangle size={20} aria-hidden="true" /><h2>الحدود الصارمة</h2></div>
+        <ul className="lineage-list">
+          {forbiddenBoundaries.map((item) => <li key={item}>{item}</li>)}
+        </ul>
       </section>
     </main>
   );
