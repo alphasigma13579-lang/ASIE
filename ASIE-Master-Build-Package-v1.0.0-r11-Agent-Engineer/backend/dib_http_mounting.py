@@ -9,6 +9,15 @@ from urllib.parse import urlparse
 
 from backend.dib_api import DIB_API_ROUTES, DIBApiController, DIBApiError, create_dib_api_controller
 from backend.dib_persistence import create_dib_persistence_store
+from backend.dib_security_audit_rbac import (
+    DIB_SECURITY_AUDIT_RBAC_ID,
+    authorize_dib_request,
+    build_dib_security_audit_event,
+    dib_route_security_policy,
+    dib_security_audit_rbac_status,
+    extract_dib_session_id_from_path,
+    resolve_dib_auth_required,
+)
 from backend.repository import Repository
 
 DIB_HTTP_MOUNTING_ID = "DIB-LIVE-002H-HTTP-MOUNTING-v1"
@@ -60,6 +69,7 @@ DIB_HTTP_ROUTES: tuple[dict[str, Any], ...] = tuple(
         "path": route["path"],
         "mounting": "direct_controller_dispatch",
         "source_api": "backend.dib_api.DIBApiController",
+        "security_policy": dib_route_security_policy(route["method"], route["path"]),
     }
     for route in DIB_API_ROUTES
 )
@@ -83,6 +93,9 @@ class DIBHttpResponse:
             **self.payload,
             "http_mounting_id": DIB_HTTP_MOUNTING_ID,
             "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
+            "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
+            "rbac_enforced_on_sidecar": True,
+            "production_auth_bypass_blocked": True,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -134,10 +147,7 @@ def _resolved_dib_db_path(db_path: str | None = None) -> str:
 
 
 def _sidecar_auth_required(path: str) -> bool:
-    if _clean_path(path) == "/api/dib/status":
-        return False
-    configured = os.environ.get("ASIE_DIB_REQUIRE_AUTH", "true").strip().lower()
-    return configured not in {"0", "false", "no", "off"}
+    return resolve_dib_auth_required(path)
 
 
 class DIBHttpMount:
@@ -155,10 +165,12 @@ class DIBHttpMount:
         return {
             "mounting_id": DIB_HTTP_MOUNTING_ID,
             "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
+            "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
             "status": DIB_HTTP_MOUNTING_STATUS,
             "source": DIB_HTTP_MOUNTING_SOURCE,
             "route_count": len(DIB_HTTP_ROUTES),
             "routes": list(DIB_HTTP_ROUTES),
+            "security_audit_rbac": dib_security_audit_rbac_status(),
             "allowed_methods": sorted(DIB_HTTP_ALLOWED_METHODS),
             "mount_strategy": "freeze_safe_dib_http_overlay",
             "uses_controller": "backend.dib_api.DIBApiController",
@@ -167,6 +179,7 @@ class DIBHttpMount:
             "local_sidecar_port": DIB_HTTP_DEFAULT_PORT,
             "sidecar_auth_required_by_default": True,
             "sidecar_auth_status_exemption": "/api/dib/status",
+            "production_auth_bypass_blocked": True,
             "persistence": self.controller.store.status(),
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
@@ -230,7 +243,13 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         return payload
 
     def _write_json(self, payload: dict[str, Any], status: int = 200) -> None:
-        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        secured_payload = {
+            **payload,
+            "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
+            "rbac_enforced_on_sidecar": True,
+            "production_auth_bypass_blocked": True,
+        }
+        raw = json.dumps(secured_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
@@ -246,12 +265,60 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         value = self.headers.get("Authorization", "")
         return value[7:].strip() if value.startswith("Bearer ") and value[7:].strip() else None
 
+    def _record_gateway_audit(
+        self,
+        method: str,
+        status: int,
+        payload: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        session_id = extract_dib_session_id_from_path(self.path)
+        if not session_id:
+            return
+        principal = getattr(self, "_dib_gateway_principal", None)
+        authorization = getattr(self, "_dib_gateway_authorization", None) or dib_route_security_policy(method, self.path)
+        audit_event = build_dib_security_audit_event(
+            method=method,
+            path=self.path,
+            principal=principal,
+            authorization=authorization,
+            http_status=status,
+            request_payload=payload or {},
+            error=error,
+        )
+        try:
+            self.mount.controller.store._append_event(
+                session_id,
+                event_type=str(audit_event["event_type"]),
+                entity_type="dib_security_audit",
+                entity_id=str(audit_event["event_id"]),
+                payload=audit_event,
+            )
+        except Exception:
+            # Security audit must never make the primary DIB request fail.
+            return
+
     def _require_gateway_auth(self, method: str) -> bool:
-        if method == "OPTIONS" or not _sidecar_auth_required(self.path):
+        self._dib_gateway_principal = None
+        self._dib_gateway_authorization = dib_route_security_policy(method, self.path)
+        if method == "OPTIONS":
+            self._dib_gateway_authorization = authorize_dib_request(None, method, self.path)
+            return True
+        if not _sidecar_auth_required(self.path):
+            policy = dib_route_security_policy(method, self.path)
+            self._dib_gateway_authorization = {
+                **policy,
+                "authorized": True,
+                "authorization_status": "auth_disabled_nonproduction",
+                "principal_present": False,
+            }
             return True
         token = self._bearer_token()
         organization_id = self.headers.get("X-ASIE-Organization-Id") or None
         principal = self.auth_repo.principal_for_token(token, organization_id) if token else None
+        self._dib_gateway_principal = principal
+        authorization = authorize_dib_request(principal, method, self.path)
+        self._dib_gateway_authorization = authorization
         if principal is None:
             self._write_json(
                 {
@@ -259,6 +326,7 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                     "status": 401,
                     "http_mounting_id": DIB_HTTP_MOUNTING_ID,
                     "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
+                    "permission_required": authorization.get("permission_required"),
                     "external_fetch_enabled": False,
                     "ai_provider_enabled": False,
                     "finance_wiring_enabled": False,
@@ -266,16 +334,37 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                 },
                 401,
             )
+            self._record_gateway_audit(method, 401, error="authentication_required")
+            return False
+        if not authorization.get("authorized"):
+            self._write_json(
+                {
+                    "error": "permission_denied",
+                    "status": 403,
+                    "http_mounting_id": DIB_HTTP_MOUNTING_ID,
+                    "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
+                    "permission_required": authorization.get("permission_required"),
+                    "authorization_status": authorization.get("authorization_status"),
+                    "external_fetch_enabled": False,
+                    "ai_provider_enabled": False,
+                    "finance_wiring_enabled": False,
+                    "snapshot_wiring_enabled": False,
+                },
+                403,
+            )
+            self._record_gateway_audit(method, 403, error="permission_denied")
             return False
         return True
 
     def _handle(self, method: str) -> None:
         if not self._require_gateway_auth(method):
             return
+        payload: dict[str, Any] = {}
         try:
             payload = self._read_json_body() if method == "POST" else {}
             response = self.mount.dispatch(method, self.path, payload).to_public()
             self._write_json(response, response["status"])
+            self._record_gateway_audit(method, int(response["status"]), payload)
         except DIBHttpMountError as exc:
             self._write_json(
                 {
@@ -290,6 +379,7 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                 },
                 exc.status,
             )
+            self._record_gateway_audit(method, exc.status, payload, error=exc.code)
 
     def do_OPTIONS(self) -> None:
         self._write_json({"ok": True, "http_mounting_id": DIB_HTTP_MOUNTING_ID})
