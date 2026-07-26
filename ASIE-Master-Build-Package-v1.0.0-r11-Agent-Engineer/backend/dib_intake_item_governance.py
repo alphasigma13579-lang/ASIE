@@ -43,15 +43,15 @@ FORBIDDEN_GOVERNANCE_TRUE_FLAGS = frozenset(
 )
 
 QUOTE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("startup_cost", ("تأسيس", "تجهيز", "معدات", "فرن", "ثلاجة", "capex", "equipment", "fitout", "startup")),
-    ("monthly_fixed_cost", ("شهري", "إيجار", "رواتب", "راتب", "fixed", "monthly", "rent", "salary", "opex")),
+    ("monthly_units", ("عدد", "مبيعات", "طلبات", "units", "quantity", "demand", "sales")),
     ("unit_price", ("سعر", "بيع", "وجبة", "price", "selling", "meal", "unit price")),
     ("variable_cost", ("مواد", "مكونات", "تكلفة مباشرة", "تكلفة الوحدة", "ingredient", "variable", "cogs")),
-    ("monthly_units", ("عدد", "مبيعات", "طلبات", "units", "quantity", "demand", "sales")),
-    ("capex_equipment", ("معدات", "معدة", "equipment", "machine", "oven", "fridge")),
     ("rent_monthly", ("إيجار", "rent", "lease")),
     ("payroll_monthly", ("رواتب", "راتب", "salary", "payroll", "wage")),
     ("utilities_monthly", ("كهرباء", "مياه", "مرافق", "utilities", "electric", "water")),
+    ("capex_equipment", ("معدات", "معدة", "equipment", "machine", "oven", "fridge")),
+    ("monthly_fixed_cost", ("شهري", "fixed", "monthly", "opex")),
+    ("startup_cost", ("تأسيس", "تجهيز", "معدات", "فرن", "ثلاجة", "capex", "equipment", "fitout", "startup")),
 )
 
 
