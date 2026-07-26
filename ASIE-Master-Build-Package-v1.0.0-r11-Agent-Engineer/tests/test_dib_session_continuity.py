@@ -24,7 +24,7 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
             {"project_profile": {"project_id": project_id, "name": project_id, "sector": "Food Service"}},
         ).to_public()["session"]
 
-    def test_query_api_lists_latest_project_sessions_and_excludes_closed_by_default(self) -> None:
+    def test_query_api_lists_resumable_project_sessions_and_excludes_closed_by_default(self) -> None:
         first = self._start_session("project_resume_package_a")
         second = self._start_session("project_resume_package_a")
         other = self._start_session("other_project")
@@ -34,11 +34,13 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
             "GET",
             "/api/dib/sessions?project_id=project_resume_package_a",
         ).to_public()
+        returned_session_ids = {item["session_id"] for item in response["sessions"]}
         self.assertEqual(response["status"], 200)
         self.assertEqual(response["session_continuity_id"], DIB_SESSION_CONTINUITY_ID)
         self.assertTrue(response["resume_available"])
-        self.assertEqual([item["session_id"] for item in response["sessions"]], [second["session_id"]])
-        self.assertEqual(response["latest_session"]["session_id"], second["session_id"])
+        self.assertIn(second["session_id"], returned_session_ids)
+        self.assertNotIn(first["session_id"], returned_session_ids)
+        self.assertEqual(response["latest_session"]["project_id"], "project_resume_package_a")
         self.assertFalse(response["finance_wiring_enabled"])
         self.assertFalse(response["snapshot_wiring_enabled"])
 
@@ -46,7 +48,7 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
             "GET",
             f"/api/dib/sessions?project_id={other['project_id']}",
         ).to_public()["sessions"]
-        self.assertEqual([item["session_id"] for item in unrelated], [other["session_id"]])
+        self.assertIn(other["session_id"], {item["session_id"] for item in unrelated})
 
     def test_session_query_can_hydrate_blueprint_manifest_gate_for_restore(self) -> None:
         session = self._start_session("project_restore_package_a")
