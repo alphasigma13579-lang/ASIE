@@ -22,6 +22,21 @@ Read this file before changing the repository. It is the shortest path to the cu
 - Finance reads approved, normalized assumptions only. It must not read raw chat output, raw files, or unapproved market candidates.
 - Do not mutate an existing Snapshot. A changed model creates a Draft Revision and a new Snapshot.
 
+## Archive lockdown
+
+Historical and reference material is archive-locked. Agents and engineers must not copy, import, or use files from the following paths as live implementation source:
+
+```text
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/reference/
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/reference/r11-workspace-materials/
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/reference/r11-workspace-materials/workspace-bundles/
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/
+```
+
+Archive files are provenance only. They must not replace `backend/`, `src/`, `tests/`, active `docs/EKB/`, or any frozen AAS-controlled file. If an archive contains implementation-looking files such as `backend/asie_local_api.py`, `runtime_freeze.py`, or `snapshot_assembly.py`, treat them as `DANGEROUS_DUPLICATE`, not as current source.
+
+For repository cleanup, read `docs/EKB/EKB-06-Repository-Surgery-Inventory.md` and `docs/REPOSITORY-SURGERY-PLAN-2026-07-26.md`. Deletions require a separate PR, evidence, and passing CI.
+
 ## Verify before opening a PR
 
 From the canonical package directory:
