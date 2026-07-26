@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from backend.dib_module_adapters import execute_dib_module_adapter
 from backend.dib_persistence import DIBPersistenceError, DIBPersistenceStore, create_dib_persistence_store
+from backend.dib_session_continuity import DIB_SESSION_CONTINUITY_ID, list_dib_sessions_for_project
 
 DIB_API_ID = "DIB-LIVE-002D-API-v1"
 DIB_API_STATUS = "post_freeze_controlled_api"
@@ -43,6 +45,7 @@ FORBIDDEN_DIB_API_TRUE_FLAGS = frozenset(
 DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "GET", "path": "/api/dib/status", "purpose": "Read DIB API status and disabled wiring flags."},
     {"method": "POST", "path": "/api/dib/sessions", "purpose": "Start a DIB session from a governed project profile."},
+    {"method": "GET", "path": "/api/dib/sessions?project_id={project_id}", "purpose": "List resumable DIB sessions for one ASIE project."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}", "purpose": "Load a persisted DIB session."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/blueprints", "purpose": "Build or save a Dynamic Input Blueprint."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/approved-manifests", "purpose": "Build or save an Approved Input Manifest."},
@@ -69,6 +72,7 @@ class DIBApiResponse:
             "status": self.status,
             **self.payload,
             "api_id": DIB_API_ID,
+            "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -94,8 +98,24 @@ def _reject_forbidden_api_payload(payload: Any, *, context: str = "dib_api") -> 
 
 
 def _parts(path: str) -> list[str]:
-    cleaned = path.split("?", 1)[0].strip("/")
+    cleaned = urlparse(path).path.strip("/")
     return cleaned.split("/") if cleaned else []
+
+
+def _query(path: str) -> dict[str, list[str]]:
+    return parse_qs(urlparse(path).query, keep_blank_values=False)
+
+
+def _query_value(path: str, key: str) -> str:
+    values = _query(path).get(key) or []
+    return str(values[0] if values else "").strip()
+
+
+def _query_bool(path: str, key: str, *, default: bool = False) -> bool:
+    value = _query_value(path, key).lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
 
 
 class DIBApiController:
@@ -106,6 +126,7 @@ class DIBApiController:
         persistence_status = self.store.status()
         return {
             "api_id": DIB_API_ID,
+            "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "status": DIB_API_STATUS,
             "source": DIB_API_SOURCE,
             "route_count": len(DIB_API_ROUTES),
@@ -129,6 +150,8 @@ class DIBApiController:
                 return DIBApiResponse(200, {"dib_api": self.status()})
             if method == "POST" and parts == ["api", "dib", "sessions"]:
                 return self._start_session(request_payload)
+            if method == "GET" and parts == ["api", "dib", "sessions"]:
+                return self._list_sessions(path)
             if len(parts) >= 4 and parts[:3] == ["api", "dib", "sessions"]:
                 session_id = parts[3]
                 tail = parts[4:]
@@ -147,6 +170,28 @@ class DIBApiController:
         except DIBPersistenceError as exc:
             raise DIBApiError(str(exc), 422) from exc
         raise DIBApiError("dib_api_route_not_found", 404)
+
+    def _list_sessions(self, path: str) -> DIBApiResponse:
+        project_id = _query_value(path, "project_id")
+        if not project_id:
+            raise DIBApiError("dib_session_query_requires_project_id", 400)
+        sessions = list_dib_sessions_for_project(
+            self.store,
+            project_id,
+            include_closed=_query_bool(path, "include_closed", default=False),
+            limit=_query_value(path, "limit") or 10,
+        )
+        return DIBApiResponse(
+            200,
+            {
+                "sessions": sessions,
+                "latest_session": sessions[0] if sessions else None,
+                "resume_available": bool(sessions),
+                "project_id": project_id,
+                "snapshot_mutation": False,
+                "finance_wiring_enabled": False,
+            },
+        )
 
     def _start_session(self, payload: dict[str, Any]) -> DIBApiResponse:
         project_profile = payload.get("project_profile") if isinstance(payload.get("project_profile"), dict) else payload
