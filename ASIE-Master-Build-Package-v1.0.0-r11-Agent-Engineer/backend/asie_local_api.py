@@ -11,7 +11,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
-from warnings import deprecated
+try:
+    from warnings import deprecated  # Python 3.13+
+except ImportError:
+    import functools
+    import warnings as _warnings_mod
+
+    def deprecated(message: str):  # type: ignore[misc]
+        """Minimal backport of warnings.deprecated for Python < 3.13."""
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                _warnings_mod.warn(message, DeprecationWarning, stacklevel=2)
+                return func(*args, **kwargs)
+            wrapper.__deprecated__ = message  # match Python 3.13 behaviour
+            return wrapper
+        return decorator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
