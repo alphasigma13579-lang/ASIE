@@ -119,6 +119,8 @@ def dib_route_security_policy(method: str, path: str) -> dict[str, Any]:
             return {**policy, "permission_required": DIB_FINANCE_EXECUTE_PERMISSION, "audit_action": "dib.controlled_finance.execute"}
         if method == "POST" and tail == ["snapshot-projection-handoff"]:
             return {**policy, "permission_required": DIB_SNAPSHOT_HANDOFF_PERMISSION, "audit_action": "dib.snapshot_projection_handoff.prepare"}
+        if method == "POST" and tail == ["e2e-scenario"]:
+            return {**policy, "permission_required": DIB_RUN_GATE_PERMISSION, "audit_action": "dib.e2e_scenario.report"}
         if method == "POST" and tail == ["close"]:
             return {**policy, "permission_required": DIB_WRITE_PERMISSION, "audit_action": "dib.session.close"}
     return {**policy, "permission_required": DIB_READ_PERMISSION, "audit_action": "dib.route.unknown"}
