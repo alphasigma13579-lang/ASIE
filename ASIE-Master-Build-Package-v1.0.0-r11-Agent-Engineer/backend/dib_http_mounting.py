@@ -119,6 +119,14 @@ def is_dib_http_route(path: str) -> bool:
     return clean_path in {"/api/dib/status", "/api/dib/sessions"} or clean_path.startswith("/api/dib/sessions/")
 
 
+def _dispatch_path_with_optional_session_query(path: str) -> str:
+    parsed = urlparse(path)
+    clean_path = _clean_path(path)
+    if clean_path == "/api/dib/sessions" and parsed.query:
+        return path
+    return clean_path
+
+
 def _resolved_dib_db_path(db_path: str | None = None) -> str:
     if db_path is not None:
         return str(db_path)
@@ -183,7 +191,7 @@ class DIBHttpMount:
         request_payload = dict(payload or {})
         _reject_forbidden_http_payload(request_payload)
         try:
-            response = self.controller.dispatch(method, clean_path, request_payload)
+            response = self.controller.dispatch(method, _dispatch_path_with_optional_session_query(path), request_payload)
         except DIBApiError as exc:
             raise DIBHttpMountError(exc.code, exc.status) from exc
         return DIBHttpResponse(response.status, response.to_public())
