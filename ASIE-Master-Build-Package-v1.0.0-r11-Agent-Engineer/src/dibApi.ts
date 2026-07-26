@@ -2,6 +2,7 @@ import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./
 
 export const DIB_UI_LIVE_API_WIRING_ID = "DIB-LIVE-002J-UI-LIVE-API-WIRING-v1";
 export const DIB_SESSION_CONTINUITY_UI_ID = "DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1";
+export const DIB_INTAKE_ITEM_GOVERNANCE_UI_ID = "DIB-COMPLETION-PACKAGE-B-INTAKE-ITEM-GOVERNANCE-v1";
 
 async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -46,6 +47,7 @@ export interface DIBStatusPayload {
   mounting_id?: string;
   local_gateway_integration_id?: string;
   session_continuity_id?: string;
+  intake_item_governance_id?: string;
   status: string;
   route_count: number;
   routes: DIBRouteRef[];
@@ -154,6 +156,44 @@ export interface DIBEventRecord {
   payload?: Record<string, unknown>;
 }
 
+export interface DIBTemplateRegistryResponse {
+  template_registry: {
+    governance_id: string;
+    template_id: string;
+    template_items: string[];
+    questions: Array<Record<string, unknown>>;
+    template_registry?: Record<string, unknown>;
+    question_registry?: Record<string, unknown>;
+    external_fetch_enabled: boolean;
+    ai_provider_enabled: boolean;
+    finance_wiring_enabled: boolean;
+    snapshot_wiring_enabled: boolean;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface DIBIntakePreviewResponse {
+  intake: Record<string, unknown> & {
+    mapped_items?: DIBBlueprintItem[];
+    unmatched_rows?: Array<Record<string, unknown>>;
+    supplier_quote_text_intake?: boolean;
+  };
+  mapped_items: DIBBlueprintItem[];
+  unmatched_rows: Array<Record<string, unknown>>;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export interface DIBItemDecisionResponse {
+  item_decision: Record<string, unknown>;
+  item: DIBBlueprintItem;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
 export async function fetchDIBStatus(): Promise<DIBStatusPayload> {
   const response = await requestDibJson<{ dib_api?: DIBStatusPayload; status?: DIBStatusPayload }>("/api/dib/status");
   return response.dib_api ?? response.status ?? (response as unknown as DIBStatusPayload);
@@ -186,12 +226,51 @@ export async function fetchDIBSession(sessionId: string): Promise<DIBSessionReco
   return response.session;
 }
 
+export async function resolveDIBTemplateRegistry(
+  sessionId: string,
+  projectProfile?: Record<string, unknown>
+): Promise<DIBTemplateRegistryResponse["template_registry"]> {
+  const response = await requestDibJson<DIBTemplateRegistryResponse>(`/api/dib/sessions/${sessionId}/template-registry`, {
+    method: "POST",
+    body: JSON.stringify(projectProfile ? { project_profile: projectProfile } : {}),
+  });
+  return response.template_registry;
+}
+
+export async function previewDIBIntakeItems(
+  sessionId: string,
+  payload: {
+    source_name?: string;
+    rows?: Array<Record<string, unknown>>;
+    csv_text?: string;
+    supplier_quote_text?: string;
+    existing_items?: DIBBlueprintItem[];
+  }
+): Promise<DIBIntakePreviewResponse> {
+  return requestDibJson<DIBIntakePreviewResponse>(`/api/dib/sessions/${sessionId}/intake-items`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function applyDIBItemDecision(
+  sessionId: string,
+  item: DIBBlueprintItem,
+  decision: { action: string; value?: number | string | null; reason?: string; evidence_pack?: Record<string, unknown> }
+): Promise<DIBItemDecisionResponse> {
+  return requestDibJson<DIBItemDecisionResponse>(`/api/dib/sessions/${sessionId}/item-decisions`, {
+    method: "POST",
+    body: JSON.stringify({ item, decision }),
+  });
+}
+
 export async function saveDIBBlueprint(
   sessionId: string,
   payload: {
     source?: string;
     intake_payload?: { file_name: string; rows: Array<Record<string, unknown>> };
     existing_items?: DIBBlueprintItem[];
+    items?: DIBBlueprintItem[];
     blueprint?: DIBBlueprintPayload;
   }
 ): Promise<DIBPersistedEntity<DIBBlueprintPayload>> {
