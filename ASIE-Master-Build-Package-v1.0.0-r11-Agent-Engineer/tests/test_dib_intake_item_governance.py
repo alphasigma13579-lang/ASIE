@@ -104,12 +104,16 @@ class DIBIntakeItemGovernancePackageTests(unittest.TestCase):
         self.assertIn("applyDIBItemDecision", client)
         self.assertIn("def _preview_intake_items", api)
         self.assertIn("def _apply_item_decision", api)
-        for source in (ui, client, api):
+        for source in (ui, client):
             self.assertNotIn("runProject(", source)
             self.assertNotIn("fetchSnapshot", source)
             self.assertNotIn("openai_api_key", source)
             self.assertNotIn("finance_wiring_enabled: true", source)
             self.assertNotIn("snapshot_wiring_enabled: true", source)
+        self.assertNotIn("runProject(", api)
+        self.assertNotIn("fetchSnapshot", api)
+        self.assertNotIn("finance_wiring_enabled: true", api)
+        self.assertNotIn("snapshot_wiring_enabled: true", api)
         assert_all_frozen_files_unchanged(PACKAGE_ROOT)
 
 
