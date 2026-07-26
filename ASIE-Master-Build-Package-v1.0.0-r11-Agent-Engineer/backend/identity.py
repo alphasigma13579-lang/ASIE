@@ -6,15 +6,27 @@ import secrets
 from dataclasses import dataclass
 from typing import Final
 
+DIB_FULL_PERMISSIONS: Final[frozenset[str]] = frozenset(
+    {
+        "dib.read",
+        "dib.write",
+        "dib.approve_manifest",
+        "dib.run_gate",
+        "dib.finance.execute",
+        "dib.snapshot.handoff",
+    }
+)
+DIB_REVIEW_PERMISSIONS: Final[frozenset[str]] = frozenset({"dib.read", "dib.approve_manifest", "dib.run_gate"})
+DIB_READ_PERMISSION: Final[frozenset[str]] = frozenset({"dib.read"})
 
 ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
-    "platform_admin": frozenset({"platform.manage", "platform.audit.read", "organization.support", "subscription.manage"}),
-    "platform_support": frozenset({"organization.support"}),
-    "organization_owner": frozenset({"organization.manage", "membership.manage", "project.create", "project.edit", "project.run", "snapshot.read", "review.write"}),
-    "organization_admin": frozenset({"membership.manage", "project.create", "project.edit", "project.run", "snapshot.read", "review.write"}),
-    "analyst": frozenset({"project.create", "project.edit", "project.run", "snapshot.read", "review.write"}),
-    "reviewer": frozenset({"snapshot.read", "review.write"}),
-    "viewer": frozenset({"snapshot.read"}),
+    "platform_admin": frozenset({"platform.manage", "platform.audit.read", "organization.support", "subscription.manage"}) | DIB_FULL_PERMISSIONS,
+    "platform_support": frozenset({"organization.support", "dib.read"}),
+    "organization_owner": frozenset({"organization.manage", "membership.manage", "project.create", "project.edit", "project.run", "snapshot.read", "review.write"}) | DIB_FULL_PERMISSIONS,
+    "organization_admin": frozenset({"membership.manage", "project.create", "project.edit", "project.run", "snapshot.read", "review.write"}) | DIB_FULL_PERMISSIONS,
+    "analyst": frozenset({"project.create", "project.edit", "project.run", "snapshot.read", "review.write"}) | DIB_FULL_PERMISSIONS,
+    "reviewer": frozenset({"snapshot.read", "review.write"}) | DIB_REVIEW_PERMISSIONS,
+    "viewer": frozenset({"snapshot.read"}) | DIB_READ_PERMISSION,
 }
 
 VALID_ROLES: Final[frozenset[str]] = frozenset(ROLE_PERMISSIONS)
