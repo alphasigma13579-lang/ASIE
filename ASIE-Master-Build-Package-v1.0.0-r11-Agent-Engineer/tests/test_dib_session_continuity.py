@@ -29,7 +29,8 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
         self.assertIn("project_id", api)
         self.assertIn("resume_available", api)
         self.assertIn("latest_session", api)
-        self.assertIn("self.controller.dispatch(method, path, request_payload)", http)
+        self.assertIn("_dispatch_path_with_optional_session_query", http)
+        self.assertIn("clean_path == \"/api/dib/sessions\" and parsed.query", http)
 
     def test_frontend_exposes_resume_or_new_session_without_later_wiring(self) -> None:
         source = DIB_UI_PATH.read_text(encoding="utf-8")
