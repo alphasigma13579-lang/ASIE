@@ -35,7 +35,8 @@ class DIBSessionContinuityPackageTests(unittest.TestCase):
     def test_frontend_exposes_resume_or_new_session_without_later_wiring(self) -> None:
         source = DIB_UI_PATH.read_text(encoding="utf-8")
         api_client = DIB_API_CLIENT_PATH.read_text(encoding="utf-8")
-        self.assertIn("DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1", source)
+        self.assertIn("DIB_SESSION_CONTINUITY_UI_ID", source)
+        self.assertIn("DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1", api_client)
         self.assertIn("fetchDIBSessionsForProject", source)
         self.assertIn("استئناف الجلسة السابقة", source)
         self.assertIn("استئناف آخر Session", source)
