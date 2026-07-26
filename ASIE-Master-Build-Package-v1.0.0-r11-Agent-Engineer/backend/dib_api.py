@@ -9,6 +9,7 @@ from backend.dib_controlled_finance_wiring import (
     controlled_finance_wiring_status,
     execute_controlled_finance_from_dib_session,
 )
+from backend.dib_e2e_scenario import DIB_E2E_SCENARIO_ID, build_dib_e2e_scenario_report, dib_e2e_scenario_status
 from backend.dib_intake_item_governance import (
     DIB_INTAKE_ITEM_GOVERNANCE_ID,
     apply_governed_item_decision,
@@ -81,6 +82,7 @@ DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/project-run-readiness", "purpose": "Build Manifest-to-Run readiness without executing Finance or Snapshot."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/controlled-finance", "purpose": "Execute controlled Finance from Approved Input Manifest only, without ProjectRunWorkflow or Snapshot."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/snapshot-projection-handoff", "purpose": "Prepare DIB Snapshot lineage and projection support handoff without assembling Snapshot."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/e2e-scenario", "purpose": "Build a DIB end-to-end scenario report without ProjectRunWorkflow or Snapshot Assembly."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}/events", "purpose": "List DIB session events and audit hashes."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/close", "purpose": "Close a DIB session without snapshot mutation."},
 )
@@ -108,6 +110,7 @@ class DIBApiResponse:
             "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
             "controlled_finance_wiring_id": DIB_CONTROLLED_FINANCE_WIRING_ID,
             "snapshot_projection_handoff_id": DIB_SNAPSHOT_PROJECTION_HANDOFF_ID,
+            "e2e_scenario_id": DIB_E2E_SCENARIO_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -166,10 +169,12 @@ class DIBApiController:
             "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
             "controlled_finance_wiring_id": DIB_CONTROLLED_FINANCE_WIRING_ID,
             "snapshot_projection_handoff_id": DIB_SNAPSHOT_PROJECTION_HANDOFF_ID,
+            "e2e_scenario_id": DIB_E2E_SCENARIO_ID,
             "intake_item_governance": intake_item_governance_status(),
             "manifest_run_readiness": manifest_run_readiness_status(),
             "controlled_finance_wiring": controlled_finance_wiring_status(),
             "snapshot_projection_handoff": snapshot_projection_handoff_status(),
+            "e2e_scenario": dib_e2e_scenario_status(),
             "status": DIB_API_STATUS,
             "source": DIB_API_SOURCE,
             "route_count": len(DIB_API_ROUTES),
@@ -220,6 +225,8 @@ class DIBApiController:
                     return self._execute_controlled_finance(session_id, request_payload)
                 if method == "POST" and tail == ["snapshot-projection-handoff"]:
                     return self._build_snapshot_projection_handoff(session_id, request_payload)
+                if method == "POST" and tail == ["e2e-scenario"]:
+                    return self._build_e2e_scenario_report(session_id, request_payload)
                 if method == "POST" and tail == ["close"]:
                     return DIBApiResponse(200, {"session": self.store.close_session(session_id), "snapshot_mutation": False})
         except DIBPersistenceError as exc:
@@ -334,6 +341,21 @@ class DIBApiController:
                 "snapshot_projection_handoff": handoff,
                 "snapshot_projection_handoff_prepared": handoff.get("status") == "prepared",
                 "sealed_envelope_created": False,
+                "snapshot_mutation": False,
+                "finance_wiring_enabled": False,
+            },
+        )
+
+    def _build_e2e_scenario_report(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        session = self.store.load_session(session_id)
+        events = self.store.list_events(session_id)
+        report = build_dib_e2e_scenario_report(session, scenario_id=str(payload.get("scenario_id") or "baseline"), events=events)
+        return DIBApiResponse(
+            200,
+            {
+                "e2e_scenario": report,
+                "e2e_scenario_passed": report.get("status") == "passed",
+                "project_run_workflow_mount": "not_called",
                 "snapshot_mutation": False,
                 "finance_wiring_enabled": False,
             },
