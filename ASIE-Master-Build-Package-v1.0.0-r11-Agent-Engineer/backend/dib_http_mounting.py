@@ -147,6 +147,8 @@ def _resolved_dib_db_path(db_path: str | None = None) -> str:
 
 
 def _sidecar_auth_required(path: str) -> bool:
+    if _clean_path(path) == "/api/dib/status":
+        return False
     return resolve_dib_auth_required(path)
 
 
