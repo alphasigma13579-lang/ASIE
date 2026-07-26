@@ -11,6 +11,11 @@ from backend.dib_intake_item_governance import (
     preview_intake_item_mapping,
     resolve_template_registry_surface,
 )
+from backend.dib_manifest_run_readiness import (
+    DIB_MANIFEST_RUN_READINESS_ID,
+    build_manifest_run_readiness,
+    manifest_run_readiness_status,
+)
 from backend.dib_module_adapters import execute_dib_module_adapter
 from backend.dib_persistence import DIBPersistenceError, DIBPersistenceStore, create_dib_persistence_store
 from backend.dib_session_continuity import DIB_SESSION_CONTINUITY_ID, list_dib_sessions_for_project
@@ -63,6 +68,7 @@ DIB_API_ROUTES: tuple[dict[str, Any], ...] = (
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/blueprints", "purpose": "Build or save a Dynamic Input Blueprint."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/approved-manifests", "purpose": "Build or save an Approved Input Manifest."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/validation-gates", "purpose": "Build or save a Manifest Validation Gate."},
+    {"method": "POST", "path": "/api/dib/sessions/{session_id}/project-run-readiness", "purpose": "Build Manifest-to-Run readiness without executing Finance or Snapshot."},
     {"method": "GET", "path": "/api/dib/sessions/{session_id}/events", "purpose": "List DIB session events and audit hashes."},
     {"method": "POST", "path": "/api/dib/sessions/{session_id}/close", "purpose": "Close a DIB session without snapshot mutation."},
 )
@@ -87,6 +93,7 @@ class DIBApiResponse:
             "api_id": DIB_API_ID,
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
+            "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
             "finance_wiring_enabled": False,
@@ -142,7 +149,9 @@ class DIBApiController:
             "api_id": DIB_API_ID,
             "session_continuity_id": DIB_SESSION_CONTINUITY_ID,
             "intake_item_governance_id": DIB_INTAKE_ITEM_GOVERNANCE_ID,
+            "manifest_run_readiness_id": DIB_MANIFEST_RUN_READINESS_ID,
             "intake_item_governance": intake_item_governance_status(),
+            "manifest_run_readiness": manifest_run_readiness_status(),
             "status": DIB_API_STATUS,
             "source": DIB_API_SOURCE,
             "route_count": len(DIB_API_ROUTES),
@@ -187,6 +196,8 @@ class DIBApiController:
                     return self._save_or_build_manifest(session_id, request_payload)
                 if method == "POST" and tail == ["validation-gates"]:
                     return self._save_or_build_gate(session_id, request_payload)
+                if method == "POST" and tail == ["project-run-readiness"]:
+                    return self._build_project_run_readiness(session_id, request_payload)
                 if method == "POST" and tail == ["close"]:
                     return DIBApiResponse(200, {"session": self.store.close_session(session_id), "snapshot_mutation": False})
         except DIBPersistenceError as exc:
@@ -261,6 +272,20 @@ class DIBApiController:
                 "item": result.get("item"),
                 "snapshot_mutation": False,
                 "finance_wiring_enabled": False,
+            },
+        )
+
+    def _build_project_run_readiness(self, session_id: str, payload: dict[str, Any]) -> DIBApiResponse:
+        session = self.store.load_session(session_id)
+        readiness = build_manifest_run_readiness(session, scenario_id=str(payload.get("scenario_id") or "baseline"))
+        return DIBApiResponse(
+            200,
+            {
+                "project_run_readiness": readiness,
+                "ready_for_project_run": bool(readiness.get("ready_for_project_run")),
+                "project_run_request": readiness.get("project_run_request"),
+                "finance_wiring_enabled": False,
+                "snapshot_mutation": False,
             },
         )
 
