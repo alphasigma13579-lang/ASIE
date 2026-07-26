@@ -1,6 +1,7 @@
 import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./session";
 
 export const DIB_UI_LIVE_API_WIRING_ID = "DIB-LIVE-002J-UI-LIVE-API-WIRING-v1";
+export const DIB_SESSION_CONTINUITY_UI_ID = "DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1";
 
 async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -44,6 +45,7 @@ export interface DIBStatusPayload {
   api_id?: string;
   mounting_id?: string;
   local_gateway_integration_id?: string;
+  session_continuity_id?: string;
   status: string;
   route_count: number;
   routes: DIBRouteRef[];
@@ -65,8 +67,21 @@ export interface DIBSessionRecord {
   current_blueprint?: DIBBlueprintPayload;
   approved_manifest?: DIBApprovedManifestPayload;
   validation_gate?: DIBValidationGatePayload;
+  created_at?: string;
+  updated_at?: string;
   external_fetch_enabled: boolean;
   ai_provider_enabled: boolean;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export interface DIBSessionQueryResponse {
+  sessions: DIBSessionRecord[];
+  latest_session?: DIBSessionRecord | null;
+  resume_available: boolean;
+  project_id: string;
+  session_continuity_id?: string;
   finance_wiring_enabled: boolean;
   snapshot_wiring_enabled: boolean;
   [key: string]: unknown;
@@ -150,6 +165,20 @@ export async function startDIBSession(projectProfile: Record<string, unknown>): 
     body: JSON.stringify({ project_profile: projectProfile }),
   });
   return response.session;
+}
+
+export async function fetchDIBSessionsForProject(projectId: string): Promise<DIBSessionRecord[]> {
+  const response = await requestDibJson<DIBSessionQueryResponse>(
+    `/api/dib/sessions?project_id=${encodeURIComponent(projectId)}`
+  );
+  return response.sessions;
+}
+
+export async function fetchLatestDIBSessionForProject(projectId: string): Promise<DIBSessionRecord | null> {
+  const response = await requestDibJson<DIBSessionQueryResponse>(
+    `/api/dib/sessions?project_id=${encodeURIComponent(projectId)}&limit=1`
+  );
+  return response.latest_session ?? response.sessions[0] ?? null;
 }
 
 export async function fetchDIBSession(sessionId: string): Promise<DIBSessionRecord> {
