@@ -3,6 +3,7 @@ import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./
 export const DIB_UI_LIVE_API_WIRING_ID = "DIB-LIVE-002J-UI-LIVE-API-WIRING-v1";
 export const DIB_SESSION_CONTINUITY_UI_ID = "DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1";
 export const DIB_INTAKE_ITEM_GOVERNANCE_UI_ID = "DIB-COMPLETION-PACKAGE-B-INTAKE-ITEM-GOVERNANCE-v1";
+export const DIB_MANIFEST_RUN_READINESS_UI_ID = "DIB-COMPLETION-PACKAGE-C-MANIFEST-RUN-READINESS-v1";
 
 async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -48,6 +49,7 @@ export interface DIBStatusPayload {
   local_gateway_integration_id?: string;
   session_continuity_id?: string;
   intake_item_governance_id?: string;
+  manifest_run_readiness_id?: string;
   status: string;
   route_count: number;
   routes: DIBRouteRef[];
@@ -194,6 +196,35 @@ export interface DIBItemDecisionResponse {
   [key: string]: unknown;
 }
 
+export interface DIBProjectRunReadinessPayload {
+  readiness_id: string;
+  status: "ready" | "blocked" | "pending_gate" | string;
+  project_id: string;
+  session_id: string;
+  scenario_id: string;
+  ready_for_project_run: boolean;
+  manifest_gate?: Record<string, unknown> | null;
+  project_run_request?: Record<string, unknown> | null;
+  blockers: Array<{ code: string; severity: string; message: string }>;
+  finance_engine_execution_status: "not_executed" | string;
+  project_run_workflow_mount: "not_called" | string;
+  input_source: "approved_input_manifest_only" | string;
+  external_fetch_enabled: boolean;
+  ai_provider_enabled: boolean;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export interface DIBProjectRunReadinessResponse {
+  project_run_readiness: DIBProjectRunReadinessPayload;
+  ready_for_project_run: boolean;
+  project_run_request?: Record<string, unknown> | null;
+  finance_wiring_enabled: boolean;
+  snapshot_wiring_enabled: boolean;
+  [key: string]: unknown;
+}
+
 export async function fetchDIBStatus(): Promise<DIBStatusPayload> {
   const response = await requestDibJson<{ dib_api?: DIBStatusPayload; status?: DIBStatusPayload }>("/api/dib/status");
   return response.dib_api ?? response.status ?? (response as unknown as DIBStatusPayload);
@@ -261,6 +292,16 @@ export async function applyDIBItemDecision(
   return requestDibJson<DIBItemDecisionResponse>(`/api/dib/sessions/${sessionId}/item-decisions`, {
     method: "POST",
     body: JSON.stringify({ item, decision }),
+  });
+}
+
+export async function buildDIBProjectRunReadiness(
+  sessionId: string,
+  scenarioId = "baseline"
+): Promise<DIBProjectRunReadinessResponse> {
+  return requestDibJson<DIBProjectRunReadinessResponse>(`/api/dib/sessions/${sessionId}/project-run-readiness`, {
+    method: "POST",
+    body: JSON.stringify({ scenario_id: scenarioId }),
   });
 }
 
