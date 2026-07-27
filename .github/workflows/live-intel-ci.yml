@@ -47,4 +47,8 @@ jobs:
       - name: Test deployment package guardrails
         run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
       - name: Validate production Compose model
-        run: docker compose --env-file .env.production.example -f docker-compose.production.yml config --quiet
+        run: |
+          cp .env.production.example .env.production
+          trap 'rm -f .env.production' EXIT
+          chmod 600 .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
