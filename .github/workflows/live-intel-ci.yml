@@ -54,7 +54,25 @@ jobs:
           assert snapshot["stores_api_keys"] is False
           PY
       - name: Test gateway disabled-default policy
-        run: pytest -q -s --tb=long tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default
+        id: gateway_default
+        continue-on-error: true
+        run: |
+          pytest -q -s --tb=long \
+            tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default \
+            > /tmp/gateway-default.log 2>&1
+      - name: Upload gateway diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-default-pytest-${{ github.run_id }}
+          path: /tmp/gateway-default.log
+          if-no-files-found: error
+          retention-days: 1
+      - name: Enforce gateway disabled-default result
+        if: steps.gateway_default.outcome == 'failure'
+        run: |
+          cat /tmp/gateway-default.log
+          exit 1
       - name: Test gateway disabled-before-transport policy
         run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_disabled_policy_blocks_before_transport
       - name: Test gateway HTTPS allowlist and SSRF policy
