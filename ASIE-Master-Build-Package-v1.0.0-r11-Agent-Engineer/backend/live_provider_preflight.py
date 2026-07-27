@@ -22,6 +22,8 @@ def _safe_index_summary(description: dict[str, Any]) -> dict[str, Any]:
     embed = payload.get("embed") if isinstance(payload.get("embed"), dict) else {}
     field_map = embed.get("field_map") if isinstance(embed, dict) and isinstance(embed.get("field_map"), dict) else {}
     index_status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
+    expected_model = os.getenv("PINECONE_EMBED_MODEL", "multilingual-e5-large").strip() or "multilingual-e5-large"
+    actual_model = embed.get("model") if isinstance(embed, dict) else None
     return {
         "name": payload.get("name"),
         "ready": index_status.get("ready"),
@@ -30,7 +32,9 @@ def _safe_index_summary(description: dict[str, Any]) -> dict[str, Any]:
         "dimension": payload.get("dimension"),
         "vector_type": payload.get("vector_type"),
         "deletion_protection": payload.get("deletion_protection"),
-        "embed_model": embed.get("model") if isinstance(embed, dict) else None,
+        "embed_model": actual_model,
+        "expected_embed_model": expected_model,
+        "embed_model_compatible": actual_model == expected_model,
         "field_map": field_map,
         "chunk_text_compatible": "chunk_text" in set(field_map.values()),
         "host_discovered": bool(payload.get("host")),
@@ -64,8 +68,19 @@ def run(network: bool) -> dict[str, Any]:
         pinecone = PineconeKnowledgeClient.from_env(transport)
         description = pinecone.describe_index()
         summary = _safe_index_summary(description)
-        result["pinecone"] = {"status": "checked", **summary}
-        result["status"] = "passed" if summary.get("ready") else "pinecone_not_ready"
+        compatible = bool(
+            summary.get("ready")
+            and summary.get("host_discovered")
+            and summary.get("embed_model_compatible")
+            and summary.get("chunk_text_compatible")
+        )
+        result["pinecone"] = {"status": "checked", **summary, "compatible": compatible}
+        if compatible:
+            result["status"] = "passed"
+        elif not summary.get("ready"):
+            result["status"] = "pinecone_not_ready"
+        else:
+            result["status"] = "pinecone_index_incompatible"
     except ProviderConfigurationError as exc:
         result["status"] = "missing_configuration"
         result["error"] = str(exc)
