@@ -1,0 +1,55 @@
+name: LIVE-INTEL CI
+
+on:
+  pull_request:
+    paths:
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_acquisition.py"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_*.py"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/deploy/**"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.production.yml"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/.env.production.example"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/requirements-dev.txt"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_external_acquisition_gateway.py"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_*.py"
+      - ".github/workflows/live-intel-ci.yml"
+      - ".github/workflows/deploy-hostinger.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live-intel:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test runtime
+        run: pip install -r requirements-dev.txt
+      - name: Compile live provider modules
+        run: |
+          python -m py_compile \
+            backend/external_acquisition.py \
+            backend/live_provider_catalog.py \
+            backend/live_provider_clients.py \
+            backend/live_provider_preflight.py
+      - name: Test governed acquisition gateway
+        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
+      - name: Test provider clients and Pinecone isolation
+        run: pytest -q --tb=short tests/test_live_provider_clients.py
+      - name: Test provider preflight
+        run: pytest -q --tb=short tests/test_live_provider_preflight.py
+      - name: Test deployment package guardrails
+        run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
+      - name: Validate production Compose model
+        run: |
+          cp .env.production.example .env.production
+          trap 'rm -f .env.production' EXIT
+          chmod 600 .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet

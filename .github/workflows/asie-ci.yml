@@ -47,6 +47,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install Python test dependencies
+        run: pip install -r requirements-dev.txt
+
       - name: Compile backend
         run: python -m compileall -q backend
 

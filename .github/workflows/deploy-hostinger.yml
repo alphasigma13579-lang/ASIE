@@ -1,0 +1,178 @@
+name: Deploy ASIE to Hostinger VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_external_fetch:
+        description: Enable governed live provider network access
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asie-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt pytest
+      - run: python -m compileall -q backend
+      - run: pytest -q
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ASIE_DOMAIN: ${{ secrets.ASIE_DOMAIN }}
+      HOSTINGER_VPS_HOST: ${{ secrets.HOSTINGER_VPS_HOST }}
+      HOSTINGER_VPS_USER: ${{ secrets.HOSTINGER_VPS_USER }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      ASIE_TLS_EMAIL: ${{ secrets.ASIE_TLS_EMAIL }}
+      ENABLE_EXTERNAL_FETCH: ${{ inputs.enable_external_fetch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deployment secrets
+        run: |
+          set -eu
+          for name in ASIE_DOMAIN HOSTINGER_VPS_HOST HOSTINGER_VPS_USER; do
+            value=$(printenv "$name")
+            if [ -z "$value" ]; then
+              echo "Missing required GitHub production secret: $name" >&2
+              exit 1
+            fi
+          done
+          if [ "$ENABLE_EXTERNAL_FETCH" = "true" ]; then
+            for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY PINECONE_API_KEY; do
+              value=$(printenv "$name")
+              if [ -z "$value" ]; then
+                echo "External fetch requested but provider secret is missing: $name" >&2
+                exit 1
+              fi
+            done
+          fi
+
+      - name: Create protected production environment file
+        run: |
+          umask 077
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          domain = os.environ["ASIE_DOMAIN"].strip()
+          values = {
+              "ASIE_ENV": "production",
+              "ASIE_DOMAIN": domain,
+              "ASIE_ALLOWED_ORIGINS": f"https://{domain}",
+              "ASIE_API_PORT": "8794",
+              "ASIE_DB_PATH": "/var/lib/asie/asie_local.sqlite3",
+              "ASIE_DIB_DB_PATH": "/var/lib/asie/dib_local.sqlite3",
+              "ASIE_PDF_RENDERER": "/usr/bin/chromium",
+              "ASIE_STRICT_OPEN_DATA_PROFILE": "strict_open_data_only_v1",
+              "ASIE_ALLOW_EXTERNAL_FETCH": os.environ["ENABLE_EXTERNAL_FETCH"],
+              "ASIE_EXTERNAL_ALLOWED_HOSTS": "api.deepseek.com,api.tavily.com,geocode.googleapis.com,places.googleapis.com,maps.googleapis.com,api.pinecone.io,*.pinecone.io",
+              "ASIE_EXTERNAL_TIMEOUT_SECONDS": "15",
+              "ASIE_EXTERNAL_MAX_RESPONSE_BYTES": "4194304",
+              "ASIE_EXTERNAL_MIN_INTERVAL_SECONDS": "1",
+              "ASIE_EXTERNAL_USER_AGENT": "ASIE-Governed-Acquisition/1.0",
+              "ASIE_EXTERNAL_ROBOTS_FAILURE_MODE": "deny",
+              "DEEPSEEK_API_KEY": os.environ.get("DEEPSEEK_API_KEY", ""),
+              "DEEPSEEK_MODEL": "deepseek-v4-flash",
+              "TAVILY_API_KEY": os.environ.get("TAVILY_API_KEY", ""),
+              "TAVILY_PROJECT": os.environ.get("TAVILY_PROJECT", ""),
+              "TAVILY_SEARCH_DEPTH": "basic",
+              "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+              "GOOGLE_MAPS_REGION": "SA",
+              "GOOGLE_MAPS_LANGUAGE": "ar",
+              "PINECONE_API_KEY": os.environ.get("PINECONE_API_KEY", ""),
+              "PINECONE_INDEX": "vision2030-kb",
+              "PINECONE_API_VERSION": "2026-04",
+              "PINECONE_EMBED_MODEL": "multilingual-e5-large",
+              "PINECONE_NAMESPACE_PREFIX": "asie",
+              "ASIE_TLS_EMAIL": os.environ.get("ASIE_TLS_EMAIL", ""),
+              "ASIE_BACKUP_RETENTION_DAYS": "14",
+          }
+          content = "".join(f"{key}={value}\n" for key, value in values.items())
+          Path("/tmp/asie.env.production").write_text(content, encoding="utf-8")
+          PY
+          chmod 600 /tmp/asie.env.production
+
+      - name: Configure SSH
+        env:
+          HOSTINGER_VPS_SSH_KEY: ${{ secrets.HOSTINGER_VPS_SSH_KEY }}
+        run: |
+          set -eu
+          if [ -z "$HOSTINGER_VPS_SSH_KEY" ]; then
+            echo "Missing required GitHub production secret: HOSTINGER_VPS_SSH_KEY" >&2
+            exit 1
+          fi
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$HOSTINGER_VPS_SSH_KEY" > ~/.ssh/asie_deploy_key
+          ssh-keyscan -H "$HOSTINGER_VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload protected environment
+        run: |
+          scp -i ~/.ssh/asie_deploy_key /tmp/asie.env.production \
+            "$HOSTINGER_VPS_USER@$HOSTINGER_VPS_HOST:/tmp/asie.env.production"
+
+      - name: Deploy main to Hostinger VPS
+        run: |
+          ssh -i ~/.ssh/asie_deploy_key "$HOSTINGER_VPS_USER@$HOSTINGER_VPS_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          command -v git >/dev/null
+          command -v docker >/dev/null
+          docker compose version >/dev/null
+
+          DEPLOY_PATH="$HOME/asie"
+          REPOSITORY_URL="https://github.com/alphasigma13579-lang/ASIE.git"
+          PACKAGE_PATH="$DEPLOY_PATH/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer"
+
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            git clone "$REPOSITORY_URL" "$DEPLOY_PATH"
+          fi
+          cd "$DEPLOY_PATH"
+          git fetch --prune origin main
+          git checkout -B main origin/main
+          git reset --hard origin/main
+
+          mv /tmp/asie.env.production "$PACKAGE_PATH/.env.production"
+          chmod 600 "$PACKAGE_PATH/.env.production"
+          cd "$PACKAGE_PATH"
+          sh deploy/hostinger-vps-deploy.sh
+          REMOTE
+
+      - name: Remove local temporary secrets
+        if: always()
+        run: |
+          rm -f /tmp/asie.env.production ~/.ssh/asie_deploy_key
