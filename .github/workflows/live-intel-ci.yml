@@ -36,20 +36,13 @@ jobs:
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
             backend/live_provider_preflight.py
-      - name: Run focused live provider tests
-        run: |
-          set +e
-          pytest -q --tb=short \
-            tests/test_external_acquisition_gateway.py \
-            tests/test_live_provider_clients.py \
-            tests/test_live_provider_preflight.py \
-            tests/test_live_intel_deployment_package.py \
-            > /tmp/live-intel-pytest.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 120 /tmp/live-intel-pytest.log
-            exit "$status"
-          fi
-          cat /tmp/live-intel-pytest.log
+      - name: Test governed acquisition gateway
+        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
+      - name: Test provider clients and Pinecone isolation
+        run: pytest -q --tb=short tests/test_live_provider_clients.py
+      - name: Test provider preflight
+        run: pytest -q --tb=short tests/test_live_provider_preflight.py
+      - name: Test deployment package guardrails
+        run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
       - name: Validate production Compose model
         run: docker compose --env-file .env.production.example -f docker-compose.production.yml config --quiet
