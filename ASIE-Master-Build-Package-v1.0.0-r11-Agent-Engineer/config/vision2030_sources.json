@@ -1,0 +1,48 @@
+{
+  "registry_id": "asie-vision2030-source-registry-v1",
+  "knowledge_domain": "vision2030",
+  "authority_policy": "official_sources_only",
+  "refresh_policy": "monthly_change_detection",
+  "sources": [
+    {
+      "source_id": "vision2030-ar-home",
+      "title": "رؤية السعودية 2030 — البوابة العربية الرسمية",
+      "url": "https://www.vision2030.gov.sa/ar/",
+      "language": "ar",
+      "source_type": "official_web_page",
+      "authority": "Saudi Vision 2030",
+      "enabled": true,
+      "extract_depth": "advanced"
+    },
+    {
+      "source_id": "vision2030-en-home",
+      "title": "Saudi Vision 2030 — Official English Portal",
+      "url": "https://www.vision2030.gov.sa/en/",
+      "language": "en",
+      "source_type": "official_web_page",
+      "authority": "Saudi Vision 2030",
+      "enabled": true,
+      "extract_depth": "advanced"
+    },
+    {
+      "source_id": "vision2030-national-transformation-program",
+      "title": "National Transformation Program — Official Program Page and Documents",
+      "url": "https://www.vision2030.gov.sa/en/explore/programs/national-transformation-program",
+      "language": "en",
+      "source_type": "official_program_page",
+      "authority": "Saudi Vision 2030",
+      "enabled": true,
+      "extract_depth": "advanced"
+    },
+    {
+      "source_id": "vision2030-open-data",
+      "title": "Saudi Vision 2030 — Open Data",
+      "url": "https://www.vision2030.gov.sa/en/open-data",
+      "language": "en",
+      "source_type": "official_open_data_page",
+      "authority": "Saudi Vision 2030",
+      "enabled": true,
+      "extract_depth": "advanced"
+    }
+  ]
+}
