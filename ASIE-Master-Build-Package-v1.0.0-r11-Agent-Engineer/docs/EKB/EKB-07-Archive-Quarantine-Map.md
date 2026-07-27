@@ -1,14 +1,16 @@
 # EKB-07 — Archive Quarantine Map
 
 Status: LIVE EKB REFERENCE
-Package: Repository Surgery Package R2 — Quarantine Marking / Archive Compaction Candidates
+Package: Repository Surgery R2/R3 Archive Quarantine and Compaction Map
 Date: 2026-07-26
 
 ## Purpose
 
-This map turns the Repository Surgery R1 lockdown into explicit bundle-level quarantine marking.
+This map turns the Repository Surgery R1 lockdown into explicit bundle-level quarantine marking and records later approved compaction/removal steps.
 
-R2 does not delete files. It marks historical bundles so no agent, engineer, or automation can reasonably mistake them for current implementation sources.
+R2 did not delete files. It marked historical bundles so no agent, engineer, or automation can reasonably mistake them for current implementation sources.
+
+R3 packages may delete or compact one quarantined target at a time after proving the target is not live code, not a live test dependency, not an AAS Freeze member, and not required as a current EKB source of truth.
 
 ## Governing Rule
 
@@ -30,27 +32,33 @@ Any implementation-looking file under `docs/reference/`, including `backend/*.py
 ARCHIVE_LOCKED / DANGEROUS_DUPLICATE / NOT EXECUTABLE / NOT AUTHORITATIVE
 ```
 
-## Quarantine Markers Added in R2
+## Active Quarantine Markers
 
-The following marker files must exist and must not be removed unless a later Repository Surgery PR replaces them with a stricter mechanism:
+The following marker files must exist until a later Repository Surgery PR removes or replaces the corresponding target:
 
-| Path | Classification | R3 Treatment |
+| Path | Classification | Current Treatment |
 |---|---|---|
 | `docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_ROOT | Keep marker until compaction complete |
 | `docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_BUNDLE_ROOT | Keep marker until bundle directory is removed or compacted |
-| `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
 | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
 | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
 | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
-| `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md` | TOP_LEVEL_HANDOFF_ARCHIVE | R3 deletion/compaction candidate |
 
-## R3 Compaction Candidates
+## Completed R3 Compaction / Removal
 
-These are candidates, not deletions in R2:
+| Package | Removed Target | Scope |
+|---|---|---|
+| R3A | package-root archive `*.zip.sha256.txt` stubs | Removed checksum stubs only |
+| R3B | `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` at package root | Removed top-level handoff archive only |
+| R3C | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0/` | Removed one quarantined v1.0.0 correction archive bundle |
 
-1. Duplicate architecture correction archives under `docs/reference/r11-workspace-materials/workspace-bundles/`.
-2. Top-level `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` directory.
-3. Archive zip checksum stubs at package root if the referenced archive payload is already represented in `docs/reference/` or GitHub history.
+## Remaining R3 Compaction Candidates
+
+These are candidates, not automatically approved deletions:
+
+1. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/`.
+2. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/`.
+3. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/`.
 4. Heavy static binary/image material already represented by Git history, release artifacts, or a canonical markdown/SVG source.
 
 ## Hard Prohibitions
@@ -66,11 +74,11 @@ R2 and later repository surgery work must not:
 
 ## Acceptance Criteria
 
-R2 is complete only if:
+R3 compaction is acceptable only if:
 
-- Bundle-level quarantine markers exist.
-- EKB-07 exists.
-- A test validates marker presence and prohibitions.
+- The target was already quarantined or explicitly listed as a compaction candidate.
+- One PR removes one target scope only.
+- Current EKB is updated to distinguish active markers from completed removals.
+- Static tests validate the removal boundary.
 - No live runtime file is changed.
-- No archive file is deleted in R2.
 - CI passes before merge.
