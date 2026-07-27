@@ -3,24 +3,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-from urllib.parse import urlsplit
+from typing import Any, Mapping
+from urllib.parse import quote, urlsplit
 
-from backend.external_acquisition import (
-    ExternalAcquisitionPolicy,
-    GovernedExternalAcquisitionGateway,
-)
+from backend.external_acquisition import ExternalAcquisitionPolicy, GovernedExternalAcquisitionGateway
 from backend.live_provider_clients import (
     GovernedProviderTransport,
     PineconeKnowledgeClient,
     ProviderConfigurationError,
     TavilyResearchClient,
+    tenant_project_namespace,
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -99,8 +96,7 @@ def load_registry(path: Path) -> dict[str, Any]:
         if source_id in seen:
             raise Vision2030SyncError("duplicate_vision2030_source_id")
         seen.add(source_id)
-        url = str(source.get("url") or "").strip()
-        parsed = urlsplit(url)
+        parsed = urlsplit(str(source.get("url") or "").strip())
         if parsed.scheme != "https" or parsed.hostname not in {"vision2030.gov.sa", "www.vision2030.gov.sa"}:
             raise Vision2030SyncError("vision2030_source_must_be_official_https")
         if str(source.get("authority") or "") != "Saudi Vision 2030":
@@ -143,11 +139,27 @@ def _extract_result_text(response: Mapping[str, Any], expected_url: str) -> str:
         selected = next((row for row in results if isinstance(row, dict)), None)
     if selected is None:
         raise Vision2030SyncError("tavily_extract_result_invalid")
-    text = selected.get("raw_content") or selected.get("content") or selected.get("markdown")
-    normalized = _normalize_text(str(text or ""))
+    normalized = _normalize_text(str(selected.get("raw_content") or selected.get("content") or selected.get("markdown") or ""))
     if len(normalized) < 200:
         raise Vision2030SyncError("vision2030_source_content_too_short")
     return normalized
+
+
+def _delete_records(pinecone: PineconeKnowledgeClient, record_ids: list[str]) -> int:
+    if not record_ids:
+        return 0
+    namespace = tenant_project_namespace(ORGANIZATION_ID, PROJECT_ID, pinecone.namespace_prefix)
+    deleted = 0
+    for offset in range(0, len(record_ids), 1_000):
+        batch = record_ids[offset : offset + 1_000]
+        pinecone.transport.request_json(
+            provider_id="pinecone",
+            url=f"https://{pinecone._host()}/vectors/delete",
+            headers=pinecone._headers(),
+            body={"ids": batch, "namespace": namespace},
+        )
+        deleted += len(batch)
+    return deleted
 
 
 @dataclass
@@ -157,12 +169,11 @@ class Vision2030KnowledgeSync:
     state_path: Path = DEFAULT_STATE
 
     def run(self, registry: Mapping[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
-        started_at = _utc_now()
         state = load_state(self.state_path)
         previous_sources = state.setdefault("sources", {})
         summary: dict[str, Any] = {
             "sync_id": "asie-vision2030-kb-sync-v1",
-            "started_at": started_at,
+            "started_at": _utc_now(),
             "index_name": self.pinecone.index_name,
             "dry_run": dry_run,
             "sources_checked": 0,
@@ -175,7 +186,6 @@ class Vision2030KnowledgeSync:
             "snapshot_mutated": False,
             "finance_mutated": False,
         }
-
         for source in registry["sources"]:
             if not source.get("enabled", True):
                 continue
@@ -194,16 +204,10 @@ class Vision2030KnowledgeSync:
                 previous = previous_sources.get(source_id) if isinstance(previous_sources.get(source_id), dict) else {}
                 previous_hash = str(previous.get("content_sha256") or "")
                 previous_record_ids = [str(value) for value in previous.get("record_ids", []) if str(value)]
-
                 if content_hash == previous_hash:
                     summary["sources_unchanged"] += 1
-                    previous_sources[source_id] = {
-                        **previous,
-                        "last_checked_at": checked_at,
-                        "last_result": "unchanged",
-                    }
+                    previous_sources[source_id] = {**previous, "last_checked_at": checked_at, "last_result": "unchanged"}
                     continue
-
                 chunks = _chunk_text(text)
                 if not chunks:
                     raise Vision2030SyncError("vision2030_source_produced_no_chunks")
@@ -220,7 +224,6 @@ class Vision2030KnowledgeSync:
                     }
                     for record_id, chunk in zip(record_ids, chunks, strict=True)
                 ]
-
                 if not dry_run:
                     for offset in range(0, len(records), 100):
                         batch = records[offset : offset + 100]
@@ -231,14 +234,7 @@ class Vision2030KnowledgeSync:
                         )
                         summary["records_upserted"] += len(batch)
                     stale_ids = sorted(set(previous_record_ids) - set(record_ids))
-                    if stale_ids:
-                        self.pinecone.delete_records(
-                            organization_id=ORGANIZATION_ID,
-                            project_id=PROJECT_ID,
-                            record_ids=stale_ids,
-                        )
-                        summary["records_deleted"] += len(stale_ids)
-
+                    summary["records_deleted"] += _delete_records(self.pinecone, stale_ids)
                 summary["sources_changed"] += 1
                 previous_sources[source_id] = {
                     "source_url": source_url,
@@ -251,14 +247,8 @@ class Vision2030KnowledgeSync:
                     "last_changed_at": checked_at,
                     "last_result": "changed_dry_run" if dry_run else "changed_upserted",
                 }
-            except Exception as exc:  # Per-source boundary: continue and report without secrets.
-                summary["errors"].append(
-                    {
-                        "source_id": source_id,
-                        "error_type": type(exc).__name__,
-                        "reason": str(exc),
-                    }
-                )
+            except Exception as exc:
+                summary["errors"].append({"source_id": source_id, "error_type": type(exc).__name__, "reason": str(exc)})
                 previous = previous_sources.get(source_id) if isinstance(previous_sources.get(source_id), dict) else {}
                 previous_sources[source_id] = {
                     **previous,
@@ -267,7 +257,6 @@ class Vision2030KnowledgeSync:
                     "last_result": "failed",
                     "last_error_type": type(exc).__name__,
                 }
-
         summary["completed_at"] = _utc_now()
         summary["status"] = "failed" if summary["errors"] else ("changed" if summary["sources_changed"] else "unchanged")
         state.update(
@@ -305,8 +294,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         registry = load_registry(args.registry)
-        sync = build_sync_from_env(args.state)
-        result = sync.run(registry, dry_run=args.dry_run)
+        result = build_sync_from_env(args.state).run(registry, dry_run=args.dry_run)
     except Exception as exc:
         result = {
             "sync_id": "asie-vision2030-kb-sync-v1",
