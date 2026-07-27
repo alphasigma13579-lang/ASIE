@@ -36,8 +36,25 @@ jobs:
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
             backend/live_provider_preflight.py
+      - name: Diagnose gateway policy import
+        run: |
+          python - <<'PY'
+          from backend.external_acquisition import ExternalAcquisitionPolicy
+          policy = ExternalAcquisitionPolicy()
+          snapshot = policy.snapshot()
+          print({
+              "enabled": policy.enabled,
+              "allowed_hosts": policy.allowed_hosts,
+              "private_networks_blocked": snapshot.get("private_networks_blocked"),
+              "stores_api_keys": snapshot.get("stores_api_keys"),
+          })
+          assert policy.enabled is False
+          assert policy.allowed_hosts == ()
+          assert snapshot["private_networks_blocked"] is True
+          assert snapshot["stores_api_keys"] is False
+          PY
       - name: Test gateway disabled-default policy
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default
+        run: pytest -q -s --tb=long tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default
       - name: Test gateway disabled-before-transport policy
         run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_disabled_policy_blocks_before_transport
       - name: Test gateway HTTPS allowlist and SSRF policy
