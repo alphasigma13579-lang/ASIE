@@ -1,0 +1,48 @@
+name: Production Provider Readiness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/production-provider-readiness.yml'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/production_provider_readiness.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_production_provider_readiness.py'
+
+permissions:
+  contents: read
+
+jobs:
+  static-readiness-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run readiness tests
+        run: python -m unittest tests.test_production_provider_readiness
+
+  production-secret-gate:
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    runs-on: ubuntu-latest
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
+      GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify required secret presence without exposing values
+        run: python -m backend.production_provider_readiness
