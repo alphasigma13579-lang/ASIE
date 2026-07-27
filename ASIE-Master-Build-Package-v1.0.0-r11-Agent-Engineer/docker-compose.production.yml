@@ -1,0 +1,157 @@
+name: asie
+
+services:
+  api:
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file:
+      - .env.production
+    environment:
+      ASIE_ENV: production
+      ASIE_API_HOST: 0.0.0.0
+      ASIE_API_PORT: "8794"
+      ASIE_DB_PATH: /var/lib/asie/asie_local.sqlite3
+      ASIE_PDF_RENDERER: /usr/bin/chromium
+      ASIE_ALLOWED_ORIGINS: https://${ASIE_DOMAIN}
+    volumes:
+      - asie-data:/var/lib/asie
+    expose:
+      - "8794"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8794/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - asie-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+
+  dib-api:
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["python", "backend/dib_http_mounting.py"]
+    env_file:
+      - .env.production
+    environment:
+      ASIE_ENV: production
+      ASIE_DIB_HTTP_HOST: 0.0.0.0
+      ASIE_DIB_HTTP_PORT: "8795"
+      ASIE_DIB_DB_PATH: /var/lib/asie/dib_local.sqlite3
+      ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
+    volumes:
+      - asie-data:/var/lib/asie
+    expose:
+      - "8795"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8795/api/dib/status', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - asie-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          cpus: "0.10"
+          memory: 256M
+
+  web:
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      api:
+        condition: service_healthy
+      dib-api:
+        condition: service_healthy
+    expose:
+      - "80"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - asie-internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      ASIE_DOMAIN: ${ASIE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - asie-internal
+
+networks:
+  asie-internal:
+    driver: bridge
+
+volumes:
+  asie-data:
+  caddy-data:
+  caddy-config:
