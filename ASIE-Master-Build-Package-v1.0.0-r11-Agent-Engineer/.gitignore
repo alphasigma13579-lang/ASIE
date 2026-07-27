@@ -5,3 +5,18 @@ backend/*.sqlite3
 backend/*.sqlite3-*
 backend/__pycache__/
 tests/__pycache__/
+
+# Local and production secrets. Keep only documented templates.
+.env
+.env.*
+!.env.example
+!.env.production.example
+secrets/
+*.pem
+*.key
+
+# Runtime persistence, exports, and backups.
+backups/
+output/
+*.sqlite3
+*.sqlite3-*
