@@ -8,7 +8,6 @@ ACTIVE_REQUIRED_MARKERS = [
     "docs/EKB/EKB-07-Archive-Quarantine-Map.md",
     "docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md",
-    "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md",
 ]
 
@@ -17,6 +16,7 @@ COMPLETED_REMOVALS = [
     "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0",
+    "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1",
 ]
 
 
@@ -76,6 +76,7 @@ def test_quarantine_map_declares_active_markers_and_completed_removals():
     assert "Hard Prohibitions" in content
     assert "AAS Freeze" in content
     assert "R3D" in content
+    assert "R3E" in content
 
 
 def test_live_runtime_paths_do_not_reference_quarantined_bundles():
