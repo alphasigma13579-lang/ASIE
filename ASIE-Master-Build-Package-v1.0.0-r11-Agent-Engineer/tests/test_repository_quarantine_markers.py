@@ -4,15 +4,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-REQUIRED_MARKERS = [
+ACTIVE_REQUIRED_MARKERS = [
     "docs/EKB/EKB-07-Archive-Quarantine-Map.md",
     "docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md",
-    "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md",
-    "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md",
+]
+
+
+COMPLETED_REMOVALS = [
+    "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0",
+    "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0",
 ]
 
 
@@ -49,8 +53,8 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_repository_surgery_r2_quarantine_markers_exist():
-    for rel_path in REQUIRED_MARKERS:
+def test_repository_surgery_active_quarantine_markers_exist():
+    for rel_path in ACTIVE_REQUIRED_MARKERS:
         marker = ROOT / rel_path
         assert marker.exists(), rel_path
         content = _read(marker)
@@ -58,10 +62,16 @@ def test_repository_surgery_r2_quarantine_markers_exist():
         assert "Do not copy" in content or "not be used" in content or "Forbidden" in content
 
 
-def test_quarantine_map_declares_r3_candidates_and_no_deletion_in_r2():
+def test_completed_r3_removals_are_absent():
+    for rel_path in COMPLETED_REMOVALS:
+        assert not (ROOT / rel_path).exists(), rel_path
+
+
+def test_quarantine_map_declares_active_markers_and_completed_removals():
     content = _read(ROOT / "docs/EKB/EKB-07-Archive-Quarantine-Map.md")
-    assert "R2 does not delete files" in content
-    assert "R3 Compaction Candidates" in content
+    assert "Active Quarantine Markers" in content
+    assert "Completed R3 Compaction / Removal" in content
+    assert "Remaining R3 Compaction Candidates" in content
     assert "DANGEROUS_DUPLICATE" in content
     assert "Hard Prohibitions" in content
     assert "AAS Freeze" in content
@@ -78,9 +88,10 @@ def test_live_runtime_paths_do_not_reference_quarantined_bundles():
                 assert forbidden not in text, f"{path} references quarantined archive {forbidden}"
 
 
-def test_r2_does_not_modify_frozen_runtime_policy_files():
-    # R2 is a quarantine-marker package. Frozen runtime files must remain live-policy protected
-    # and are not expected to contain quarantine markers.
+def test_r2_r3_do_not_modify_frozen_runtime_policy_files():
+    # Repository Surgery packages operate on archive/reference material only.
+    # Frozen runtime files must remain live-policy protected and must not contain
+    # archive/quarantine markers.
     for rel_path in FROZEN_RUNTIME_FILES:
         path = ROOT / rel_path
         assert path.exists(), rel_path
