@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { AdminConsole } from "./AdminConsole";
+import { ASIECompleteSurfaceMount } from "./ASIECompleteSurfaceMount";
 import { DIBControlledFinanceWiring } from "./DIBControlledFinanceWiring";
 import { DIBE2EScenario } from "./DIBE2EScenario";
 import { DIBIntakeItemGovernance } from "./DIBIntakeItemGovernance";
@@ -12,6 +13,7 @@ import { DIBSnapshotProjectionHandoff } from "./DIBSnapshotProjectionHandoff";
 import { DIBWorkspace } from "./DIBWorkspace";
 import "./styles.css";
 import "./asie-reference-theme.css";
+import "./asie-complete-surface.css";
 
 const currentHash = window.location.hash;
 const routedApp = currentHash === "#admin"
@@ -36,6 +38,7 @@ const showDIBCardDirectAction = !currentHash.startsWith("#admin") && !currentHas
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {routedApp}
+    <ASIECompleteSurfaceMount />
     {showDIBCardDirectAction ? <DIBProjectCardDirectActionMount /> : null}
   </React.StrictMode>
 );
