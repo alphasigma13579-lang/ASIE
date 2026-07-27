@@ -40,7 +40,6 @@ The following marker files must exist until a later Repository Surgery PR remove
 |---|---|---|
 | `docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_ROOT | Keep marker until compaction complete |
 | `docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_BUNDLE_ROOT | Keep marker until bundle directory is removed or compacted |
-| `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
 | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md` | DANGEROUS_DUPLICATE_BUNDLE | R3 deletion/compaction candidate |
 
 ## Completed R3 Compaction / Removal
@@ -51,14 +50,14 @@ The following marker files must exist until a later Repository Surgery PR remove
 | R3B | `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` at package root | Removed top-level handoff archive only |
 | R3C | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0/` | Removed one quarantined v1.0.0 correction archive bundle |
 | R3D | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/` | Removed one quarantined v1.1.0 correction archive bundle |
+| R3E | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/` | Removed one quarantined v1.1.1 correction archive bundle |
 
 ## Remaining R3 Compaction Candidates
 
 These are candidates, not automatically approved deletions:
 
-1. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/`.
-2. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/`.
-3. Heavy static binary/image material already represented by Git history, release artifacts, or a canonical markdown/SVG source.
+1. `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/`.
+2. Heavy static binary/image material already represented by Git history, release artifacts, or a canonical markdown/SVG source.
 
 ## Hard Prohibitions
 
