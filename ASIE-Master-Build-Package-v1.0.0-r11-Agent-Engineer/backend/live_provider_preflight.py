@@ -8,7 +8,11 @@ from typing import Any
 
 from backend.external_acquisition import ExternalAcquisitionPolicy, GovernedExternalAcquisitionGateway
 from backend.live_provider_catalog import provider_catalog_snapshot
-from backend.live_provider_clients import PineconeKnowledgeClient, ProviderConfigurationError
+from backend.live_provider_clients import (
+    GovernedProviderTransport,
+    PineconeKnowledgeClient,
+    ProviderConfigurationError,
+)
 
 
 def _safe_index_summary(description: dict[str, Any]) -> dict[str, Any]:
@@ -56,8 +60,8 @@ def run(network: bool) -> dict[str, Any]:
         return result
     try:
         gateway = GovernedExternalAcquisitionGateway(policy)
-        pinecone = PineconeKnowledgeClient.from_env()
-        pinecone.transport = pinecone.transport or gateway  # type: ignore[assignment]
+        transport = GovernedProviderTransport(gateway)
+        pinecone = PineconeKnowledgeClient.from_env(transport)
         description = pinecone.describe_index()
         summary = _safe_index_summary(description)
         result["pinecone"] = {"status": "checked", **summary}
@@ -65,7 +69,7 @@ def run(network: bool) -> dict[str, Any]:
     except ProviderConfigurationError as exc:
         result["status"] = "missing_configuration"
         result["error"] = str(exc)
-    except Exception as exc:  # CLI boundary: return a redacted class/reason only.
+    except Exception as exc:  # CLI boundary: provider clients never include secret values in errors.
         result["status"] = "failed"
         result["error"] = str(exc)
         result["exception_type"] = type(exc).__name__
