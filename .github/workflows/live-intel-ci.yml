@@ -36,8 +36,30 @@ jobs:
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
             backend/live_provider_preflight.py
-      - name: Test governed acquisition gateway
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
+      - name: Test gateway policy and SSRF guards
+        run: |
+          pytest -q --tb=short \
+            tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default \
+            tests/test_external_acquisition_gateway.py::test_disabled_policy_blocks_before_transport \
+            tests/test_external_acquisition_gateway.py::test_https_allowlist_and_private_network_guards
+      - name: Test gateway JSON and response bounds
+        run: |
+          pytest -q --tb=short \
+            tests/test_external_acquisition_gateway.py::test_api_json_fetch_returns_review_required_envelope \
+            tests/test_external_acquisition_gateway.py::test_response_size_and_content_type_are_bounded
+      - name: Test gateway robots policy
+        run: |
+          pytest -q --tb=short \
+            tests/test_external_acquisition_gateway.py::test_crawl_obeys_robots_before_reading_page
+      - name: Test gateway registry and audit redaction
+        run: |
+          pytest -q --tb=short \
+            tests/test_external_acquisition_gateway.py::test_connector_registry_requires_terms_and_allowlist_without_secrets \
+            tests/test_external_acquisition_gateway.py::test_audit_sink_redacts_credentials_and_payloads
+      - name: Test gateway frozen-runtime boundary
+        run: |
+          pytest -q --tb=short \
+            tests/test_external_acquisition_gateway.py::test_gateway_is_not_wired_into_frozen_runtime
       - name: Test provider clients and Pinecone isolation
         run: pytest -q --tb=short tests/test_live_provider_clients.py
       - name: Test provider preflight
