@@ -22,6 +22,8 @@ jobs:
     defaults:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,61 +38,8 @@ jobs:
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
             backend/live_provider_preflight.py
-      - name: Diagnose gateway policy import
-        run: |
-          python - <<'PY'
-          from backend.external_acquisition import ExternalAcquisitionPolicy
-          policy = ExternalAcquisitionPolicy()
-          snapshot = policy.snapshot()
-          print({
-              "enabled": policy.enabled,
-              "allowed_hosts": policy.allowed_hosts,
-              "private_networks_blocked": snapshot.get("private_networks_blocked"),
-              "stores_api_keys": snapshot.get("stores_api_keys"),
-          })
-          assert policy.enabled is False
-          assert policy.allowed_hosts == ()
-          assert snapshot["private_networks_blocked"] is True
-          assert snapshot["stores_api_keys"] is False
-          PY
-      - name: Test gateway disabled-default policy
-        id: gateway_default
-        continue-on-error: true
-        run: |
-          pytest -q -s --tb=long \
-            tests/test_external_acquisition_gateway.py::test_policy_is_disabled_and_empty_by_default \
-            > /tmp/gateway-default.log 2>&1
-      - name: Upload gateway diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gateway-default-pytest-${{ github.run_id }}
-          path: /tmp/gateway-default.log
-          if-no-files-found: error
-          retention-days: 1
-      - name: Enforce gateway disabled-default result
-        if: steps.gateway_default.outcome == 'failure'
-        run: |
-          cat /tmp/gateway-default.log
-          exit 1
-      - name: Test gateway disabled-before-transport policy
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_disabled_policy_blocks_before_transport
-      - name: Test gateway HTTPS allowlist and SSRF policy
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_https_allowlist_and_private_network_guards
-      - name: Test gateway JSON and response bounds
-        run: |
-          pytest -q --tb=short \
-            tests/test_external_acquisition_gateway.py::test_api_json_fetch_returns_review_required_envelope \
-            tests/test_external_acquisition_gateway.py::test_response_size_and_content_type_are_bounded
-      - name: Test gateway robots policy
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_crawl_obeys_robots_before_reading_page
-      - name: Test gateway registry and audit redaction
-        run: |
-          pytest -q --tb=short \
-            tests/test_external_acquisition_gateway.py::test_connector_registry_requires_terms_and_allowlist_without_secrets \
-            tests/test_external_acquisition_gateway.py::test_audit_sink_redacts_credentials_and_payloads
-      - name: Test gateway frozen-runtime boundary
-        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py::test_gateway_is_not_wired_into_frozen_runtime
+      - name: Test governed acquisition gateway
+        run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
       - name: Test provider clients and Pinecone isolation
         run: pytest -q --tb=short tests/test_live_provider_clients.py
       - name: Test provider preflight
