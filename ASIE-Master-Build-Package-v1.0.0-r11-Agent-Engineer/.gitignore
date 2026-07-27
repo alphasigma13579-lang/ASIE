@@ -15,8 +15,9 @@ secrets/
 *.pem
 *.key
 
-# Runtime persistence, exports, and backups.
+# Runtime persistence, exports, backups, and knowledge sync state.
 backups/
 output/
+.state/
 *.sqlite3
 *.sqlite3-*

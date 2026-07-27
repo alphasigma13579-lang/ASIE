@@ -1,0 +1,93 @@
+name: Vision 2030 Knowledge Sync
+
+on:
+  schedule:
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Detect changes without writing to Pinecone"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_ROOT: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+  PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+  ASIE_ALLOW_EXTERNAL_FETCH: "true"
+  ASIE_EXTERNAL_ALLOWED_HOSTS: "api.tavily.com,api.pinecone.io,*.pinecone.io"
+  ASIE_EXTERNAL_TIMEOUT_SECONDS: "30"
+  ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "20971520"
+  ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "1"
+  ASIE_EXTERNAL_ROBOTS_FAILURE_MODE: "deny"
+  PINECONE_INDEX: "vision2030-kb"
+  PINECONE_API_VERSION: "2026-04"
+  PINECONE_NAMESPACE_PREFIX: "asie"
+
+jobs:
+  sync:
+    name: Check official sources and sync changed content
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: vision2030-kb-sync
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ env.PACKAGE_ROOT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Restore prior change-detection state
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PACKAGE_ROOT }}/.state/vision2030_sync_state.json
+          key: vision2030-sync-${{ github.run_id }}
+          restore-keys: |
+            vision2030-sync-
+
+      - name: Validate source registry and sync module
+        run: |
+          python -m py_compile backend/vision2030_kb_sync.py
+          python -m unittest tests.test_vision2030_kb_sync
+
+      - name: Run monthly Vision 2030 sync
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        run: |
+          dry_run="false"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            dry_run="true"
+          fi
+          args=()
+          if [ "$dry_run" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python -m backend.vision2030_kb_sync "${args[@]}" | tee /tmp/vision2030-sync-summary.json
+
+      - name: Persist change-detection state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.PACKAGE_ROOT }}/.state/vision2030_sync_state.json
+          key: vision2030-sync-${{ github.run_id }}
+
+      - name: Upload redacted sync summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision2030-sync-summary-${{ github.run_id }}
+          path: /tmp/vision2030-sync-summary.json
+          if-no-files-found: warn
+          retention-days: 90
