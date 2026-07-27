@@ -11,6 +11,7 @@ import { DIBProjectEntryPoint } from "./DIBProjectEntryPoint";
 import { DIBSnapshotProjectionHandoff } from "./DIBSnapshotProjectionHandoff";
 import { DIBWorkspace } from "./DIBWorkspace";
 import "./styles.css";
+import "./asie-reference-theme.css";
 
 const currentHash = window.location.hash;
 const routedApp = currentHash === "#admin"
