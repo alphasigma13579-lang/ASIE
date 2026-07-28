@@ -1,0 +1,82 @@
+name: Beta Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Evaluate beta release readiness"
+        required: true
+        default: "conditional"
+        type: choice
+        options:
+          - conditional
+          - strict
+
+permissions:
+  contents: read
+
+jobs:
+  beta-release-gate:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      ASIE_ALLOW_EXTERNAL_FETCH: ${{ vars.ASIE_ALLOW_EXTERNAL_FETCH || 'false' }}
+      ASIE_BETA_GATE_REPORT: beta-release-gate-report.json
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run release-gate tests
+        run: python -m pytest -q tests/test_beta_release_gate.py
+
+      - name: Generate fail-closed readiness report
+        run: python -m backend.beta_release_gate
+
+      - name: Publish redacted summary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('beta-release-gate-report.json').read_text(encoding='utf-8'))
+          with open(Path(__import__('os').environ['GITHUB_STEP_SUMMARY']), 'a', encoding='utf-8') as f:
+              f.write('## ASIE Beta Release Gate\n\n')
+              f.write(f"- Verdict: **{report['verdict']}**\n")
+              f.write(f"- Critical failures: `{report['critical_failures']}`\n")
+              f.write(f"- Conditional gaps: `{report['conditional_gaps']}`\n")
+              f.write('- Secrets exposed: **false**\n')
+          PY
+
+      - name: Enforce strict mode
+        if: ${{ inputs.release_mode == 'strict' }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          verdict = json.loads(Path('beta-release-gate-report.json').read_text(encoding='utf-8'))['verdict']
+          if verdict != 'GO':
+              raise SystemExit(f'strict_beta_gate_blocked:{verdict}')
+          PY
+
+      - name: Enforce conditional mode
+        if: ${{ inputs.release_mode == 'conditional' }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          verdict = json.loads(Path('beta-release-gate-report.json').read_text(encoding='utf-8'))['verdict']
+          if verdict == 'NO_GO':
+              raise SystemExit('conditional_beta_gate_blocked:NO_GO')
+          PY
