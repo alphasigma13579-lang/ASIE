@@ -1,0 +1,35 @@
+{
+  "schema": "asie.release.freeze.v1",
+  "status": "ACTIVE",
+  "decision": "NO_GO",
+  "baseline_commit": "8978231e190b8ccc2be59ec46acf50d6268cd41f",
+  "activated_on": "2026-07-29",
+  "scope": [
+    "public_beta",
+    "production_deployment",
+    "external_network_exposure"
+  ],
+  "reason_codes": [
+    "production_bootstrap_takeover",
+    "zero_user_implicit_principal",
+    "dib_cross_tenant_access",
+    "forged_manifest_gate_finance_execution",
+    "dib_thread_unsafe_sqlite",
+    "release_gate_without_runtime_evidence"
+  ],
+  "protected_boundaries": [
+    "AAS Runtime Freeze v1.0",
+    "Finance calculations",
+    "Snapshot Assembly",
+    "Decision Council"
+  ],
+  "release_gate_allowed": false,
+  "unfreeze_requires": [
+    "SEC-BETA-01 closed with exploit tests",
+    "STAB-BETA-02 closed with concurrent HTTP tests",
+    "SEC-BETA-03 closed with cross-tenant denial tests",
+    "GOV-BETA-04 closed with forged lineage denial tests",
+    "ARCH-BETA-05 closed with canonical ProjectRunWorkflow evidence",
+    "REL-BETA-07 evidence-backed gate on the release commit"
+  ]
+}

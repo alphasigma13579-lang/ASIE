@@ -52,6 +52,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Enforce emergency release freeze
+        run: python tools/enforce_release_freeze.py --marker ../EMERGENCY-RELEASE-FREEZE.json
+
       - name: Compile beta release gate
         run: python -m py_compile backend/beta_release_gate.py
 
