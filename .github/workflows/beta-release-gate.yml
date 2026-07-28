@@ -1,0 +1,67 @@
+name: Beta Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_conditional:
+        description: Allow CONDITIONAL_GO for a limited technical beta
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-release-gate-production
+  cancel-in-progress: false
+
+jobs:
+  beta-release-gate:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      ASIE_BETA_ALLOW_CONDITIONAL: ${{ inputs.allow_conditional }}
+      ASIE_BETA_AUTH_READY: ${{ vars.ASIE_BETA_AUTH_READY }}
+      ASIE_BETA_TENANT_ISOLATION_READY: ${{ vars.ASIE_BETA_TENANT_ISOLATION_READY }}
+      ASIE_BETA_DIB_RUNTIME_READY: ${{ vars.ASIE_BETA_DIB_RUNTIME_READY }}
+      ASIE_BETA_DATASET_MAPPING_READY: ${{ vars.ASIE_BETA_DATASET_MAPPING_READY }}
+      ASIE_BETA_PRODUCT_AI_INTERVIEW_READY: ${{ vars.ASIE_BETA_PRODUCT_AI_INTERVIEW_READY }}
+      ASIE_BETA_APPROVED_MANIFEST_GATE_READY: ${{ vars.ASIE_BETA_APPROVED_MANIFEST_GATE_READY }}
+      ASIE_BETA_CONTROLLED_FINANCE_READY: ${{ vars.ASIE_BETA_CONTROLLED_FINANCE_READY }}
+      ASIE_BETA_SNAPSHOT_LINEAGE_READY: ${{ vars.ASIE_BETA_SNAPSHOT_LINEAGE_READY }}
+      ASIE_BETA_REPORT_EXPORTS_READY: ${{ vars.ASIE_BETA_REPORT_EXPORTS_READY }}
+      ASIE_BETA_DEPLOYMENT_HEALTH_READY: ${{ vars.ASIE_BETA_DEPLOYMENT_HEALTH_READY }}
+      ASIE_BETA_EXTERNAL_FETCH_ENABLED: ${{ vars.ASIE_BETA_EXTERNAL_FETCH_ENABLED }}
+      ASIE_BETA_VISION2030_SYNC_READY: ${{ vars.ASIE_BETA_VISION2030_SYNC_READY }}
+      ASIE_BETA_LIVE_INTELLIGENCE_READY: ${{ vars.ASIE_BETA_LIVE_INTELLIGENCE_READY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile beta release gate
+        run: python -m py_compile backend/beta_release_gate.py
+
+      - name: Evaluate beta release gate
+        run: python -m backend.beta_release_gate | tee beta-release-gate-report.json
+
+      - name: Upload redacted gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-release-gate-report
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/beta-release-gate-report.json
+          retention-days: 14
