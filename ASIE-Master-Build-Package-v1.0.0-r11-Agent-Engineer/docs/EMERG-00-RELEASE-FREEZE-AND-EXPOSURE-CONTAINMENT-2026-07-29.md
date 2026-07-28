@@ -21,7 +21,9 @@ Contain the confirmed pre-production security and architectural failures before 
 ## Containment controls
 
 - `EMERGENCY-RELEASE-FREEZE.json` is the canonical machine-readable freeze marker.
+- `tools/enforce_release_freeze.py` is the executable fail-closed guard.
 - The Beta Release Gate must fail while the marker status is `ACTIVE`.
+- A missing, invalid, or non-mapping marker must also fail closed.
 - No public beta or production deployment may use this baseline or a descendant lacking all mandatory remediation evidence.
 - API and DIB services must remain on loopback or a private deployment network until the release freeze is formally removed.
 - No port `80` or `443` exposure is authorized by this package.
@@ -55,5 +57,6 @@ The freeze marker may be changed from `ACTIVE` only by a dedicated release-contr
 - `EMERGENCY-RELEASE-FREEZE.json`
 - `.github/workflows/beta-release-gate.yml`
 - `SECURITY.md`
+- `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/enforce_release_freeze.py`
 - `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_emerg_00_release_freeze.py`
 - `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EMERG-00-RELEASE-FREEZE-AND-EXPOSURE-CONTAINMENT-2026-07-29.md`
