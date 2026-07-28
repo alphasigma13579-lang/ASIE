@@ -52,6 +52,29 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Enforce emergency release freeze
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          marker_path = Path('../EMERGENCY-RELEASE-FREEZE.json')
+          if not marker_path.is_file():
+              raise SystemExit('emergency_release_freeze_marker_missing')
+
+          marker = json.loads(marker_path.read_text(encoding='utf-8'))
+          if marker.get('schema') != 'asie.release.freeze.v1':
+              raise SystemExit('emergency_release_freeze_schema_invalid')
+          if marker.get('status') == 'ACTIVE' or marker.get('release_gate_allowed') is not True:
+              print(json.dumps({
+                  'decision': 'NO_GO',
+                  'reason': 'emergency_release_freeze_active',
+                  'baseline_commit': marker.get('baseline_commit'),
+                  'reason_codes': marker.get('reason_codes', []),
+              }, ensure_ascii=False, sort_keys=True))
+              raise SystemExit('emergency_release_freeze_active')
+          PY
+
       - name: Compile beta release gate
         run: python -m py_compile backend/beta_release_gate.py
 
