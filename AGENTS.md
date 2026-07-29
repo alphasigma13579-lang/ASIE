@@ -13,7 +13,7 @@ Read this file before changing the repository. It is the shortest path to the cu
 ## Repository rules
 
 - The runnable source is inside `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/`.
-- The EKB is the highest practical knowledge map for agents and engineers.
+- `PROGRAM-CLOSE-10` is the current program/remediation and release-authority source; dated package records remain evidence.\n- The EKB is the highest practical knowledge map for agents and engineers.
 - Do not place long-lived architecture, engine behavior, market logic, DIB rules, prompt policy, or execution plans inside task prompts when they belong in `docs/EKB/`.
 - `docs/reference/` is historical provenance. Do not use it as executable source or silently change it while implementing features.
 - Preserve the frozen AAS path: `Kernel -> Heart Controller -> Hearts -> Bus Controller -> ASIE System Bus -> Socket Contract Layer -> Module Runtime -> Snapshot Assembly`.
