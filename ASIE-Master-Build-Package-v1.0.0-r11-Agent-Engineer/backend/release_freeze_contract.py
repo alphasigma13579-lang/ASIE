@@ -79,6 +79,17 @@ def validate_controlled_unfreeze_marker(marker: Mapping[str, Any]) -> dict[str, 
         if marker.get(key) != expected:
             failures.append(f"invalid_{key}")
 
+    expected_marker_fields = {
+        *exact_scalars,
+        "scope",
+        "reason_codes",
+        "protected_boundaries",
+        "unfreeze_requires",
+        "controlled_unfreeze",
+    }
+    if set(marker) - expected_marker_fields:
+        failures.append("unexpected_marker_fields")
+
     for key, expected in (
         ("scope", EXPECTED_SCOPE),
         ("reason_codes", EXPECTED_REASON_CODES),
