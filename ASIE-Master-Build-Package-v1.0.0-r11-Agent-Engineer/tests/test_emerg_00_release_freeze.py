@@ -138,6 +138,13 @@ class EmergencyReleaseFreezeTests(unittest.TestCase):
                     self.guard.BLOCKED_EXIT_CODE,
                 )
 
+        marker = controlled_marker()
+        marker["public_release_authorized"] = True
+        self.assertEqual(
+            self.guard.enforce_release_freeze(self.write_marker(marker)),
+            self.guard.BLOCKED_EXIT_CODE,
+        )
+
     def test_gate_opens_only_for_exact_controlled_unfreeze_marker(self) -> None:
         self.assertEqual(
             self.guard.enforce_release_freeze(
