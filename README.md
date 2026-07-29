@@ -8,7 +8,9 @@ The runnable workspace is kept under:
 
 `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/`
 
-The repository root is intentionally a navigation and governance layer. Start with [`AGENTS.md`](AGENTS.md) and the package guide before editing. Runtime code, frontend code, tests, and operational documents live in the canonical workspace above.\n\nThe single current remediation and release-authority summary is [`PROGRAM-CLOSE-10`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md). Dated package records remain evidence, not independent current-status sources.
+The repository root is intentionally a navigation and governance layer. Start with [`AGENTS.md`](AGENTS.md) and the package guide before editing. Runtime code, frontend code, tests, and operational documents live in the canonical workspace above.
+
+The single current remediation and release-authority summary is [`PROGRAM-CLOSE-10`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md). Dated package records remain evidence, not independent current-status sources.
 
 ## What is current
 
@@ -32,7 +34,7 @@ pip install -r requirements.txt
 corepack enable
 pnpm install --frozen-lockfile
 pnpm build
-python -m unittest discover -s tests
+python -m pytest -q
 python backend/asie_local_api.py
 ```
 
@@ -51,6 +53,7 @@ The governing record for this decision is [`ACR-DIB-001`](ASIE-Master-Build-Pack
 ## Read first
 
 - [`AGENTS.md`](AGENTS.md): repository rules for programmers and agents.
+- [`PROGRAM-CLOSE-10`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md): current program state and release authority.
 - [`AGENTS.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md): canonical package map and runtime boundaries.
 - [`PROJECT-ORIENTATION.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROJECT-ORIENTATION.md): two entry paths, one blueprint, current gaps, and build order.
 - [`IMPLEMENTATION-STATUS-MATRIX.md`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/IMPLEMENTATION-STATUS-MATRIX.md): implemented versus planned versus reference.
