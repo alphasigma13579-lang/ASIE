@@ -50,12 +50,14 @@ The package adds tests proving:
 3. A forced event insertion failure rolls back the preceding session insertion, including after reopening the database.
 4. WAL, foreign keys, busy timeout, connection scope, and schema version survive reopening.
 5. Closing the Store is idempotent and subsequent operations fail closed.
-6. AAS Runtime Freeze files remain unchanged.
+6. The continuity guard rejects direct `store.connection` and SQL ownership outside Persistence.
+7. AAS Runtime Freeze files remain unchanged.
 
 ## Allowlist
 
 - `backend/dib_persistence.py`
 - `backend/dib_session_continuity.py`
+- `tests/test_dib_session_continuity.py`
 - `tests/test_stab_beta_02_transaction_safe_dib_persistence.py`
 - `docs/STAB-BETA-02-TRANSACTION-SAFE-DIB-PERSISTENCE-2026-07-29.md`
 
