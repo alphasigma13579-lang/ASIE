@@ -34,7 +34,8 @@ services:
       retries: 18
       start_period: 15s
     networks:
-      - asie-private-smoke
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
 
   dib-api:
     image: asie-private-smoke-backend:${ASIE_SMOKE_TAG:-local}
@@ -69,7 +70,8 @@ services:
       retries: 18
       start_period: 15s
     networks:
-      - asie-private-smoke
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
 
   web:
     image: asie-private-smoke-web:${ASIE_SMOKE_TAG:-local}
@@ -93,10 +95,14 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      - asie-private-smoke
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
 
 networks:
-  asie-private-smoke:
+  asie-private-smoke-internal:
+    driver: bridge
+    internal: true
+  asie-private-smoke-loopback:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
