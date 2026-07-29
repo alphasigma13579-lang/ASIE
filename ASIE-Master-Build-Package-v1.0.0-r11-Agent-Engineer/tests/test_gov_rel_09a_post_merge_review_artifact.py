@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -69,6 +71,20 @@ class PostMergeReviewArtifactRepairTests(unittest.TestCase):
         self.assertIn("name: gov-rel-09-governed-freeze-review", self.workflow)
         self.assertIn("--require-eligible", self.workflow)
         self.assertIn("governed-freeze-review.sha256", self.workflow)
+
+    def test_evaluator_uses_import_safe_module_entrypoint(self) -> None:
+        self.assertIn("python -m tools.gov_rel_09_governed_freeze_review", self.workflow)
+        self.assertNotIn("python tools/gov_rel_09_governed_freeze_review.py", self.workflow)
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "tools.gov_rel_09_governed_freeze_review", "--help"],
+            cwd=PACKAGE_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("--gate-report", completed.stdout)
 
     def test_current_main_must_equal_reviewed_commit(self) -> None:
         self.assertIn("current_main=\"$(git rev-parse origin/main)\"", self.workflow)
