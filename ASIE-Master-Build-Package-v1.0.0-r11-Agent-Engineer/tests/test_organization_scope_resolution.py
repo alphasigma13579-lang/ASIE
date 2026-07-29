@@ -5,18 +5,21 @@ GET/POST /api/projects or /api/datasets without X-ASIE-Organization-Id used
 to get an empty reply (connection drop) because the handler returned without
 writing a response. The scope now resolves to the caller's first membership,
 explicit headers are still honored and verified server-side, users with no
-memberships get a clean 400, and legacy zero-user mode is unchanged.
+memberships get a clean 400, and zero-user legacy mode requires explicit local
+development opt-in.
 
 Run with Python 3.13+:  python -m unittest tests.test_organization_scope_resolution
 """
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
+from unittest import mock
 
 from backend import asie_local_api as api
 from backend.repository import Repository
@@ -126,7 +129,7 @@ class OrganizationScopeResolutionTests(unittest.TestCase):
 
 
 class LegacyScopeResolutionTests(unittest.TestCase):
-    """Zero-user legacy mode keeps the legacy organization scope."""
+    """Zero-user legacy scope exists only under explicit local-development opt-in."""
 
     def setUp(self) -> None:
         directory = tempfile.TemporaryDirectory()
@@ -140,13 +143,18 @@ class LegacyScopeResolutionTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def test_legacy_mode_projects_collection_stays_open(self) -> None:
+    def test_legacy_mode_projects_collection_requires_explicit_local_opt_in(self) -> None:
         connection = HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=15)
+        environment = {
+            "ASIE_ENV": "development",
+            "ASIE_ALLOW_LEGACY_LOCAL_OPERATOR": "true",
+        }
         try:
-            connection.request("GET", "/api/projects", headers={"Content-Type": "application/json"})
-            response = connection.getresponse()
-            raw = response.read()
-            self.assertEqual(200, response.status)
+            with mock.patch.dict(os.environ, environment, clear=False):
+                connection.request("GET", "/api/projects", headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                raw = response.read()
+                self.assertEqual(200, response.status)
         finally:
             connection.close()
         self.assertIn("projects", json.loads(raw.decode("utf-8")))
