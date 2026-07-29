@@ -1,4 +1,5 @@
 {
+  "schema": "asie.foundation.completion.program.v1",
   "program_id": "FOUNDATION-COMPLETE-20",
   "version": "1.0.0",
   "status": "ACTIVE_IMPLEMENTATION_PROGRAM",
@@ -41,7 +42,7 @@
       "id": "FC20-01",
       "priority": "P0",
       "title": "Canonical completeness ledger and EKB domain completion",
-      "state": "OPEN",
+      "state": "IN_PROGRESS",
       "depends_on": [],
       "acr": false,
       "beta": true,

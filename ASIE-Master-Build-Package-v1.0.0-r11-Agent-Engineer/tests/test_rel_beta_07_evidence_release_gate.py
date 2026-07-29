@@ -21,6 +21,7 @@ from tools.rel_beta_07_evidence import (
 REPOSITORY_ROOT = PACKAGE_ROOT.parent
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "beta-release-gate.yml"
 MARKER_PATH = REPOSITORY_ROOT / "EMERGENCY-RELEASE-FREEZE.json"
+FOUNDATION_PROGRAM_PATH = REPOSITORY_ROOT / "FOUNDATION-COMPLETE-20.json"
 
 
 class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
@@ -95,6 +96,7 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
         self.assertIn("python -m backend.beta_release_gate", workflow)
         self.assertIn("rel-beta-07-determinism-*", workflow)
         self.assertIn("beta-release-gate-report.json", workflow)
+        self.assertIn("--foundation-program ../FOUNDATION-COMPLETE-20.json", workflow)
 
     def test_repository_controlled_marker_still_requires_private_smoke(self) -> None:
         commit = "a" * 40
@@ -125,16 +127,19 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
             "comparison_sha256": "3" * 64,
         }
         marker = json.loads(MARKER_PATH.read_text(encoding="utf-8"))
+        foundation_program = json.loads(FOUNDATION_PROGRAM_PATH.read_text(encoding="utf-8"))
         report = evaluate_beta_release(
             bundle,
             determinism,
             marker,
+            foundation_program,
             expected_commit=commit,
             deployment_evidence=None,
         )
         self.assertEqual(report["decision"], "NO_GO")
         self.assertTrue(report["code_evidence_ready"])
         self.assertIn("private_deployment_smoke_passed", report["critical_failures"])
+        self.assertIn("foundation_completion_program_cleared", report["critical_failures"])
         self.assertNotIn(
             "emergency_release_freeze_cleared", report["critical_failures"]
         )

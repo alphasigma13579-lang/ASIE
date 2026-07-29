@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - EMERGENCY-RELEASE-FREEZE.json
+      - FOUNDATION-COMPLETE-20.json
       - .github/workflows/beta-release-gate.yml
       - .github/workflows/governed-freeze-review.yml
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/release_freeze_contract.py
@@ -345,6 +346,7 @@ jobs:
           --determinism-comparison rel-beta-07-final/determinism-comparison.json
           --deployment-evidence deploy-beta-08-smoke/deployment-evidence.json
           --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
+          --foundation-program ../FOUNDATION-COMPLETE-20.json
           --expected-commit "$GITHUB_SHA"
           --workflow-run-id "$GITHUB_RUN_ID"
           --release-scope "$ASIE_RELEASE_SCOPE"
