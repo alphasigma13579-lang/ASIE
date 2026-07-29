@@ -1,0 +1,120 @@
+name: TEST-BETA-06 Cross-Platform Determinism
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-beta-06-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-vector:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: ubuntu-hash0
+            hashseed: "0"
+          - os: ubuntu-latest
+            label: ubuntu-hash7919
+            hashseed: "7919"
+          - os: windows-latest
+            label: windows-hash0
+            hashseed: "0"
+          - os: windows-latest
+            label: windows-hash7919
+            hashseed: "7919"
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Compile deterministic evidence code
+        env:
+          PYTHONHASHSEED: ${{ matrix.hashseed }}
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python -m py_compile tools/test_beta_06_determinism.py tests/test_beta_06_cross_platform_determinism.py
+
+      - name: Run TEST-BETA-06 local guards
+        env:
+          PYTHONHASHSEED: ${{ matrix.hashseed }}
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python -m unittest discover -s tests -p "test_beta_06_cross_platform_determinism.py" -v
+
+      - name: Emit deterministic vector
+        env:
+          PYTHONHASHSEED: ${{ matrix.hashseed }}
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python tools/test_beta_06_determinism.py emit --output artifacts/${{ matrix.label }}/vector.json
+
+      - name: Upload deterministic vector
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-beta-06-${{ matrix.label }}
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/artifacts/${{ matrix.label }}/vector.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-vectors:
+    name: Compare byte-identical evidence
+    needs: generate-vector
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download all deterministic vectors
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-beta-06-*
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/test-beta-06-evidence
+          merge-multiple: false
+
+      - name: Compare all vectors byte-for-byte
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python tools/test_beta_06_determinism.py compare --directory test-beta-06-evidence > test-beta-06-evidence/comparison.json
+
+      - name: Show comparison evidence
+        run: cat test-beta-06-evidence/comparison.json
+
+      - name: Upload combined TEST-BETA-06 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-beta-06-combined-evidence
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/test-beta-06-evidence
+          if-no-files-found: error
+          retention-days: 30
