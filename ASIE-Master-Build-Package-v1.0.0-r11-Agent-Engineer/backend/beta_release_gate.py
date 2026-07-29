@@ -23,6 +23,7 @@ REQUIRED_CODE_CHECKS = (
     "full_python_suite",
     "dib_product_and_dataset_runtime",
     "sec_beta_01_identity_lockdown",
+    "sec_beta_10_password_recovery_lockdown",
     "stab_beta_02_thread_safe_persistence",
     "sec_beta_03_tenant_isolation",
     "gov_beta_04_server_owned_lineage",

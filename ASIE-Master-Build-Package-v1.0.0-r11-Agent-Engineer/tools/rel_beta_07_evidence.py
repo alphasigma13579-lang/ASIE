@@ -69,6 +69,26 @@ CHECK_SPECS: tuple[CheckSpec, ...] = (
         ),
     ),
     CheckSpec(
+        "sec_beta_10_password_recovery_lockdown",
+        (
+            PYTHON,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_local_account_recovery.py",
+            "-v",
+        ),
+        (
+            "anonymous recovery responses never expose a bearer token",
+            "existing and missing accounts receive indistinguishable responses",
+            "recovery completion fails closed without approved external delivery",
+            "authenticated local admin reset remains available",
+        ),
+    ),
+    CheckSpec(
         "stab_beta_02_thread_safe_persistence",
         (
             PYTHON,

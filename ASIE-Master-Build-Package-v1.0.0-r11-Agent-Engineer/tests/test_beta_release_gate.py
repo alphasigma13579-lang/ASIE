@@ -163,6 +163,30 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
         self.assertEqual(report["decision"], "NO_GO")
         self.assertIn("evidence_bundle_integrity", report["critical_failures"])
 
+    def test_missing_password_recovery_lockdown_evidence_fails_closed(self) -> None:
+        bundle = _bundle()
+        bundle["checks"] = [
+            record
+            for record in bundle["checks"]
+            if record["check_id"] != "sec_beta_10_password_recovery_lockdown"
+        ]
+        bundle["bundle_hash"] = evidence_bundle_hash(bundle)
+
+        report = evaluate_beta_release(
+            bundle,
+            _determinism(),
+            _freeze(cleared=True),
+            expected_commit=COMMIT,
+            deployment_evidence=_deployment(),
+        )
+
+        self.assertEqual(report["decision"], "NO_GO")
+        self.assertFalse(report["release_allowed"])
+        self.assertIn(
+            "sec_beta_10_password_recovery_lockdown",
+            report["critical_failures"],
+        )
+
     def test_degradable_capability_produces_conditional_go_only_after_critical_evidence(self) -> None:
         report = evaluate_beta_release(
             _bundle(),

@@ -1,10 +1,12 @@
 # ASIE — استعادة الحساب المحلية
 
-## النطاق
+## القرار الأمني الحالي
 
-استعادة محلية تحت إشراف `platform_admin` فقط. لا بريد، ولا SMS، ولا رابط استعادة، ولا token خارج الجهاز.
+استعادة الحساب ذاتياً عبر قناة HTTP العامة معطلة ما دامت ASIE لا تملك قناة
+تسليم خارجية معتمدة. لا يعيد الخادم رمز استعادة، ولا يسمح باستهلاك رموز
+استعادة عبر HTTP.
 
-## المسار
+## المسار الإداري المسموح
 
 `POST /api/admin/users/{user_id}/local-password-reset`
 
@@ -13,14 +15,23 @@
 - يستبدل password hash فقط؛ لا يحفظ كلمة المرور.
 - يبطل كل جلسات المستخدم المستهدف فوراً.
 - يكتب `identity.local_password_reset` في `security_audit_events`.
-- يعيد `external_delivery_enabled: false`.
+- لا يصدر token ولا يفتح قناة خارجية.
 
-## التحقق
+## المسارات العامة المقيدة
 
-- `python -m unittest tests.test_local_account_recovery tests.test_identity_control_plane`: **4 tests passed**.
-- `python -m compileall -q backend`: **passed**.
-- `pnpm build`: **passed**.
+- `POST /api/auth/password-recovery/request` يعيد إقراراً عاماً متطابقاً
+  للبريد الموجود وغير الموجود، ولا يعيد `recovery_token`.
+- `POST /api/auth/password-recovery/complete` يفشل مغلقاً برمز
+  `password_recovery_external_delivery_unavailable`.
+- أي تفعيل مستقبلي للاستعادة الذاتية يتطلب قناة out-of-band معتمدة وحزمة
+  أمنية واختبارات قبول سلبية منفصلة.
 
-## القيد
+## دليل الإصدار
 
-هذا مسار تطوير محلي وإشرافي؛ لا يعد استعادة ذاتية أو فتح وصول خارجي.
+`sec_beta_10_password_recovery_lockdown` دليل تنفيذي حرج داخل
+`REL-BETA-07`. غيابه أو فشله يبقي قرار الإصدار `NO_GO`.
+
+## الحدود المحمية
+
+لا يغير هذا القرار AAS Runtime Freeze أو Finance أو Snapshot Assembly أو
+Decision Council، ولا يفعّل البريد أو SMS أو AI providers أو الشبكة الخارجية.
