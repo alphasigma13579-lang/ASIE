@@ -17,6 +17,7 @@ DIB_TENANT_BOUNDARY_ID = "SEC-BETA-03-DIB-TENANT-OWNERSHIP-BOUNDARY-v1"
 DIB_TENANT_SCHEMA_VERSION = 1
 DIB_QUARANTINE_ORGANIZATION_ID = "__dib_quarantine__"
 DIB_QUARANTINE_USER_ID = "__unknown__"
+DIB_MIGRATION_USER_ID = "__migration__"
 
 
 class DIBTenantBoundaryError(DIBPersistenceError):
@@ -32,6 +33,8 @@ class DIBTenantContext:
     def __post_init__(self) -> None:
         if not self.organization_id.strip():
             raise DIBTenantBoundaryError("dib_organization_context_required")
+        if self.organization_id == DIB_QUARANTINE_ORGANIZATION_ID:
+            raise DIBTenantBoundaryError("dib_quarantine_context_forbidden")
         if not self.user_id.strip():
             raise DIBTenantBoundaryError("dib_user_context_required")
         if not self.principal_session_id.strip():
@@ -46,8 +49,8 @@ class DIBTenantBoundary:
 
     Child DIB records inherit ownership through their mandatory session foreign
     key. New sessions cannot be inserted unless a tenant binding already exists
-    in the same transaction. Pre-existing unowned sessions are quarantined and
-    are never assigned to the legacy organization automatically.
+    in the same transaction. Pre-existing sessions are assigned only when their
+    project ownership can be proven; all other rows are quarantined.
     """
 
     def __init__(
@@ -60,18 +63,33 @@ class DIBTenantBoundary:
         self.project_organization_resolver = project_organization_resolver
         self.initialize()
 
+    def _resolve_project_organization(self, project_id: str) -> str | None:
+        if self.project_organization_resolver is None:
+            return None
+        try:
+            resolved = self.project_organization_resolver(project_id)
+        except Exception:
+            return None
+        organization_id = str(resolved or "").strip()
+        if not organization_id or organization_id == DIB_QUARANTINE_ORGANIZATION_ID:
+            return None
+        return organization_id
+
     def initialize(self) -> None:
         connection = self.store._connect()
         try:
-            connection.executescript(
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
                 """
-                BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS dib_tenant_migrations (
                     version INTEGER PRIMARY KEY,
                     migration_id TEXT NOT NULL UNIQUE,
                     applied_at TEXT NOT NULL
-                );
-
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS dib_tenant_bindings (
                     session_id TEXT PRIMARY KEY,
                     organization_id TEXT NOT NULL,
@@ -80,18 +98,76 @@ class DIBTenantBoundary:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (session_id) REFERENCES dib_sessions(session_id)
                         ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_dib_tenant_org_project
-                    ON dib_tenant_bindings(organization_id, project_id, session_id);
-
-                INSERT OR IGNORE INTO dib_tenant_bindings (
-                    session_id, organization_id, project_id, created_by_user_id, created_at
                 )
-                SELECT session_id, '__dib_quarantine__', project_id, '__unknown__', created_at
-                FROM dib_sessions;
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dib_tenant_org_project
+                    ON dib_tenant_bindings(organization_id, project_id, session_id)
+                """
+            )
 
-                CREATE TRIGGER IF NOT EXISTS trg_dib_session_requires_tenant_binding
+            # Remove only package-owned immutability triggers while the idempotent
+            # migration reconciles previously quarantined records. They are
+            # recreated before the transaction commits.
+            for trigger_name in (
+                "trg_dib_session_requires_tenant_binding",
+                "trg_dib_tenant_binding_immutable",
+                "trg_dib_tenant_binding_delete_blocked",
+                "trg_dib_session_project_immutable",
+            ):
+                connection.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+
+            rows = connection.execute(
+                """
+                SELECT session.session_id, session.project_id, session.created_at,
+                       binding.organization_id
+                FROM dib_sessions session
+                LEFT JOIN dib_tenant_bindings binding ON binding.session_id = session.session_id
+                WHERE binding.session_id IS NULL
+                   OR binding.organization_id = ?
+                ORDER BY session.created_at, session.session_id
+                """,
+                (DIB_QUARANTINE_ORGANIZATION_ID,),
+            ).fetchall()
+            for row in rows:
+                organization_id = self._resolve_project_organization(str(row["project_id"]))
+                resolved_organization_id = organization_id or DIB_QUARANTINE_ORGANIZATION_ID
+                created_by_user_id = DIB_MIGRATION_USER_ID if organization_id else DIB_QUARANTINE_USER_ID
+                if row["organization_id"] is None:
+                    connection.execute(
+                        """
+                        INSERT INTO dib_tenant_bindings (
+                            session_id, organization_id, project_id, created_by_user_id, created_at
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row["session_id"],
+                            resolved_organization_id,
+                            row["project_id"],
+                            created_by_user_id,
+                            row["created_at"],
+                        ),
+                    )
+                elif organization_id:
+                    connection.execute(
+                        """
+                        UPDATE dib_tenant_bindings
+                        SET organization_id = ?, created_by_user_id = ?
+                        WHERE session_id = ? AND organization_id = ?
+                        """,
+                        (
+                            organization_id,
+                            DIB_MIGRATION_USER_ID,
+                            row["session_id"],
+                            DIB_QUARANTINE_ORGANIZATION_ID,
+                        ),
+                    )
+
+            connection.execute(
+                """
+                CREATE TRIGGER trg_dib_session_requires_tenant_binding
                 BEFORE INSERT ON dib_sessions
                 FOR EACH ROW
                 WHEN NOT EXISTS (
@@ -102,28 +178,37 @@ class DIBTenantBoundary:
                 )
                 BEGIN
                     SELECT RAISE(ABORT, 'dib_tenant_binding_required');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_dib_tenant_binding_immutable
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER trg_dib_tenant_binding_immutable
                 BEFORE UPDATE OF session_id, organization_id, project_id ON dib_tenant_bindings
                 FOR EACH ROW
                 BEGIN
                     SELECT RAISE(ABORT, 'dib_tenant_binding_immutable');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_dib_tenant_binding_delete_blocked
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER trg_dib_tenant_binding_delete_blocked
                 BEFORE DELETE ON dib_tenant_bindings
                 FOR EACH ROW
                 BEGIN
                     SELECT RAISE(ABORT, 'dib_tenant_binding_delete_blocked');
-                END;
-
-                CREATE TRIGGER IF NOT EXISTS trg_dib_session_project_immutable
+                END
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER trg_dib_session_project_immutable
                 BEFORE UPDATE OF project_id ON dib_sessions
                 FOR EACH ROW
                 BEGIN
                     SELECT RAISE(ABORT, 'dib_session_project_immutable');
-                END;
+                END
                 """
             )
             connection.execute(
@@ -162,14 +247,26 @@ class DIBTenantBoundary:
                     (DIB_QUARANTINE_ORGANIZATION_ID,),
                 ).fetchone()["count"]
             )
+            migrated_count = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM dib_tenant_bindings
+                    WHERE created_by_user_id = ?
+                    """,
+                    (DIB_MIGRATION_USER_ID,),
+                ).fetchone()["count"]
+            )
         return {
             "tenant_boundary_id": DIB_TENANT_BOUNDARY_ID,
             "schema_version": schema_version,
             "ownership_model": "session_binding_inherited_by_foreign_key",
             "organization_scope_required": True,
             "project_ownership_verified": self.project_organization_resolver is not None,
+            "migrated_session_count": migrated_count,
             "quarantined_session_count": quarantine_count,
             "legacy_auto_assignment_blocked": True,
+            "quarantine_context_forbidden": True,
             "cross_tenant_not_found_response": True,
             "frozen_runtime_files_mutated": False,
         }
@@ -180,7 +277,7 @@ class DIBTenantBoundary:
             raise DIBTenantBoundaryError("dib_project_not_found")
         if self.project_organization_resolver is None:
             raise DIBTenantBoundaryError("dib_project_ownership_resolver_required")
-        owner = self.project_organization_resolver(normalized_project_id)
+        owner = self._resolve_project_organization(normalized_project_id)
         if owner != context.organization_id:
             raise DIBTenantBoundaryError("dib_project_not_found")
 
@@ -249,9 +346,15 @@ class DIBTenantBoundary:
                        binding.created_by_user_id, binding.created_at
                 FROM dib_tenant_bindings binding
                 JOIN dib_sessions session ON session.session_id = binding.session_id
-                WHERE binding.session_id = ? AND binding.organization_id = ?
+                WHERE binding.session_id = ?
+                  AND binding.organization_id = ?
+                  AND binding.organization_id != ?
                 """,
-                (session_id, context.organization_id),
+                (
+                    session_id,
+                    context.organization_id,
+                    DIB_QUARANTINE_ORGANIZATION_ID,
+                ),
             ).fetchone()
         if row is None:
             raise DIBTenantBoundaryError("dib_session_not_found")
@@ -279,7 +382,9 @@ class DIBTenantBoundary:
             SELECT session.session_id
             FROM dib_sessions session
             JOIN dib_tenant_bindings binding ON binding.session_id = session.session_id
-            WHERE binding.organization_id = ? AND binding.project_id = ?
+            WHERE binding.organization_id = ?
+              AND binding.organization_id != ?
+              AND binding.project_id = ?
         """
         if not include_closed:
             sql += " AND session.status != 'closed'"
@@ -287,7 +392,12 @@ class DIBTenantBoundary:
         with self.store._read_connection() as connection:
             rows = connection.execute(
                 sql,
-                (context.organization_id, project_id, int(limit)),
+                (
+                    context.organization_id,
+                    DIB_QUARANTINE_ORGANIZATION_ID,
+                    project_id,
+                    int(limit),
+                ),
             ).fetchall()
         return [str(row["session_id"]) for row in rows]
 
