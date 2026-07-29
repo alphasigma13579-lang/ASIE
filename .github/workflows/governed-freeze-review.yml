@@ -1,0 +1,102 @@
+name: Governed Freeze Review
+
+on:
+  workflow_run:
+    workflows: ["Evidence-Backed Beta Release Gate"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      evidence_run_id:
+        description: Successful Evidence-Backed Beta Release Gate run ID for the exact main commit
+        required: true
+        type: string
+      expected_commit:
+        description: Exact current main commit reviewed by the evidence run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gov-rel-09-${{ github.event_name }}-${{ github.event.workflow_run.head_sha || inputs.expected_commit || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  governed-freeze-review:
+    name: Evaluate governed freeze eligibility
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ASIE_EVIDENCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.evidence_run_id }}
+      ASIE_REVIEW_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_commit }}
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - name: Check out exact reviewed commit with full lineage
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ASIE_REVIEW_COMMIT }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify reviewed commit is current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          checked_out="$(git rev-parse HEAD)"
+          current_main="$(git rev-parse origin/main)"
+          test "$checked_out" = "$ASIE_REVIEW_COMMIT"
+          test "$current_main" = "$ASIE_REVIEW_COMMIT"
+
+      - name: Download immutable release evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: rel-beta-07-complete-evidence
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/gov-rel-09-input
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.ASIE_EVIDENCE_RUN_ID }}
+
+      - name: Compile governed review evaluator
+        run: python -m py_compile tools/gov_rel_09_governed_freeze_review.py
+
+      - name: Run governed review regression tests
+        run: python -m unittest discover -s tests -p "test_gov_rel_09_governed_freeze_review.py" -v
+
+      - name: Evaluate freeze eligibility without mutating marker
+        run: >-
+          python tools/gov_rel_09_governed_freeze_review.py
+          --gate-report gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
+          --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
+          --expected-commit "$ASIE_REVIEW_COMMIT"
+          --repository-root ..
+          --output gov-rel-09-output/governed-freeze-review.json
+          --require-eligible
+
+      - name: Show governed freeze review
+        if: always()
+        shell: bash
+        run: cat gov-rel-09-output/governed-freeze-review.json || true
+
+      - name: Upload governed freeze review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gov-rel-09-governed-freeze-review
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/gov-rel-09-output
+          if-no-files-found: error
+          retention-days: 90
