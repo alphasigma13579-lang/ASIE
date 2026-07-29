@@ -12,8 +12,12 @@ REMOVED_TARGET = (
 PRESERVED_TARGETS = [
     "docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md",
-    "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md",
 ]
+
+LATER_R3F_REMOVED_TARGET = (
+    "docs/reference/r11-workspace-materials/workspace-bundles/"
+    "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0"
+)
 
 FORBIDDEN_LIVE_ROOTS = [
     ROOT / "backend",
@@ -43,6 +47,7 @@ def test_r3e_removed_only_v111_correction_archive_bundle():
     assert not (ROOT / REMOVED_TARGET).exists()
     for rel_path in PRESERVED_TARGETS:
         assert (ROOT / rel_path).exists(), rel_path
+    assert not (ROOT / LATER_R3F_REMOVED_TARGET).exists()
 
 
 def test_r3e_execution_record_declares_boundaries():
