@@ -14,7 +14,9 @@ from tools.deploy_beta_08_private_smoke import (
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PACKAGE_ROOT.parent
-COMPOSE_PATH = PACKAGE_ROOT / "docker-compose.private-smoke.yml"
+PRIVATE_COMPOSE_PATH = PACKAGE_ROOT / "docker-compose.private-smoke.yml"
+DEFAULT_COMPOSE_PATH = PACKAGE_ROOT / "docker-compose.yml"
+PRODUCTION_COMPOSE_PATH = PACKAGE_ROOT / "docker-compose.production.yml"
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "beta-release-gate.yml"
 
 FROZEN_FILES = {
@@ -32,6 +34,8 @@ FROZEN_FILES = {
 
 DEPLOY_BETA_08_ALLOWLIST = {
     "../.github/workflows/beta-release-gate.yml",
+    "docker-compose.yml",
+    "docker-compose.production.yml",
     "docker-compose.private-smoke.yml",
     "tools/deploy_beta_08_private_smoke.py",
     "tests/test_deploy_beta_08_private_deployment_smoke.py",
@@ -107,7 +111,7 @@ class DeployBeta08PrivateDeploymentSmokeTests(unittest.TestCase):
         self.assertFalse(smoke_check.passed)
 
     def test_private_compose_has_no_public_listener_or_external_network(self) -> None:
-        compose = COMPOSE_PATH.read_text(encoding="utf-8")
+        compose = PRIVATE_COMPOSE_PATH.read_text(encoding="utf-8")
         self.assertIn('"127.0.0.1:18080:80"', compose)
         self.assertIn('"127.0.0.1:18794:8794"', compose)
         self.assertIn('"127.0.0.1:18795:8795"', compose)
@@ -119,6 +123,14 @@ class DeployBeta08PrivateDeploymentSmokeTests(unittest.TestCase):
         self.assertIn('ASIE_ALLOW_LOCAL_BOOTSTRAP: "false"', compose)
         self.assertIn('ASIE_ALLOW_LEGACY_LOCAL_OPERATOR: "false"', compose)
 
+    def test_all_compose_profiles_use_import_safe_dib_module_entrypoint(self) -> None:
+        canonical_command = 'command: ["python", "-m", "backend.dib_http_mounting"]'
+        unsafe_command = 'command: ["python", "backend/dib_http_mounting.py"]'
+        for path in (PRIVATE_COMPOSE_PATH, DEFAULT_COMPOSE_PATH, PRODUCTION_COMPOSE_PATH):
+            compose = path.read_text(encoding="utf-8")
+            self.assertIn(canonical_command, compose, path.name)
+            self.assertNotIn(unsafe_command, compose, path.name)
+
     def test_workflow_runs_smoke_and_feeds_deployment_evidence_to_gate(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertIn("private-deployment-smoke:", workflow)
@@ -127,6 +139,9 @@ class DeployBeta08PrivateDeploymentSmokeTests(unittest.TestCase):
         self.assertIn("deploy-beta-08-private-smoke-evidence", workflow)
         self.assertIn("--deployment-evidence", workflow)
         self.assertIn("deployment-evidence.json", workflow)
+        self.assertIn('"${compose[@]}" up -d api', workflow)
+        self.assertIn('"${compose[@]}" up -d dib-api', workflow)
+        self.assertIn('"${compose[@]}" up -d web', workflow)
         self.assertNotIn("0.0.0.0:18080", workflow)
 
     def test_allowlist_excludes_frozen_runtime_and_freeze_marker(self) -> None:
