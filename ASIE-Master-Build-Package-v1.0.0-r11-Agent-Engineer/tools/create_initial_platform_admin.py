@@ -4,8 +4,11 @@ import argparse
 import getpass
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Sequence
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.contracts import DB_PATH
 from backend.repository import Repository
