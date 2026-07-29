@@ -1,0 +1,18 @@
+{
+  "package_id": "ARCH-BETA-05",
+  "base_commit": "3d29486480436c4ac02567207c449ba1dfe6a621",
+  "allowed_paths": [
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/dib_canonical_finance_admission.py",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/dib_controlled_finance_wiring.py",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/dib_tenant_api.py",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_arch_beta_05_canonical_finance_admission.py",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_dib_controlled_finance_wiring.py",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ARCH-BETA-05-CANONICAL-FINANCE-ADMISSION-REPAIR-2026-07-29.md",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-DIB-001-CORR-01-CANONICAL-FINANCE-ADMISSION.md",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ARCH-BETA-05-ALLOWLIST.json"
+  ],
+  "frozen_runtime_mutation_allowed": false,
+  "finance_algorithm_mutation_allowed": false,
+  "snapshot_assembly_mutation_allowed": false,
+  "decision_council_mutation_allowed": false
+}
