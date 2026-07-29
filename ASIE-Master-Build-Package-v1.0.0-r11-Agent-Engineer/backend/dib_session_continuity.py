@@ -28,41 +28,20 @@ def list_dib_sessions_for_project(
 ) -> list[dict[str, Any]]:
     """Return latest persisted DIB sessions for one ASIE project.
 
-    This helper is intentionally read-only. It does not mutate AAS frozen files,
-    does not execute Finance, does not assemble Snapshot, and does not fetch any
-    external source. Full session records are loaded through DIBPersistenceStore
-    so Blueprint / Manifest / Validation Gate state can be restored safely.
+    This helper is intentionally read-only. It delegates SQL ownership to the
+    persistence store so callers never hold or share SQLite connections.
     """
 
     normalized_project_id = str(project_id or "").strip()
     if not normalized_project_id:
         raise DIBPersistenceError("DIB session query requires project_id")
 
-    resolved_limit = _normalize_limit(limit)
-    if include_closed:
-        rows = store.connection.execute(
-            """
-            SELECT session_id
-            FROM dib_sessions
-            WHERE project_id = ?
-            ORDER BY updated_at DESC, created_at DESC, session_id DESC
-            LIMIT ?
-            """,
-            (normalized_project_id, resolved_limit),
-        ).fetchall()
-    else:
-        rows = store.connection.execute(
-            """
-            SELECT session_id
-            FROM dib_sessions
-            WHERE project_id = ? AND status != 'closed'
-            ORDER BY updated_at DESC, created_at DESC, session_id DESC
-            LIMIT ?
-            """,
-            (normalized_project_id, resolved_limit),
-        ).fetchall()
-
-    sessions = [store.load_session(row["session_id"]) for row in rows]
+    session_ids = store.list_session_ids_for_project(
+        normalized_project_id,
+        include_closed=include_closed,
+        limit=_normalize_limit(limit),
+    )
+    sessions = [store.load_session(session_id) for session_id in session_ids]
     for session in sessions:
         if session.get("external_fetch_enabled"):
             raise DIBPersistenceError("DIB session continuity detected external fetch enabled")
