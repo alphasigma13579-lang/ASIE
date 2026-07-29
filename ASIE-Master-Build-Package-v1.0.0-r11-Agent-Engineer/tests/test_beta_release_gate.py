@@ -83,6 +83,43 @@ def _deployment(*, commit: str = COMMIT, degraded: str | None = None) -> dict[st
     return payload
 
 
+def _foundation(*, cleared: bool = True) -> dict[str, object]:
+    completion_evidence = {
+        "implementation_paths": ["backend/example.py"],
+        "test_paths": ["tests/test_example.py"],
+        "workflow_run_id": "run-1",
+        "commit_sha": COMMIT,
+        "rollback_proof": "revert_commit",
+        "residual_risk_review": "reviewed",
+    }
+    packages = [
+        {
+            "id": f"FC20-{index:02d}",
+            "beta": True,
+            "state": "COMPLETE" if cleared else ("IN_PROGRESS" if index == 1 else "BLOCKED_BY_PREDECESSOR"),
+            **({"completion_evidence": dict(completion_evidence)} if cleared else {}),
+        }
+        for index in range(1, 17)
+    ]
+    return {
+        "schema": "asie.foundation.completion.program.v1",
+        "program_id": "FOUNDATION-COMPLETE-20",
+        "status": "COMPLETION_VERIFIED" if cleared else "ACTIVE_IMPLEMENTATION_PROGRAM",
+        "current_release_verdict": "PENDING_GATE" if cleared else "BLOCK",
+        "rules": {
+            "package_complete_requires": [
+                "implementation_paths",
+                "test_paths",
+                "workflow_run_id",
+                "commit_sha",
+                "rollback_proof",
+                "residual_risk_review",
+            ]
+        },
+        "packages": packages,
+    }
+
+
 def _freeze(*, cleared: bool) -> dict[str, object]:
     marker: dict[str, object] = {
         "schema": "asie.release.freeze.v1",
@@ -111,6 +148,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             _bundle(),
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
             workflow_run_id="run-1",
@@ -130,6 +168,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             _bundle(),
             _determinism(),
             _freeze(cleared=False),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
         )
@@ -144,6 +183,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             _bundle(),
             _determinism(),
             _freeze(cleared=False),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=None,
         )
@@ -158,6 +198,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             _bundle(commit=OTHER_COMMIT),
             _determinism(commit=OTHER_COMMIT),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(commit=OTHER_COMMIT),
         )
@@ -177,6 +218,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             bundle,
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
         )
@@ -197,6 +239,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             bundle,
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
         )
@@ -213,6 +256,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             _bundle(),
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(degraded="live_intelligence"),
         )
@@ -225,11 +269,73 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             assert_releaseable(report, release_scope="public_beta")
         assert_releaseable(report, release_scope="technical_limited_beta")
 
+    def test_active_foundation_program_forces_no_go_after_all_other_evidence_passes(self) -> None:
+        report = evaluate_beta_release(
+            _bundle(),
+            _determinism(),
+            _freeze(cleared=True),
+            _foundation(cleared=False),
+            expected_commit=COMMIT,
+            deployment_evidence=_deployment(),
+        )
+
+        self.assertEqual(report["decision"], "NO_GO")
+        self.assertFalse(report["release_allowed"])
+        self.assertIn("foundation_completion_program_cleared", report["critical_failures"])
+        foundation_check = next(
+            check for check in report["checks"]
+            if check["check_id"] == "foundation_completion_program_cleared"
+        )
+        self.assertIn("FC20-01", foundation_check["evidence"]["incomplete_package_ids"])
+
+    def test_missing_foundation_program_fails_closed(self) -> None:
+        report = evaluate_beta_release(
+            _bundle(),
+            _determinism(),
+            _freeze(cleared=True),
+            {},
+            expected_commit=COMMIT,
+            deployment_evidence=_deployment(),
+        )
+
+        self.assertEqual(report["decision"], "NO_GO")
+        self.assertIn("foundation_completion_program_cleared", report["critical_failures"])
+
+    def test_complete_claim_without_required_evidence_fails_closed(self) -> None:
+        foundation = _foundation()
+        foundation["packages"][0].pop("completion_evidence")
+        report = evaluate_beta_release(
+            _bundle(),
+            _determinism(),
+            _freeze(cleared=True),
+            foundation,
+            expected_commit=COMMIT,
+            deployment_evidence=_deployment(),
+        )
+
+        self.assertEqual(report["decision"], "NO_GO")
+        check = next(
+            item for item in report["checks"]
+            if item["check_id"] == "foundation_completion_program_cleared"
+        )
+        self.assertEqual(
+            check["evidence"]["missing_completion_evidence"]["FC20-01"],
+            [
+                "implementation_paths",
+                "test_paths",
+                "workflow_run_id",
+                "commit_sha",
+                "rollback_proof",
+                "residual_risk_review",
+            ],
+        )
+
     def test_invalid_release_scope_cannot_override_evidence(self) -> None:
         report = evaluate_beta_release(
             _bundle(),
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
         )
@@ -244,6 +350,7 @@ class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
             bundle,
             _determinism(),
             _freeze(cleared=True),
+            _foundation(),
             expected_commit=COMMIT,
             deployment_evidence=_deployment(),
         )
