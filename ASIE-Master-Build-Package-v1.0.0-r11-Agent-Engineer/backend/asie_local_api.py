@@ -1722,15 +1722,14 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "memberships": REPO.memberships_for_user(user["user_id"]), "external_access_enabled": False})
                 return
             if path == "/api/auth/password-recovery/request":
-                write_json(self, REPO.create_password_recovery_request(email=str(payload.get("email") or "")))
+                write_json(
+                    self,
+                    REPO.create_password_recovery_request(email=str(payload.get("email") or "")),
+                    202,
+                )
                 return
             if path == "/api/auth/password-recovery/complete":
-                try:
-                    result = REPO.consume_password_recovery_token(token=str(payload.get("recovery_token") or ""), password=str(payload.get("new_password") or ""))
-                except ValueError as exc:
-                    write_error(self, str(exc), 400)
-                    return
-                write_json(self, result)
+                write_error(self, "password_recovery_external_delivery_unavailable", 503)
                 return
             if path == "/api/auth/logout":
                 principal = self._principal()
