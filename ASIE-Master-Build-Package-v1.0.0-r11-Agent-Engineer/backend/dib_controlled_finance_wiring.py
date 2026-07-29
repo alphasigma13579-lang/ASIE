@@ -44,6 +44,8 @@ FORBIDDEN_CONTROLLED_FINANCE_TRUE_FLAGS = frozenset(
 
 
 def _reject_forbidden(value: Any, *, context: str = "dib_controlled_finance_wiring") -> None:
+    """Validate untrusted command payloads only, never persisted DIB sessions."""
+
     def walk(node: Any, path: str) -> None:
         if isinstance(node, dict):
             for key, item in node.items():
@@ -71,14 +73,14 @@ def execute_controlled_finance_from_dib_session(
 ) -> dict[str, Any]:
     """Fail closed for legacy callers.
 
-    Direct DIB-to-Finance execution was removed by ARCH-BETA-05. The tenant-scoped
-    HTTP controller owns the compatibility endpoint and routes an eligible,
-    server-owned Manifest chain through the existing ProjectRunWorkflow. Internal
-    callers that bypass that controller receive a blocked response and never
-    execute Finance or Snapshot Assembly.
+    `session` is a trusted server-loaded persistence projection, not a client
+    command. Direct DIB-to-Finance execution was removed by ARCH-BETA-05. The
+    tenant-scoped HTTP controller owns the compatibility endpoint and routes an
+    eligible server-owned Manifest chain through the existing ProjectRunWorkflow.
+    Internal callers receive a blocked projection and never execute Finance or
+    Snapshot Assembly.
     """
 
-    _reject_forbidden(session, context="dib_session")
     readiness = build_manifest_run_readiness(session, scenario_id=scenario_id)
     blockers = list(readiness.get("blockers") or [])
     blockers.append(
