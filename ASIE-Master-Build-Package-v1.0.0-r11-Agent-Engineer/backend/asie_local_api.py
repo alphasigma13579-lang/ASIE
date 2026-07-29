@@ -19,6 +19,7 @@ from warnings import deprecated
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.acceptance import build_acceptance_pack
+from backend.bootstrap_security import authorize_local_bootstrap, legacy_local_operator_allowed
 from backend.aas_kernel import AASKernel
 from backend.architecture_status import build_architecture_runtime_status
 from backend.bus_controller import BusController
@@ -1165,7 +1166,12 @@ class Handler(BaseHTTPRequestHandler):
     def _principal(self, organization_id: str | None = None) -> Principal | None:
         token = self._bearer_token()
         principal = REPO.principal_for_token(token, organization_id) if token else None
-        if principal is None and REPO.user_count() == 0 and organization_id in {None, LEGACY_ORGANIZATION_ID}:
+        if (
+            principal is None
+            and REPO.user_count() == 0
+            and organization_id in {None, LEGACY_ORGANIZATION_ID}
+            and legacy_local_operator_allowed(self.client_address[0] if self.client_address else None)
+        ):
             return Principal(
                 user_id="local_legacy_operator",
                 session_id="local_legacy_session",
@@ -1685,13 +1691,30 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = read_json(self)
             if path == "/api/auth/local-bootstrap":
+                bootstrap_authorization = authorize_local_bootstrap(
+                    client_host=self.client_address[0] if self.client_address else None,
+                    provided_secret=self.headers.get("X-ASIE-Bootstrap-Secret"),
+                )
+                if not bootstrap_authorization.allowed:
+                    REPO.audit(
+                        actor_user_id=None,
+                        organization_id=None,
+                        action="local_bootstrap",
+                        target_type="platform",
+                        target_id="initial_platform_admin",
+                        result="denied",
+                        reason=bootstrap_authorization.code,
+                        correlation_id=self.request_id,
+                    )
+                    write_error(self, bootstrap_authorization.code, bootstrap_authorization.status)
+                    return
                 if REPO.user_count() != 0:
                     write_error(self, "local_bootstrap_already_completed", 409)
                     return
                 user = REPO.create_user(email=str(payload.get("email") or ""), display_name=str(payload.get("display_name") or ""), password=str(payload.get("password") or ""), platform_role="platform_admin")
                 organization = REPO.create_organization(name=str(payload.get("organization_name") or "مساحة ASIE المحلية"), owner_user_id=user["user_id"])
                 token, _authenticated_user = REPO.create_session(email=user["email"], password=str(payload.get("password") or ""))
-                REPO.audit(actor_user_id=user["user_id"], organization_id=organization["organization_id"], action="local_bootstrap", target_type="organization", target_id=organization["organization_id"], result="allowed")
+                REPO.audit(actor_user_id=user["user_id"], organization_id=organization["organization_id"], action="local_bootstrap", target_type="organization", target_id=organization["organization_id"], result="allowed", reason="explicit_loopback_development_bootstrap", correlation_id=self.request_id)
                 write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "organization": organization, "external_access_enabled": False}, 201)
                 return
             if path == "/api/auth/login":
