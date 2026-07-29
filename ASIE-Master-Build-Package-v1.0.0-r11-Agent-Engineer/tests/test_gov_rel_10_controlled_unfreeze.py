@@ -54,6 +54,7 @@ GOV_REL_10_ALLOWLIST = {
     "tests/test_gov_rel_09_governed_freeze_review.py",
     "tests/test_gov_rel_09a_post_merge_review_artifact.py",
     "tests/test_gov_rel_10_controlled_unfreeze.py",
+    "tests/test_rel_beta_07_evidence_release_gate.py",
     "docs/EMERG-00-RELEASE-FREEZE-AND-EXPOSURE-CONTAINMENT-2026-07-29.md",
     "docs/GOV-REL-10-CONTROLLED-UNFREEZE-EXECUTION-2026-07-29.md",
 }
