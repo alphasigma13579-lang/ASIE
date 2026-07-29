@@ -80,22 +80,24 @@ class DIBE2EScenarioPackageTests(unittest.TestCase):
         self.assertIn("DIB_E2E_ARTIFACT_MISSING_APPROVED_MANIFEST", blocker_codes)
         self.assertIn("DIB_E2E_ARTIFACT_MISSING_VALIDATION_GATE", blocker_codes)
 
-    def test_e2e_scenario_passes_ready_manifest_finance_and_snapshot_handoff_flow(self) -> None:
+    def test_e2e_scenario_requires_canonical_project_run_after_manifest_gate(self) -> None:
         session_id = self._prepare_ready_session()
         response = self.controller.dispatch("POST", f"/api/dib/sessions/{session_id}/e2e-scenario", {}).to_public()
         report = response["e2e_scenario"]
-        self.assertTrue(response["e2e_scenario_passed"])
-        self.assertEqual(report["status"], "passed")
+        self.assertFalse(response["e2e_scenario_passed"])
+        self.assertEqual(report["status"], "blocked")
         step_statuses = {step["name"]: step["status"] for step in report["steps"]}
         self.assertEqual(step_statuses["project_context_bound"], "passed")
         self.assertEqual(step_statuses["dynamic_input_blueprint_available"], "passed")
         self.assertEqual(step_statuses["approved_input_manifest_available"], "passed")
         self.assertEqual(step_statuses["manifest_validation_gate_available"], "passed")
         self.assertEqual(step_statuses["manifest_to_run_readiness"], "passed")
-        self.assertEqual(step_statuses["controlled_finance_executed"], "passed")
-        self.assertEqual(step_statuses["snapshot_projection_handoff_prepared"], "passed")
-        self.assertEqual(report["controlled_finance_status"], "executed")
-        self.assertEqual(report["snapshot_projection_handoff_status"], "prepared")
+        self.assertEqual(step_statuses["controlled_finance_executed"], "blocked")
+        self.assertNotIn("snapshot_projection_handoff_prepared", step_statuses)
+        self.assertEqual(report["controlled_finance_status"], "blocked")
+        self.assertIsNone(report["snapshot_projection_handoff_status"])
+        blocker_codes = {row["code"] for row in report["blockers"]}
+        self.assertIn("DIB_DIRECT_FINANCE_PATH_REMOVED", blocker_codes)
         self.assertEqual(report["project_run_workflow_mount"], "not_called")
         self.assertEqual(report["snapshot_assembly_mount"], "not_called")
         self.assertFalse(report["sealed_envelope_created"])
