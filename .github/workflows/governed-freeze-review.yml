@@ -1,9 +1,8 @@
 name: Governed Freeze Review
 
 on:
-  workflow_run:
-    workflows: ["Evidence-Backed Beta Release Gate"]
-    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       evidence_run_id:
@@ -20,23 +19,21 @@ permissions:
   actions: read
 
 concurrency:
-  group: gov-rel-09-${{ github.event_name }}-${{ github.event.workflow_run.head_sha || inputs.expected_commit || github.sha }}
+  group: gov-rel-09-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
   cancel-in-progress: true
 
 jobs:
   governed-freeze-review:
     name: Evaluate governed freeze eligibility
     if: >-
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name == 'workflow_dispatch' &&
-       github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 65
     env:
-      ASIE_EVIDENCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.evidence_run_id }}
-      ASIE_REVIEW_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_commit }}
+      ASIE_REVIEW_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
+      ASIE_EVIDENCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.evidence_run_id || '' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     defaults:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
@@ -62,20 +59,87 @@ jobs:
           test "$checked_out" = "$ASIE_REVIEW_COMMIT"
           test "$current_main" = "$ASIE_REVIEW_COMMIT"
 
+      - name: Resolve successful evidence run for exact main commit
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolved_run_id=""
+          for attempt in $(seq 1 110); do
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/beta-release-gate.yml/runs?branch=main&event=push&per_page=50")"
+            resolved_run_id="$(
+              printf '%s' "$response" |
+                jq -r --arg sha "$ASIE_REVIEW_COMMIT" '
+                  .workflow_runs[]
+                  | select(.head_sha == $sha and .head_branch == "main" and .event == "push" and .conclusion == "success")
+                  | .id
+                ' |
+                head -n 1
+            )"
+            if [ -n "$resolved_run_id" ] && [ "$resolved_run_id" != "null" ]; then
+              echo "Resolved evidence run: $resolved_run_id"
+              echo "ASIE_EVIDENCE_RUN_ID=$resolved_run_id" >> "$GITHUB_ENV"
+              break
+            fi
+
+            terminal_failure="$(
+              printf '%s' "$response" |
+                jq -r --arg sha "$ASIE_REVIEW_COMMIT" '
+                  .workflow_runs[]
+                  | select(.head_sha == $sha and .head_branch == "main" and .event == "push")
+                  | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required")
+                  | (.id | tostring) + ":" + .conclusion
+                ' |
+                head -n 1
+            )"
+            if [ -n "$terminal_failure" ] && [ "$terminal_failure" != "null" ]; then
+              echo "Evidence gate reached a terminal non-success state: $terminal_failure" >&2
+              exit 1
+            fi
+
+            echo "Waiting for exact-commit evidence gate (attempt $attempt/110)"
+            sleep 30
+          done
+
+          if [ -z "$resolved_run_id" ] || [ "$resolved_run_id" = "null" ]; then
+            echo "No successful Evidence-Backed Beta Release Gate run found for $ASIE_REVIEW_COMMIT" >&2
+            exit 1
+          fi
+
+      - name: Verify evidence run metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ASIE_EVIDENCE_RUN_ID"
+          metadata="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ASIE_EVIDENCE_RUN_ID}")"
+          test "$(printf '%s' "$metadata" | jq -r '.name')" = "Evidence-Backed Beta Release Gate"
+          test "$(printf '%s' "$metadata" | jq -r '.head_sha')" = "$ASIE_REVIEW_COMMIT"
+          test "$(printf '%s' "$metadata" | jq -r '.head_branch')" = "main"
+          test "$(printf '%s' "$metadata" | jq -r '.event')" = "push"
+          test "$(printf '%s' "$metadata" | jq -r '.status')" = "completed"
+          test "$(printf '%s' "$metadata" | jq -r '.conclusion')" = "success"
+          printf '%s\n' "$metadata" > gov-rel-09-source-run.json
+
       - name: Download immutable release evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: rel-beta-07-complete-evidence
-          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/gov-rel-09-input
-          repository: ${{ github.repository }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ env.ASIE_EVIDENCE_RUN_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf gov-rel-09-input
+          mkdir -p gov-rel-09-input
+          gh run download "$ASIE_EVIDENCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name rel-beta-07-complete-evidence \
+            --dir gov-rel-09-input
+          test -f gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
 
       - name: Compile governed review evaluator
         run: python -m py_compile tools/gov_rel_09_governed_freeze_review.py
 
       - name: Run governed review regression tests
         run: python -m unittest discover -s tests -p "test_gov_rel_09_governed_freeze_review.py" -v
+
+      - name: Run post-merge artifact regression tests
+        run: python -m unittest discover -s tests -p "test_gov_rel_09a_post_merge_review_artifact.py" -v
 
       - name: Evaluate freeze eligibility without mutating marker
         run: >-
@@ -86,6 +150,13 @@ jobs:
           --repository-root ..
           --output gov-rel-09-output/governed-freeze-review.json
           --require-eligible
+
+      - name: Record review artifact digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum gov-rel-09-output/governed-freeze-review.json | tee gov-rel-09-output/governed-freeze-review.sha256
+          cp gov-rel-09-source-run.json gov-rel-09-output/source-evidence-run.json
 
       - name: Show governed freeze review
         if: always()
