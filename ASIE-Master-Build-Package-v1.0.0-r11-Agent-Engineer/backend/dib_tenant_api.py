@@ -13,6 +13,7 @@ from backend.dib_api import (
 from backend.dib_canonical_finance_admission import (
     DIBCanonicalFinanceAdmission,
     DIBCanonicalFinanceAdmissionError,
+    LocalProjectRunWorkflowExecutor,
 )
 from backend.dib_persistence import DIBPersistenceStore, create_dib_persistence_store
 from backend.dib_server_owned_manifest_chain import (
@@ -25,8 +26,33 @@ from backend.dib_tenant_boundary import (
     DIBTenantContext,
     ProjectOrganizationResolver,
 )
+from backend.repository import Repository
 
 DIB_TENANT_API_ID = "SEC-BETA-03-DIB-TENANT-SCOPED-API-v1"
+
+
+def _repository_from_project_resolver(
+    resolver: ProjectOrganizationResolver | None,
+) -> Repository | None:
+    """Recover the Repository intentionally captured by the canonical resolver.
+
+    `project_organization_resolver_from_repository` is the production constructor
+    used by the DIB HTTP mount. It closes over exactly one Repository. This helper
+    recognizes only Repository instances and otherwise fails closed to an explicit
+    default Repository; arbitrary closure content is never trusted as data access.
+    """
+
+    explicit = getattr(resolver, "repository", None)
+    if isinstance(explicit, Repository):
+        return explicit
+    for cell in getattr(resolver, "__closure__", ()) or ():
+        try:
+            candidate = cell.cell_contents
+        except ValueError:
+            continue
+        if isinstance(candidate, Repository):
+            return candidate
+    return None
 
 
 class TenantScopedDIBApiController(DIBApiController):
@@ -39,6 +65,7 @@ class TenantScopedDIBApiController(DIBApiController):
         project_organization_resolver: ProjectOrganizationResolver | None = None,
         trusted_internal_context: DIBTenantContext | None = None,
         canonical_finance_admission: DIBCanonicalFinanceAdmission | None = None,
+        project_repository: Repository | None = None,
     ) -> None:
         super().__init__(store or create_dib_persistence_store())
         self.tenant_boundary = DIBTenantBoundary(
@@ -46,7 +73,16 @@ class TenantScopedDIBApiController(DIBApiController):
             project_organization_resolver=project_organization_resolver,
         )
         self.server_owned_manifest_chain = DIBServerOwnedManifestChain(self.store)
-        self.canonical_finance_admission = canonical_finance_admission
+        resolved_repository = (
+            project_repository
+            or _repository_from_project_resolver(project_organization_resolver)
+            or Repository()
+        )
+        self.canonical_finance_admission = canonical_finance_admission or DIBCanonicalFinanceAdmission(
+            self.store,
+            resolved_repository,
+            LocalProjectRunWorkflowExecutor(resolved_repository),
+        )
         self.trusted_internal_context = trusted_internal_context
 
     def status(self) -> dict[str, Any]:
@@ -55,21 +91,13 @@ class TenantScopedDIBApiController(DIBApiController):
             "tenant_api_id": DIB_TENANT_API_ID,
             "tenant_boundary": self.tenant_boundary.status(),
             "server_owned_manifest_chain": self.server_owned_manifest_chain.status(),
-            "canonical_finance_admission": (
-                self.canonical_finance_admission.status()
-                if self.canonical_finance_admission is not None
-                else {
-                    "status": "executor_unavailable",
-                    "direct_finance_execution_enabled": False,
-                    "canonical_project_run_execution_enabled": False,
-                }
-            ),
+            "canonical_finance_admission": self.canonical_finance_admission.status(),
             "organization_scope_required": True,
             "cross_tenant_access_blocked": True,
             "client_owned_manifest_rejected": True,
             "client_owned_gate_rejected": True,
             "direct_finance_execution_enabled": False,
-            "canonical_project_run_execution_enabled": self.canonical_finance_admission is not None,
+            "canonical_project_run_execution_enabled": True,
         }
 
     def dispatch(
@@ -237,8 +265,6 @@ class TenantScopedDIBApiController(DIBApiController):
         session_id: str,
         payload: dict[str, Any],
     ) -> DIBApiResponse:
-        if self.canonical_finance_admission is None:
-            raise DIBApiError("canonical_project_run_executor_unavailable", 503)
         result = self.canonical_finance_admission.execute(
             session_id,
             context,
@@ -283,10 +309,12 @@ def create_tenant_scoped_dib_api_controller(
     project_organization_resolver: ProjectOrganizationResolver | None = None,
     trusted_internal_context: DIBTenantContext | None = None,
     canonical_finance_admission: DIBCanonicalFinanceAdmission | None = None,
+    project_repository: Repository | None = None,
 ) -> TenantScopedDIBApiController:
     return TenantScopedDIBApiController(
         store,
         project_organization_resolver=project_organization_resolver,
         trusted_internal_context=trusted_internal_context,
         canonical_finance_admission=canonical_finance_admission,
+        project_repository=project_repository,
     )
