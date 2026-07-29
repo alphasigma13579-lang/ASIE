@@ -13,6 +13,7 @@ from backend.dib_http_mounting import DIBHttpSidecarHandler, create_dib_http_mou
 from backend.dib_persistence import create_dib_persistence_store
 from backend.dib_registry_admission import assert_all_frozen_files_unchanged
 from backend.dib_tenant_boundary import (
+    DIB_MIGRATION_USER_ID,
     DIB_QUARANTINE_ORGANIZATION_ID,
     DIBTenantBoundary,
     DIBTenantBoundaryError,
@@ -178,6 +179,7 @@ class DIBTenantOwnershipBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(200, owner_status)
         self.assertEqual(session_id, owner_body["session"]["session_id"])
+        self.assertEqual(self.org_b["organization_id"], owner_body["session"]["organization_id"])
 
     def test_org_a_cannot_start_session_for_org_b_project(self) -> None:
         status, body = self.request(
@@ -190,22 +192,45 @@ class DIBTenantOwnershipBoundaryTests(unittest.TestCase):
         self.assertEqual(404, status)
         self.assertEqual("dib_resource_not_found", body["error"])
 
-    def test_existing_unowned_session_is_quarantined_not_assigned_to_legacy_org(self) -> None:
+    def test_existing_sessions_are_migrated_only_with_proven_project_ownership(self) -> None:
         store = create_dib_persistence_store()
         self.addCleanup(store.close)
-        legacy_session = store.start_session({"project_id": "pre_boundary_project"})
-        boundary = DIBTenantBoundary(store, project_organization_resolver=lambda _project_id: "org_a")
+        proven_session = store.start_session({"project_id": "proven_project"})
+        unknown_session = store.start_session({"project_id": "unknown_project"})
+
+        boundary = DIBTenantBoundary(
+            store,
+            project_organization_resolver=lambda project_id: "org_a" if project_id == "proven_project" else None,
+        )
         status = boundary.status()
+        self.assertEqual(1, status["migrated_session_count"])
         self.assertEqual(1, status["quarantined_session_count"])
+
         context = DIBTenantContext("org_a", "user_a", "principal_session_a")
+        migrated = boundary.load_session(context, proven_session["session_id"])
+        self.assertEqual("org_a", migrated["organization_id"])
+        self.assertEqual(DIB_MIGRATION_USER_ID, migrated["created_by_user_id"])
+
         with self.assertRaisesRegex(DIBTenantBoundaryError, "dib_session_not_found"):
-            boundary.load_session(context, legacy_session["session_id"])
+            boundary.load_session(context, unknown_session["session_id"])
+
         with store._read_connection() as connection:
-            row = connection.execute(
-                "SELECT organization_id FROM dib_tenant_bindings WHERE session_id = ?",
-                (legacy_session["session_id"],),
-            ).fetchone()
-        self.assertEqual(DIB_QUARANTINE_ORGANIZATION_ID, row["organization_id"])
+            rows = {
+                row["session_id"]: row["organization_id"]
+                for row in connection.execute(
+                    "SELECT session_id, organization_id FROM dib_tenant_bindings"
+                ).fetchall()
+            }
+        self.assertEqual("org_a", rows[proven_session["session_id"]])
+        self.assertEqual(DIB_QUARANTINE_ORGANIZATION_ID, rows[unknown_session["session_id"]])
+
+    def test_quarantine_cannot_be_used_as_a_request_context(self) -> None:
+        with self.assertRaisesRegex(DIBTenantBoundaryError, "dib_quarantine_context_forbidden"):
+            DIBTenantContext(
+                DIB_QUARANTINE_ORGANIZATION_ID,
+                "platform_admin",
+                "principal_session_admin",
+            )
 
     def test_tenant_binding_is_required_and_immutable_at_database_boundary(self) -> None:
         store = create_dib_persistence_store()
