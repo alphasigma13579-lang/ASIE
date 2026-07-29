@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 import pytest
 
 from backend.live_provider_catalog import LIVE_PROVIDER_CATALOG, provider_catalog_snapshot
+from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 from backend.live_provider_clients import (
     DeepSeekNarrativeClient,
     GoogleLocationClient,
@@ -155,20 +156,66 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
 
 def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None:
     transport = FakeTransport()
-    client = TavilyResearchClient(transport=transport, api_key="secret", project_id="asie")
-    client.search(query="المنشآت الصغيرة في السعودية", include_domains=["monshaat.gov.sa"])
+    source = {
+        "source_id": "MONSHAAT_OPEN_DATA",
+        "publisher": "Monsha'at",
+        "route": "official_open_dataset_or_api",
+        "state": "enabled",
+        "url": "https://monshaat.gov.sa/open-data",
+        "terms_url": "https://monshaat.gov.sa/terms",
+        "terms_hash": "a" * 64,
+        "license_snapshot_ref": "license:monshaat:v1",
+        "attribution": "Monsha'at open data",
+        "classification": "public",
+        "pdpl_check": "passed",
+        "nca_check": "passed",
+        "lawful_purpose": "saudi_market_research",
+        "reviewer": "platform-reviewer",
+        "reviewer_decision": "approved",
+        "organization_id": "__platform__",
+        "project_id": "*",
+        "discovery_allowed": True,
+        "discovery_sectors": ["sme"],
+        "discovery_geographies": ["saudi_arabia"],
+        "allowed_paths": ["/open-data"],
+    }
+    policy = TavilySourceAdmissionPolicy.from_records(
+        organization_id="org-1",
+        project_id="project-1",
+        records=[source],
+    )
+    client = TavilyResearchClient(
+        transport=transport,
+        api_key="secret",
+        project_id="asie",
+        admission_policy=policy,
+    )
+    result = client.search(
+        query="المنشآت الصغيرة في السعودية",
+        sector_id="sme",
+        geography="saudi_arabia",
+        include_domains=["monshaat.gov.sa"],
+    )
     search_call = transport.calls[-1]
     assert search_call["url"] == "https://api.tavily.com/search"
     assert search_call["body"]["include_answer"] is False
     assert search_call["body"]["include_raw_content"] is False
     assert search_call["body"]["country"] == "saudi arabia"
+    assert search_call["body"]["include_domains"] == ["monshaat.gov.sa"]
     assert search_call["headers"]["X-Project-ID"] == "asie"
+    assert result["eligible_for_controlled_assumptions"] is False
 
-    client.crawl(url="https://example.com", instructions="ابحث عن البيانات المفتوحة")
+    crawl = client.crawl(
+        source_id="MONSHAAT_OPEN_DATA",
+        url="https://monshaat.gov.sa/open-data/indicators",
+        instructions="ابحث عن البيانات المفتوحة",
+    )
     crawl_call = transport.calls[-1]
     assert crawl_call["url"] == "https://api.tavily.com/crawl"
     assert crawl_call["body"]["allow_external"] is False
     assert crawl_call["body"]["limit"] == 50
+    assert crawl["source_admission"]["source_id"] == "MONSHAAT_OPEN_DATA"
+    assert crawl["eligible_for_controlled_assumptions"] is False
 
 
 def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> None:

@@ -42,7 +42,7 @@
       "id": "FC20-01",
       "priority": "P0",
       "title": "Canonical completeness ledger and EKB domain completion",
-      "state": "IN_PROGRESS",
+      "state": "COMPLETE",
       "depends_on": [],
       "acr": false,
       "beta": true,
@@ -55,13 +55,48 @@
         "Reject COMPLETE without exact commit and workflow evidence",
         "Reject duplicate package or requirement IDs",
         "Reject a live-status claim sourced only from dated package documentation"
-      ]
+      ],
+      "completed_at": "2026-07-29T20:10:38Z",
+      "completion_evidence": {
+        "implementation_paths": [
+          "FOUNDATION-COMPLETE-20.json",
+          ".github/workflows/beta-release-gate.yml",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/beta_release_gate.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md"
+        ],
+        "test_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_foundation_complete_20_program.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_beta_release_gate.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_rel_beta_07_evidence_release_gate.py"
+        ],
+        "workflow_run_id": [
+          "30487286013",
+          "30487286117",
+          "30487287459"
+        ],
+        "commit_sha": "ca68f3328379df244fc3ba42dfe00685964ec3ae",
+        "rollback_proof": {
+          "strategy": "revert_commit",
+          "revert_target": "ca68f3328379df244fc3ba42dfe00685964ec3ae",
+          "prior_main": "36252bbe982157cfcdcefa0be0b71886c2564fd2",
+          "data_migration_required": false
+        },
+        "residual_risk_review": {
+          "status": "accepted_for_program_continuation",
+          "release_effect": "BLOCK remains enforced",
+          "open_risks": [
+            "FC20-02 through FC20-16 remain incomplete",
+            "provider/network capabilities remain disabled or unproven"
+          ],
+          "frozen_files_changed": false
+        }
+      }
     },
     {
       "id": "FC20-02",
       "priority": "P0",
       "title": "Governed source registry and Tavily admission",
-      "state": "OPEN",
+      "state": "IN_PROGRESS",
       "depends_on": [
         "FC20-01"
       ],

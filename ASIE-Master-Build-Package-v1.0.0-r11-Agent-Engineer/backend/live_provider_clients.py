@@ -15,6 +15,7 @@ from backend.external_acquisition import (
     GovernedExternalAcquisitionGateway,
     _utc_now,
 )
+from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -280,14 +281,24 @@ class TavilyResearchClient:
     transport: ProviderTransport
     api_key: str
     project_id: str | None = None
+    admission_policy: TavilySourceAdmissionPolicy | None = None
 
     @classmethod
-    def from_env(cls, transport: ProviderTransport | None = None) -> "TavilyResearchClient":
+    def from_env(
+        cls,
+        transport: ProviderTransport | None = None,
+        *,
+        admission_policy: TavilySourceAdmissionPolicy | None = None,
+    ) -> "TavilyResearchClient":
         return cls(
             transport=transport or GovernedProviderTransport(),
             api_key=_required_secret("TAVILY_API_KEY"),
             project_id=os.getenv("TAVILY_PROJECT", "").strip() or None,
+            admission_policy=admission_policy,
         )
+
+    def _admission(self) -> TavilySourceAdmissionPolicy:
+        return self.admission_policy or TavilySourceAdmissionPolicy.default_deny()
 
     def _headers(self) -> dict[str, str]:
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -299,12 +310,13 @@ class TavilyResearchClient:
         self,
         *,
         query: str,
+        sector_id: str = "general",
+        geography: str = "saudi_arabia",
         include_domains: Sequence[str] = (),
         exclude_domains: Sequence[str] = (),
         max_results: int = 10,
         search_depth: str = "basic",
         topic: str = "general",
-        country: str = "saudi arabia",
     ) -> dict[str, Any]:
         if search_depth not in {"basic", "advanced", "fast", "ultra-fast"}:
             raise ProviderConfigurationError("invalid_tavily_search_depth")
@@ -312,30 +324,58 @@ class TavilyResearchClient:
             raise ProviderConfigurationError("invalid_tavily_topic")
         if max_results < 1 or max_results > 20:
             raise ProviderConfigurationError("invalid_tavily_max_results")
-        return self.transport.request_json(
+        admission = self._admission().authorize_discovery(
+            sector_id=sector_id,
+            geography=geography,
+            requested_include_domains=include_domains,
+        )
+        body: dict[str, Any] = {
+            "query": _bounded_text(query, field="query", maximum=1_000),
+            "search_depth": search_depth,
+            "topic": topic,
+            "max_results": max_results,
+            "include_domains": admission["include_domains"],
+            "exclude_domains": list(exclude_domains),
+            "include_answer": False,
+            "include_raw_content": False,
+            "include_images": False,
+            "include_usage": True,
+        }
+        if admission["geography"] == "saudi_arabia":
+            body["country"] = "saudi arabia"
+        response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/search",
             headers=self._headers(),
-            body={
-                "query": _bounded_text(query, field="query", maximum=1_000),
-                "search_depth": search_depth,
-                "topic": topic,
-                "country": country,
-                "max_results": max_results,
-                "include_domains": list(include_domains),
-                "exclude_domains": list(exclude_domains),
-                "include_answer": False,
-                "include_raw_content": False,
-                "include_images": False,
-                "include_usage": True,
-            },
+            body=body,
         )
+        return {
+            **response,
+            "source_admission": admission,
+            "review_status": "review_required",
+            "eligible_for_controlled_assumptions": False,
+        }
 
-    def extract(self, *, urls: Sequence[str], query: str | None = None, depth: str = "basic") -> dict[str, Any]:
+    def extract(
+        self,
+        *,
+        urls: Sequence[str],
+        source_ids: Mapping[str, str],
+        query: str | None = None,
+        depth: str = "basic",
+    ) -> dict[str, Any]:
         if not urls or len(urls) > 20:
             raise ProviderConfigurationError("invalid_tavily_extract_urls")
         if depth not in {"basic", "advanced"}:
             raise ProviderConfigurationError("invalid_tavily_extract_depth")
+        admissions = [
+            self._admission().authorize_content_url(
+                source_id=str(source_ids.get(url) or ""),
+                url=url,
+                operation="extract",
+            )
+            for url in urls
+        ]
         body: dict[str, Any] = {
             "urls": list(urls),
             "extract_depth": depth,
@@ -346,16 +386,23 @@ class TavilyResearchClient:
         if query:
             body["query"] = _bounded_text(query, field="query", maximum=1_000)
             body["chunks_per_source"] = 3
-        return self.transport.request_json(
+        response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/extract",
             headers=self._headers(),
             body=body,
         )
+        return {
+            **response,
+            "source_admissions": admissions,
+            "review_status": "review_required",
+            "eligible_for_controlled_assumptions": False,
+        }
 
     def crawl(
         self,
         *,
+        source_id: str,
         url: str,
         instructions: str,
         max_depth: int = 2,
@@ -365,7 +412,12 @@ class TavilyResearchClient:
     ) -> dict[str, Any]:
         if max_depth < 1 or max_depth > 5 or limit < 1 or limit > 200:
             raise ProviderConfigurationError("invalid_tavily_crawl_bounds")
-        return self.transport.request_json(
+        admission = self._admission().authorize_content_url(
+            source_id=source_id,
+            url=url,
+            operation="crawl",
+        )
+        response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/crawl",
             headers=self._headers(),
@@ -382,11 +434,30 @@ class TavilyResearchClient:
                 "include_usage": True,
             },
         )
+        return {
+            **response,
+            "source_admission": admission,
+            "review_status": "review_required",
+            "eligible_for_controlled_assumptions": False,
+        }
 
-    def map_site(self, *, url: str, instructions: str, max_depth: int = 2, limit: int = 100) -> dict[str, Any]:
+    def map_site(
+        self,
+        *,
+        source_id: str,
+        url: str,
+        instructions: str,
+        max_depth: int = 2,
+        limit: int = 100,
+    ) -> dict[str, Any]:
         if max_depth < 1 or max_depth > 5 or limit < 1 or limit > 500:
             raise ProviderConfigurationError("invalid_tavily_map_bounds")
-        return self.transport.request_json(
+        admission = self._admission().authorize_content_url(
+            source_id=source_id,
+            url=url,
+            operation="map",
+        )
+        response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/map",
             headers=self._headers(),
@@ -399,6 +470,12 @@ class TavilyResearchClient:
                 "include_usage": True,
             },
         )
+        return {
+            **response,
+            "source_admission": admission,
+            "review_status": "review_required",
+            "eligible_for_controlled_assumptions": False,
+        }
 
 
 @dataclass

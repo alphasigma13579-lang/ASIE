@@ -35,6 +35,7 @@
 - `Risk-Engine`: المخاطر.
 - `Execution-Engine`: خطة التنفيذ.
 - `Evidence-Ledger`: الأدلة.
+- [`Tavily-Governed-Source-Admission`](Tavily-Governed-Source-Admission.md): بحث اكتشافي مقيد، وموافقة خادمية إلزامية قبل extract/crawl/map.
 
 ## Product
 

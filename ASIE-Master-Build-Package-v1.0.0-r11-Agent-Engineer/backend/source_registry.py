@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 from backend.contracts import json_dumps, now_iso
 
@@ -139,6 +139,16 @@ def candidate_source(source_id: str, publisher: str, url: str, state_reason: str
     }
 
 
+def _bounded_string_list(payload: dict[str, Any], field: str, *, maximum: int = 64) -> list[str]:
+    raw = payload.get(field, [])
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or len(raw) > maximum:
+        raise ValueError(f"{field} must be a bounded list")
+    values = [str(value or "").strip() for value in raw]
+    if any(not value or len(value) > 500 for value in values):
+        raise ValueError(f"{field} contains an invalid value")
+    return values
+
+
 def normalize_source_review(payload: dict[str, Any]) -> dict[str, Any]:
     requested_state = str(payload.get("state") or "candidate")
     if requested_state not in SOURCE_STATES:
@@ -177,6 +187,13 @@ def normalize_source_review(payload: dict[str, Any]) -> dict[str, Any]:
                 "notes": payload.get("notes", ""),
                 "state_reason": payload.get("state_reason", ""),
                 "external_fetch_allowed": False,
+                "organization_id": str(payload.get("organization_id") or "__platform__"),
+                "project_id": str(payload.get("project_id") or "*"),
+                "discovery_allowed": payload.get("discovery_allowed") is True,
+                "discovery_sectors": _bounded_string_list(payload, "discovery_sectors"),
+                "discovery_geographies": _bounded_string_list(payload, "discovery_geographies"),
+                "allowed_paths": _bounded_string_list(payload, "allowed_paths"),
+                "allow_query_parameters": payload.get("allow_query_parameters") is True,
             }
         ),
     }
