@@ -7,14 +7,15 @@ This directory is the buildable ASIE workspace. Run commands from here.
 Before implementation, read:
 
 1. docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md
-2. docs/EKB/README-AR.md
-3. docs/EKB/EKB-00-Knowledge-Map.md
-4. docs/EKB/EKB-01-Verified-Document-Inventory.md
-5. docs/EKB/EKB-02-Source-of-Truth-Matrix.md
-6. docs/EKB/EKB-04-Agent-Reading-Order.md
-7. docs/EKB/EKB-05-Prompt-Policy.md
-8. The relevant domain file under docs/EKB/domains/ when it exists.
-9. For repository cleanup, archive lockdown, or deletion work: docs/EKB/EKB-06-Repository-Surgery-Inventory.md and docs/EKB/EKB-07-Archive-Quarantine-Map.md.
+2. docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md and `/FOUNDATION-COMPLETE-20.json`
+3. docs/EKB/README-AR.md
+4. docs/EKB/EKB-00-Knowledge-Map.md
+5. docs/EKB/EKB-01-Verified-Document-Inventory.md
+6. docs/EKB/EKB-02-Source-of-Truth-Matrix.md
+7. docs/EKB/EKB-04-Agent-Reading-Order.md
+8. docs/EKB/EKB-05-Prompt-Policy.md
+9. The relevant domain file under docs/EKB/domains/ when it exists.
+10. For repository cleanup, archive lockdown, or deletion work: docs/EKB/EKB-06-Repository-Surgery-Inventory.md and docs/EKB/EKB-07-Archive-Quarantine-Map.md.
 
 PROGRAM-CLOSE-10 is the current program/remediation and release-authority source. Dated execution records are evidence, not current-state overrides.
 
