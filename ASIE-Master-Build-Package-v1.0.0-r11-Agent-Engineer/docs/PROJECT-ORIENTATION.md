@@ -1,5 +1,7 @@
 # ASIE Project Orientation
 
+> **Classification:** DERIVED ORIENTATION SNAPSHOT. Current remediation, DIB completion, and release authority are governed by [PROGRAM-CLOSE-10](./PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md), current code/tests, and the release marker. Older planned/not-implemented statements below are preserved for historical orientation and must not override those sources.
+
 This document is the “read this first” map for a programmer or coding agent.
 It describes the product boundary, the current implementation, and the order
 in which a feature should be built.
