@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from backend.asie_local_api import reset_local_module_runtime_for_tests
@@ -173,6 +174,7 @@ class CanonicalFinanceAdmissionTests(unittest.TestCase):
         self.assertIsNotNone(persisted)
         self.assertEqual(120000.0, persisted["finance"]["baseline"]["startup_cost"])
         original_project = self.repository.get_project(self.project.project_id)
+        self.assertIsNotNone(original_project)
         self.assertEqual(1, original_project.inputs["startup_cost"])
 
     def test_idempotency_replays_same_run_and_snapshot_once(self) -> None:
@@ -197,7 +199,7 @@ class CanonicalFinanceAdmissionTests(unittest.TestCase):
         self.assertEqual(first["run_id"], second["run_id"])
         self.assertEqual(first["snapshot_id"], second["snapshot_id"])
         self.assertTrue(second["idempotency_replayed"])
-        with self.repository.connect() as connection:
+        with closing(self.repository.connect()) as connection:
             run_count = connection.execute(
                 "SELECT COUNT(*) AS count FROM runs WHERE project_id = ?",
                 (self.project.project_id,),
