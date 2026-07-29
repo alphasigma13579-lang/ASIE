@@ -73,8 +73,15 @@ def test_deployment_workflow_is_manual_and_protected() -> None:
     assert "DEEPSEEK_MODEL\": \"deepseek-v4-flash\"" in content
     assert "ASIE_EXTERNAL_ALLOWED_HOSTS" in content
     assert "enable_external_fetch" in content
+    assert "release_commit" in content
+    assert "release_evidence_run_id" in content
+    assert "public_release_authorized" in content
+    assert "production_deployment_authorized" in content
+    assert "git rev-parse origin/main" in content
+    assert "rel-beta-07-complete-evidence" in content
     assert "pytest -q" in content
-    assert "git reset --hard origin/main" in content
+    assert 'git checkout --detach "$ASIE_RELEASE_COMMIT"' in content
+    assert "git reset --hard origin/main" not in content
     assert "rm -f /tmp/asie.env.production" in content
 
 

@@ -30,17 +30,20 @@ def test_beta_gate_does_not_import_controlled_execution_modules() -> None:
     assert not any(token in source for token in prohibited)
 
 
-def test_workflow_uses_production_environment_and_canonical_secrets() -> None:
+def test_workflow_is_evidence_only_and_provider_secret_free() -> None:
     source = (ROOT.parent / ".github/workflows/beta-release-gate.yml").read_text(encoding="utf-8")
-    assert "environment: production" in source
+    assert "environment: production" not in source
     for secret in (
         "DEEPSEEK_API_KEY",
         "TAVILY_API_KEY",
         "GOOGLE_MAPS_API_KEY",
         "PINECONE_API_KEY",
     ):
-        assert f"secrets.{secret}" in source
+        assert f"secrets.{secret}" not in source
     assert "workflow_dispatch" in source
+    assert "private-deployment-smoke" in source
+    assert "EMERGENCY-RELEASE-FREEZE.json" in source
+    assert "manual_readiness_assertions_accepted" not in source
 
 
 def test_package_scope_contains_no_frozen_runtime_copy() -> None:

@@ -4,16 +4,19 @@ This directory is the buildable ASIE workspace. Run commands from here.
 
 ## Start here
 
-Before implementation, read the Engineering Knowledge Base:
+Before implementation, read:
 
-1. `docs/EKB/README-AR.md`
-2. `docs/EKB/EKB-00-Knowledge-Map.md`
-3. `docs/EKB/EKB-01-Verified-Document-Inventory.md`
-4. `docs/EKB/EKB-02-Source-of-Truth-Matrix.md`
-5. `docs/EKB/EKB-04-Agent-Reading-Order.md`
-6. `docs/EKB/EKB-05-Prompt-Policy.md`
-7. The relevant domain file under `docs/EKB/domains/`
-8. For repository cleanup, archive lockdown, or deletion work: `docs/EKB/EKB-06-Repository-Surgery-Inventory.md`
+1. docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md
+2. docs/EKB/README-AR.md
+3. docs/EKB/EKB-00-Knowledge-Map.md
+4. docs/EKB/EKB-01-Verified-Document-Inventory.md
+5. docs/EKB/EKB-02-Source-of-Truth-Matrix.md
+6. docs/EKB/EKB-04-Agent-Reading-Order.md
+7. docs/EKB/EKB-05-Prompt-Policy.md
+8. The relevant domain file under docs/EKB/domains/ when it exists.
+9. For repository cleanup, archive lockdown, or deletion work: docs/EKB/EKB-06-Repository-Surgery-Inventory.md and docs/EKB/EKB-07-Archive-Quarantine-Map.md.
+
+PROGRAM-CLOSE-10 is the current program/remediation and release-authority source. Dated execution records are evidence, not current-state overrides.
 
 The EKB is the reference for where knowledge lives. Long-lived requirements, engine rules, DIB behavior, market estimation logic, and governance controls belong in EKB/domain documents, not inside oversized task prompts.
 
@@ -59,7 +62,7 @@ Do not add direct UI-to-Finance, AI-to-Finance, internet-to-Finance, or Market-t
 pnpm install --frozen-lockfile
 pnpm build
 python -m compileall -q backend
-python -m unittest discover -s tests
+python -m pytest -q
 python backend/asie_local_api.py
 ```
 

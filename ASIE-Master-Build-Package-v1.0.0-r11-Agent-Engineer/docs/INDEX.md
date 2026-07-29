@@ -1,37 +1,70 @@
 # ASIE Documentation Index
 
-This directory separates current operating documents from imported historical material.
+**Status:** LIVE NAVIGATION INDEX  
+**Owner:** Repository and Release Governance  
+**Last reviewed:** 2026-07-29
 
-## Authority order
-
-When documents disagree, use this order:
-
-1. `docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json` for frozen runtime facts.
-2. Current `docs/` architecture, contract, release, and runbook records.
-3. An approved ACR for a new product or contract decision.
-4. `docs/reference/` only as provenance and historical context.
+This index separates current authority from derived orientation, dated evidence,
+and historical provenance. A file being present under docs/ does not by itself
+make it a current source of truth.
 
 ## Read first
 
-- [`../AGENTS.md`](../AGENTS.md): repository and agent rules.
-- [`AGENTS.md`](../AGENTS.md): canonical workspace guide.
-- [`PROJECT-ORIENTATION.md`](./PROJECT-ORIENTATION.md): product and implementation map.
-- [`IMPLEMENTATION-STATUS-MATRIX.md`](./IMPLEMENTATION-STATUS-MATRIX.md): status boundary for implementation work.
+1. [Root AGENTS](../../AGENTS.md) — repository operating rules.
+2. [Package AGENTS](../AGENTS.md) — canonical workspace guide.
+3. [PROGRAM-CLOSE-10](./PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md) — current program state and release authority.
+4. [EKB Arabic entry](./EKB/README-AR.md) and the task-specific EKB reading order.
+5. The relevant canonical register, approved ACR, code, and tests.
 
-## Current documents
+## Authority order
 
-- `ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json`: frozen runtime files, contract sequence, and ACR control.
-- `ASIE-Complete-System-Architecture-2026-07-21.md`: current architecture narrative.
-- `ASIE-Post-Freeze-Work-Plan-2026-07-19.md`: post-freeze implementation direction.
-- `ASIE-Project-Status-Assessment-2026-07-21.md`: latest recorded readiness assessment.
-- `ACR-*.md`: architectural or product change records. `ACR-DIB-001` is merged and governs the Dynamic Input Blueprint implementation.
+When facts conflict, use the authority for the relevant domain:
 
-## Reference and archive material
+1. /EMERGENCY-RELEASE-FREEZE.json for machine-readable release authority.
+2. PROGRAM-CLOSE-10 for consolidated current remediation/program status.
+3. ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json for frozen runtime facts.
+4. Binding constitutions, canonical registers, and approved ACRs.
+5. Active EKB plus live code and executable tests.
+6. Derived orientation documents.
+7. Dated execution records.
+8. docs/archive/superseded/ and docs/reference/ as provenance only.
 
-`docs/reference/r11-workspace-materials/` contains imported workspace material, correction packs, prompts, and historical bundles. These files are searchable and preserved for provenance, but they are not executable code and do not override current `docs/` records.
+## Authoritative current documents
 
-Large extracted bundles intentionally remain under that reference boundary. New implementation files must not be added there; put executable code under the canonical workspace and current decisions under `docs/`.
+- PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md
+- ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json
+- AIA-01-Intelligence-Constitution-v1.0.0.md
+- ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md
+- ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md
+- approved ACR records, with their correction records where applicable
+- active EKB, live source, registries, and tests
 
-## Dynamic Input Blueprint
+## Derived orientation
 
-The two user entry paths meet at `Dynamic Input Blueprint` before `Approved Input Manifest` and Finance. The governing record is [ACR-DIB-001](./ACR-DIB-001-Dynamic-Input-Blueprint.md), merged into `main`.
+- PROJECT-ORIENTATION.md
+- IMPLEMENTATION-STATUS-MATRIX.md
+- system maps and architecture narratives not promoted to a binding ACR
+
+These documents help navigation. They do not override the current release
+marker, PROGRAM-CLOSE-10, executable behavior, or frozen manifests.
+
+## Dated execution evidence
+
+Files with dated package prefixes—including SEC-BETA-, STAB-BETA-, GOV-BETA-,
+ARCH-BETA-, TEST-BETA-, REL-BETA-, DEPLOY-BETA-, GOV-REL-, BETA-PKG-, and
+REPOSITORY-SURGERY-—are preserved evidence of individual decisions and
+changes. They are historical records after closure, not parallel current-status
+documents.
+
+No dated record is deleted or moved by PROGRAM-CLOSE-10.
+
+## Archive and quarantine
+
+- docs/archive/superseded/: explicitly superseded documents.
+- docs/reference/: archive-locked provenance; never executable source.
+- quarantine-marker shells: path-level warnings retained after payload
+  compaction; not implementation content.
+
+Git history preserves removed archive payloads. New implementation belongs in
+live source paths; current long-lived knowledge belongs in EKB, canonical
+registers, approved ACRs, or this index's named current authority.

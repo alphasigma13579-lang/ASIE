@@ -3,6 +3,14 @@ name: Deploy ASIE to Hostinger VPS
 on:
   workflow_dispatch:
     inputs:
+      release_commit:
+        description: Exact current main commit authorized for production release
+        required: true
+        type: string
+      release_evidence_run_id:
+        description: Successful public-beta Evidence-Backed Beta Release Gate run ID
+        required: true
+        type: string
       enable_external_fetch:
         description: Enable governed live provider network access
         required: true
@@ -14,19 +22,89 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: asie-production-deploy
   cancel-in-progress: false
 
 jobs:
-  verify:
+  authorize:
+    name: Verify production release authority
     runs-on: ubuntu-latest
+    env:
+      ASIE_RELEASE_COMMIT: ${{ inputs.release_commit }}
+      ASIE_RELEASE_EVIDENCE_RUN_ID: ${{ inputs.release_evidence_run_id }}
+      ENABLE_EXTERNAL_FETCH: ${{ inputs.enable_external_fetch }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out requested release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ASIE_RELEASE_COMMIT }}
+          fetch-depth: 0
+
+      - name: Require exact current main and explicit production authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          checked_out="$(git rev-parse HEAD)"
+          current_main="$(git rev-parse origin/main)"
+          test "$checked_out" = "$ASIE_RELEASE_COMMIT"
+          test "$current_main" = "$ASIE_RELEASE_COMMIT"
+
+          jq -e '
+            .status == "CLEARED" and
+            .controlled_unfreeze.public_release_authorized == true and
+            .controlled_unfreeze.production_deployment_authorized == true
+          ' EMERGENCY-RELEASE-FREEZE.json >/dev/null
+
+          if [ "$ENABLE_EXTERNAL_FETCH" = "true" ]; then
+            jq -e '
+              .controlled_unfreeze.external_network_authorized == true and
+              .controlled_unfreeze.provider_activation_authorized == true
+            ' EMERGENCY-RELEASE-FREEZE.json >/dev/null
+          fi
+
+      - name: Require successful exact-commit public release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ASIE_RELEASE_EVIDENCE_RUN_ID}")"
+          test "$(printf '%s' "$metadata" | jq -r '.name')" = "Evidence-Backed Beta Release Gate"
+          test "$(printf '%s' "$metadata" | jq -r '.head_sha')" = "$ASIE_RELEASE_COMMIT"
+          test "$(printf '%s' "$metadata" | jq -r '.head_branch')" = "main"
+          test "$(printf '%s' "$metadata" | jq -r '.event')" = "workflow_dispatch"
+          test "$(printf '%s' "$metadata" | jq -r '.status')" = "completed"
+          test "$(printf '%s' "$metadata" | jq -r '.conclusion')" = "success"
+
+          rm -rf production-release-evidence
+          mkdir -p production-release-evidence
+          gh run download "$ASIE_RELEASE_EVIDENCE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name rel-beta-07-complete-evidence             --dir production-release-evidence
+
+          report=production-release-evidence/rel-beta-07-final/beta-release-gate-report.json
+          test -f "$report"
+          jq -e --arg sha "$ASIE_RELEASE_COMMIT" '
+            .release_commit == $sha and
+            .decision == "GO" and
+            .release_allowed == true and
+            .public_beta_allowed == true and
+            .critical_failures == []
+          ' "$report" >/dev/null
+
+  verify:
+    needs: authorize
+    runs-on: ubuntu-latest
+    env:
+      ASIE_RELEASE_COMMIT: ${{ inputs.release_commit }}
     defaults:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ASIE_RELEASE_COMMIT }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -49,6 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
+      ASIE_RELEASE_COMMIT: ${{ inputs.release_commit }}
       ASIE_DOMAIN: ${{ secrets.ASIE_DOMAIN }}
       HOSTINGER_VPS_HOST: ${{ secrets.HOSTINGER_VPS_HOST }}
       HOSTINGER_VPS_USER: ${{ secrets.HOSTINGER_VPS_USER }}
@@ -61,6 +140,8 @@ jobs:
       ENABLE_EXTERNAL_FETCH: ${{ inputs.enable_external_fetch }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ASIE_RELEASE_COMMIT }}
 
       - name: Validate deployment secrets
         run: |
@@ -148,7 +229,7 @@ jobs:
 
       - name: Deploy main to Hostinger VPS
         run: |
-          ssh -i ~/.ssh/asie_deploy_key "$HOSTINGER_VPS_USER@$HOSTINGER_VPS_HOST" 'bash -se' <<'REMOTE'
+          ssh -i ~/.ssh/asie_deploy_key "$HOSTINGER_VPS_USER@$HOSTINGER_VPS_HOST" "ASIE_RELEASE_COMMIT='$ASIE_RELEASE_COMMIT' bash -se" <<'REMOTE'
           set -euo pipefail
           command -v git >/dev/null
           command -v docker >/dev/null
@@ -163,8 +244,9 @@ jobs:
           fi
           cd "$DEPLOY_PATH"
           git fetch --prune origin main
-          git checkout -B main origin/main
-          git reset --hard origin/main
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$ASIE_RELEASE_COMMIT"
+          git checkout --detach "$ASIE_RELEASE_COMMIT"
 
           mv /tmp/asie.env.production "$PACKAGE_PATH/.env.production"
           chmod 600 "$PACKAGE_PATH/.env.production"

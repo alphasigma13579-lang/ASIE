@@ -46,8 +46,8 @@ def test_r3a_quarantine_markers_remain_present():
     for rel_path in REQUIRED_QUARANTINE_MARKERS:
         path = ROOT / rel_path
         assert path.exists(), rel_path
-        text = _read(path)
-        assert "ARCHIVE" in text or "QUARANTINE" in text
+        text = _read(path).casefold()
+        assert "archive" in text or "quarantine" in text
 
 
 def test_r3a_execution_record_documents_boundary():

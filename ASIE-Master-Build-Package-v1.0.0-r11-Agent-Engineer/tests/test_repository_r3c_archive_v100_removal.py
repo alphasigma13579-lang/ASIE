@@ -9,7 +9,7 @@ REMOVED_ARCHIVE = (
     "ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0"
 )
 
-RETAINED_ARCHIVES = [
+LATER_REMOVED_ARCHIVES = [
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/QUARANTINE-LOCKED.md",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md",
@@ -42,12 +42,14 @@ def test_r3c_removed_only_target_archive_directory():
     assert not (ROOT / REMOVED_ARCHIVE).exists()
 
 
-def test_r3c_retains_later_quarantined_bundles_and_root_markers():
-    for rel_path in ROOT_MARKERS + RETAINED_ARCHIVES:
+def test_final_r3_state_preserves_root_markers_and_removes_later_bundles():
+    for rel_path in ROOT_MARKERS:
         marker = ROOT / rel_path
         assert marker.exists(), rel_path
-        text = _read(marker)
-        assert "QUARANTINE" in text or "ARCHIVE" in text
+        text = _read(marker).casefold()
+        assert "quarantine" in text or "archive" in text
+    for rel_path in LATER_REMOVED_ARCHIVES:
+        assert not (ROOT / rel_path).exists(), rel_path
 
 
 def test_r3c_execution_record_documents_boundary():

@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 REMOVED_TOP_LEVEL_HANDOFF = "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0"
+MARKER_ONLY_HANDOFF_SHELL = ROOT / REMOVED_TOP_LEVEL_HANDOFF
 
 REFERENCE_HANDOFF_MARKER = (
     "docs/reference/r11-workspace-materials/workspace-bundles/"
@@ -33,17 +34,22 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_r3b_top_level_handoff_archive_is_removed():
-    assert not (ROOT / REMOVED_TOP_LEVEL_HANDOFF).exists()
+def test_r3b_top_level_handoff_payload_is_removed_and_marker_is_preserved():
+    assert MARKER_ONLY_HANDOFF_SHELL.is_dir()
+    entries = sorted(path.name for path in MARKER_ONLY_HANDOFF_SHELL.iterdir())
+    assert entries == ["QUARANTINE-LOCKED.md"]
+    marker = _read(MARKER_ONLY_HANDOFF_SHELL / "QUARANTINE-LOCKED.md")
+    assert "QUARANTINE LOCKED" in marker
 
 
-def test_r3b_reference_copy_remains_quarantined_for_provenance():
+def test_later_r3f_removed_reference_copy_but_preserved_root_markers():
     marker = ROOT / REFERENCE_HANDOFF_MARKER
-    assert marker.exists()
-    text = _read(marker)
-    assert "QUARANTINE LOCKED" in text
-    assert "DANGEROUS_DUPLICATE_BUNDLE" in text
-    assert "historical continuity material" in text
+    assert not marker.exists()
+    for rel_path in (
+        "docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md",
+        "docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md",
+    ):
+        assert (ROOT / rel_path).exists(), rel_path
 
 
 def test_r3b_execution_record_documents_boundary():

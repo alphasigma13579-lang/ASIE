@@ -18,10 +18,16 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
             self.assertTrue(source["url"].startswith("https://www.vision2030.gov.sa/"))
             self.assertEqual(source["authority"], "Saudi Vision 2030")
 
-    def test_workflow_is_monthly_manual_and_secret_scoped(self) -> None:
+    def test_workflow_is_manual_authorized_and_secret_scoped(self) -> None:
         workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "vision2030-kb-sync.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 3 1 * *"', workflow)
+        self.assertNotIn("schedule:", workflow)
+        self.assertNotIn("cron:", workflow)
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("authorization_commit", workflow)
+        self.assertIn("git rev-parse origin/main", workflow)
+        self.assertIn("external_network_authorized", workflow)
+        self.assertIn("provider_activation_authorized", workflow)
+        self.assertIn("needs: authorize", workflow)
         self.assertIn("environment: production", workflow)
         self.assertIn("secrets.TAVILY_API_KEY", workflow)
         self.assertIn("secrets.PINECONE_API_KEY", workflow)

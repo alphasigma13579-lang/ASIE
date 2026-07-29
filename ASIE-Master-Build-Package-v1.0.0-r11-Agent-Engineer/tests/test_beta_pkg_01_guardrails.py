@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.dib_registry_admission import assert_all_frozen_files_unchanged
+
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 FROZEN_RUNTIME_FILES = (
@@ -40,5 +42,7 @@ def test_mapping_module_uses_existing_dib_blueprint_builder() -> None:
 
 def test_package_document_preserves_frozen_runtime_boundary() -> None:
     document = (PACKAGE_ROOT / "docs/BETA-PKG-01-DATASET-TO-DIB-MAPPING-COMPLETION-2026-07-27.md").read_text(encoding="utf-8")
-    for relative_path in FROZEN_RUNTIME_FILES:
-        assert relative_path in document
+    assert "Frozen-runtime boundary" in document
+    assert "This package does not modify" in document
+    assert "the Runtime Freeze Manifest" in document
+    assert_all_frozen_files_unchanged(PACKAGE_ROOT)

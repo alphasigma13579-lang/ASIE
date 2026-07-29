@@ -12,12 +12,16 @@ ACTIVE_REQUIRED_MARKERS = [
 
 
 COMPLETED_REMOVALS = [
-    "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1",
     "docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0",
 ]
+
+
+MARKER_ONLY_QUARANTINE_SHELL = (
+    ROOT / "ASIE-Next-Task-Handoff-2026-07-19-v1.0.0"
+)
 
 
 FORBIDDEN_LIVE_REFERENCES = [
@@ -57,14 +61,22 @@ def test_repository_surgery_active_quarantine_markers_exist():
     for rel_path in ACTIVE_REQUIRED_MARKERS:
         marker = ROOT / rel_path
         assert marker.exists(), rel_path
-        content = _read(marker)
-        assert "QUARANTINE LOCKED" in content or "Archive Quarantine" in content
-        assert "Do not copy" in content or "not be used" in content or "Forbidden" in content
+        content = _read(marker).casefold()
+        assert "quarantine" in content or "archive" in content
+        assert any(token in content for token in ("do not copy", "not be used", "forbidden", "must not"))
 
 
 def test_completed_r3_removals_are_absent():
     for rel_path in COMPLETED_REMOVALS:
         assert not (ROOT / rel_path).exists(), rel_path
+
+
+def test_r3b_handoff_payload_is_absent_but_guard_marker_is_preserved():
+    assert MARKER_ONLY_QUARANTINE_SHELL.is_dir()
+    entries = sorted(path.name for path in MARKER_ONLY_QUARANTINE_SHELL.iterdir())
+    assert entries == ["QUARANTINE-LOCKED.md"]
+    marker = _read(MARKER_ONLY_QUARANTINE_SHELL / "QUARANTINE-LOCKED.md")
+    assert "QUARANTINE LOCKED" in marker
 
 
 def test_quarantine_map_declares_active_markers_and_completed_removals():

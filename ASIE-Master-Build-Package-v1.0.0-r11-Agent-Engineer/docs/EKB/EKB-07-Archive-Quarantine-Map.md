@@ -40,17 +40,20 @@ The following marker files must exist until a later Repository Surgery PR remove
 |---|---|---|
 | `docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_ROOT | Keep marker until compaction complete |
 | `docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md` | ARCHIVE_LOCKED_BUNDLE_ROOT | Keep marker until bundle directory is removed or compacted |
+| `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/QUARANTINE-LOCKED.md` | MARKER_ONLY_QUARANTINE_SHELL | Preserve the single marker; archived payload is absent |
 
 ## Completed R3 Compaction / Removal
 
 | Package | Removed Target | Scope |
 |---|---|---|
 | R3A | package-root archive `*.zip.sha256.txt` stubs | Removed checksum stubs only |
-| R3B | `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` at package root | Removed top-level handoff archive only |
+| R3B | `ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` at package root | Removed archived payload; retained one quarantine marker shell |
 | R3C | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-18-v1.0.0/` | Removed one quarantined v1.0.0 correction archive bundle |
 | R3D | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.0/` | Removed one quarantined v1.1.0 correction archive bundle |
 | R3E | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Architecture-Correction-Archive-2026-07-19-v1.1.1/` | Removed one quarantined v1.1.1 correction archive bundle |
 | R3F | `docs/reference/r11-workspace-materials/workspace-bundles/ASIE-Next-Task-Handoff-2026-07-19-v1.0.0/` | Removed one quarantined reference-copy handoff bundle |
+
+R3B completion means the historical payload was removed. The remaining directory contains only `QUARANTINE-LOCKED.md`; it is an active guard marker, not a restored archive and not live implementation.
 
 ## Remaining R3 Compaction Candidates
 
