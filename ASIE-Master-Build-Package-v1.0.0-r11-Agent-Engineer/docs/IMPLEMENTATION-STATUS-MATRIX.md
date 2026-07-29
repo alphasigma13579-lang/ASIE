@@ -1,5 +1,7 @@
 # Implementation Status Matrix
 
+> **Classification:** DERIVED IMPLEMENTATION SNAPSHOT. It predates the completed emergency-remediation sequence. For current remediation, DIB admission, and release authority, use [PROGRAM-CLOSE-10](./PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md), current code/tests, and `/EMERGENCY-RELEASE-FREEZE.json`.
+
 This matrix prevents a design document, UI mock, or historical bundle from
 being mistaken for executable behavior.
 
