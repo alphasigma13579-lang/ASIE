@@ -55,6 +55,30 @@ The test timestamp, Project ID, Run ID, Snapshot ID, message IDs, correlation ID
 
 `Snapshot Assembly.now_iso` is patched only while constructing the test vector so the full integrity hash can be compared. The production `backend/snapshot_assembly.py` file remains unchanged.
 
+## Repository text canonicalization
+
+The first Windows execution exposed two repository-level defects before the deterministic vector could run:
+
+1. archived paths exceeded the traditional Windows path limit;
+2. Git converted frozen Python files to CRLF, causing frozen-file SHA-256 checks to fail.
+
+The root repair is repository-wide and non-algorithmic:
+
+```text
+.gitattributes
+* text=auto eol=lf
+```
+
+Binary formats are marked explicitly so they are never normalized. Windows matrix jobs also configure before checkout:
+
+```text
+core.longpaths=true
+core.autocrlf=false
+core.eol=lf
+```
+
+This ensures the checked-out bytes match the canonical repository bytes and makes AAS Runtime Freeze checks reproducible on Windows. No frozen file content or checksum was changed.
+
 ## Cross-platform matrix
 
 The workflow creates four independent artifacts:
@@ -68,12 +92,13 @@ windows-hash7919
 
 Each job:
 
-1. compiles the evidence harness;
-2. runs the targeted regression tests;
-3. generates the vector twice in-process;
-4. requires both generations to be byte-identical;
-5. writes UTF-8 JSON with LF line endings;
-6. uploads `vector.json`.
+1. configures deterministic checkout behavior where required;
+2. compiles the evidence harness;
+3. runs the targeted regression tests;
+4. generates the vector twice in-process;
+5. requires both generations to be byte-identical;
+6. writes UTF-8 JSON with LF line endings;
+7. uploads `vector.json`.
 
 A separate Ubuntu comparison job downloads all four artifacts and requires exact byte equality. Semantic equality alone is insufficient.
 
@@ -81,6 +106,7 @@ A separate Ubuntu comparison job downloads all four artifacts and requires exact
 
 The workflow fails when any of the following occurs:
 
+- checkout changes frozen repository bytes;
 - Finance returns blockers or `not_ready`;
 - repeated generation differs;
 - Finance changes when input dictionary order changes;
@@ -109,6 +135,7 @@ The package imports and executes existing public functions for test evidence onl
 ## Allowlist
 
 ```text
+.gitattributes
 .github/workflows/test-beta-06-cross-platform-determinism.yml
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/test_beta_06_determinism.py
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_beta_06_cross_platform_determinism.py
@@ -122,7 +149,7 @@ ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/TEST-BETA-06-CROSS-PLAT
 - the byte-comparison job succeeds;
 - the combined evidence artifact exists;
 - the final diff contains only the allowlisted files;
-- frozen-file checksum guards succeed.
+- frozen-file checksum guards succeed on Ubuntu and Windows.
 
 ## Scope limitation
 
