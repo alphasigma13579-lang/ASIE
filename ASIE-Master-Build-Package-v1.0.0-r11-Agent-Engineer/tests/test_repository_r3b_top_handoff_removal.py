@@ -42,13 +42,14 @@ def test_r3b_top_level_handoff_payload_is_removed_and_marker_is_preserved():
     assert "QUARANTINE LOCKED" in marker
 
 
-def test_r3b_reference_copy_remains_quarantined_for_provenance():
+def test_later_r3f_removed_reference_copy_but_preserved_root_markers():
     marker = ROOT / REFERENCE_HANDOFF_MARKER
-    assert marker.exists()
-    text = _read(marker)
-    assert "QUARANTINE LOCKED" in text
-    assert "DANGEROUS_DUPLICATE_BUNDLE" in text
-    assert "historical continuity material" in text
+    assert not marker.exists()
+    for rel_path in (
+        "docs/reference/r11-workspace-materials/QUARANTINE-LOCKED.md",
+        "docs/reference/r11-workspace-materials/workspace-bundles/QUARANTINE-LOCKED.md",
+    ):
+        assert (ROOT / rel_path).exists(), rel_path
 
 
 def test_r3b_execution_record_documents_boundary():
