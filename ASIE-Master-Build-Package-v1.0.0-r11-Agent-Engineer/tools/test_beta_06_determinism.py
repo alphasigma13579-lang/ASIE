@@ -136,7 +136,7 @@ def _sealed_outputs(outputs: dict[str, dict[str, Any]], *, reverse: bool = False
     if reverse:
         output_keys.reverse()
     sealed: list[dict[str, Any]] = []
-    for index, output_key in enumerate(output_keys, start=1):
+    for output_key in output_keys:
         producer_module_id, producer_contract_id = REQUIRED_MODULE_OUTPUTS[output_key]
         sealed.append(
             seal_module_output(
@@ -147,7 +147,7 @@ def _sealed_outputs(outputs: dict[str, dict[str, Any]], *, reverse: bool = False
                 project_id=PROJECT_ID,
                 run_id=RUN_ID,
                 snapshot_id=SNAPSHOT_ID,
-                message_id=f"message_test_beta_06_{index}",
+                message_id=f"message_test_beta_06_{output_key}",
                 correlation_id=f"correlation_test_beta_06_{output_key}",
                 audit_ref=f"audit:{SNAPSHOT_ID}:{output_key}",
                 produced_at=FIXED_TIME,
