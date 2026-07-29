@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from backend.release_freeze_contract import validate_controlled_unfreeze_marker
+
 GATE_CONTRACT_ID = "beta.release.gate.v2"
 EVIDENCE_BUNDLE_SCHEMA = "asie.release.evidence.bundle.v2"
 DETERMINISM_EVIDENCE_SCHEMA = "asie.cross_platform.determinism.evidence.v1"
@@ -274,11 +276,8 @@ def _validate_deployment_evidence(
 
 
 def _validate_freeze(marker: Mapping[str, Any]) -> GateCheck:
-    passed = bool(
-        marker.get("schema") == FREEZE_SCHEMA
-        and marker.get("status") == "CLEARED"
-        and marker.get("release_gate_allowed") is True
-    )
+    validation = validate_controlled_unfreeze_marker(marker)
+    passed = validation["valid"] is True
     return _gate_check(
         "emergency_release_freeze_cleared",
         passed,
@@ -289,8 +288,17 @@ def _validate_freeze(marker: Mapping[str, Any]) -> GateCheck:
             "decision": marker.get("decision"),
             "release_gate_allowed": marker.get("release_gate_allowed"),
             "baseline_commit": marker.get("baseline_commit"),
+            "validation_failures": validation["failures"],
+            "public_release_authorized": validation["public_release_authorized"],
+            "external_network_authorized": validation["external_network_authorized"],
+            "provider_activation_authorized": validation[
+                "provider_activation_authorized"
+            ],
         },
-        message="The emergency marker must be explicitly CLEARED before any release decision can allow deployment.",
+        message=(
+            "The emergency marker must contain the exact governed controlled-"
+            "unfreeze proof before the evidence gate can evaluate release."
+        ),
     )
 
 

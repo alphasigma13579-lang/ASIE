@@ -96,7 +96,7 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
         self.assertIn("rel-beta-07-determinism-*", workflow)
         self.assertIn("beta-release-gate-report.json", workflow)
 
-    def test_repository_active_freeze_keeps_audit_decision_no_go(self) -> None:
+    def test_repository_controlled_marker_still_requires_private_smoke(self) -> None:
         commit = "a" * 40
         checks = [
             {
@@ -135,7 +135,18 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
         self.assertEqual(report["decision"], "NO_GO")
         self.assertTrue(report["code_evidence_ready"])
         self.assertIn("private_deployment_smoke_passed", report["critical_failures"])
-        self.assertIn("emergency_release_freeze_cleared", report["critical_failures"])
+        self.assertNotIn(
+            "emergency_release_freeze_cleared", report["critical_failures"]
+        )
+        freeze_check = next(
+            check
+            for check in report["checks"]
+            if check["check_id"] == "emergency_release_freeze_cleared"
+        )
+        self.assertTrue(freeze_check["passed"])
+        self.assertFalse(freeze_check["evidence"]["public_release_authorized"])
+        self.assertFalse(freeze_check["evidence"]["external_network_authorized"])
+        self.assertFalse(freeze_check["evidence"]["provider_activation_authorized"])
 
 
 if __name__ == "__main__":

@@ -1,13 +1,16 @@
 # EMERG-00 — Release Freeze and Exposure Containment
 
-**Status:** ACTIVE  
-**Decision:** NO_GO  
+**Status:** CLEARED BY CONTROLLED TRANSITION  
+**Decision:** PENDING_GATE  
 **Baseline:** `8978231e190b8ccc2be59ec46acf50d6268cd41f`  
-**Activated:** 2026-07-29
+**Activated:** 2026-07-29  
+**Controlled transition:** `GOV-REL-10-CONTROLLED-UNFREEZE-EXECUTION`
 
 ## Purpose
 
 Contain the confirmed pre-production security and architectural failures before any public beta, production deployment, or direct network exposure. This package does not claim to remediate the defects. It prevents the existing beta gate from presenting a false release signal while the corrective packages are executed.
+
+The containment record is historical and remains the provenance for the original freeze. The current marker is cleared only for commit-bound technical-limited gate evaluation. Public release, production deployment, provider activation, external fetch, and external network exposure remain unauthorized.
 
 ## Confirmed blockers
 
@@ -51,6 +54,8 @@ This package must not modify:
 ## Unfreeze protocol
 
 The freeze marker may be changed from `ACTIVE` only by a dedicated release-control PR after all required packages are merged and their evidence artifacts are tied to the exact candidate commit and deployment image digest. Deleting the marker, bypassing the workflow check, or changing `release_gate_allowed` without that evidence is a release-control violation.
+
+This transition was executed by `GOV-REL-10` and is bound to eligibility commit `b459944ba211be32408dd642390122b24d8113ae`, evidence-gate run `30451627726`, governed-review run `30451627730`, and the recorded review artifact SHA-256. The post-transition gate must still return `CONDITIONAL_GO` with public release disabled; otherwise the workflow fails closed.
 
 ## Allowlist for EMERG-00
 

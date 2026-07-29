@@ -19,12 +19,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: gov-rel-09-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
+  group: governed-freeze-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
   cancel-in-progress: true
 
 jobs:
   governed-freeze-review:
-    name: Evaluate governed freeze eligibility
+    name: Evaluate governed freeze state
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
@@ -132,16 +132,41 @@ jobs:
             --dir gov-rel-09-input
           test -f gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
 
-      - name: Compile governed review evaluator
-        run: python -m py_compile tools/gov_rel_09_governed_freeze_review.py
+      - name: Resolve governed freeze state
+        shell: bash
+        run: |
+          set -euo pipefail
+          freeze_status="$(jq -r '.status // ""' ../EMERGENCY-RELEASE-FREEZE.json)"
+          case "$freeze_status" in
+            ACTIVE|CLEARED) ;;
+            *) echo "Unsupported or missing freeze status: $freeze_status" >&2; exit 1 ;;
+          esac
+          echo "ASIE_FREEZE_STATUS=$freeze_status" >> "$GITHUB_ENV"
+
+      - name: Compile governed review evaluators
+        run: >-
+          python -m py_compile
+          tools/gov_rel_09_governed_freeze_review.py
+          tools/gov_rel_10_controlled_unfreeze.py
+          backend/release_freeze_contract.py
 
       - name: Run governed review regression tests
-        run: python -m unittest discover -s tests -p "test_gov_rel_09_governed_freeze_review.py" -v
+        run: >-
+          python -m unittest discover -s tests
+          -p "test_gov_rel_09_governed_freeze_review.py" -v
 
       - name: Run post-merge artifact regression tests
-        run: python -m unittest discover -s tests -p "test_gov_rel_09a_post_merge_review_artifact.py" -v
+        run: >-
+          python -m unittest discover -s tests
+          -p "test_gov_rel_09a_post_merge_review_artifact.py" -v
 
-      - name: Evaluate freeze eligibility without mutating marker
+      - name: Run controlled unfreeze negative acceptance tests
+        run: >-
+          python -m unittest discover -s tests
+          -p "test_gov_rel_10_controlled_unfreeze.py" -v
+
+      - name: Evaluate active freeze eligibility without mutating marker
+        if: env.ASIE_FREEZE_STATUS == 'ACTIVE'
         run: >-
           python -m tools.gov_rel_09_governed_freeze_review
           --gate-report gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
@@ -151,23 +176,54 @@ jobs:
           --output gov-rel-09-output/governed-freeze-review.json
           --require-eligible
 
-      - name: Record review artifact digest
+      - name: Verify cleared marker against fresh technical-limited gate
+        if: env.ASIE_FREEZE_STATUS == 'CLEARED'
+        run: >-
+          python -m tools.gov_rel_10_controlled_unfreeze
+          --gate-report gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
+          --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
+          --expected-commit "$ASIE_REVIEW_COMMIT"
+          --repository-root ..
+          --output gov-rel-10-output/controlled-unfreeze-review.json
+          --require-verified
+
+      - name: Record active review artifact digest
+        if: env.ASIE_FREEZE_STATUS == 'ACTIVE'
         shell: bash
         run: |
           set -euo pipefail
           sha256sum gov-rel-09-output/governed-freeze-review.json | tee gov-rel-09-output/governed-freeze-review.sha256
           cp gov-rel-09-source-run.json gov-rel-09-output/source-evidence-run.json
 
+      - name: Record controlled unfreeze artifact digest
+        if: env.ASIE_FREEZE_STATUS == 'CLEARED'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum gov-rel-10-output/controlled-unfreeze-review.json | tee gov-rel-10-output/controlled-unfreeze-review.sha256
+          cp gov-rel-09-source-run.json gov-rel-10-output/source-evidence-run.json
+
       - name: Show governed freeze review
         if: always()
         shell: bash
-        run: cat gov-rel-09-output/governed-freeze-review.json || true
+        run: |
+          cat gov-rel-09-output/governed-freeze-review.json 2>/dev/null || true
+          cat gov-rel-10-output/controlled-unfreeze-review.json 2>/dev/null || true
 
-      - name: Upload governed freeze review evidence
-        if: always()
+      - name: Upload active freeze review evidence
+        if: env.ASIE_FREEZE_STATUS == 'ACTIVE'
         uses: actions/upload-artifact@v4
         with:
           name: gov-rel-09-governed-freeze-review
           path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/gov-rel-09-output
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload controlled unfreeze review evidence
+        if: env.ASIE_FREEZE_STATUS == 'CLEARED'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gov-rel-10-controlled-unfreeze-review
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/gov-rel-10-output
           if-no-files-found: error
           retention-days: 90

@@ -251,11 +251,15 @@ class GovernedFreezeReviewTests(unittest.TestCase):
             self.assertEqual(ELIGIBLE, restored["decision"])
             self.assertEqual(review["review_hash"], restored["review_hash"])
 
-    def test_repository_marker_remains_active_and_workflow_is_commit_bound(self) -> None:
+    def test_repository_marker_transition_and_workflow_are_commit_bound(self) -> None:
         marker = json.loads(FREEZE_MARKER_PATH.read_text(encoding="utf-8"))
-        self.assertEqual("ACTIVE", marker["status"])
-        self.assertEqual("NO_GO", marker["decision"])
-        self.assertFalse(marker["release_gate_allowed"])
+        self.assertEqual("CLEARED", marker["status"])
+        self.assertEqual("PENDING_GATE", marker["decision"])
+        self.assertTrue(marker["release_gate_allowed"])
+        transition = marker["controlled_unfreeze"]
+        self.assertFalse(transition["public_release_authorized"])
+        self.assertFalse(transition["external_network_authorized"])
+        self.assertFalse(transition["provider_activation_authorized"])
 
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertIn("  push:\n    branches: [main]", workflow)
@@ -270,7 +274,10 @@ class GovernedFreezeReviewTests(unittest.TestCase):
         self.assertIn("git rev-parse origin/main", workflow)
         self.assertIn("tools/gov_rel_09_governed_freeze_review.py", workflow)
         self.assertIn("--require-eligible", workflow)
-        self.assertIn("governed-freeze-review.json", workflow)
+        self.assertIn("env.ASIE_FREEZE_STATUS == 'ACTIVE'", workflow)
+        self.assertIn("env.ASIE_FREEZE_STATUS == 'CLEARED'", workflow)
+        self.assertIn("tools.gov_rel_10_controlled_unfreeze", workflow)
+        self.assertIn("--require-verified", workflow)
         self.assertIn("fetch-depth: 0", workflow)
 
     def test_surgical_allowlist_excludes_marker_and_frozen_runtime(self) -> None:

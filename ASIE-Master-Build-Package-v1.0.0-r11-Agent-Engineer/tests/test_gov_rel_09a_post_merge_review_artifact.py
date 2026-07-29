@@ -98,20 +98,24 @@ class PostMergeReviewArtifactRepairTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", self.workflow)
         self.assertNotIn("id-token: write", self.workflow)
 
-    def test_freeze_marker_remains_active_and_read_only(self) -> None:
+    def test_freeze_marker_is_controlled_and_workflow_remains_read_only(self) -> None:
         marker = json.loads(FREEZE_MARKER_PATH.read_text(encoding="utf-8"))
         self.assertEqual("asie.release.freeze.v1", marker["schema"])
-        self.assertEqual("ACTIVE", marker["status"])
-        self.assertEqual("NO_GO", marker["decision"])
-        self.assertIs(False, marker["release_gate_allowed"])
+        self.assertEqual("CLEARED", marker["status"])
+        self.assertEqual("PENDING_GATE", marker["decision"])
+        self.assertIs(True, marker["release_gate_allowed"])
+        transition = marker["controlled_unfreeze"]
+        self.assertIs(False, transition["public_release_authorized"])
+        self.assertIs(False, transition["external_network_authorized"])
+        self.assertIs(False, transition["provider_activation_authorized"])
         self.assertIn("--freeze-marker ../EMERGENCY-RELEASE-FREEZE.json", self.workflow)
         for forbidden in (
-            "status: CLEARED",
-            '"status": "CLEARED"',
-            "release_gate_allowed: true",
-            '"release_gate_allowed": true',
             "git add ../EMERGENCY-RELEASE-FREEZE.json",
+            "git commit",
+            "git push",
             "sed -i",
+            "contents: write",
+            "id-token: write",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, self.workflow)

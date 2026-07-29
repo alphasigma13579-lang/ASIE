@@ -1,35 +1,47 @@
 {
   "schema": "asie.release.freeze.v1",
-  "status": "ACTIVE",
-  "decision": "NO_GO",
+  "status": "CLEARED",
+  "decision": "PENDING_GATE",
   "baseline_commit": "8978231e190b8ccc2be59ec46acf50d6268cd41f",
   "activated_on": "2026-07-29",
   "scope": [
-    "public_beta",
+    "external_network_exposure",
     "production_deployment",
-    "external_network_exposure"
+    "public_beta"
   ],
   "reason_codes": [
-    "production_bootstrap_takeover",
-    "zero_user_implicit_principal",
     "dib_cross_tenant_access",
-    "forged_manifest_gate_finance_execution",
     "dib_thread_unsafe_sqlite",
-    "release_gate_without_runtime_evidence"
+    "forged_manifest_gate_finance_execution",
+    "production_bootstrap_takeover",
+    "release_gate_without_runtime_evidence",
+    "zero_user_implicit_principal"
   ],
   "protected_boundaries": [
     "AAS Runtime Freeze v1.0",
+    "Decision Council",
     "Finance calculations",
-    "Snapshot Assembly",
-    "Decision Council"
+    "Snapshot Assembly"
   ],
-  "release_gate_allowed": false,
+  "release_gate_allowed": true,
   "unfreeze_requires": [
-    "SEC-BETA-01 closed with exploit tests",
-    "STAB-BETA-02 closed with concurrent HTTP tests",
-    "SEC-BETA-03 closed with cross-tenant denial tests",
-    "GOV-BETA-04 closed with forged lineage denial tests",
     "ARCH-BETA-05 closed with canonical ProjectRunWorkflow evidence",
-    "REL-BETA-07 evidence-backed gate on the release commit"
-  ]
+    "GOV-BETA-04 closed with forged lineage denial tests",
+    "REL-BETA-07 evidence-backed gate on the release commit",
+    "SEC-BETA-01 closed with exploit tests",
+    "SEC-BETA-03 closed with cross-tenant denial tests",
+    "STAB-BETA-02 closed with concurrent HTTP tests"
+  ],
+  "controlled_unfreeze": {
+    "schema": "asie.controlled.unfreeze.v1",
+    "package_id": "GOV-REL-10-CONTROLLED-UNFREEZE-EXECUTION",
+    "cleared_on": "2026-07-29",
+    "eligibility_review_commit": "b459944ba211be32408dd642390122b24d8113ae",
+    "eligibility_gate_run_id": "30451627726",
+    "eligibility_review_run_id": "30451627730",
+    "eligibility_review_artifact_sha256": "134b77dc0d6135aba3eba02eac4c708960ef850e341bdd502067800fb9b5262a",
+    "public_release_authorized": false,
+    "external_network_authorized": false,
+    "provider_activation_authorized": false
+  }
 }

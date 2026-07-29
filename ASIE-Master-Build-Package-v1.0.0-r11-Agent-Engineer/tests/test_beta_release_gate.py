@@ -2,6 +2,15 @@ from __future__ import annotations
 
 import unittest
 
+from backend.release_freeze_contract import (
+    BASELINE_COMMIT,
+    EXPECTED_PROTECTED_BOUNDARIES,
+    EXPECTED_REASON_CODES,
+    EXPECTED_SCOPE,
+    EXPECTED_UNFREEZE_REQUIREMENTS,
+    controlled_unfreeze_record,
+)
+
 from backend.beta_release_gate import (
     DEGRADABLE_CAPABILITIES,
     DEPLOYMENT_EVIDENCE_SCHEMA,
@@ -75,13 +84,25 @@ def _deployment(*, commit: str = COMMIT, degraded: str | None = None) -> dict[st
 
 
 def _freeze(*, cleared: bool) -> dict[str, object]:
-    return {
+    marker: dict[str, object] = {
         "schema": "asie.release.freeze.v1",
         "status": "CLEARED" if cleared else "ACTIVE",
         "decision": "PENDING_GATE" if cleared else "NO_GO",
         "release_gate_allowed": cleared,
-        "baseline_commit": "8978231e190b8ccc2be59ec46acf50d6268cd41f",
+        "baseline_commit": BASELINE_COMMIT,
     }
+    if cleared:
+        marker.update(
+            {
+                "activated_on": "2026-07-29",
+                "scope": sorted(EXPECTED_SCOPE),
+                "reason_codes": sorted(EXPECTED_REASON_CODES),
+                "protected_boundaries": sorted(EXPECTED_PROTECTED_BOUNDARIES),
+                "unfreeze_requires": sorted(EXPECTED_UNFREEZE_REQUIREMENTS),
+                "controlled_unfreeze": controlled_unfreeze_record(),
+            }
+        )
+    return marker
 
 
 class EvidenceBackedBetaReleaseGateTests(unittest.TestCase):
