@@ -13,6 +13,7 @@ REVIEW_DOC_PATH = PACKAGE_ROOT / "docs/GOV-REL-09A-POST-MERGE-REVIEW-ARTIFACT-RE
 
 GOV_REL_09A_ALLOWLIST = {
     ".github/workflows/governed-freeze-review.yml",
+    "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_gov_rel_09_governed_freeze_review.py",
     "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_gov_rel_09a_post_merge_review_artifact.py",
     "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/GOV-REL-09A-POST-MERGE-REVIEW-ARTIFACT-REPAIR-2026-07-29.md",
 }
