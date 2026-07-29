@@ -6,10 +6,11 @@ Read this file before changing the repository. It is the shortest path to the cu
 
 1. Read [README.md](README.md).
 2. Read [the canonical package guide](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md).
-3. Read the current program-state authority: [PROGRAM-CLOSE-10](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md).
-4. Read the [Engineering Knowledge Base entry point](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/README-AR.md).
-5. Read the required EKB files for the task type in [EKB-04 Agent Reading Order](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-04-Agent-Reading-Order.md).
-6. For runtime, naming, or API changes, also read the controlled registers and canonical documents referenced by EKB.
+3. Read the release/remediation authority: [PROGRAM-CLOSE-10](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md).
+4. For foundational completion work, read [FOUNDATION-COMPLETE-20](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md) and `/FOUNDATION-COMPLETE-20.json`.
+5. Read the [Engineering Knowledge Base entry point](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/README-AR.md).
+6. Read the required EKB files for the task type in [EKB-04 Agent Reading Order](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-04-Agent-Reading-Order.md).
+7. For runtime, naming, or API changes, also read the controlled registers and canonical documents referenced by EKB.
 
 ## Repository rules
 
