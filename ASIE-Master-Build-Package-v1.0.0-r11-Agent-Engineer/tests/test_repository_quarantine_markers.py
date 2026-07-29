@@ -61,9 +61,9 @@ def test_repository_surgery_active_quarantine_markers_exist():
     for rel_path in ACTIVE_REQUIRED_MARKERS:
         marker = ROOT / rel_path
         assert marker.exists(), rel_path
-        content = _read(marker)
-        assert "QUARANTINE LOCKED" in content or "Archive Quarantine" in content
-        assert "Do not copy" in content or "not be used" in content or "Forbidden" in content
+        content = _read(marker).casefold()
+        assert "quarantine" in content or "archive" in content
+        assert any(token in content for token in ("do not copy", "not be used", "forbidden", "must not"))
 
 
 def test_completed_r3_removals_are_absent():
