@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-import secrets
 from datetime import datetime, timedelta
 from contextlib import closing
 from dataclasses import dataclass
@@ -888,18 +887,36 @@ class Repository:
         return self.public_user(dict(row) | {"updated_at": now})
 
     def create_password_recovery_request(self, *, email: str) -> dict[str, Any]:
+        """Acknowledge recovery requests without issuing a bearer secret.
+
+        Self-service recovery stays fail-closed until an approved out-of-band
+        delivery channel exists. Any unconsumed token carried forward from an
+        older build is revoked for the matched account.
+        """
         normalized = email.strip().lower()
-        now = datetime.fromisoformat(now_iso())
-        token = secrets.token_urlsafe(32)
+        now = now_iso()
         with closing(self.connect()) as conn:
-            row = conn.execute("SELECT user_id FROM users WHERE email = ? AND status = 'active'", (normalized,)).fetchone()
+            row = conn.execute(
+                "SELECT user_id FROM users WHERE email = ? AND status = 'active'",
+                (normalized,),
+            ).fetchone()
             if row is not None:
-                conn.execute("UPDATE password_recovery_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL", (now.isoformat(), row["user_id"]))
-                conn.execute("INSERT INTO password_recovery_tokens (token_id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", (new_id("prt"), row["user_id"], token_hash(token), now.isoformat(), (now + timedelta(minutes=15)).isoformat()))
+                conn.execute(
+                    "UPDATE password_recovery_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
+                    (now, row["user_id"]),
+                )
                 conn.commit()
         if row is not None:
-            self.audit(actor_user_id=None, organization_id=None, action="identity.password_recovery_requested", target_type="user", target_id=row["user_id"], result="queued", reason="local_only")
-        return {"accepted": True, "recovery_token": token if row is not None else None, "external_delivery_enabled": False}
+            self.audit(
+                actor_user_id=None,
+                organization_id=None,
+                action="identity.password_recovery_requested",
+                target_type="user",
+                target_id=row["user_id"],
+                result="denied",
+                reason="external_delivery_unavailable",
+            )
+        return {"accepted": True, "external_delivery_enabled": False}
 
     def consume_password_recovery_token(self, *, token: str, password: str) -> dict[str, Any]:
         now = now_iso()
