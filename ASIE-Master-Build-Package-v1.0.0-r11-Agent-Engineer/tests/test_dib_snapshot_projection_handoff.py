@@ -79,20 +79,18 @@ class DIBSnapshotProjectionHandoffPackageTests(unittest.TestCase):
         self.assertEqual(handoff["snapshot_assembly_mount"], "not_called")
         self.assertIn("DIB_APPROVED_MANIFEST_MISSING", {row["code"] for row in handoff["blockers"]})
 
-    def test_snapshot_projection_handoff_prepares_lineage_and_projection_support_without_sealing_snapshot(self) -> None:
+    def test_snapshot_projection_handoff_requires_canonical_project_run(self) -> None:
         session_id = self._prepare_ready_session()
         response = self.controller.dispatch("POST", f"/api/dib/sessions/{session_id}/snapshot-projection-handoff", {}).to_public()
         handoff = response["snapshot_projection_handoff"]
-        self.assertTrue(response["snapshot_projection_handoff_prepared"])
-        self.assertEqual(handoff["status"], "prepared")
+        self.assertFalse(response["snapshot_projection_handoff_prepared"])
+        self.assertEqual(handoff["status"], "blocked")
         self.assertEqual(handoff["contract_id"], "dib.snapshot.projection_handoff.v1")
-        self.assertEqual(handoff["source_lineage_contract_id"], "dib.snapshot.lineage.v1")
-        self.assertEqual(handoff["projection_support_contract_id"], "dib.snapshot.projection_support.v1")
-        self.assertEqual(handoff["controlled_finance_reference_contract_id"], "dib.controlled.finance.reference.v1")
-        self.assertEqual(handoff["lineage"]["contract_id"], "dib.snapshot.lineage.v1")
-        self.assertEqual(handoff["projection_support"]["contract_id"], "dib.snapshot.projection_support.v1")
-        self.assertEqual(handoff["controlled_finance_reference"]["input_source"], "approved_input_manifest_only")
-        self.assertEqual(handoff["controlled_finance_reference"]["controlled_finance_status"], "executed")
+        blocker_codes = {row["code"] for row in handoff["blockers"]}
+        self.assertIn("DIB_DIRECT_FINANCE_PATH_REMOVED", blocker_codes)
+        self.assertIsNone(handoff["lineage"])
+        self.assertIsNone(handoff["projection_support"])
+        self.assertIsNone(handoff["controlled_finance_reference"])
         self.assertFalse(handoff["sealed_envelope_created"])
         self.assertFalse(response["snapshot_mutation"])
         self.assertEqual(handoff["snapshot_assembly_mount"], "not_called")
