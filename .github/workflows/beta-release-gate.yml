@@ -184,7 +184,48 @@ jobs:
         run: docker compose -f docker-compose.private-smoke.yml build --pull
 
       - name: Start loopback-only private deployment
-        run: docker compose -f docker-compose.private-smoke.yml up -d --wait --wait-timeout 240
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose -f docker-compose.private-smoke.yml)
+
+          wait_healthy() {
+            service="$1"
+            timeout_seconds="$2"
+            started="$(date +%s)"
+            while true; do
+              container_id="$("${compose[@]}" ps -q "$service")"
+              if [ -n "$container_id" ]; then
+                health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+                if [ "$health" = "healthy" ]; then
+                  echo "$service is healthy"
+                  return 0
+                fi
+                if [ "$health" = "unhealthy" ] || [ "$health" = "exited" ] || [ "$health" = "dead" ]; then
+                  echo "$service failed with state: $health" >&2
+                  "${compose[@]}" logs --no-color "$service" >&2 || true
+                  return 1
+                fi
+              fi
+              now="$(date +%s)"
+              if [ $((now - started)) -ge "$timeout_seconds" ]; then
+                echo "$service did not become healthy within ${timeout_seconds}s" >&2
+                "${compose[@]}" ps --all >&2 || true
+                "${compose[@]}" logs --no-color "$service" >&2 || true
+                return 1
+              fi
+              sleep 2
+            done
+          }
+
+          "${compose[@]}" up -d api
+          wait_healthy api 180
+
+          "${compose[@]}" up -d dib-api
+          wait_healthy dib-api 180
+
+          "${compose[@]}" up -d web
+          wait_healthy web 180
 
       - name: Verify published ports remain loopback-only
         shell: bash
