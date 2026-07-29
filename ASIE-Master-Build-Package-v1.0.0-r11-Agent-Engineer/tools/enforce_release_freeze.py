@@ -5,28 +5,13 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-FREEZE_SCHEMA = "asie.release.freeze.v1"
+from backend.release_freeze_contract import evaluate_release_freeze_marker
+
 BLOCKED_EXIT_CODE = 78
 
 
 def evaluate_release_freeze(marker: Mapping[str, Any]) -> dict[str, Any]:
-    if marker.get("schema") != FREEZE_SCHEMA:
-        return {
-            "allowed": False,
-            "decision": "NO_GO",
-            "reason": "emergency_release_freeze_schema_invalid",
-        }
-
-    status = marker.get("status")
-    release_gate_allowed = marker.get("release_gate_allowed") is True
-    allowed = status == "CLEARED" and release_gate_allowed
-    return {
-        "allowed": allowed,
-        "decision": "PENDING_GATE" if allowed else "NO_GO",
-        "reason": "emergency_release_freeze_cleared" if allowed else "emergency_release_freeze_active",
-        "baseline_commit": marker.get("baseline_commit"),
-        "reason_codes": marker.get("reason_codes", []),
-    }
+    return evaluate_release_freeze_marker(marker)
 
 
 def enforce_release_freeze(marker_path: Path) -> int:
@@ -74,11 +59,14 @@ def enforce_release_freeze(marker_path: Path) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fail closed while the ASIE emergency release freeze is active.")
+    parser = argparse.ArgumentParser(
+        description="Fail closed unless the governed ASIE unfreeze proof is valid."
+    )
     parser.add_argument(
         "--marker",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "EMERGENCY-RELEASE-FREEZE.json",
+        default=Path(__file__).resolve().parents[2]
+        / "EMERGENCY-RELEASE-FREEZE.json",
     )
     args = parser.parse_args(argv)
     return enforce_release_freeze(args.marker)
