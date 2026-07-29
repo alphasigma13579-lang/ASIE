@@ -5,6 +5,7 @@ from typing import Any, Mapping, Sequence
 import pytest
 
 from backend.live_provider_clients import TavilyResearchClient
+from backend.source_registry import normalize_source_review
 from backend.tavily_source_admission import SourceAdmissionError, TavilySourceAdmissionPolicy
 
 
@@ -76,6 +77,27 @@ def client_for(records: Sequence[Mapping[str, Any]], *, organization_id: str = "
         api_key="secret",
         admission_policy=policy,
     ), transport
+
+
+def test_reviewed_registry_metadata_drives_server_admission_without_enabling_network() -> None:
+    payload = reviewed_source()
+    normalized = normalize_source_review(payload)
+    persisted_shape = {
+        key: value
+        for key, value in normalized.items()
+        if key != "notes_json"
+    }
+    import json
+    persisted_shape["notes"] = json.loads(normalized["notes_json"])
+    client, transport = client_for([persisted_shape])
+    result = client.search(
+        query="Saudi SME market",
+        sector_id="sme",
+        geography="saudi_arabia",
+    )
+    assert result["source_admission"]["include_domains"] == ["monshaat.gov.sa"]
+    assert result["eligible_for_controlled_assumptions"] is False
+    assert len(transport.calls) == 1
 
 
 def test_unknown_source_and_arbitrary_seed_url_are_denied_before_transport() -> None:
