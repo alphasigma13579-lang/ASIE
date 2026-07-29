@@ -111,6 +111,7 @@ def execute_controlled_finance_from_dib_session(
         "ai_provider_enabled": False,
         "finance_wiring_enabled": False,
         "snapshot_wiring_enabled": False,
+        "snapshot_assembly_via_canonical_workflow": False,
         "snapshot_mutation": False,
         "frozen_project_run_workflow_mutated": False,
         "snapshot_assembly_mutated": False,
@@ -136,7 +137,8 @@ def controlled_finance_wiring_status() -> dict[str, Any]:
         "external_fetch_enabled": False,
         "ai_provider_enabled": False,
         "finance_wiring_enabled": False,
-        "snapshot_wiring_enabled": True,
+        "snapshot_wiring_enabled": False,
+        "snapshot_assembly_via_canonical_workflow": True,
         "frozen_project_run_workflow_mutated": False,
         "snapshot_assembly_mutated": False,
     }
