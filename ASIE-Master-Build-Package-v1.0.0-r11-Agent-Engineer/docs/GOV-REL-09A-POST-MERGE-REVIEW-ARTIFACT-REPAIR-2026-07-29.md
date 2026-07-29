@@ -116,12 +116,15 @@ It cannot:
 - the Emergency Release Freeze remains `ACTIVE / NO_GO`;
 - the existing GOV-REL-09 evaluator remains the only eligibility authority.
 
+The original `test_gov_rel_09_governed_freeze_review.py` repository-level guard was updated to require the new exact-commit `push` path instead of requiring the removed `workflow_run` dependency. No evaluator behavior was changed.
+
 ## Surgical allowlist
 
-Only these three files may change:
+Only these four files may change:
 
 ```text
 .github/workflows/governed-freeze-review.yml
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_gov_rel_09_governed_freeze_review.py
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_gov_rel_09a_post_merge_review_artifact.py
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/GOV-REL-09A-POST-MERGE-REVIEW-ARTIFACT-REPAIR-2026-07-29.md
 ```
@@ -150,7 +153,7 @@ The package may close only after:
 
 1. full ASIE CI succeeds;
 2. the cross-platform determinism workflow succeeds;
-3. the Pull Request contains exactly the three allowlisted files;
+3. the Pull Request contains exactly the four allowlisted files;
 4. the merged `main` commit triggers the evidence gate;
 5. a successful `gov-rel-09-governed-freeze-review` Artifact is emitted;
 6. the Artifact decision is `ELIGIBLE_FOR_UNFREEZE` for the exact current `main` commit;
