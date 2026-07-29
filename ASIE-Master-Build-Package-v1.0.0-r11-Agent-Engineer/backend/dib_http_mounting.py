@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from backend.dib_api import DIB_API_ROUTES, DIBApiController, DIBApiError, create_dib_api_controller
+from backend.dib_api import DIB_API_ROUTES, DIBApiError
 from backend.dib_persistence import create_dib_persistence_store
 from backend.dib_security_audit_rbac import (
     DIB_SECURITY_AUDIT_RBAC_ID,
@@ -18,11 +18,19 @@ from backend.dib_security_audit_rbac import (
     extract_dib_session_id_from_path,
     resolve_dib_auth_required,
 )
+from backend.dib_tenant_api import TenantScopedDIBApiController, create_tenant_scoped_dib_api_controller
+from backend.dib_tenant_boundary import (
+    DIB_TENANT_BOUNDARY_ID,
+    DIBTenantBoundaryError,
+    DIBTenantContext,
+    ProjectOrganizationResolver,
+    project_organization_resolver_from_repository,
+)
 from backend.repository import Repository
 
 DIB_HTTP_MOUNTING_ID = "DIB-LIVE-002H-HTTP-MOUNTING-v1"
 DIB_LOCAL_GATEWAY_INTEGRATION_ID = "DIB-LIVE-002I-LOCAL-API-GATEWAY-INTEGRATION-v1"
-DIB_HTTP_MOUNTING_STATUS = "post_freeze_http_mounting_overlay"
+DIB_HTTP_MOUNTING_STATUS = "post_freeze_tenant_scoped_http_mounting_overlay"
 DIB_HTTP_MOUNTING_SOURCE = "docs/EKB/EKB-02-Source-of-Truth-Matrix.md"
 
 DIB_HTTP_ALLOWED_METHODS = frozenset({"GET", "POST", "OPTIONS"})
@@ -67,8 +75,8 @@ DIB_HTTP_ROUTES: tuple[dict[str, Any], ...] = tuple(
     {
         "method": route["method"],
         "path": route["path"],
-        "mounting": "direct_controller_dispatch",
-        "source_api": "backend.dib_api.DIBApiController",
+        "mounting": "tenant_scoped_controller_dispatch",
+        "source_api": "backend.dib_tenant_api.TenantScopedDIBApiController",
         "security_policy": dib_route_security_policy(route["method"], route["path"]),
     }
     for route in DIB_API_ROUTES
@@ -94,7 +102,9 @@ class DIBHttpResponse:
             "http_mounting_id": DIB_HTTP_MOUNTING_ID,
             "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
             "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
+            "tenant_boundary_id": DIB_TENANT_BOUNDARY_ID,
             "rbac_enforced_on_sidecar": True,
+            "tenant_scope_enforced_on_sidecar": True,
             "production_auth_bypass_blocked": True,
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
@@ -153,35 +163,48 @@ def _sidecar_auth_required(path: str) -> bool:
 
 
 class DIBHttpMount:
-    """Freeze-safe local HTTP mount for the governed DIB API controller.
+    """Freeze-safe HTTP mount with mandatory tenant context for non-public routes."""
 
-    This object deliberately does not mutate backend/asie_local_api.py at import time,
-    does not alter AAS frozen files, and does not start a network listener unless the
-    explicit sidecar runner is called by an operator or Docker Compose.
-    """
-
-    def __init__(self, controller: DIBApiController | None = None) -> None:
-        self.controller = controller or create_dib_api_controller(create_dib_persistence_store(_resolved_dib_db_path()))
+    def __init__(
+        self,
+        controller: TenantScopedDIBApiController | None = None,
+        *,
+        auth_repo: Repository | None = None,
+        db_path: str | None = None,
+        trusted_internal_context: DIBTenantContext | None = None,
+        project_organization_resolver: ProjectOrganizationResolver | None = None,
+    ) -> None:
+        self.auth_repo = auth_repo or Repository()
+        resolver = project_organization_resolver or project_organization_resolver_from_repository(self.auth_repo)
+        self.controller = controller or create_tenant_scoped_dib_api_controller(
+            create_dib_persistence_store(_resolved_dib_db_path(db_path)),
+            project_organization_resolver=resolver,
+            trusted_internal_context=trusted_internal_context,
+        )
+        self.trusted_internal_context = trusted_internal_context
 
     def status(self) -> dict[str, Any]:
         return {
             "mounting_id": DIB_HTTP_MOUNTING_ID,
             "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
             "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
+            "tenant_boundary_id": DIB_TENANT_BOUNDARY_ID,
             "status": DIB_HTTP_MOUNTING_STATUS,
             "source": DIB_HTTP_MOUNTING_SOURCE,
             "route_count": len(DIB_HTTP_ROUTES),
             "routes": list(DIB_HTTP_ROUTES),
             "security_audit_rbac": dib_security_audit_rbac_status(),
+            "tenant_boundary": self.controller.tenant_boundary.status(),
             "allowed_methods": sorted(DIB_HTTP_ALLOWED_METHODS),
             "mount_strategy": "freeze_safe_dib_http_overlay",
-            "uses_controller": "backend.dib_api.DIBApiController",
+            "uses_controller": "backend.dib_tenant_api.TenantScopedDIBApiController",
             "local_sidecar_available": True,
             "local_sidecar_host": DIB_HTTP_DEFAULT_HOST,
             "local_sidecar_port": DIB_HTTP_DEFAULT_PORT,
             "sidecar_auth_required_by_default": True,
             "sidecar_auth_status_exemption": "/api/dib/status",
             "production_auth_bypass_blocked": True,
+            "tenant_scope_enforced_on_sidecar": True,
             "persistence": self.controller.store.status(),
             "external_fetch_enabled": False,
             "ai_provider_enabled": False,
@@ -196,7 +219,14 @@ class DIBHttpMount:
     def matches(self, method: str, path: str) -> bool:
         return method.upper().strip() in DIB_HTTP_ALLOWED_METHODS and is_dib_http_route(path)
 
-    def dispatch(self, method: str, path: str, payload: dict[str, Any] | None = None) -> DIBHttpResponse:
+    def dispatch(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        context: DIBTenantContext | None = None,
+    ) -> DIBHttpResponse:
         method = method.upper().strip()
         if method not in DIB_HTTP_ALLOWED_METHODS:
             raise DIBHttpMountError("dib_http_method_not_allowed", 405)
@@ -206,7 +236,12 @@ class DIBHttpMount:
         request_payload = dict(payload or {})
         _reject_forbidden_http_payload(request_payload)
         try:
-            response = self.controller.dispatch(method, _dispatch_path_with_optional_session_query(path), request_payload)
+            response = self.controller.dispatch(
+                method,
+                _dispatch_path_with_optional_session_query(path),
+                request_payload,
+                context=context or self.trusted_internal_context,
+            )
         except DIBApiError as exc:
             raise DIBHttpMountError(exc.code, exc.status) from exc
         return DIBHttpResponse(response.status, response.to_public())
@@ -215,15 +250,25 @@ class DIBHttpMount:
         self.controller.close()
 
 
-def create_dib_http_mount(controller: DIBApiController | None = None, db_path: str | None = None) -> DIBHttpMount:
-    if controller is not None:
-        return DIBHttpMount(controller)
-    return DIBHttpMount(create_dib_api_controller(create_dib_persistence_store(_resolved_dib_db_path(db_path))))
+def create_dib_http_mount(
+    controller: TenantScopedDIBApiController | None = None,
+    db_path: str | None = None,
+    *,
+    auth_repo: Repository | None = None,
+    trusted_internal_context: DIBTenantContext | None = None,
+    project_organization_resolver: ProjectOrganizationResolver | None = None,
+) -> DIBHttpMount:
+    return DIBHttpMount(
+        controller,
+        auth_repo=auth_repo,
+        db_path=db_path,
+        trusted_internal_context=trusted_internal_context,
+        project_organization_resolver=project_organization_resolver,
+    )
 
 
 class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
     mount = create_dib_http_mount()
-    auth_repo = Repository()
 
     def _read_json_body(self) -> dict[str, Any]:
         try:
@@ -248,7 +293,9 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         secured_payload = {
             **payload,
             "security_audit_rbac_id": DIB_SECURITY_AUDIT_RBAC_ID,
+            "tenant_boundary_id": DIB_TENANT_BOUNDARY_ID,
             "rbac_enforced_on_sidecar": True,
+            "tenant_scope_enforced_on_sidecar": True,
             "production_auth_bypass_blocked": True,
         }
         raw = json.dumps(secured_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -275,8 +322,6 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         error: str | None = None,
     ) -> None:
         session_id = extract_dib_session_id_from_path(self.path)
-        if not session_id:
-            return
         principal = getattr(self, "_dib_gateway_principal", None)
         authorization = getattr(self, "_dib_gateway_authorization", None) or dib_route_security_policy(method, self.path)
         audit_event = build_dib_security_audit_event(
@@ -288,8 +333,29 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
             request_payload=payload or {},
             error=error,
         )
+        if principal is not None:
+            try:
+                self.mount.auth_repo.audit(
+                    actor_user_id=principal.user_id,
+                    organization_id=principal.organization_id,
+                    action=str(audit_event["audit_action"]),
+                    target_type="dib_session" if session_id else "dib_route",
+                    target_id=session_id or _clean_path(self.path),
+                    result="allowed" if bool(audit_event["authorized"]) else "denied",
+                    reason=error or str(audit_event["authorization_status"]),
+                )
+            except Exception:
+                pass
+        if not session_id or principal is None or not principal.organization_id:
+            return
         try:
-            self.mount.controller.store._append_event(
+            context = DIBTenantContext(
+                organization_id=principal.organization_id,
+                user_id=principal.user_id,
+                principal_session_id=principal.session_id,
+            )
+            self.mount.controller.tenant_boundary.append_event(
+                context,
                 session_id,
                 event_type=str(audit_event["event_type"]),
                 entity_type="dib_security_audit",
@@ -297,7 +363,6 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                 payload=audit_event,
             )
         except Exception:
-            # Security audit must never make the primary DIB request fail.
             return
 
     def _require_gateway_auth(self, method: str) -> bool:
@@ -311,31 +376,18 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
             self._dib_gateway_authorization = {
                 **policy,
                 "authorized": True,
-                "authorization_status": "auth_disabled_nonproduction",
+                "authorization_status": "public_route",
                 "principal_present": False,
             }
             return True
         token = self._bearer_token()
         organization_id = self.headers.get("X-ASIE-Organization-Id") or None
-        principal = self.auth_repo.principal_for_token(token, organization_id) if token else None
+        principal = self.mount.auth_repo.principal_for_token(token, organization_id) if token else None
         self._dib_gateway_principal = principal
         authorization = authorize_dib_request(principal, method, self.path)
         self._dib_gateway_authorization = authorization
         if principal is None:
-            self._write_json(
-                {
-                    "error": "authentication_required",
-                    "status": 401,
-                    "http_mounting_id": DIB_HTTP_MOUNTING_ID,
-                    "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
-                    "permission_required": authorization.get("permission_required"),
-                    "external_fetch_enabled": False,
-                    "ai_provider_enabled": False,
-                    "finance_wiring_enabled": False,
-                    "snapshot_wiring_enabled": False,
-                },
-                401,
-            )
+            self._write_json({"error": "authentication_required", "status": 401}, 401)
             self._record_gateway_audit(method, 401, error="authentication_required")
             return False
         if not authorization.get("authorized"):
@@ -343,18 +395,16 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                 {
                     "error": "permission_denied",
                     "status": 403,
-                    "http_mounting_id": DIB_HTTP_MOUNTING_ID,
-                    "local_gateway_integration_id": DIB_LOCAL_GATEWAY_INTEGRATION_ID,
                     "permission_required": authorization.get("permission_required"),
                     "authorization_status": authorization.get("authorization_status"),
-                    "external_fetch_enabled": False,
-                    "ai_provider_enabled": False,
-                    "finance_wiring_enabled": False,
-                    "snapshot_wiring_enabled": False,
                 },
                 403,
             )
             self._record_gateway_audit(method, 403, error="permission_denied")
+            return False
+        if not principal.organization_id:
+            self._write_json({"error": "organization_required", "status": 400}, 400)
+            self._record_gateway_audit(method, 400, error="organization_required")
             return False
         return True
 
@@ -364,8 +414,16 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         payload: dict[str, Any] = {}
         try:
             payload = self._read_json_body() if method == "POST" else {}
-            response = self.mount.dispatch(method, self.path, payload).to_public()
-            self._write_json(response, response["status"])
+            principal = getattr(self, "_dib_gateway_principal", None)
+            context = None
+            if principal is not None and principal.organization_id:
+                context = DIBTenantContext(
+                    organization_id=principal.organization_id,
+                    user_id=principal.user_id,
+                    principal_session_id=principal.session_id,
+                )
+            response = self.mount.dispatch(method, self.path, payload, context=context).to_public()
+            self._write_json(response, int(response["status"]))
             self._record_gateway_audit(method, int(response["status"]), payload)
         except DIBHttpMountError as exc:
             self._write_json(
