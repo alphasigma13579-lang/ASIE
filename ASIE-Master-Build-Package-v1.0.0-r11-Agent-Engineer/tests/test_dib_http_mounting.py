@@ -13,6 +13,7 @@ from backend.dib_http_mounting import (
     is_dib_http_route,
 )
 from backend.dib_registry_admission import assert_all_frozen_files_unchanged
+from backend.dib_tenant_boundary import DIBTenantContext
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 FREEZE_MANIFEST = PACKAGE_ROOT / "docs" / "ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json"
@@ -20,7 +21,15 @@ FREEZE_MANIFEST = PACKAGE_ROOT / "docs" / "ASIE-AAS-Runtime-Freeze-Manifest-v1.0
 
 class DIBHttpMountingTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.mount = create_dib_http_mount()
+        self.context = DIBTenantContext(
+            organization_id="org_http_mount_test",
+            user_id="user_http_mount_test",
+            principal_session_id="principal_http_mount_test",
+        )
+        self.mount = create_dib_http_mount(
+            trusted_internal_context=self.context,
+            project_organization_resolver=lambda _project_id: self.context.organization_id,
+        )
         self.addCleanup(self.mount.close)
 
     def test_freeze_manifest_does_not_freeze_local_http_gateway(self) -> None:
@@ -37,6 +46,8 @@ class DIBHttpMountingTests(unittest.TestCase):
         self.assertEqual([route["path"] for route in DIB_HTTP_ROUTES], [route["path"] for route in DIB_API_ROUTES])
         self.assertTrue(all(route["path"].startswith("/api/dib") for route in status["routes"]))
         self.assertEqual(status["mount_strategy"], "freeze_safe_dib_http_overlay")
+        self.assertTrue(status["tenant_scope_enforced_on_sidecar"])
+        self.assertTrue(status["tenant_boundary"]["organization_scope_required"])
         self.assertFalse(status["external_fetch_enabled"])
         self.assertFalse(status["ai_provider_enabled"])
         self.assertFalse(status["finance_wiring_enabled"])
@@ -72,6 +83,7 @@ class DIBHttpMountingTests(unittest.TestCase):
         ).to_public()
         self.assertEqual(session_response["status"], 201)
         self.assertEqual(session_response["http_mounting_id"], DIB_HTTP_MOUNTING_ID)
+        self.assertEqual(session_response["session"]["organization_id"], self.context.organization_id)
         self.assertFalse(session_response["external_fetch_enabled"])
         self.assertFalse(session_response["finance_wiring_enabled"])
         self.assertFalse(session_response["snapshot_wiring_enabled"])
@@ -126,10 +138,21 @@ class DIBHttpMountingTests(unittest.TestCase):
 
         loaded = self.mount.dispatch("GET", f"/api/dib/sessions/{session_id}").to_public()["session"]
         self.assertEqual(loaded["status"], "validation_passed")
+        self.assertEqual(loaded["organization_id"], self.context.organization_id)
         self.assertEqual(loaded["approved_manifest"]["contract_id"], "approved.input.manifest.v1")
         self.assertEqual(loaded["validation_gate"]["contract_id"], "manifest.validation.v1")
         self.assertFalse(loaded["external_fetch_enabled"])
         self.assertFalse(loaded["ai_provider_enabled"])
+
+    def test_dib_http_mount_rejects_missing_context_for_nonpublic_routes(self) -> None:
+        unscoped = create_dib_http_mount(
+            project_organization_resolver=lambda _project_id: self.context.organization_id,
+        )
+        self.addCleanup(unscoped.close)
+        with self.assertRaises(DIBHttpMountError) as context_error:
+            unscoped.dispatch("POST", "/api/dib/sessions", {"project_id": "project_context_required"})
+        self.assertEqual(context_error.exception.status, 403)
+        self.assertEqual(context_error.exception.code, "dib_tenant_context_required")
 
     def test_dib_http_mount_rejects_forbidden_payloads_and_non_dib_routes(self) -> None:
         with self.assertRaises(DIBHttpMountError) as method_error:
