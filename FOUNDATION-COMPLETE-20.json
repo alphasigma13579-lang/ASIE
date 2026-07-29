@@ -1,0 +1,456 @@
+{
+  "program_id": "FOUNDATION-COMPLETE-20",
+  "version": "1.0.0",
+  "status": "ACTIVE_IMPLEMENTATION_PROGRAM",
+  "baseline_commit": "fb40bb3ebd5110f78a67d7de590fceddc77213e9",
+  "target": "COMPLETE_FOUNDATIONAL_PLATFORM_BEFORE_CLOSED_LIVE_BETA",
+  "current_release_verdict": "BLOCK",
+  "public_release_authorized": false,
+  "external_network_authorized": false,
+  "provider_activation_authorized": false,
+  "rules": {
+    "single_source_of_truth": true,
+    "docs_only_completion_forbidden": true,
+    "exact_commit_evidence_required": true,
+    "regression_test_required": true,
+    "frozen_runtime_changes_require_separate_acr": true,
+    "no_provider_or_network_activation_by_this_manifest": true,
+    "package_complete_requires": [
+      "implementation_paths",
+      "test_paths",
+      "workflow_run_id",
+      "commit_sha",
+      "rollback_proof",
+      "residual_risk_review"
+    ]
+  },
+  "frozen_files": [
+    "backend/aas_kernel.py",
+    "backend/aas_registry.py",
+    "backend/heart_controller.py",
+    "backend/bus_controller.py",
+    "backend/system_bus.py",
+    "backend/socket_contracts.py",
+    "backend/module_runtime.py",
+    "backend/project_run_workflow.py",
+    "backend/snapshot_assembly.py",
+    "backend/runtime_freeze.py"
+  ],
+  "packages": [
+    {
+      "id": "FC20-01",
+      "priority": "P0",
+      "title": "Canonical completeness ledger and EKB domain completion",
+      "state": "OPEN",
+      "depends_on": [],
+      "acr": false,
+      "beta": true,
+      "scope": [
+        "Replace stale implementation claims with an executable as-built ledger",
+        "Create missing active EKB domain specifications as each capability is implemented",
+        "Trace every foundational requirement to code, tests, controls, and evidence"
+      ],
+      "tests": [
+        "Reject COMPLETE without exact commit and workflow evidence",
+        "Reject duplicate package or requirement IDs",
+        "Reject a live-status claim sourced only from dated package documentation"
+      ]
+    },
+    {
+      "id": "FC20-02",
+      "priority": "P0",
+      "title": "Governed source registry and Tavily admission",
+      "state": "OPEN",
+      "depends_on": [
+        "FC20-01"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Separate discovery search from admitted extract/crawl",
+        "Require enabled source, exact domain/path, terms hash, lawful purpose, PDPL/NCA review, attribution, reviewer approval",
+        "Bind sector and geography to server-side Tavily include_domains and block arbitrary seed URLs",
+        "Preserve Tavily results as review_required and ineligible for controlled assumptions by default"
+      ],
+      "tests": [
+        "Unknown domain denied",
+        "candidate and reference_only sources denied for extract/crawl",
+        "Mostaql crawl denied",
+        "client-supplied include_domains cannot widen server policy",
+        "cross-tenant source review denied"
+      ]
+    },
+    {
+      "id": "FC20-03",
+      "priority": "P0",
+      "title": "External provider security control plane",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-02"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Governed activation states and per-provider feature flags",
+        "Secrets boundary, redaction, egress allowlist, SSRF controls, timeouts, bounded retries, circuit breakers",
+        "Per-tenant and per-provider quotas, cost and latency budgets, abuse controls, kill switches",
+        "Version-pinned provider contracts and health/readiness checks"
+      ],
+      "tests": [
+        "Missing secret fails closed",
+        "disabled provider performs no network request",
+        "quota exhaustion and circuit-open fail safely",
+        "secrets never appear in API, audit, logs, or artifacts",
+        "provider response-size and schema violations rejected"
+      ]
+    },
+    {
+      "id": "FC20-04",
+      "priority": "P0",
+      "title": "External evidence persistence, review, and job lifecycle",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-02",
+        "FC20-03"
+      ],
+      "acr": false,
+      "beta": true,
+      "scope": [
+        "Persist discovery candidates, extraction jobs, hashes, provenance, freshness, review, and supersession",
+        "Tenant/project ownership and object authorization",
+        "Idempotent async job lifecycle with retries, cancellation, partial-failure accounting, and audit",
+        "No unreviewed external payload enters approved intelligence context"
+      ],
+      "tests": [
+        "same-tenant allow and cross-tenant deny",
+        "replayed job idempotent",
+        "stale and revoked source rejected",
+        "partial provider failure cannot create approved evidence",
+        "audit failure is visible and does not silently approve"
+      ]
+    },
+    {
+      "id": "FC20-05",
+      "priority": "P0",
+      "title": "Vision 2030 knowledge authority and Pinecone lifecycle",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-03",
+        "FC20-04"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Reconcile source_registry reference_only rule with the explicit Vision sync exception",
+        "Keep exact official Vision allowlist and change-detection hashing",
+        "Pinecone namespace isolation, approved-chunk admission, versioning, retention, deletion propagation, and restore/reindex",
+        "Restore monthly schedule only after explicit external/provider authorization and dry-run evidence"
+      ],
+      "tests": [
+        "Non-official Vision host rejected",
+        "unchanged content produces no write",
+        "changed content versions and removes stale tail safely",
+        "cross-tenant retrieval denied",
+        "deletion and reindex are tenant-scoped and auditable"
+      ]
+    },
+    {
+      "id": "FC20-06",
+      "priority": "P1",
+      "title": "National and global economic intelligence",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-02",
+        "FC20-04"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Implement National layer for approved Saudi official indicators",
+        "Implement Global/Economic Opportunity layer for Saudi-relevant World Bank, IMF, OECD, UN, and approved development sources",
+        "Freshness, geography, sector, confidence, lineage, review, comparability, and data-gap semantics",
+        "No global average is silently represented as Saudi evidence"
+      ],
+      "tests": [
+        "Saudi scope and source provenance required",
+        "stale indicators rejected or explicitly degraded",
+        "cross-country inference labelled and never silently substituted",
+        "conflicting sources preserved with review state",
+        "provider outage returns DATA_GAP, not fabricated values"
+      ]
+    },
+    {
+      "id": "FC20-07",
+      "priority": "P1",
+      "title": "Market estimation, sector intelligence, and reference cost completion",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-04",
+        "FC20-06"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Replace simulated market context with reviewed live evidence while preserving deterministic fallbacks",
+        "Complete P25/P75/weighted-median market estimation and evidence quality weighting",
+        "Complete reference-cost normalization for currency, tax, shipping, installation, units, and date basis",
+        "Produce bounded assumptions only after human approval; Finance remains canonical owner of calculations"
+      ],
+      "tests": [
+        "insufficient sample remains SCREENING_ONLY",
+        "mixed units/currency/date basis rejected before normalization",
+        "listed price never equals CAPEX automatically",
+        "outlier handling retains lineage",
+        "unapproved market result cannot cross Finance admission"
+      ]
+    },
+    {
+      "id": "FC20-08",
+      "priority": "P1",
+      "title": "Approved intelligence context, strategic and consulting synthesis",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-05",
+        "FC20-06",
+        "FC20-07"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Complete consulting frame, strategic alignment, national/global/market context and synthesis pack",
+        "Integrity lock, review overlay, approval receipt, invalidation, staleness, contradiction register, and double-count prevention",
+        "Deterministic pre-decision envelope with source and evidence manifests",
+        "Vision alignment remains contextual and never becomes automatic commercial or financial approval"
+      ],
+      "tests": [
+        "missing or mismatched approval receipt rejected",
+        "stale context rejected",
+        "duplicate economic signal counted once",
+        "contradictions remain visible",
+        "same input and idempotency key reproduce the same locked context"
+      ]
+    },
+    {
+      "id": "FC20-09",
+      "priority": "P1",
+      "title": "Product AI interview and governed DeepSeek activation",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-03",
+        "FC20-08"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Complete Template Registry and Question Registry",
+        "Complete bounded Product AI interview without inventing controlled numbers",
+        "Connect DeepSeek through AIIntegrationShell and trusted prompt assembly",
+        "Structured output validation, grounding, abstention, human review, evals, model/version pinning, and fallback"
+      ],
+      "tests": [
+        "raw prompt and secrets never enter Bus or audit",
+        "prompt injection in retrieved content cannot invoke tools or alter policy",
+        "schema-invalid or ungrounded output rejected",
+        "AI cannot create finance numbers or sovereign verdict",
+        "provider failure falls back without corrupting approved context"
+      ]
+    },
+    {
+      "id": "FC20-10",
+      "priority": "P1",
+      "title": "Google Maps live competitor intelligence and consented location UX",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-03",
+        "FC20-04",
+        "FC20-07"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Implement consented GPS, geocoding, Places, map visualization, filters, and competitor drill-down",
+        "Restrict browser/server keys, APIs, referrers/IPs, storage fields, and retention by reviewed Google terms",
+        "Keep map and place evidence separate from controlled market assumptions until reviewed",
+        "Remove simulated competitor claims from live surfaces"
+      ],
+      "tests": [
+        "no GPS call before consent",
+        "key restriction/configuration failure is visible",
+        "cross-tenant saved location denied",
+        "Places payload not persisted beyond approved fields",
+        "map failure preserves non-map workflow"
+      ]
+    },
+    {
+      "id": "FC20-11",
+      "priority": "P1",
+      "title": "Data intake, PDF quote extraction, and blueprint mapping completion",
+      "state": "OPEN",
+      "depends_on": [
+        "FC20-01"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Complete manual/CSV/XLSX/PDF intake and quote extraction",
+        "Template matching and per-item source/evidence mapping",
+        "Zero, unknown, missing, estimated, supplied, and approved semantics",
+        "Only server-built approved manifest can enter canonical project run"
+      ],
+      "tests": [
+        "malformed and oversized files rejected",
+        "quote values require item mapping and review",
+        "zero never aliases missing",
+        "cross-tenant file/dataset access denied",
+        "raw file or AI output cannot call Finance"
+      ]
+    },
+    {
+      "id": "FC20-12",
+      "priority": "P1",
+      "title": "Decision Council v2 and governed AAS dispatch",
+      "state": "ACR_REQUIRED",
+      "depends_on": [
+        "FC20-08",
+        "FC20-09",
+        "FC20-11"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Implement v2 contracts and one-version-per-run dispatch",
+        "Admit approved synthesis pack and pre-decision envelope without changing Decision Council v1 semantics",
+        "Update Snapshot input manifest under a separately approved frozen-boundary ACR",
+        "Prove v1 parity, rollback, and no parallel runtime"
+      ],
+      "tests": [
+        "v1 golden vectors unchanged",
+        "v1 and v2 cannot coexist in one run",
+        "missing context/synthesis/receipt fails closed",
+        "no silent fallback from v2 to v1",
+        "freeze hashes change only through approved manifest update"
+      ]
+    },
+    {
+      "id": "FC20-13",
+      "priority": "P1",
+      "title": "Live product APIs, workspace, KPI drill-down, and realtime job UX",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-04",
+        "FC20-07",
+        "FC20-08",
+        "FC20-09",
+        "FC20-10",
+        "FC20-11"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Register authenticated tenant-scoped live intelligence APIs in canonical API registry",
+        "Wire LiveIntelligenceWorkspace to backend jobs and reviewed contexts",
+        "Implement independent widgets, drag/drop/hide, KPI drill-down, loading/empty/error/offline states, and bounded polling or event streaming",
+        "Arabic-first RTL provenance, freshness, confidence, review, and failure UX"
+      ],
+      "tests": [
+        "unauthenticated and cross-tenant requests denied",
+        "client cannot claim provider live status",
+        "stale job and reconnect semantics deterministic",
+        "widgets never recalculate Snapshot truth",
+        "provider partial failure is rendered without fabricated data"
+      ]
+    },
+    {
+      "id": "FC20-14",
+      "priority": "P2",
+      "title": "KPI intelligence, Launch Guide, reports, and decision pack completion",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-08",
+        "FC20-12",
+        "FC20-13"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Complete KPI intelligence from sealed outputs",
+        "Complete jurisdiction-aware Launch Guide with sourced licenses, authorities, staffing, suppliers, and steps",
+        "Complete report and Decision Pack projections across PDF/DOCX/PPTX/XLSX",
+        "Keep all outputs Snapshot/projection-derived and provenance-linked"
+      ],
+      "tests": [
+        "UI/export parity from the same snapshot",
+        "no unsourced launch requirement represented as official",
+        "projection failure cannot mutate snapshot",
+        "RTL and download routes verified",
+        "expired/stale guidance visibly degraded"
+      ]
+    },
+    {
+      "id": "FC20-15",
+      "priority": "P0",
+      "title": "Operations, observability, retention, and incident controls",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-03",
+        "FC20-04",
+        "FC20-05",
+        "FC20-09",
+        "FC20-10"
+      ],
+      "acr": false,
+      "beta": true,
+      "scope": [
+        "Readiness/health separation, provider SLIs, structured redacted logs, alerts, and audit continuity",
+        "RTO/RPO, backup/restore rehearsal, retention/deletion propagation, and incident runbooks",
+        "Per-provider budgets, latency SLOs, feature flags, canary, kill switches, and rollback",
+        "No secret or sensitive provider payload in telemetry"
+      ],
+      "tests": [
+        "restore rehearsal from clean environment",
+        "alert fires on provider and audit failures",
+        "kill switch prevents further calls",
+        "retention/deletion removes derived vector and cached data",
+        "rollback returns to exact prior commit and schema"
+      ]
+    },
+    {
+      "id": "FC20-16",
+      "priority": "P0",
+      "title": "Closed Live Beta release and Hostinger deployment",
+      "state": "BLOCKED_BY_PREDECESSOR",
+      "depends_on": [
+        "FC20-01",
+        "FC20-02",
+        "FC20-03",
+        "FC20-04",
+        "FC20-05",
+        "FC20-06",
+        "FC20-07",
+        "FC20-08",
+        "FC20-09",
+        "FC20-10",
+        "FC20-11",
+        "FC20-12",
+        "FC20-13",
+        "FC20-14",
+        "FC20-15"
+      ],
+      "acr": true,
+      "beta": true,
+      "scope": [
+        "Invite-only closed beta with disabled public signup",
+        "Exact-commit Hostinger deployment, TLS, secret injection, migrations, smoke, canary, monitoring, backup, and rollback",
+        "Explicit time-bounded external-network and provider authorization for the beta environment",
+        "Public release remains independently prohibited"
+      ],
+      "tests": [
+        "uninvited access denied",
+        "exact deployed commit and artifact attested",
+        "provider preflight and live smoke pass with redacted evidence",
+        "rollback and restore rehearsed",
+        "public signup/release and unauthorized egress remain denied"
+      ]
+    }
+  ]
+}
