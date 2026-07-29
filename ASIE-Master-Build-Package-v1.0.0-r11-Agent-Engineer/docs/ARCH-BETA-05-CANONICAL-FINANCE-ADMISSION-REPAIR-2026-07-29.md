@@ -147,6 +147,10 @@ snapshot_mutation = true
 snapshot immutable = true
 ```
 
+### 9. Legacy reports fail closed
+
+The legacy E2E simulation report and pre-Snapshot projection handoff do not call `ProjectRunWorkflow`. They are therefore no longer permitted to report Finance as executed or projection handoff as prepared merely because Manifest and Gate exist. Their tests now require a blocked status with `DIB_DIRECT_FINANCE_PATH_REMOVED` until the canonical Project Run route is used.
+
 ## Exploit regression evidence
 
 The package proves:
@@ -160,7 +164,8 @@ The package proves:
 7. Finance is produced through `finance.calculate.v1` / `finance.result.v1`;
 8. one immutable Snapshot is persisted;
 9. repeating the same idempotency key returns the same Run and Snapshot;
-10. the original Project row remains unchanged.
+10. the original Project row remains unchanged;
+11. legacy E2E and projection helpers cannot claim execution without the Workflow.
 
 ## Allowlist
 
@@ -169,6 +174,8 @@ The package proves:
 - `backend/dib_tenant_api.py`
 - `tests/test_arch_beta_05_canonical_finance_admission.py`
 - `tests/test_dib_controlled_finance_wiring.py`
+- `tests/test_dib_e2e_scenario.py`
+- `tests/test_dib_snapshot_projection_handoff.py`
 - `docs/ARCH-BETA-05-CANONICAL-FINANCE-ADMISSION-REPAIR-2026-07-29.md`
 - `docs/ACR-DIB-001-CORR-01-CANONICAL-FINANCE-ADMISSION.md`
 
@@ -194,6 +201,7 @@ The package invokes these existing boundaries; it does not alter them.
 - Integration test proves Workflow, Bus/Module Runtime, Finance, and immutable Snapshot execution.
 - Manifest values win over stale Project scalar values.
 - Idempotent replay creates no additional Run or Snapshot.
+- Legacy report tests remain fail-closed before canonical admission.
 - Diff remains inside the allowlist.
 - Emergency release freeze remains ACTIVE.
 - TEST-BETA-06 does not start until this package is merged.
