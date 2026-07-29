@@ -15,7 +15,9 @@ from tools.test_beta_06_determinism import (
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW_PATH = PACKAGE_ROOT.parents[0] / ".github" / "workflows" / "test-beta-06-cross-platform-determinism.yml"
+REPOSITORY_ROOT = PACKAGE_ROOT.parent
+WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "test-beta-06-cross-platform-determinism.yml"
+GITATTRIBUTES_PATH = REPOSITORY_ROOT / ".gitattributes"
 TOOL_PATH = PACKAGE_ROOT / "tools" / "test_beta_06_determinism.py"
 
 FROZEN_FILES = {
@@ -32,6 +34,7 @@ FROZEN_FILES = {
 }
 
 TEST_BETA_06_ALLOWLIST = {
+    ".gitattributes",
     ".github/workflows/test-beta-06-cross-platform-determinism.yml",
     "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/test_beta_06_determinism.py",
     "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_beta_06_cross_platform_determinism.py",
@@ -94,6 +97,13 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 compare(root)
 
+    def test_repository_declares_canonical_text_line_endings(self) -> None:
+        attributes = GITATTRIBUTES_PATH.read_text(encoding="utf-8")
+        self.assertIn("* text=auto eol=lf", attributes)
+        self.assertIn("*.png binary", attributes)
+        self.assertIn("*.pdf binary", attributes)
+        self.assertIn("*.sqlite3 binary", attributes)
+
     def test_workflow_declares_windows_linux_and_hash_seed_matrix(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertIn("ubuntu-latest", workflow)
@@ -101,6 +111,9 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
         self.assertIn('python-version: "3.12"', workflow)
         self.assertIn('hashseed: "0"', workflow)
         self.assertIn('hashseed: "7919"', workflow)
+        self.assertIn("core.longpaths true", workflow)
+        self.assertIn("core.autocrlf false", workflow)
+        self.assertIn("core.eol lf", workflow)
         self.assertIn("actions/upload-artifact@v4", workflow)
         self.assertIn("actions/download-artifact@v4", workflow)
         self.assertIn("compare --directory", workflow)
