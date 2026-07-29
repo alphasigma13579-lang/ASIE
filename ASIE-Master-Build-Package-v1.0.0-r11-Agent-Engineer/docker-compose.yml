@@ -52,7 +52,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    command: ["python", "backend/dib_http_mounting.py"]
+    command: ["python", "-m", "backend.dib_http_mounting"]
     environment:
       ASIE_ENV: production
       ASIE_DIB_HTTP_HOST: 0.0.0.0

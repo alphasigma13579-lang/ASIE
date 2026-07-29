@@ -52,7 +52,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    command: ["python", "backend/dib_http_mounting.py"]
+    command: ["python", "-m", "backend.dib_http_mounting"]
     env_file:
       - .env.production
     environment:

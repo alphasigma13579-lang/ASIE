@@ -1,0 +1,111 @@
+name: ${COMPOSE_PROJECT_NAME:-asie-private-smoke}
+
+services:
+  api:
+    image: asie-private-smoke-backend:${ASIE_SMOKE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      ASIE_ENV: production
+      ASIE_API_HOST: 0.0.0.0
+      ASIE_API_PORT: "8794"
+      ASIE_DB_PATH: /var/lib/asie/asie_private_smoke.sqlite3
+      ASIE_PDF_RENDERER: /usr/bin/chromium
+      ASIE_ALLOWED_ORIGINS: http://127.0.0.1:18080
+      ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_ALLOW_LOCAL_BOOTSTRAP: "false"
+      ASIE_ALLOW_LEGACY_LOCAL_OPERATOR: "false"
+      ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
+    volumes:
+      - asie-private-smoke-data:/var/lib/asie
+    ports:
+      - "127.0.0.1:18794:8794"
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8794/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 18
+      start_period: 15s
+    networks:
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
+
+  dib-api:
+    image: asie-private-smoke-backend:${ASIE_SMOKE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["python", "-m", "backend.dib_http_mounting"]
+    environment:
+      ASIE_ENV: production
+      ASIE_DB_PATH: /var/lib/asie/asie_private_smoke.sqlite3
+      ASIE_DIB_HTTP_HOST: 0.0.0.0
+      ASIE_DIB_HTTP_PORT: "8795"
+      ASIE_DIB_DB_PATH: /var/lib/asie/dib_private_smoke.sqlite3
+      ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_ALLOW_LOCAL_BOOTSTRAP: "false"
+      ASIE_ALLOW_LEGACY_LOCAL_OPERATOR: "false"
+      ASIE_STRICT_OPEN_DATA_PROFILE: strict_open_data_only_v1
+    volumes:
+      - asie-private-smoke-data:/var/lib/asie
+    ports:
+      - "127.0.0.1:18795:8795"
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8795/api/dib/status', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 18
+      start_period: 15s
+    networks:
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
+
+  web:
+    image: asie-private-smoke-web:${ASIE_SMOKE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      api:
+        condition: service_healthy
+      dib-api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:80"
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    networks:
+      - asie-private-smoke-internal
+      - asie-private-smoke-loopback
+
+networks:
+  asie-private-smoke-internal:
+    driver: bridge
+    internal: true
+  asie-private-smoke-loopback:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+
+volumes:
+  asie-private-smoke-data:
