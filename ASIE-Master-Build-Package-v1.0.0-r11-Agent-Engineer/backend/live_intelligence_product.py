@@ -114,6 +114,8 @@ class LiveIntelligenceProductService:
         organization_id: str,
         query: str,
         location_query: str,
+        sector_id: str = "general",
+        geography: str = "saudi_arabia",
         latitude: float | None = None,
         longitude: float | None = None,
     ) -> dict[str, Any]:
@@ -126,7 +128,13 @@ class LiveIntelligenceProductService:
         failures: list[dict[str, Any]] = []
 
         try:
-            search = self.tavily.search(query=query, max_results=8, search_depth="advanced", country="saudi arabia")
+            search = self.tavily.search(
+                query=query,
+                sector_id=sector_id,
+                geography=geography,
+                max_results=8,
+                search_depth="advanced",
+            )
             payload = search.get("payload") if isinstance(search, Mapping) else None
             results = payload.get("results", []) if isinstance(payload, Mapping) else []
             for index, row in enumerate(results[:8], 1):
