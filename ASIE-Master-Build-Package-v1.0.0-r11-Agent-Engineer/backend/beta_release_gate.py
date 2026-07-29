@@ -17,6 +17,18 @@ EVIDENCE_BUNDLE_SCHEMA = "asie.release.evidence.bundle.v2"
 DETERMINISM_EVIDENCE_SCHEMA = "asie.cross_platform.determinism.evidence.v1"
 DEPLOYMENT_EVIDENCE_SCHEMA = "asie.private.deployment.smoke.v1"
 FREEZE_SCHEMA = "asie.release.freeze.v1"
+FOUNDATION_PROGRAM_SCHEMA = "asie.foundation.completion.program.v1"
+FOUNDATION_PROGRAM_ID = "FOUNDATION-COMPLETE-20"
+FOUNDATION_COMPLETION_STATUS = "COMPLETION_VERIFIED"
+FOUNDATION_RELEASE_VERDICT = "PENDING_GATE"
+FOUNDATION_COMPLETION_FIELDS = (
+    "implementation_paths",
+    "test_paths",
+    "workflow_run_id",
+    "commit_sha",
+    "rollback_proof",
+    "residual_risk_review",
+)
 
 REQUIRED_CODE_CHECKS = (
     "frontend_dependencies",
@@ -275,6 +287,73 @@ def _validate_deployment_evidence(
     return smoke_check, capability_checks
 
 
+def _validate_foundation_program(program: Mapping[str, Any]) -> GateCheck:
+    raw_packages = program.get("packages")
+    packages = [item for item in raw_packages if isinstance(item, Mapping)] if isinstance(raw_packages, list) else []
+    package_ids = [str(item.get("id") or "") for item in packages]
+    unique_package_ids = bool(package_ids) and all(package_ids) and len(package_ids) == len(set(package_ids))
+    beta_packages = [item for item in packages if item.get("beta") is True]
+    incomplete_package_ids = [
+        str(item.get("id") or "unknown")
+        for item in beta_packages
+        if item.get("state") != "COMPLETE"
+    ]
+
+    rules = program.get("rules") if isinstance(program.get("rules"), Mapping) else {}
+    declared_fields = rules.get("package_complete_requires")
+    required_fields = (
+        tuple(str(field) for field in declared_fields)
+        if isinstance(declared_fields, list) and declared_fields
+        else FOUNDATION_COMPLETION_FIELDS
+    )
+    required_fields_match = set(required_fields) == set(FOUNDATION_COMPLETION_FIELDS)
+    missing_completion_evidence: dict[str, list[str]] = {}
+    for item in beta_packages:
+        if item.get("state") != "COMPLETE":
+            continue
+        completion_evidence = (
+            item.get("completion_evidence")
+            if isinstance(item.get("completion_evidence"), Mapping)
+            else {}
+        )
+        missing = [field for field in FOUNDATION_COMPLETION_FIELDS if not completion_evidence.get(field)]
+        if missing:
+            missing_completion_evidence[str(item.get("id") or "unknown")] = missing
+
+    passed = bool(
+        program.get("schema") == FOUNDATION_PROGRAM_SCHEMA
+        and program.get("program_id") == FOUNDATION_PROGRAM_ID
+        and program.get("status") == FOUNDATION_COMPLETION_STATUS
+        and program.get("current_release_verdict") == FOUNDATION_RELEASE_VERDICT
+        and unique_package_ids
+        and beta_packages
+        and not incomplete_package_ids
+        and required_fields_match
+        and not missing_completion_evidence
+    )
+    return _gate_check(
+        "foundation_completion_program_cleared",
+        passed,
+        critical=True,
+        evidence={
+            "schema": program.get("schema"),
+            "program_id": program.get("program_id"),
+            "status": program.get("status"),
+            "current_release_verdict": program.get("current_release_verdict"),
+            "package_count": len(packages),
+            "beta_package_count": len(beta_packages),
+            "unique_package_ids": unique_package_ids,
+            "required_completion_fields_match": required_fields_match,
+            "incomplete_package_ids": incomplete_package_ids,
+            "missing_completion_evidence": missing_completion_evidence,
+        },
+        message=(
+            "Every beta-required FOUNDATION-COMPLETE-20 package must be COMPLETE "
+            "with the declared executable evidence before release evaluation can proceed."
+        ),
+    )
+
+
 def _validate_freeze(marker: Mapping[str, Any]) -> GateCheck:
     validation = validate_controlled_unfreeze_marker(marker)
     passed = validation["valid"] is True
@@ -306,6 +385,7 @@ def evaluate_beta_release(
     evidence_bundle: Mapping[str, Any],
     determinism_evidence: Mapping[str, Any],
     freeze_marker: Mapping[str, Any],
+    foundation_program: Mapping[str, Any],
     *,
     expected_commit: str,
     deployment_evidence: Mapping[str, Any] | None = None,
@@ -317,6 +397,7 @@ def evaluate_beta_release(
     checks.append(_validate_determinism(determinism_evidence, expected_commit))
     smoke_check, capability_checks = _validate_deployment_evidence(deployment_evidence, expected_commit)
     checks.append(smoke_check)
+    checks.append(_validate_foundation_program(foundation_program))
     checks.append(_validate_freeze(freeze_marker))
     checks.extend(capability_checks)
 
@@ -408,6 +489,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--evidence-bundle", type=Path, required=True)
     parser.add_argument("--determinism-comparison", type=Path, required=True)
     parser.add_argument("--freeze-marker", type=Path, required=True)
+    parser.add_argument("--foundation-program", type=Path, required=True)
     parser.add_argument("--deployment-evidence", type=Path)
     parser.add_argument("--expected-commit", default=os.environ.get("GITHUB_SHA", ""), required=False)
     parser.add_argument("--workflow-run-id", default=os.environ.get("GITHUB_RUN_ID"))
@@ -420,11 +502,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     evidence_bundle = _load_json(args.evidence_bundle)
     determinism = _determinism_evidence(args.determinism_comparison, expected_commit)
     freeze_marker = _load_json(args.freeze_marker)
+    foundation_program = _load_json(args.foundation_program)
     deployment = _load_json(args.deployment_evidence) if args.deployment_evidence else None
     report = evaluate_beta_release(
         evidence_bundle,
         determinism,
         freeze_marker,
+        foundation_program,
         expected_commit=expected_commit,
         deployment_evidence=deployment,
         workflow_run_id=args.workflow_run_id,
