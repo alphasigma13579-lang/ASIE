@@ -81,13 +81,23 @@ class PostMergeReviewArtifactRepairTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", self.workflow)
         self.assertNotIn("id-token: write", self.workflow)
 
-    def test_freeze_marker_remains_active_and_unmodified_in_meaning(self) -> None:
+    def test_freeze_marker_remains_active_and_read_only(self) -> None:
         marker = json.loads(FREEZE_MARKER_PATH.read_text(encoding="utf-8"))
         self.assertEqual("asie.release.freeze.v1", marker["schema"])
         self.assertEqual("ACTIVE", marker["status"])
         self.assertEqual("NO_GO", marker["decision"])
         self.assertIs(False, marker["release_gate_allowed"])
-        self.assertNotIn("EMERGENCY-RELEASE-FREEZE.json", self.workflow)
+        self.assertIn("--freeze-marker ../EMERGENCY-RELEASE-FREEZE.json", self.workflow)
+        for forbidden in (
+            "status: CLEARED",
+            '"status": "CLEARED"',
+            "release_gate_allowed: true",
+            '"release_gate_allowed": true',
+            "git add ../EMERGENCY-RELEASE-FREEZE.json",
+            "sed -i",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, self.workflow)
 
     def test_review_authority_remains_in_existing_evaluator(self) -> None:
         tool = REVIEW_TOOL_PATH.read_text(encoding="utf-8")
