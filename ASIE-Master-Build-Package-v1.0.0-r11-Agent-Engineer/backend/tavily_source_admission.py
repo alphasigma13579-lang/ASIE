@@ -41,8 +41,15 @@ def _host(value: str) -> str:
     return (_parsed_https_url(value).hostname or "").lower().rstrip(".")
 
 
+def _record_value(record: Mapping[str, Any], field: str, default: Any = None) -> Any:
+    if field in record:
+        return record.get(field)
+    notes = record.get("notes")
+    return notes.get(field, default) if isinstance(notes, Mapping) else default
+
+
 def _scopes(record: Mapping[str, Any], field: str) -> frozenset[str]:
-    raw = record.get(field)
+    raw = _record_value(record, field)
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return frozenset()
     return frozenset(_normalized_context(str(item), field=field) for item in raw)
@@ -80,8 +87,8 @@ class TavilySourceAdmissionPolicy:
         return cls(organization_id="_unbound", project_id="_unbound", records=())
 
     def _owned(self, record: Mapping[str, Any]) -> bool:
-        organization_scope = str(record.get("organization_id") or _PLATFORM_SCOPE)
-        project_scope = str(record.get("project_id") or "*")
+        organization_scope = str(_record_value(record, "organization_id", _PLATFORM_SCOPE) or _PLATFORM_SCOPE)
+        project_scope = str(_record_value(record, "project_id", "*") or "*")
         return organization_scope in {_PLATFORM_SCOPE, self.organization_id} and project_scope in {"*", self.project_id}
 
     def authorize_discovery(
@@ -97,7 +104,7 @@ class TavilySourceAdmissionPolicy:
         for record in self.records:
             if not self._owned(record) or record.get("state") not in {"candidate", "enabled"}:
                 continue
-            if record.get("discovery_allowed") is not True:
+            if _record_value(record, "discovery_allowed") is not True:
                 continue
             sectors = _scopes(record, "discovery_sectors")
             geographies = _scopes(record, "discovery_geographies")
@@ -154,11 +161,11 @@ class TavilySourceAdmissionPolicy:
         requested = _parsed_https_url(url)
         if _host(approved.geturl()) != _host(requested.geturl()):
             raise SourceAdmissionError("source_host_not_admitted")
-        if requested.query and source.get("allow_query_parameters") is not True:
+        if requested.query and _record_value(source, "allow_query_parameters") is not True:
             raise SourceAdmissionError("source_query_parameters_not_admitted")
 
         approved_path = approved.path or "/"
-        raw_paths = source.get("allowed_paths")
+        raw_paths = _record_value(source, "allowed_paths")
         allowed_paths = (
             [str(path) for path in raw_paths]
             if isinstance(raw_paths, Sequence) and not isinstance(raw_paths, (str, bytes))
@@ -184,8 +191,8 @@ class TavilySourceAdmissionPolicy:
             "source_id": source_id,
             "host": _host(requested.geturl()),
             "path": requested.path or "/",
-            "organization_scope": str(source.get("organization_id") or _PLATFORM_SCOPE),
-            "project_scope": str(source.get("project_id") or "*"),
+            "organization_scope": str(_record_value(source, "organization_id", _PLATFORM_SCOPE) or _PLATFORM_SCOPE),
+            "project_scope": str(_record_value(source, "project_id", "*") or "*"),
             "terms_hash": terms_hash,
             "license_snapshot_ref": str(source.get("license_snapshot_ref")),
             "attribution": str(source.get("attribution")),
