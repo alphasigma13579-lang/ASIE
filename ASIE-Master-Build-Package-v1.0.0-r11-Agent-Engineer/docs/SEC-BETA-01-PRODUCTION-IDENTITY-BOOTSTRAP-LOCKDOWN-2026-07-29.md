@@ -62,7 +62,8 @@ The administrator must then log in through the normal `/api/auth/login` route. T
 - non-loopback bootstrap is denied before secret acceptance;
 - legacy local operator is disabled by default and in all production-like environments;
 - the CLI service creates one initial administrator without an HTTP session;
-- the real CLI entrypoint executes successfully, emits no token, and refuses reuse.
+- the real CLI entrypoint executes successfully, emits no token, and refuses reuse;
+- the legacy collection fixture remains available only through explicit local-development opt-in.
 
 ## Allowlist
 
@@ -71,6 +72,7 @@ The administrator must then log in through the normal `/api/auth/login` route. T
 - `tools/create_initial_platform_admin.py`
 - `tests/test_sec_beta_01_bootstrap_lockdown.py`
 - `tests/test_sec_beta_01_initial_admin_cli.py`
+- `tests/test_organization_scope_resolution.py`
 - `docs/SEC-BETA-01-PRODUCTION-IDENTITY-BOOTSTRAP-LOCKDOWN-2026-07-29.md`
 
 ## Protected boundaries
