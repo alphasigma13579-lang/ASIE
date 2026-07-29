@@ -61,7 +61,8 @@ The administrator must then log in through the normal `/api/auth/login` route. T
 - authorized loopback development bootstrap succeeds once and cannot be reused;
 - non-loopback bootstrap is denied before secret acceptance;
 - legacy local operator is disabled by default and in all production-like environments;
-- the CLI creates one initial administrator without an HTTP session.
+- the CLI service creates one initial administrator without an HTTP session;
+- the real CLI entrypoint executes successfully, emits no token, and refuses reuse.
 
 ## Allowlist
 
@@ -69,6 +70,7 @@ The administrator must then log in through the normal `/api/auth/login` route. T
 - `backend/bootstrap_security.py`
 - `tools/create_initial_platform_admin.py`
 - `tests/test_sec_beta_01_bootstrap_lockdown.py`
+- `tests/test_sec_beta_01_initial_admin_cli.py`
 - `docs/SEC-BETA-01-PRODUCTION-IDENTITY-BOOTSTRAP-LOCKDOWN-2026-07-29.md`
 
 ## Protected boundaries
