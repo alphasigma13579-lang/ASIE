@@ -15,7 +15,7 @@ Before implementation, read the Engineering Knowledge Base:
 7. The relevant domain file under `docs/EKB/domains/`
 8. For repository cleanup, archive lockdown, or deletion work: `docs/EKB/EKB-06-Repository-Surgery-Inventory.md`
 
-The EKB is the reference for where knowledge lives. Long-lived requirements, engine rules, DIB behavior, market estimation logic, and governance controls belong in EKB/domain documents, not inside oversized task prompts.
+`PROGRAM-CLOSE-10` is the current program/remediation and release-authority source. Dated execution records are evidence, not current-state overrides.\n\nThe EKB is the reference for where knowledge lives. Long-lived requirements, engine rules, DIB behavior, market estimation logic, and governance controls belong in EKB/domain documents, not inside oversized task prompts.
 
 ## Map
 
