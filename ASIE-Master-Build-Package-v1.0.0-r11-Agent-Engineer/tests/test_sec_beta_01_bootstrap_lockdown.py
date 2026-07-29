@@ -36,6 +36,8 @@ SEC_BETA_01_ALLOWLIST = {
     "backend/bootstrap_security.py",
     "tools/create_initial_platform_admin.py",
     "tests/test_sec_beta_01_bootstrap_lockdown.py",
+    "tests/test_sec_beta_01_initial_admin_cli.py",
+    "tests/test_organization_scope_resolution.py",
     "docs/SEC-BETA-01-PRODUCTION-IDENTITY-BOOTSTRAP-LOCKDOWN-2026-07-29.md",
 }
 
