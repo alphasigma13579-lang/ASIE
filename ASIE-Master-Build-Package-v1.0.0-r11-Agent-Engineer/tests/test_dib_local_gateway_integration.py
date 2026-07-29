@@ -29,7 +29,8 @@ class DIBLocalGatewayIntegrationTests(unittest.TestCase):
     def test_docker_compose_declares_dib_sidecar_as_local_gateway_service(self) -> None:
         compose = COMPOSE_FILE.read_text(encoding="utf-8")
         self.assertIn("  dib-api:\n", compose)
-        self.assertIn('command: ["python", "backend/dib_http_mounting.py"]', compose)
+        self.assertIn('command: ["python", "-m", "backend.dib_http_mounting"]', compose)
+        self.assertNotIn('command: ["python", "backend/dib_http_mounting.py"]', compose)
         self.assertIn("ASIE_DIB_HTTP_HOST: 0.0.0.0", compose)
         self.assertIn('ASIE_DIB_HTTP_PORT: "8795"', compose)
         self.assertIn("ASIE_DIB_DB_PATH: /var/lib/asie/dib_local.sqlite3", compose)
