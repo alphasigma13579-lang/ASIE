@@ -2,7 +2,8 @@
 
 | المجال | المصدر الأعلى | ما لا يجوز فعله |
 |---|---|---|
-| Program/remediation/release state | PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md + /EMERGENCY-RELEASE-FREEZE.json | استنتاج تفويض نشر أو شبكة أو Provider من وثيقة حزمة مؤرخة أو نجاح Workflow فقط. |
+| Program/remediation/release state | PROGRAM-CLOSE-10 + `/EMERGENCY-RELEASE-FREEZE.json` | استنتاج تفويض نشر أو شبكة أو Provider من وثيقة حزمة مؤرخة أو نجاح Workflow فقط. |
+| Foundational completion state | FOUNDATION-COMPLETE-20 + `/FOUNDATION-COMPLETE-20.json` | إعلان حزمة مكتملة بلا كود واختبارات ودليل exact-commit وتراجع ومراجعة مخاطر. |
 | Runtime execution | AAS Runtime Freeze | تعديل الملفات المجمدة مباشرة. |
 | AI/intelligence | AIA-01 ثم AIA-02 | جعل AI يملك الأرقام أو القرار. |
 | Contracts/Sockets/Modules | Canonical Terminology Register | إضافة معرف دون تحديث السجل والاختبارات. |
