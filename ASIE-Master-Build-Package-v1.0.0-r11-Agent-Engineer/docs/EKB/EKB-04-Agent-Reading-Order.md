@@ -10,6 +10,6 @@
 | Dashboard | Dashboard Command Center domain | `src/CommandCenter.tsx`, API register | بيانات وهمية كأنها حية. |
 | Market | Market Intelligence + Source Policy | DIB item state | أسعار بلا مصادر أو اعتماد. |
 | Security | Security/Tenant domain | tests + API handlers | فتح endpoints دون صلاحيات. |
-| Repository Surgery / Cleanup | EKB-06 Repository Surgery Inventory | Repository Surgery Plan + AGENTS archive lockdown | نسخ أو دمج ملفات archive/reference في المسارات الحية. |
+| Repository Surgery / Cleanup | PROGRAM-CLOSE-10 + EKB-06 Repository Surgery Inventory | EKB-07 Quarantine Map + AGENTS archive lockdown | نسخ أو دمج ملفات archive/reference في المسارات الحية، أو الحذف دون PR مستقل ودليل. |
 | Planning | EKB-00 + Source Matrix | relevant domain docs | خلط المنفذ بالمخطط. |
 | Prompt writing | Prompt Policy | prompt templates | وضع المعرفة طويلة الأجل في البرومبت. |
