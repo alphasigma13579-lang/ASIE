@@ -6,10 +6,14 @@ on:
     paths:
       - .github/workflows/beta-release-gate.yml
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/beta_release_gate.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.private-smoke.yml
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/rel_beta_07_evidence.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/deploy_beta_08_private_smoke.py
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_beta_release_gate.py
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_rel_beta_07_evidence_release_gate.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_deploy_beta_08_private_deployment_smoke.py
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/REL-BETA-07-EVIDENCE-BACKED-RELEASE-GATE-2026-07-29.md
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/DEPLOY-BETA-08-PRIVATE-DEPLOYMENT-SMOKE-2026-07-29.md
   push:
     branches: [main]
   workflow_dispatch:
@@ -149,11 +153,92 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  private-deployment-smoke:
+    name: Private deployment smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      ASIE_SMOKE_TAG: ${{ github.sha }}
+      COMPOSE_PROJECT_NAME: asie-private-smoke
+      ASIE_SMOKE_BACKEND_IMAGE: asie-private-smoke-backend:${{ github.sha }}
+      ASIE_SMOKE_WEB_IMAGE: asie-private-smoke-web:${{ github.sha }}
+    steps:
+      - name: Check out exact deployment commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compile private smoke probe
+        run: python -m py_compile tools/deploy_beta_08_private_smoke.py
+
+      - name: Validate private Compose boundary
+        run: docker compose -f docker-compose.private-smoke.yml config --quiet
+
+      - name: Build private deployment images
+        run: docker compose -f docker-compose.private-smoke.yml build --pull
+
+      - name: Start loopback-only private deployment
+        run: docker compose -f docker-compose.private-smoke.yml up -d --wait --wait-timeout 240
+
+      - name: Verify published ports remain loopback-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-beta-08-private-smoke
+          : > deploy-beta-08-private-smoke/port-bindings.txt
+          for pair in "api 8794" "dib-api 8795" "web 80"; do
+            set -- $pair
+            binding=$(docker compose -f docker-compose.private-smoke.yml port "$1" "$2")
+            printf '%s %s\n' "$1" "$binding" | tee -a deploy-beta-08-private-smoke/port-bindings.txt
+            case "$binding" in
+              127.0.0.1:*) ;;
+              *) echo "Non-loopback deployment binding rejected: $binding" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Execute live private deployment smoke
+        run: >-
+          python tools/deploy_beta_08_private_smoke.py
+          --expected-commit "$GITHUB_SHA"
+          --compose-file docker-compose.private-smoke.yml
+          --backend-image "$ASIE_SMOKE_BACKEND_IMAGE"
+          --web-image "$ASIE_SMOKE_WEB_IMAGE"
+          --output deploy-beta-08-private-smoke/deployment-evidence.json
+
+      - name: Capture private deployment state
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p deploy-beta-08-private-smoke
+          docker compose -f docker-compose.private-smoke.yml ps --all > deploy-beta-08-private-smoke/container-state.txt 2>&1 || true
+          docker compose -f docker-compose.private-smoke.yml logs --no-color > deploy-beta-08-private-smoke/container-logs.txt 2>&1 || true
+          docker image inspect "$ASIE_SMOKE_BACKEND_IMAGE" "$ASIE_SMOKE_WEB_IMAGE" > deploy-beta-08-private-smoke/image-inspect.json 2>&1 || true
+
+      - name: Upload private deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-beta-08-private-smoke-evidence
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/deploy-beta-08-private-smoke
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Destroy private deployment and ephemeral data
+        if: always()
+        run: docker compose -f docker-compose.private-smoke.yml down --volumes --remove-orphans --timeout 15
+
   evaluate-gate:
     name: Evaluate release evidence
     needs:
       - determinism-vector
       - code-evidence
+      - private-deployment-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -184,6 +269,12 @@ jobs:
           path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/rel-beta-07-determinism
           merge-multiple: false
 
+      - name: Download private deployment evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-beta-08-private-smoke-evidence
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/deploy-beta-08-smoke
+
       - name: Compare deterministic vectors
         shell: bash
         run: |
@@ -203,6 +294,7 @@ jobs:
           python -m backend.beta_release_gate
           --evidence-bundle rel-beta-07-code/code-evidence.json
           --determinism-comparison rel-beta-07-final/determinism-comparison.json
+          --deployment-evidence deploy-beta-08-smoke/deployment-evidence.json
           --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
           --expected-commit "$GITHUB_SHA"
           --workflow-run-id "$GITHUB_RUN_ID"
@@ -223,6 +315,7 @@ jobs:
           path: |
             ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/rel-beta-07-code
             ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/rel-beta-07-determinism
+            ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/deploy-beta-08-smoke
             ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/rel-beta-07-final
           if-no-files-found: error
           retention-days: 30
