@@ -39,6 +39,7 @@ DEPLOY_BETA_08_ALLOWLIST = {
     "docker-compose.private-smoke.yml",
     "tools/deploy_beta_08_private_smoke.py",
     "tests/test_deploy_beta_08_private_deployment_smoke.py",
+    "tests/test_dib_local_gateway_integration.py",
     "docs/DEPLOY-BETA-08-PRIVATE-DEPLOYMENT-SMOKE-2026-07-29.md",
 }
 
@@ -119,6 +120,7 @@ class DeployBeta08PrivateDeploymentSmokeTests(unittest.TestCase):
         self.assertNotIn('\n      - "443:443"', compose)
         self.assertNotIn("  caddy:\n", compose)
         self.assertIn("internal: true", compose)
+        self.assertIn('com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"', compose)
         self.assertIn('ASIE_ALLOW_EXTERNAL_FETCH: "false"', compose)
         self.assertIn('ASIE_ALLOW_LOCAL_BOOTSTRAP: "false"', compose)
         self.assertIn('ASIE_ALLOW_LEGACY_LOCAL_OPERATOR: "false"', compose)
