@@ -11,6 +11,10 @@ from backend.dib_api import (
     _query_value,
 )
 from backend.dib_persistence import DIBPersistenceStore, create_dib_persistence_store
+from backend.dib_server_owned_manifest_chain import (
+    DIBServerOwnedManifestChain,
+    DIBServerOwnedManifestChainError,
+)
 from backend.dib_tenant_boundary import (
     DIBTenantBoundary,
     DIBTenantBoundaryError,
@@ -22,7 +26,7 @@ DIB_TENANT_API_ID = "SEC-BETA-03-DIB-TENANT-SCOPED-API-v1"
 
 
 class TenantScopedDIBApiController(DIBApiController):
-    """DIB API controller that requires a trusted tenant context per request."""
+    """DIB API controller with tenant ownership and server-owned lineage."""
 
     def __init__(
         self,
@@ -36,6 +40,7 @@ class TenantScopedDIBApiController(DIBApiController):
             self.store,
             project_organization_resolver=project_organization_resolver,
         )
+        self.server_owned_manifest_chain = DIBServerOwnedManifestChain(self.store)
         self.trusted_internal_context = trusted_internal_context
 
     def status(self) -> dict[str, Any]:
@@ -43,8 +48,11 @@ class TenantScopedDIBApiController(DIBApiController):
             **super().status(),
             "tenant_api_id": DIB_TENANT_API_ID,
             "tenant_boundary": self.tenant_boundary.status(),
+            "server_owned_manifest_chain": self.server_owned_manifest_chain.status(),
             "organization_scope_required": True,
             "cross_tenant_access_blocked": True,
+            "client_owned_manifest_rejected": True,
+            "client_owned_gate_rejected": True,
         }
 
     def dispatch(
@@ -91,6 +99,18 @@ class TenantScopedDIBApiController(DIBApiController):
                         },
                     )
                 self.tenant_boundary.require_session_access(request_context, session_id)
+                if method == "POST" and tail == ["approved-manifests"]:
+                    return self._build_server_owned_manifest(
+                        request_context,
+                        session_id,
+                        dict(payload or {}),
+                    )
+                if method == "POST" and tail == ["validation-gates"]:
+                    return self._build_server_owned_gate(
+                        request_context,
+                        session_id,
+                        dict(payload or {}),
+                    )
             return super().dispatch(method, path, payload)
         except DIBTenantBoundaryError as exc:
             code = str(exc)
@@ -101,6 +121,10 @@ class TenantScopedDIBApiController(DIBApiController):
             }:
                 raise DIBApiError("dib_resource_not_found", 404) from exc
             raise DIBApiError(code, 403) from exc
+        except DIBServerOwnedManifestChainError as exc:
+            code = str(exc)
+            status = 409 if code.startswith("stale_") or "requires_persisted" in code else 422
+            raise DIBApiError(code, status) from exc
 
     def _start_tenant_session(
         self,
@@ -137,6 +161,48 @@ class TenantScopedDIBApiController(DIBApiController):
                 "project_id": project_id,
                 "snapshot_mutation": False,
                 "finance_wiring_enabled": False,
+            },
+        )
+
+    def _build_server_owned_manifest(
+        self,
+        context: DIBTenantContext,
+        session_id: str,
+        payload: dict[str, Any],
+    ) -> DIBApiResponse:
+        manifest = self.server_owned_manifest_chain.build_manifest(
+            session_id,
+            payload,
+            actor_user_id=context.user_id,
+        )
+        return DIBApiResponse(
+            201,
+            {
+                "approved_manifest": manifest,
+                "manifest_server_owned": True,
+                "finance_wiring_enabled": False,
+                "snapshot_mutation": False,
+            },
+        )
+
+    def _build_server_owned_gate(
+        self,
+        context: DIBTenantContext,
+        session_id: str,
+        payload: dict[str, Any],
+    ) -> DIBApiResponse:
+        gate = self.server_owned_manifest_chain.build_gate(
+            session_id,
+            payload,
+            actor_user_id=context.user_id,
+        )
+        return DIBApiResponse(
+            201,
+            {
+                "validation_gate": gate,
+                "validation_gate_server_owned": True,
+                "finance_wiring_enabled": False,
+                "snapshot_mutation": False,
             },
         )
 
