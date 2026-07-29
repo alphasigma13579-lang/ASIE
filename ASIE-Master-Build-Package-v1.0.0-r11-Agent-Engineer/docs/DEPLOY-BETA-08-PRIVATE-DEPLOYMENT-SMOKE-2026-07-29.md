@@ -2,30 +2,30 @@
 
 **Status:** implementation package  
 **Base commit:** `9e20b980cee4936e8669198fc8c5c52f8186d489`  
-**Release decision during this package:** `NO_GO`  
-**Emergency Release Freeze:** remains `ACTIVE`
+**Release decision:** `NO_GO`  
+**Emergency Release Freeze:** `ACTIVE`
 
 ## 1. Purpose
 
-`REL-BETA-07` proved that the source commit is buildable, deterministic, and protected by executable exploit-regression evidence. It intentionally left one technical release requirement unproven:
+`REL-BETA-07` proved that the source commit is buildable, deterministic, and protected by executable exploit-regression evidence. It intentionally left one technical requirement unproven:
 
 ```text
 private_deployment_smoke_passed
 ```
 
-`DEPLOY-BETA-08` supplies that evidence without creating a public deployment. The package builds container images from the exact checked-out commit, starts them on an ephemeral GitHub Actions runner, binds every published port to `127.0.0.1`, disables external fetch, exercises live HTTP routes, emits a hashed deployment record, and destroys the containers and volumes after evidence capture.
+`DEPLOY-BETA-08` builds the exact tested commit as Docker images, starts an ephemeral private deployment, exercises the live HTTP boundaries, emits a hashed `asie.private.deployment.smoke.v1` record, and destroys all containers and data after evidence capture.
 
-This package does **not** clear the Emergency Release Freeze and does not authorize public or production exposure.
+The package does not clear the Emergency Release Freeze and does not authorize public deployment.
 
-## 2. Private deployment boundary
+## 2. Private network boundary
 
-The deployment uses:
+The private stack is defined in:
 
 ```text
 docker-compose.private-smoke.yml
 ```
 
-Runtime bindings are restricted to:
+Only these host bindings are permitted:
 
 ```text
 127.0.0.1:18080 → web:80
@@ -33,7 +33,18 @@ Runtime bindings are restricted to:
 127.0.0.1:18795 → dib-api:8795
 ```
 
-The stack has no Caddy service, no `0.0.0.0` host publication, no public `80/443` binding, and no provider secrets. The Docker runtime network is declared `internal: true` and all services run with:
+The stack has:
+
+- no Caddy service;
+- no public `80/443` publication;
+- no provider secrets;
+- `internal: true` Docker network;
+- ephemeral data volume;
+- external fetch disabled;
+- local Bootstrap disabled;
+- legacy local Principal disabled.
+
+The services run with:
 
 ```text
 ASIE_ENV=production
@@ -42,9 +53,48 @@ ASIE_ALLOW_LOCAL_BOOTSTRAP=false
 ASIE_ALLOW_LEGACY_LOCAL_OPERATOR=false
 ```
 
-The container processes listen on `0.0.0.0` only inside their isolated Docker network. Host publication remains loopback-only.
+## 3. Deployment defect found during execution
 
-## 3. Exact-commit and image identity
+The first private deployment run exposed a deployment defect in all Compose profiles:
+
+```text
+python backend/dib_http_mounting.py
+→ ModuleNotFoundError: No module named 'backend'
+```
+
+Running a package file directly places `/app/backend` at the front of `sys.path`, while the module imports `backend.*` from the package root.
+
+The root correction is applied consistently in:
+
+```text
+docker-compose.yml
+docker-compose.production.yml
+docker-compose.private-smoke.yml
+```
+
+The canonical command is now:
+
+```text
+python -m backend.dib_http_mounting
+```
+
+No Runtime module or DIB implementation code was changed.
+
+## 4. Shared-volume initialization
+
+The API and DIB API intentionally share one ephemeral volume because both require the same platform identity/project database context. Starting both containers simultaneously caused a Docker copy-up race while the backend image initialized `/var/lib/asie/output`.
+
+The workflow now starts services sequentially:
+
+```text
+api → healthy
+dib-api → healthy
+web → healthy
+```
+
+Each service must reach Docker Health status `healthy`; timeout, `unhealthy`, `exited`, or `dead` fails the package and prints service logs. The data model is not split to hide the race.
+
+## 5. Exact-commit and image identity
 
 The smoke probe requires:
 
@@ -52,15 +102,7 @@ The smoke probe requires:
 git rev-parse HEAD == GITHUB_SHA
 ```
 
-It reads the built Docker image IDs for:
-
-```text
-api
-dib-api
-web
-```
-
-and computes one composite deployment digest from:
+It reads the backend and frontend Docker image IDs and computes one composite digest from:
 
 ```text
 exact commit SHA
@@ -69,31 +111,25 @@ exact commit SHA
 + frontend image ID
 ```
 
-The result is stored as:
+The deployment evidence stores:
 
 ```text
 image_digest: sha256:<64 hexadecimal characters>
 ```
 
-The deployment evidence is therefore bound to both source and the concrete images used by the private deployment.
+## 6. Required live checks
 
-## 4. Live smoke checks
+The `beta.release.gate.v2` deployment evidence requires all five checks.
 
-The emitted `asie.private.deployment.smoke.v1` record must prove all five checks required by `beta.release.gate.v2`.
-
-### 4.1 `service_health`
-
-The probe requires live `200` responses from:
+### `service_health`
 
 ```text
-GET /api/health
-GET /api/dib/status
-GET /
+GET /api/health      → 200
+GET /api/dib/status  → 200
+GET /                → 200
 ```
 
-Docker Compose must also report the three containers healthy before the probe starts.
-
-### 4.2 `auth_boundary`
+### `auth_boundary`
 
 Under `ASIE_ENV=production`:
 
@@ -102,22 +138,20 @@ POST /api/auth/local-bootstrap → 404 local_bootstrap_unavailable
 POST /api/projects without Authorization → 401 authentication_required
 ```
 
-Ephemeral test identities are inserted from inside the private API container through the Repository service. No HTTP bootstrap is enabled and no test token is stored in the evidence artifact.
+Test identities are inserted from inside the ephemeral API container through the Repository service. HTTP Bootstrap remains disabled, and credentials/tokens are not written to the evidence artifact.
 
-### 4.3 `tenant_isolation`
+### `tenant_isolation`
 
-Two independent users and organizations are created. Organization A creates a DIB session. A token belonging to Organization B must receive:
+Two independent organizations are created. Organization A creates a DIB session. Organization B must receive:
 
 ```text
-GET session → 404 dib_resource_not_found
+GET session        → 404 dib_resource_not_found
 GET session events → 404
 ```
 
-The owning organization must continue to use the session for the canonical run.
+### `canonical_project_run`
 
-### 4.4 `canonical_project_run`
-
-The probe creates this server-owned chain through live DIB HTTP routes:
+The live probe creates:
 
 ```text
 Persisted Blueprint
@@ -126,7 +160,7 @@ Persisted Blueprint
 → controlled-finance compatibility endpoint
 → ProjectRunWorkflow
 → RunScopedModuleRuntime
-→ Bus / Socket / Finance
+→ System Bus / Socket / Finance
 → Snapshot Assembly
 ```
 
@@ -139,13 +173,13 @@ workflow.contract_id = project.run.workflow.v1
 finance_engine_execution_status = executed_via_project_run_workflow
 ```
 
-The same command is then replayed with the same idempotency key. The second request must return the original `run_id` and `snapshot_id` with `idempotency_replayed=true`.
+Replaying the same idempotency key must return the original `run_id` and `snapshot_id` with `idempotency_replayed=true`.
 
-### 4.5 `snapshot_readback`
+### `snapshot_readback`
 
-The resulting Snapshot is read from the main API using the owning tenant identity. The response must prove the same `snapshot_id` and immutable/sealed integrity.
+The resulting Snapshot must be readable through the main API by its owning tenant and must prove the same `snapshot_id` and immutable/sealed integrity.
 
-## 5. Deployment evidence contract
+## 7. Evidence contract
 
 The generated file is:
 
@@ -153,7 +187,7 @@ The generated file is:
 deploy-beta-08-private-smoke/deployment-evidence.json
 ```
 
-Its core structure is:
+Core structure:
 
 ```json
 {
@@ -179,11 +213,11 @@ Its core structure is:
 }
 ```
 
-The `evidence_hash` is calculated over canonical JSON after removing only the `evidence_hash` field. Any mutation to a check, commit, image identity, network boundary, or timestamp invalidates the record.
+Any mutation to the commit, image identity, checks, network boundary, or evidence material invalidates `evidence_hash`.
 
-## 6. REL-BETA-07 integration
+## 8. REL-BETA-07 integration
 
-The evidence-backed gate now has a third upstream evidence job:
+The release workflow now evaluates:
 
 ```text
 determinism-vector
@@ -199,7 +233,7 @@ The evaluator receives:
 --deployment-evidence deploy-beta-08-smoke/deployment-evidence.json
 ```
 
-When this package passes while the Emergency Release Freeze remains active, the expected decision is:
+After Smoke succeeds while the freeze remains active, the expected report is:
 
 ```text
 code_evidence_ready = true
@@ -209,40 +243,40 @@ decision = NO_GO
 release_allowed = false
 ```
 
-The disabled capabilities remain degradable. After a governed freeze review, they would limit the result to `CONDITIONAL_GO` for a technical limited beta unless separately proven.
+The disabled external capabilities remain degradable and would limit a later governed decision to `CONDITIONAL_GO` for a technical limited beta unless separately proven.
 
-## 7. Failure behavior
+## 9. Failure behavior
 
-The package fails closed when any of the following occurs:
+The package fails closed when:
 
-- checked-out commit differs from the expected release commit;
+- the checked-out commit differs from the expected release commit;
 - a published port is not loopback-only;
-- a container fails health checks;
-- production Bootstrap becomes reachable;
+- a service does not become healthy;
+- production Bootstrap is reachable;
 - anonymous project creation succeeds;
-- cross-tenant DIB access does not return the uniform denial;
-- Manifest/Gate creation fails or accepts client-owned final objects;
-- Finance does not pass through `ProjectRunWorkflow`;
-- idempotency creates a second Run or Snapshot;
-- Snapshot readback fails or is not immutable;
+- cross-tenant DIB access succeeds;
+- server-owned Manifest/Gate creation fails;
+- Finance bypasses `ProjectRunWorkflow`;
+- idempotency creates another Run or Snapshot;
+- Snapshot readback is absent or mutable;
 - image identity cannot be resolved;
-- evidence hash or required check is invalid.
+- evidence hash or a required check is invalid.
 
-Container state, logs, image inspection, port bindings, and deployment evidence are uploaded even when the smoke job fails. The Docker stack and ephemeral volume are always destroyed.
+Container state, logs, image inspection, port bindings, and deployment evidence are uploaded on failure. Containers and the ephemeral volume are always removed.
 
-## 8. Surgical allowlist
-
-Only these files belong to this package:
+## 10. Surgical allowlist
 
 ```text
 .github/workflows/beta-release-gate.yml
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.yml
+ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.production.yml
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.private-smoke.yml
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/deploy_beta_08_private_smoke.py
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_deploy_beta_08_private_deployment_smoke.py
 ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/DEPLOY-BETA-08-PRIVATE-DEPLOYMENT-SMOKE-2026-07-29.md
 ```
 
-## 9. Protected boundaries
+## 11. Protected boundaries
 
 The package does not modify:
 
@@ -256,20 +290,20 @@ System Bus
 Socket Contract Layer
 Snapshot Assembly
 Decision Council
-production Hostinger deployment workflow
-production docker-compose file
+Hostinger deployment workflow
 ```
 
-## 10. Exit condition
+## 12. Exit condition
 
-`DEPLOY-BETA-08` is closed only when:
+The package closes only when:
 
 1. ASIE CI succeeds on the final PR head.
 2. Cross-platform determinism succeeds on the same head.
 3. The private Docker deployment succeeds.
-4. All five required smoke checks are `true`.
-5. The deployment evidence hash is valid.
-6. The release gate consumes the evidence and reports `NO_GO` only because the Emergency Release Freeze is still active.
-7. The complete evidence artifact is retained and linked to the exact tested commit.
+4. All five Smoke checks are `true`.
+5. The deployment evidence hash is valid and tied to the exact image digest.
+6. REL-BETA-07 consumes the evidence.
+7. The gate reports `NO_GO` only because `emergency_release_freeze_cleared` remains false.
+8. The complete evidence artifact is retained for the exact tested commit.
 
-After closure, the next stage is a separate **Governed Freeze Review**. Raising or clearing the freeze is not part of this package.
+The next stage is a separate **Governed Freeze Review**. Clearing the freeze is not part of this package.
