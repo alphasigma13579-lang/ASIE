@@ -70,7 +70,27 @@ class TenantScopedDIBApiController(DIBApiController):
             if method == "GET" and parts == ["api", "dib", "sessions"]:
                 return self._list_tenant_sessions(request_context, path)
             if len(parts) >= 4 and parts[:3] == ["api", "dib", "sessions"]:
-                self.tenant_boundary.require_session_access(request_context, parts[3])
+                session_id = parts[3]
+                tail = parts[4:]
+                if method == "GET" and not tail:
+                    return DIBApiResponse(
+                        200,
+                        {"session": self.tenant_boundary.load_session(request_context, session_id)},
+                    )
+                if method == "GET" and tail == ["events"]:
+                    return DIBApiResponse(
+                        200,
+                        {"events": self.tenant_boundary.load_events(request_context, session_id)},
+                    )
+                if method == "POST" and tail == ["close"]:
+                    return DIBApiResponse(
+                        200,
+                        {
+                            "session": self.tenant_boundary.close_session(request_context, session_id),
+                            "snapshot_mutation": False,
+                        },
+                    )
+                self.tenant_boundary.require_session_access(request_context, session_id)
             return super().dispatch(method, path, payload)
         except DIBTenantBoundaryError as exc:
             code = str(exc)
