@@ -39,11 +39,14 @@ jobs:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
     steps:
-      - name: Enable Windows long paths
+      - name: Configure deterministic Windows checkout
         if: runner.os == 'Windows'
         shell: pwsh
         working-directory: .
-        run: git config --global core.longpaths true
+        run: |
+          git config --global core.longpaths true
+          git config --global core.autocrlf false
+          git config --global core.eol lf
 
       - name: Check out repository
         uses: actions/checkout@v4
