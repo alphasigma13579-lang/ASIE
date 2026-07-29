@@ -87,10 +87,12 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("windows-latest", workflow)
         self.assertIn("ubuntu-latest", workflow)
+        for label in ("ubuntu-hash0", "ubuntu-hash7919", "windows-hash0", "windows-hash7919"):
+            self.assertIn(label, workflow)
         self.assertIn("tools/rel_beta_07_evidence.py", workflow)
         self.assertIn("tools/test_beta_06_determinism.py compare", workflow)
         self.assertIn("python -m backend.beta_release_gate", workflow)
-        self.assertIn("test-beta-06-", workflow)
+        self.assertIn("rel-beta-07-determinism-*", workflow)
         self.assertIn("beta-release-gate-report.json", workflow)
 
     def test_repository_active_freeze_keeps_audit_decision_no_go(self) -> None:
