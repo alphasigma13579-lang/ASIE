@@ -32,6 +32,7 @@ FROZEN_FILES = {
 STAB_BETA_02_ALLOWLIST = {
     "backend/dib_persistence.py",
     "backend/dib_session_continuity.py",
+    "tests/test_dib_session_continuity.py",
     "tests/test_stab_beta_02_transaction_safe_dib_persistence.py",
     "docs/STAB-BETA-02-TRANSACTION-SAFE-DIB-PERSISTENCE-2026-07-29.md",
 }
