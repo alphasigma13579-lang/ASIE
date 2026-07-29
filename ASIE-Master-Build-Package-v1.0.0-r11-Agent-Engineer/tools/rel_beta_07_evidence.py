@@ -198,6 +198,18 @@ def current_commit() -> str:
     return _git("rev-parse", "HEAD").stdout.decode("ascii").strip()
 
 
+def _absolute_under_package(path: Path) -> Path:
+    return path if path.is_absolute() else PACKAGE_ROOT / path
+
+
+def _display_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(PACKAGE_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
 def _write_log(log_path: Path, stdout: bytes, stderr: bytes) -> str:
     payload = stdout + b"\n--- STDERR ---\n" + stderr
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -238,7 +250,7 @@ def run_check(spec: CheckSpec, *, commit_sha: str, log_directory: Path) -> dict[
         "duration_ms": duration_ms,
         "started_at": started_at,
         "finished_at": now_iso(),
-        "log_path": log_path.relative_to(PACKAGE_ROOT).as_posix(),
+        "log_path": _display_path(log_path),
         "log_sha256": log_sha256,
         "claims": list(spec.claims),
     }
@@ -293,7 +305,7 @@ def verify_frozen_git_blobs(*, commit_sha: str, log_directory: Path) -> dict[str
         "duration_ms": 0,
         "started_at": started_at,
         "finished_at": now_iso(),
-        "log_path": log_path.relative_to(PACKAGE_ROOT).as_posix(),
+        "log_path": _display_path(log_path),
         "log_sha256": sha256_bytes(rendered),
         "claims": [
             "all AAS Runtime Freeze files match the manifest using Git object bytes",
@@ -343,7 +355,7 @@ def collect(*, expected_commit: str, output_path: Path, log_directory: Path) -> 
                 "checks": len(records),
                 "failed": [record["check_id"] for record in records if record["status"] != "passed"],
                 "bundle_hash": bundle["bundle_hash"],
-                "output": output_path.as_posix(),
+                "output": _display_path(output_path),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -361,8 +373,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     collect(
         expected_commit=str(args.expected_commit).strip(),
-        output_path=args.output,
-        log_directory=args.log_directory,
+        output_path=_absolute_under_package(args.output),
+        log_directory=_absolute_under_package(args.log_directory),
     )
     return 0
 
