@@ -1,8 +1,6 @@
 name: Vision 2030 Knowledge Sync
 
 on:
-  schedule:
-    - cron: "17 3 1 * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -10,6 +8,10 @@ on:
         required: true
         default: true
         type: boolean
+      authorization_commit:
+        description: "Exact current main commit with explicit external-sync authority"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -28,8 +30,38 @@ env:
   PINECONE_NAMESPACE_PREFIX: "asie"
 
 jobs:
+  authorize:
+    name: Verify external sync authority
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ASIE_AUTHORIZATION_COMMIT: ${{ inputs.authorization_commit }}
+    steps:
+      - name: Check out requested authorization commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ASIE_AUTHORIZATION_COMMIT }}
+          fetch-depth: 0
+
+      - name: Require exact current main and explicit marker authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          checked_out="$(git rev-parse HEAD)"
+          current_main="$(git rev-parse origin/main)"
+          test "$checked_out" = "$ASIE_AUTHORIZATION_COMMIT"
+          test "$current_main" = "$ASIE_AUTHORIZATION_COMMIT"
+          jq -e '
+            .status == "CLEARED" and
+            .controlled_unfreeze.external_network_authorized == true and
+            .controlled_unfreeze.provider_activation_authorized == true
+          ' EMERGENCY-RELEASE-FREEZE.json >/dev/null
+
   sync:
     name: Check official sources and sync changed content
+    needs: authorize
     runs-on: ubuntu-latest
     environment: production
     concurrency:
@@ -39,8 +71,10 @@ jobs:
       run:
         working-directory: ${{ env.PACKAGE_ROOT }}
     steps:
-      - name: Check out repository
+      - name: Check out authorized commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.authorization_commit }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
