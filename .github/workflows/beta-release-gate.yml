@@ -4,7 +4,15 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - EMERGENCY-RELEASE-FREEZE.json
       - .github/workflows/beta-release-gate.yml
+      - .github/workflows/governed-freeze-review.yml
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/release_freeze_contract.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/enforce_release_freeze.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/gov_rel_10_controlled_unfreeze.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_emerg_00_release_freeze.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_gov_rel_10_controlled_unfreeze.py
+      - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/GOV-REL-10-CONTROLLED-UNFREEZE-EXECUTION-2026-07-29.md
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/beta_release_gate.py
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.private-smoke.yml
       - ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tools/rel_beta_07_evidence.py
@@ -327,7 +335,7 @@ jobs:
         id: freeze-state
         continue-on-error: true
         shell: bash
-        run: python tools/enforce_release_freeze.py --marker ../EMERGENCY-RELEASE-FREEZE.json | tee rel-beta-07-final/freeze-state.json
+        run: python -m tools.enforce_release_freeze --marker ../EMERGENCY-RELEASE-FREEZE.json | tee rel-beta-07-final/freeze-state.json
 
       - name: Evaluate evidence-backed release decision
         id: release-decision
