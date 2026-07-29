@@ -1,0 +1,26 @@
+# Canonical repository text policy for cross-platform determinism.
+* text=auto eol=lf
+
+# Windows command files retain their native line ending where required.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary artifacts must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.7z binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.pptx binary
+*.sqlite binary
+*.sqlite3 binary
+*.db binary
