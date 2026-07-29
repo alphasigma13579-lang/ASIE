@@ -41,7 +41,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    command: ["python", "backend/dib_http_mounting.py"]
+    command: ["python", "-m", "backend.dib_http_mounting"]
     environment:
       ASIE_ENV: production
       ASIE_DB_PATH: /var/lib/asie/asie_private_smoke.sqlite3
