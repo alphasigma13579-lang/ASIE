@@ -170,6 +170,7 @@ The package proves:
 - `tests/test_arch_beta_05_canonical_finance_admission.py`
 - `tests/test_dib_controlled_finance_wiring.py`
 - `docs/ARCH-BETA-05-CANONICAL-FINANCE-ADMISSION-REPAIR-2026-07-29.md`
+- `docs/ACR-DIB-001-CORR-01-CANONICAL-FINANCE-ADMISSION.md`
 
 ## Protected boundaries
 
