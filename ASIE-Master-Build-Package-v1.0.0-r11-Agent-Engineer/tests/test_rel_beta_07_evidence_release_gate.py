@@ -31,6 +31,7 @@ class RelBeta07EvidenceReleaseGateTests(unittest.TestCase):
         for required_test in (
             "test_dib_complete_runtime.py",
             "test_sec_beta_01_bootstrap_lockdown.py",
+            "test_local_account_recovery.py",
             "test_stab_beta_02_transaction_safe_dib_persistence.py",
             "test_sec_beta_03_dib_tenant_boundary.py",
             "test_gov_beta_04_server_owned_manifest_chain.py",
