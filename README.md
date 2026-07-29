@@ -10,7 +10,7 @@ The runnable workspace is kept under:
 
 The repository root is intentionally a navigation and governance layer. Start with [`AGENTS.md`](AGENTS.md) and the package guide before editing. Runtime code, frontend code, tests, and operational documents live in the canonical workspace above.
 
-The single current remediation and release-authority summary is [`PROGRAM-CLOSE-10`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md). Dated package records remain evidence, not independent current-status sources.
+The current remediation and release authority is [`PROGRAM-CLOSE-10`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md). The active foundational implementation authority is [`FOUNDATION-COMPLETE-20`](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md), backed by the machine-readable [`FOUNDATION-COMPLETE-20.json`](FOUNDATION-COMPLETE-20.json). Dated package records remain evidence, not independent current-status sources.
 
 ## What is current
 

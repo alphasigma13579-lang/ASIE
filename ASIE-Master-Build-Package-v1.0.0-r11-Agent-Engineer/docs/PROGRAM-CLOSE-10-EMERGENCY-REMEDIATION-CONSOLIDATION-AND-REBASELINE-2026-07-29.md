@@ -157,14 +157,18 @@ archive restoration. It:
 
 ## 8. Next phase
 
-The next phase is not an automatic public launch. It is a separately authorized
-decision package that must choose one of:
+The next active implementation authority is
+[FOUNDATION-COMPLETE-20](FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md),
+with its machine-readable package and dependency registry at
+`/FOUNDATION-COMPLETE-20.json`.
 
-1. continue private technical-limited validation with external capabilities
-   disabled; or
-2. propose public/production/provider authority with fresh threat review,
-   exact-commit evidence, environment approval, rollback proof, and an explicit
-   marker-contract change.
+FOUNDATION-COMPLETE-20 changes the readiness verdict to `BLOCK` while the
+foundational intelligence, source, provider, product, evidence, frozen-boundary,
+and operational packages are completed. It does not supersede this document's
+release-authority controls and does not activate external networking, providers,
+AI, Google Maps, Vision sync, public release, production deployment, or
+Hostinger deployment.
 
-Until that decision merges, public release, production deployment, external
-networking, providers, AI, and Google Maps remain prohibited.
+A package can close only with implementation, negative acceptance tests,
+exact-commit workflow evidence, rollback proof, and residual-risk review. A
+document or passing compile alone cannot close a package.
