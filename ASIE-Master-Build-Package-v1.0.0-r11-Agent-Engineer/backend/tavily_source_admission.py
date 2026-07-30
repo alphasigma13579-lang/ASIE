@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 import re
 from typing import Any, Mapping, Sequence
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from backend.source_registry import ENABLED_SOURCE_REQUIRED_FIELDS
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _PLATFORM_SCOPE = "__platform__"
+_PRIVATE_HOST_SUFFIXES = (".internal", ".local", ".localhost", ".lan", ".home")
 
 
 class SourceAdmissionError(PermissionError):
@@ -23,14 +26,44 @@ def _normalized_context(value: str, *, field: str) -> str:
     return normalized
 
 
+def _normalized_host(value: str) -> str:
+    raw = str(value or "").strip().rstrip(".")
+    try:
+        normalized = raw.encode("idna").decode("ascii").lower()
+    except (UnicodeError, ValueError) as exc:
+        raise SourceAdmissionError("source_host_invalid") from exc
+    if (
+        not normalized
+        or len(normalized) > 253
+        or normalized == "localhost"
+        or normalized.endswith(_PRIVATE_HOST_SUFFIXES)
+    ):
+        raise SourceAdmissionError("source_private_host_denied")
+    try:
+        ipaddress.ip_address(normalized)
+    except ValueError:
+        pass
+    else:
+        raise SourceAdmissionError("source_ip_literal_denied")
+    labels = normalized.split(".")
+    if len(labels) < 2 or any(not _DOMAIN_LABEL_RE.fullmatch(label) for label in labels):
+        raise SourceAdmissionError("source_host_invalid")
+    return normalized
+
+
 def _parsed_https_url(value: str):
-    parsed = urlsplit(str(value or "").strip())
+    try:
+        parsed = urlsplit(str(value or "").strip())
+        port = parsed.port
+        host = _normalized_host(parsed.hostname or "")
+    except (ValueError, UnicodeError) as exc:
+        raise SourceAdmissionError("source_url_must_be_canonical_https") from exc
     if (
         parsed.scheme.lower() != "https"
-        or not parsed.hostname
+        or not host
         or parsed.username
         or parsed.password
-        or parsed.port not in {None, 443}
+        or port not in {None, 443}
         or parsed.fragment
     ):
         raise SourceAdmissionError("source_url_must_be_canonical_https")
@@ -38,7 +71,50 @@ def _parsed_https_url(value: str):
 
 
 def _host(value: str) -> str:
-    return (_parsed_https_url(value).hostname or "").lower().rstrip(".")
+    return _normalized_host(_parsed_https_url(value).hostname or "")
+
+
+def _normalized_domain(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw or any(character in raw for character in ("/", "\\", "@", ":", "?", "#")):
+        raise SourceAdmissionError("invalid_discovery_domain")
+    return _normalized_host(raw)
+
+
+def _canonical_path(value: str, *, reason: str) -> str:
+    raw = str(value or "/")
+    if (
+        not raw.startswith("/")
+        or "\\" in raw
+        or "//" in raw
+        or any(ord(character) < 32 or ord(character) == 127 for character in raw)
+    ):
+        raise SourceAdmissionError(reason)
+    try:
+        decoded = unquote(raw, encoding="utf-8", errors="strict")
+        decoded_twice = unquote(decoded, encoding="utf-8", errors="strict")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise SourceAdmissionError(reason) from exc
+    if decoded_twice != decoded or "%" in decoded:
+        raise SourceAdmissionError(reason)
+    if (
+        not decoded.startswith("/")
+        or "\\" in decoded
+        or "//" in decoded
+        or any(segment in {".", ".."} for segment in decoded.split("/"))
+        or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
+    ):
+        raise SourceAdmissionError(reason)
+    return decoded if decoded == "/" else decoded.rstrip("/")
+
+
+def _sequence(value: Any, *, field: str, maximum: int = 64) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or len(value) > maximum:
+        raise SourceAdmissionError(f"invalid_{field}")
+    values = tuple(str(item or "").strip() for item in value)
+    if any(not item or len(item) > 500 for item in values):
+        raise SourceAdmissionError(f"invalid_{field}")
+    return values
 
 
 def _record_value(record: Mapping[str, Any], field: str, default: Any = None) -> Any:
@@ -53,6 +129,28 @@ def _scopes(record: Mapping[str, Any], field: str) -> frozenset[str]:
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return frozenset()
     return frozenset(_normalized_context(str(item), field=field) for item in raw)
+
+
+def _path_within(path: str, root: str) -> bool:
+    return root == "/" or path == root or path.startswith(root + "/")
+
+
+def _graph_path_pattern(root: str) -> str:
+    if root == "/":
+        return r"^/.*$"
+    return rf"^{re.escape(root)}(?:/.*)?$"
+
+
+def _source_path_roots(source: Mapping[str, Any], approved_path: str) -> tuple[str, ...]:
+    raw_paths = _record_value(source, "allowed_paths")
+    if raw_paths is None or raw_paths == []:
+        return (approved_path,)
+    paths = _sequence(raw_paths, field="admitted_source_paths")
+    canonical = tuple(
+        _canonical_path(path, reason="invalid_admitted_source_path")
+        for path in paths
+    )
+    return tuple(dict.fromkeys(canonical))
 
 
 @dataclass(frozen=True)
@@ -97,6 +195,7 @@ class TavilySourceAdmissionPolicy:
         sector_id: str,
         geography: str,
         requested_include_domains: Sequence[str] = (),
+        requested_exclude_domains: Sequence[str] = (),
     ) -> dict[str, Any]:
         sector = _normalized_context(sector_id, field="sector_id")
         geography_scope = _normalized_context(geography, field="geography")
@@ -119,22 +218,79 @@ class TavilySourceAdmissionPolicy:
         if not domains:
             raise SourceAdmissionError("source_discovery_scope_empty")
 
-        requested = {
-            str(domain or "").strip().lower().rstrip(".")
-            for domain in requested_include_domains
-            if str(domain or "").strip()
-        }
-        if requested and not requested.issubset(set(domains)):
+        requested_includes = {
+            _normalized_domain(domain)
+            for domain in _sequence(requested_include_domains, field="requested_include_domains")
+        } if requested_include_domains else set()
+        requested_excludes = {
+            _normalized_domain(domain)
+            for domain in _sequence(requested_exclude_domains, field="requested_exclude_domains")
+        } if requested_exclude_domains else set()
+        admitted_domains = set(domains)
+        if (
+            requested_includes and not requested_includes.issubset(admitted_domains)
+        ) or not requested_excludes.issubset(admitted_domains):
             raise SourceAdmissionError("client_discovery_scope_widening_denied")
 
+        effective_domains = sorted(requested_includes or admitted_domains)
+        effective_sources = sorted(
+            str(record.get("source_id") or "")
+            for record in admitted
+            if _host(str(record["url"])) in set(effective_domains)
+        )
         return {
             "operation": "discovery_search",
             "sector_id": sector,
             "geography": geography_scope,
-            "include_domains": domains,
-            "source_ids": sorted(str(record.get("source_id") or "") for record in admitted),
+            "include_domains": effective_domains,
+            "exclude_domains": sorted(requested_excludes),
+            "source_ids": effective_sources,
             "review_status": "review_required",
             "eligible_for_controlled_assumptions": False,
+        }
+
+    def authorize_graph_scope(
+        self,
+        *,
+        admission: Mapping[str, Any],
+        requested_select_paths: Sequence[str] = (),
+        requested_exclude_paths: Sequence[str] = (),
+    ) -> dict[str, list[str]]:
+        if admission.get("operation") not in {"crawl", "map"}:
+            raise SourceAdmissionError("graph_scope_requires_crawl_or_map_admission")
+        raw_roots = admission.get("allowed_path_roots")
+        allowed_roots = tuple(
+            _canonical_path(path, reason="invalid_admitted_source_path")
+            for path in _sequence(raw_roots, field="admitted_source_paths")
+        )
+        requested_roots = tuple(
+            _canonical_path(path, reason="invalid_requested_graph_path")
+            for path in _sequence(requested_select_paths, field="requested_select_paths")
+        ) if requested_select_paths else ()
+        if requested_roots and any(
+            not any(_path_within(path, allowed_root) for allowed_root in allowed_roots)
+            for path in requested_roots
+        ):
+            raise SourceAdmissionError("client_graph_scope_widening_denied")
+
+        effective_roots = tuple(dict.fromkeys(requested_roots or allowed_roots))
+        excluded_roots = tuple(
+            _canonical_path(path, reason="invalid_requested_graph_path")
+            for path in _sequence(requested_exclude_paths, field="requested_exclude_paths")
+        ) if requested_exclude_paths else ()
+        if any(
+            not any(_path_within(path, selected_root) for selected_root in effective_roots)
+            for path in excluded_roots
+        ):
+            raise SourceAdmissionError("client_graph_scope_widening_denied")
+
+        select_domains = admission.get("select_domains")
+        if not isinstance(select_domains, list) or not select_domains:
+            raise SourceAdmissionError("server_graph_domain_scope_missing")
+        return {
+            "select_domains": [str(value) for value in select_domains],
+            "select_paths": [_graph_path_pattern(path) for path in effective_roots],
+            "exclude_paths": [_graph_path_pattern(path) for path in dict.fromkeys(excluded_roots)],
         }
 
     def authorize_content_url(self, *, source_id: str, url: str, operation: str) -> dict[str, Any]:
@@ -159,38 +315,26 @@ class TavilySourceAdmissionPolicy:
 
         approved = _parsed_https_url(str(source.get("url") or ""))
         requested = _parsed_https_url(url)
-        if _host(approved.geturl()) != _host(requested.geturl()):
+        approved_host = _host(approved.geturl())
+        requested_host = _host(requested.geturl())
+        if approved_host != requested_host:
             raise SourceAdmissionError("source_host_not_admitted")
         if requested.query and _record_value(source, "allow_query_parameters") is not True:
             raise SourceAdmissionError("source_query_parameters_not_admitted")
 
-        approved_path = approved.path or "/"
-        raw_paths = _record_value(source, "allowed_paths")
-        allowed_paths = (
-            [str(path) for path in raw_paths]
-            if isinstance(raw_paths, Sequence) and not isinstance(raw_paths, (str, bytes))
-            else []
-        )
-        if allowed_paths:
-            canonical_paths = []
-            for path in allowed_paths:
-                if not path.startswith("/") or ".." in path or "//" in path:
-                    raise SourceAdmissionError("invalid_admitted_source_path")
-                canonical_paths.append(path)
-            path_allowed = any(
-                requested.path == path.rstrip("/") or requested.path.startswith(path.rstrip("/") + "/")
-                for path in canonical_paths
-            )
-        else:
-            path_allowed = requested.path.rstrip("/") == approved_path.rstrip("/")
-        if not path_allowed:
+        approved_path = _canonical_path(approved.path or "/", reason="invalid_admitted_source_path")
+        requested_path = _canonical_path(requested.path or "/", reason="source_path_not_admitted")
+        allowed_roots = _source_path_roots(source, approved_path)
+        if not any(_path_within(requested_path, root) for root in allowed_roots):
             raise SourceAdmissionError("source_path_not_admitted")
 
         return {
             "operation": operation,
             "source_id": source_id,
-            "host": _host(requested.geturl()),
-            "path": requested.path or "/",
+            "host": requested_host,
+            "path": requested_path,
+            "allowed_path_roots": list(allowed_roots),
+            "select_domains": [rf"^{re.escape(requested_host)}$"],
             "organization_scope": str(_record_value(source, "organization_id", _PLATFORM_SCOPE) or _PLATFORM_SCOPE),
             "project_scope": str(_record_value(source, "project_id", "*") or "*"),
             "terms_hash": terms_hash,
