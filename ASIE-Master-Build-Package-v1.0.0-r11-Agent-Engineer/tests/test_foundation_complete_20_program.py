@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -100,3 +101,24 @@ def test_complete_state_requires_executable_evidence_not_documentation() -> None
             evidence = package.get("completion_evidence", {})
             assert required.issubset(evidence)
             assert all(evidence[key] for key in required)
+
+
+def test_active_and_complete_packages_have_completed_dependencies() -> None:
+    packages = {package["id"]: package for package in load_manifest()["packages"]}
+    in_progress = [package for package in packages.values() if package["state"] == "IN_PROGRESS"]
+    assert len(in_progress) <= 1
+    for package in packages.values():
+        if package["state"] in {"IN_PROGRESS", "COMPLETE"}:
+            assert all(packages[dependency]["state"] == "COMPLETE" for dependency in package["depends_on"])
+
+
+def test_complete_package_evidence_uses_exact_sha_and_workflow_ids() -> None:
+    for package in load_manifest()["packages"]:
+        if package["state"] != "COMPLETE":
+            continue
+        evidence = package["completion_evidence"]
+        assert re.fullmatch(r"[0-9a-f]{40}", evidence["commit_sha"])
+        workflow_ids = evidence["workflow_run_id"]
+        assert isinstance(workflow_ids, list) and workflow_ids
+        assert all(str(workflow_id).isdigit() for workflow_id in workflow_ids)
+        assert evidence["residual_risk_review"]["frozen_files_changed"] is False
