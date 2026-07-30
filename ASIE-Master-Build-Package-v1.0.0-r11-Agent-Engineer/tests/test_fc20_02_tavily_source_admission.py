@@ -22,8 +22,14 @@ class RecordingTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"provider_id": provider_id, "url": url, "body": dict(body or {})})
+        self.calls.append({
+            "provider_id": provider_id,
+            "url": url,
+            "body": dict(body or {}),
+            "security_context": dict(security_context or {}),
+        })
         return {
             "provider_id": provider_id,
             "payload": {"results": []},

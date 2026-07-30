@@ -14,6 +14,8 @@ def test_preflight_configuration_mode_exposes_no_secrets(monkeypatch) -> None:
     assert result["pinecone"]["index_name"] == "vision2030-kb"
     assert result["secrets_exposed"] is False
     assert result["network_policy"]["enabled"] is False
+    assert result["provider_security"]["enabled"] is False
+    assert result["provider_security"]["network_authorized"] is False
 
 
 def test_network_preflight_fails_closed_when_external_fetch_is_disabled(monkeypatch) -> None:
@@ -22,3 +24,13 @@ def test_network_preflight_fails_closed_when_external_fetch_is_disabled(monkeypa
     result = run(True)
     assert result["status"] == "blocked_external_network_disabled"
     assert result["secrets_exposed"] is False
+
+
+def test_network_preflight_fails_before_transport_when_control_plane_is_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("ASIE_ALLOW_EXTERNAL_FETCH", "true")
+    monkeypatch.setenv("ASIE_EXTERNAL_ALLOWED_HOSTS", "api.pinecone.io,*.pinecone.io")
+    monkeypatch.setenv("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", "false")
+    result = run(True)
+    assert result["status"] == "blocked_provider_control_plane_disabled"
+    assert result["secrets_exposed"] is False
+    assert result["provider_security"]["enabled"] is False

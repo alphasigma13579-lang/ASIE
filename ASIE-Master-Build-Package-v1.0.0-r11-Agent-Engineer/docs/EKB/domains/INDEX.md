@@ -49,6 +49,7 @@
 ## Security
 
 - `Security-Auth-Tenant-Isolation`: جلسات، صلاحيات، عزل، fail closed.
+- [`External-Provider-Security-Control-Plane`](External-Provider-Security-Control-Plane.md): تفعيل مستقل، host/operation binding، quotas، budgets، circuit breakers، kill switches، وpreflight fail-closed.
 
 ## Deployment
 
