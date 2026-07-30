@@ -5,15 +5,21 @@ import hashlib
 import json
 import os
 import re
+import time
 from typing import Any, Mapping, Protocol, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request
 
 from backend.external_acquisition import (
     ExternalAcquisitionError,
     GovernedExternalAcquisitionGateway,
     _utc_now,
+)
+from backend.provider_security_control_plane import (
+    ProviderAdmission,
+    ProviderSecurityControlPlane,
+    ProviderSecurityError,
 )
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 
@@ -32,6 +38,7 @@ class ProviderTransport(Protocol):
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def request_ndjson(
@@ -42,19 +49,28 @@ class ProviderTransport(Protocol):
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
 
 class GovernedProviderTransport:
-    """POST/GET transport that reuses the governed acquisition network policy.
+    """Provider transport admitted by both provider and network control planes.
 
     Request bodies and authorization headers are never written to the audit sink.
-    Provider payloads are returned to the caller for immediate validation and review,
-    but are not persisted by this transport.
+    Provider payloads are returned for immediate validation and review, but are
+    not persisted by this transport.
     """
 
-    def __init__(self, gateway: GovernedExternalAcquisitionGateway | None = None) -> None:
+    def __init__(
+        self,
+        gateway: GovernedExternalAcquisitionGateway | None = None,
+        *,
+        control_plane: ProviderSecurityControlPlane | None = None,
+        sleep: Any = time.sleep,
+    ) -> None:
         self.gateway = gateway or GovernedExternalAcquisitionGateway()
+        self.control_plane = control_plane or ProviderSecurityControlPlane.from_env()
+        self.sleep = sleep
 
     def request_json(
         self,
@@ -65,6 +81,7 @@ class GovernedProviderTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         encoded = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._request(
@@ -76,6 +93,7 @@ class GovernedProviderTransport:
             content_type="application/json",
             expected_statuses=expected_statuses,
             parse_json=True,
+            security_context=security_context,
         )
 
     def request_ndjson(
@@ -86,6 +104,7 @@ class GovernedProviderTransport:
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload = "\n".join(json.dumps(record, ensure_ascii=False, separators=(",", ":")) for record in records).encode("utf-8")
         return self._request(
@@ -97,6 +116,7 @@ class GovernedProviderTransport:
             content_type="application/x-ndjson",
             expected_statuses=expected_statuses,
             parse_json=False,
+            security_context=security_context,
         )
 
     def _request(
@@ -110,11 +130,25 @@ class GovernedProviderTransport:
         content_type: str,
         expected_statuses: Sequence[int],
         parse_json: bool,
+        security_context: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
         if not provider_id.strip():
             raise ExternalAcquisitionError("provider_id_required")
-        parsed = self.gateway._validate_url(url)
-        self.gateway.rate_limiter.wait(parsed.hostname or "")
+        try:
+            admission = self.control_plane.authorize(
+                provider_id=provider_id,
+                url=url,
+                context=security_context,
+            )
+        except ProviderSecurityError as exc:
+            host = ""
+            try:
+                host = urlsplit(url).hostname or ""
+            except ValueError:
+                pass
+            self._audit(provider_id, host, "rejected", str(exc))
+            raise ExternalAcquisitionError(str(exc)) from exc
+
         request_headers = {
             "Accept": "application/json",
             "Content-Type": content_type,
@@ -122,21 +156,62 @@ class GovernedProviderTransport:
         }
         request_headers.update({str(key): str(value) for key, value in (headers or {}).items()})
         request = Request(url, data=data, headers=request_headers, method=method.upper())
-        try:
-            with self.gateway.opener.open(request, timeout=self.gateway.policy.timeout_seconds) as response:
-                final_url = response.geturl()
-                self.gateway._validate_url(final_url)
-                status = int(getattr(response, "status", 200))
-                if status not in set(expected_statuses):
-                    raise ExternalAcquisitionError(f"provider_http_status:{status}")
-                response_body = self.gateway._read_limited(response)
-        except ExternalAcquisitionError as exc:
-            self._audit(provider_id, parsed.hostname or "", "rejected", str(exc))
-            raise
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
-            reason = f"provider_transport_error:{type(exc).__name__}"
-            self._audit(provider_id, parsed.hostname or "", "failed", reason)
-            raise ExternalAcquisitionError(reason) from exc
+        attempts = admission.max_get_attempts if method.upper() == "GET" else 1
+        parsed = None
+        response_body = b""
+        final_url = url
+        status = 0
+
+        for attempt in range(1, attempts + 1):
+            try:
+                parsed = self.gateway._validate_url(url)
+                self.gateway.rate_limiter.wait(parsed.hostname or "")
+                with self.gateway.opener.open(
+                    request,
+                    timeout=min(self.gateway.policy.timeout_seconds, admission.timeout_seconds),
+                ) as response:
+                    final_url = response.geturl()
+                    self.gateway._validate_url(final_url)
+                    status = int(getattr(response, "status", 200))
+                    if status not in set(expected_statuses):
+                        raise ExternalAcquisitionError(f"provider_http_status:{status}")
+                    response_limit = min(
+                        self.gateway.policy.max_response_bytes,
+                        admission.max_response_bytes,
+                    )
+                    response_body = response.read(response_limit + 1)
+                    if len(response_body) > response_limit:
+                        raise ExternalAcquisitionError("provider_response_too_large")
+                break
+            except HTTPError as exc:
+                transient = exc.code in {408, 425, 429, 500, 502, 503, 504}
+                if transient and attempt < attempts:
+                    self._audit(provider_id, urlsplit(url).hostname or "", "retry", f"provider_http_status:{exc.code}", admission)
+                    self.sleep(admission.retry_delay_seconds * attempt)
+                    continue
+                self.control_plane.record_failure(admission, transient=transient)
+                reason = f"provider_http_status:{exc.code}"
+                self._audit(provider_id, urlsplit(url).hostname or "", "failed", reason, admission)
+                raise ExternalAcquisitionError(reason) from exc
+            except (URLError, TimeoutError, OSError) as exc:
+                if attempt < attempts:
+                    self._audit(provider_id, urlsplit(url).hostname or "", "retry", f"provider_transport_error:{type(exc).__name__}", admission)
+                    self.sleep(admission.retry_delay_seconds * attempt)
+                    continue
+                self.control_plane.record_failure(admission, transient=True)
+                reason = f"provider_transport_error:{type(exc).__name__}"
+                self._audit(provider_id, urlsplit(url).hostname or "", "failed", reason, admission)
+                raise ExternalAcquisitionError(reason) from exc
+            except ExternalAcquisitionError as exc:
+                self.control_plane.record_failure(admission, transient=False)
+                host = parsed.hostname if parsed is not None else (urlsplit(url).hostname or "")
+                self._audit(provider_id, host, "rejected", str(exc), admission)
+                raise
+            except ValueError as exc:
+                self.control_plane.record_failure(admission, transient=False)
+                reason = "provider_transport_error:ValueError"
+                self._audit(provider_id, urlsplit(url).hostname or "", "failed", reason, admission)
+                raise ExternalAcquisitionError(reason) from exc
 
         digest = hashlib.sha256(response_body).hexdigest()
         if not response_body:
@@ -145,24 +220,32 @@ class GovernedProviderTransport:
             try:
                 payload = json.loads(response_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                self._audit(provider_id, parsed.hostname or "", "failed", "invalid_provider_json")
+                self.control_plane.record_failure(admission, transient=False)
+                self._audit(provider_id, parsed.hostname if parsed else "", "failed", "invalid_provider_json", admission)
                 raise ExternalAcquisitionError("invalid_provider_json") from exc
         else:
             payload = {"accepted": True}
+
+        self.control_plane.record_success(admission)
+        metadata = {
+            **admission.audit_metadata(),
+            "host": parsed.hostname if parsed else "",
+            "method": method.upper(),
+            "status_code": status,
+            "response_bytes": len(response_body),
+            "sha256": digest,
+            "attempt_count": attempt,
+        }
         self.gateway.audit_sink.record(
             event_type="live_provider_request",
             outcome="success",
-            metadata={
-                "provider_id": provider_id,
-                "host": parsed.hostname,
-                "method": method.upper(),
-                "status_code": status,
-                "response_bytes": len(response_body),
-                "sha256": digest,
-            },
+            metadata=metadata,
         )
         return {
             "provider_id": provider_id,
+            "provider_operation": admission.operation,
+            "provider_contract_version": admission.contract_version,
+            "tenant_scope_ref": admission.scope_ref,
             "url": final_url,
             "status_code": status,
             "response_bytes": len(response_body),
@@ -174,13 +257,26 @@ class GovernedProviderTransport:
             "eligible_for_controlled_assumptions": False,
         }
 
-    def _audit(self, provider_id: str, host: str, outcome: str, reason: str) -> None:
+    def _audit(
+        self,
+        provider_id: str,
+        host: str,
+        outcome: str,
+        reason: str,
+        admission: ProviderAdmission | None = None,
+    ) -> None:
+        metadata: dict[str, Any] = {
+            "provider_id": provider_id,
+            "host": host,
+            "reason": reason,
+        }
+        if admission is not None:
+            metadata.update(admission.audit_metadata())
         self.gateway.audit_sink.record(
             event_type="live_provider_request",
             outcome=outcome,
-            metadata={"provider_id": provider_id, "host": host, "reason": reason},
+            metadata=metadata,
         )
-
 
 def _required_secret(name: str) -> str:
     value = os.getenv(name, "").strip()
