@@ -179,3 +179,109 @@ def test_discovery_is_server_bound_and_always_review_required() -> None:
     assert result["source_admission"]["source_ids"] == ["MONSHAAT_OPEN_DATA"]
     assert result["review_status"] == "review_required"
     assert result["eligible_for_controlled_assumptions"] is False
+
+
+def test_client_crawl_path_cannot_widen_server_allowed_roots() -> None:
+    client, transport = client_for([reviewed_source()])
+    with pytest.raises(SourceAdmissionError, match="client_graph_scope_widening_denied"):
+        client.crawl(
+            source_id="MONSHAAT_OPEN_DATA",
+            url="https://monshaat.gov.sa/open-data",
+            instructions="crawl",
+            select_paths=["/private"],
+        )
+    assert transport.calls == []
+
+
+def test_crawl_uses_server_derived_domain_and_path_filters_by_default() -> None:
+    client, transport = client_for([reviewed_source()])
+    client.crawl(
+        source_id="MONSHAAT_OPEN_DATA",
+        url="https://monshaat.gov.sa/open-data",
+        instructions="crawl",
+    )
+    body = transport.calls[0]["body"]
+    assert body["select_domains"] == [r"^monshaat\.gov\.sa$"]
+    assert body["select_paths"] == [r"^/open\-data(?:/.*)?$"]
+    assert body["exclude_paths"] == []
+    assert body["allow_external"] is False
+
+
+def test_client_can_only_narrow_crawl_to_literal_subpaths() -> None:
+    client, transport = client_for([reviewed_source()])
+    client.crawl(
+        source_id="MONSHAAT_OPEN_DATA",
+        url="https://monshaat.gov.sa/open-data",
+        instructions="crawl",
+        select_paths=["/open-data/reports"],
+        exclude_paths=["/open-data/reports/archive"],
+    )
+    body = transport.calls[0]["body"]
+    assert body["select_paths"] == [r"^/open\-data/reports(?:/.*)?$"]
+    assert body["exclude_paths"] == [r"^/open\-data/reports/archive(?:/.*)?$"]
+
+
+def test_map_uses_the_same_server_owned_graph_scope() -> None:
+    client, transport = client_for([reviewed_source()])
+    client.map_site(
+        source_id="MONSHAAT_OPEN_DATA",
+        url="https://monshaat.gov.sa/open-data",
+        instructions="map",
+    )
+    body = transport.calls[0]["body"]
+    assert body["select_domains"] == [r"^monshaat\.gov\.sa$"]
+    assert body["select_paths"] == [r"^/open\-data(?:/.*)?$"]
+    assert body["exclude_paths"] == []
+    assert body["allow_external"] is False
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("https://127.0.0.1/open-data", "source_ip_literal_denied"),
+        ("https://localhost/open-data", "source_private_host_denied"),
+        ("https://registry.internal/open-data", "source_private_host_denied"),
+    ],
+)
+def test_internal_or_ip_source_hosts_are_denied_before_transport(url: str, reason: str) -> None:
+    source = reviewed_source()
+    source["url"] = url
+    client, transport = client_for([source])
+    with pytest.raises(SourceAdmissionError, match=reason):
+        client.crawl(
+            source_id="MONSHAAT_OPEN_DATA",
+            url=url,
+            instructions="crawl",
+        )
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://monshaat.gov.sa/open-data/%2e%2e/private",
+        "https://monshaat.gov.sa/open-data/%5cprivate",
+        "https://monshaat.gov.sa/open-data/%252e%252e/private",
+    ],
+)
+def test_ambiguous_or_encoded_path_escape_is_denied_before_transport(url: str) -> None:
+    client, transport = client_for([reviewed_source()])
+    with pytest.raises(SourceAdmissionError, match="source_path_not_admitted"):
+        client.crawl(
+            source_id="MONSHAAT_OPEN_DATA",
+            url=url,
+            instructions="crawl",
+        )
+    assert transport.calls == []
+
+
+def test_client_exclude_domains_cannot_escape_server_discovery_scope() -> None:
+    client, transport = client_for([reviewed_source()])
+    with pytest.raises(SourceAdmissionError, match="client_discovery_scope_widening_denied"):
+        client.search(
+            query="Saudi SME market",
+            sector_id="sme",
+            geography="saudi_arabia",
+            exclude_domains=["evil.example"],
+        )
+    assert transport.calls == []
