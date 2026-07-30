@@ -18,6 +18,14 @@ class LiveProviderDefinition:
     sovereign_verdict_owner: bool
     persistence_policy: str
     activation_gate: str
+    allowed_operations: tuple[str, ...]
+    preflight_operations: tuple[str, ...]
+    contract_version: str
+    default_timeout_seconds: float
+    default_max_response_bytes: int
+    default_requests_per_window: int
+    default_cost_units_per_window: int
+    default_max_get_attempts: int
 
     def status(self) -> dict[str, Any]:
         configured_secrets = [name for name in self.secret_env_names if bool(os.getenv(name, "").strip())]
@@ -36,6 +44,14 @@ class LiveProviderDefinition:
             "sovereign_verdict_owner": self.sovereign_verdict_owner,
             "persistence_policy": self.persistence_policy,
             "activation_gate": self.activation_gate,
+            "allowed_operations": list(self.allowed_operations),
+            "preflight_operations": list(self.preflight_operations),
+            "contract_version": self.contract_version,
+            "default_timeout_seconds": self.default_timeout_seconds,
+            "default_max_response_bytes": self.default_max_response_bytes,
+            "default_requests_per_window": self.default_requests_per_window,
+            "default_cost_units_per_window": self.default_cost_units_per_window,
+            "default_max_get_attempts": self.default_max_get_attempts,
             "secret_values_exposed": False,
         }
 
@@ -46,13 +62,21 @@ LIVE_PROVIDER_CATALOG: tuple[LiveProviderDefinition, ...] = (
         role="governed_narrative_and_reasoning_provider",
         base_hosts=("api.deepseek.com",),
         secret_env_names=("DEEPSEEK_API_KEY",),
-        optional_env_names=("DEEPSEEK_MODEL", "DEEPSEEK_TIMEOUT_SECONDS"),
+        optional_env_names=("DEEPSEEK_MODEL",),
         default_model="deepseek-v4-flash",
         source_of_truth=False,
         controlled_numbers_owner=False,
         sovereign_verdict_owner=False,
         persistence_policy="store_template_hash_context_refs_validation_and_review_only",
         activation_gate="AIA_IACR_PROVIDER_ACTIVATION_AND_HUMAN_REVIEW_REQUIRED",
+        allowed_operations=("create_narrative",),
+        preflight_operations=(),
+        contract_version="asie-deepseek-chat-contract-v1",
+        default_timeout_seconds=20.0,
+        default_max_response_bytes=1_048_576,
+        default_requests_per_window=20,
+        default_cost_units_per_window=80,
+        default_max_get_attempts=1,
     ),
     LiveProviderDefinition(
         provider_id="tavily",
@@ -66,6 +90,14 @@ LIVE_PROVIDER_CATALOG: tuple[LiveProviderDefinition, ...] = (
         sovereign_verdict_owner=False,
         persistence_policy="retain_discovered_source_url_hash_timestamp_and_review_state",
         activation_gate="SOURCE_TERMS_ALLOWLIST_AND_EVIDENCE_REVIEW_REQUIRED",
+        allowed_operations=("search", "extract", "crawl", "map"),
+        preflight_operations=(),
+        contract_version="asie-tavily-research-contract-v1",
+        default_timeout_seconds=20.0,
+        default_max_response_bytes=2_097_152,
+        default_requests_per_window=30,
+        default_cost_units_per_window=120,
+        default_max_get_attempts=1,
     ),
     LiveProviderDefinition(
         provider_id="google_maps_platform",
@@ -83,13 +115,22 @@ LIVE_PROVIDER_CATALOG: tuple[LiveProviderDefinition, ...] = (
         sovereign_verdict_owner=False,
         persistence_policy="location_identity_only_until_google_terms_review_approves_other_storage",
         activation_gate="GOOGLE_TERMS_KEY_RESTRICTIONS_AND_LOCATION_CONSENT_REQUIRED",
+        allowed_operations=("geocode_address", "search_places_text"),
+        preflight_operations=(),
+        contract_version="asie-google-maps-contract-v1",
+        default_timeout_seconds=10.0,
+        default_max_response_bytes=1_048_576,
+        default_requests_per_window=60,
+        default_cost_units_per_window=120,
+        default_max_get_attempts=2,
     ),
     LiveProviderDefinition(
         provider_id="pinecone",
         role="knowledge_vector_storage_and_semantic_retrieval",
         base_hosts=("api.pinecone.io", "*.pinecone.io"),
-        secret_env_names=("PINECONE_API_KEY", "PINECONE_INDEX"),
+        secret_env_names=("PINECONE_API_KEY",),
         optional_env_names=(
+            "PINECONE_INDEX",
             "PINECONE_API_VERSION",
             "PINECONE_CLOUD",
             "PINECONE_REGION",
@@ -102,6 +143,14 @@ LIVE_PROVIDER_CATALOG: tuple[LiveProviderDefinition, ...] = (
         sovereign_verdict_owner=False,
         persistence_policy="approved_chunks_only_with_tenant_project_source_and_evidence_metadata",
         activation_gate="TENANT_NAMESPACE_RETENTION_DELETION_AND_DATA_CLASSIFICATION_REVIEW_REQUIRED",
+        allowed_operations=("describe_index", "upsert_approved_text", "search_text"),
+        preflight_operations=("describe_index",),
+        contract_version="asie-pinecone-data-contract-v1",
+        default_timeout_seconds=12.0,
+        default_max_response_bytes=2_097_152,
+        default_requests_per_window=40,
+        default_cost_units_per_window=200,
+        default_max_get_attempts=2,
     ),
 )
 
@@ -109,7 +158,7 @@ LIVE_PROVIDER_CATALOG: tuple[LiveProviderDefinition, ...] = (
 def provider_catalog_snapshot() -> dict[str, Any]:
     providers = [provider.status() for provider in LIVE_PROVIDER_CATALOG]
     return {
-        "catalog_id": "asie-live-provider-catalog-v1",
+        "catalog_id": "asie-live-provider-catalog-v2",
         "providers": providers,
         "provider_count": len(providers),
         "configured_provider_count": sum(1 for provider in providers if provider["configured"]),
