@@ -304,6 +304,23 @@ def tenant_project_namespace(organization_id: str, project_id: str, prefix: str 
     return f"{safe_prefix}-o-{_namespace_part(organization_id)}-p-{_namespace_part(project_id)}"
 
 
+def _provider_security_context(
+    organization_id: str,
+    project_id: str,
+    operation: str,
+    *,
+    cost_units: int = 1,
+    preflight: bool = False,
+) -> dict[str, Any]:
+    return {
+        "organization_id": organization_id,
+        "project_id": project_id,
+        "operation": operation,
+        "cost_units": cost_units,
+        "preflight": preflight,
+    }
+
+
 @dataclass
 class DeepSeekNarrativeClient:
     transport: ProviderTransport
@@ -321,6 +338,8 @@ class DeepSeekNarrativeClient:
     def create_narrative(
         self,
         *,
+        organization_id: str,
+        project_id: str,
         request_id: str,
         prompt_template_id: str,
         prompt_hash: str,
@@ -348,6 +367,12 @@ class DeepSeekNarrativeClient:
         response = self.transport.request_json(
             provider_id="deepseek",
             url="https://api.deepseek.com/chat/completions",
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "create_narrative",
+                cost_units=max(1, (max_tokens + 999) // 1_000),
+            ),
             headers={"Authorization": f"Bearer {self.api_key}"},
             body={
                 "model": self.model,
@@ -443,6 +468,12 @@ class TavilyResearchClient:
         response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/search",
+            security_context=_provider_security_context(
+                self._admission().organization_id,
+                self._admission().project_id,
+                "search",
+                cost_units=max_results,
+            ),
             headers=self._headers(),
             body=body,
         )
@@ -486,6 +517,12 @@ class TavilyResearchClient:
         response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/extract",
+            security_context=_provider_security_context(
+                self._admission().organization_id,
+                self._admission().project_id,
+                "extract",
+                cost_units=len(urls) * (2 if depth == "advanced" else 1),
+            ),
             headers=self._headers(),
             body=body,
         )
@@ -523,6 +560,12 @@ class TavilyResearchClient:
         response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/crawl",
+            security_context=_provider_security_context(
+                policy.organization_id,
+                policy.project_id,
+                "crawl",
+                cost_units=max(1, (limit + 9) // 10),
+            ),
             headers=self._headers(),
             body={
                 "url": _bounded_text(url, field="url", maximum=2_000),
@@ -566,6 +609,12 @@ class TavilyResearchClient:
         response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/map",
+            security_context=_provider_security_context(
+                policy.organization_id,
+                policy.project_id,
+                "map",
+                cost_units=max(1, (limit + 19) // 20),
+            ),
             headers=self._headers(),
             body={
                 "url": _bounded_text(url, field="url", maximum=2_000),
@@ -603,12 +652,23 @@ class GoogleLocationClient:
             region_code=os.getenv("GOOGLE_MAPS_REGION", "SA").strip() or "SA",
         )
 
-    def geocode_address(self, address: str) -> dict[str, Any]:
+    def geocode_address(
+        self,
+        address: str,
+        *,
+        organization_id: str,
+        project_id: str,
+    ) -> dict[str, Any]:
         encoded = quote(_bounded_text(address, field="address", maximum=1_500), safe="")
         return self.transport.request_json(
             provider_id="google_maps_platform",
             method="GET",
             url=f"https://geocode.googleapis.com/v4/geocode/address/{encoded}",
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "geocode_address",
+            ),
             headers={
                 "X-Goog-Api-Key": self.api_key,
                 "X-Goog-FieldMask": "results.placeId,results.location,results.formattedAddress,results.addressComponents,results.viewport,results.granularity",
@@ -620,6 +680,8 @@ class GoogleLocationClient:
     def search_places_text(
         self,
         *,
+        organization_id: str,
+        project_id: str,
         text_query: str,
         latitude: float | None = None,
         longitude: float | None = None,
@@ -650,6 +712,12 @@ class GoogleLocationClient:
         response = self.transport.request_json(
             provider_id="google_maps_platform",
             url="https://places.googleapis.com/v1/places:searchText",
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "search_places_text",
+                cost_units=page_size,
+            ),
             headers={
                 "X-Goog-Api-Key": self.api_key,
                 "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.businessStatus,places.googleMapsUri",
@@ -685,11 +753,23 @@ class PineconeKnowledgeClient:
     def _headers(self) -> dict[str, str]:
         return {"Api-Key": self.api_key, "X-Pinecone-Api-Version": self.api_version}
 
-    def describe_index(self) -> dict[str, Any]:
+    def describe_index(
+        self,
+        *,
+        organization_id: str = "__platform__",
+        project_id: str = "provider-preflight",
+        preflight: bool = True,
+    ) -> dict[str, Any]:
         response = self.transport.request_json(
             provider_id="pinecone",
             method="GET",
             url=f"https://api.pinecone.io/indexes/{quote(self.index_name, safe='')}",
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "describe_index",
+                preflight=preflight,
+            ),
             headers=self._headers(),
             body=None,
         )
@@ -708,9 +788,13 @@ class PineconeKnowledgeClient:
             "pinecone_is_source_of_truth": False,
         }
 
-    def _host(self) -> str:
+    def _host(self, organization_id: str, project_id: str) -> str:
         if not self._index_host:
-            self.describe_index()
+            self.describe_index(
+                organization_id=organization_id,
+                project_id=project_id,
+                preflight=False,
+            )
         if not self._index_host:
             raise ExternalAcquisitionError("pinecone_index_host_unavailable")
         return self._index_host
@@ -751,9 +835,15 @@ class PineconeKnowledgeClient:
             )
         response = self.transport.request_ndjson(
             provider_id="pinecone",
-            url=f"https://{self._host()}/records/namespaces/{quote(namespace, safe='')}/upsert",
+            url=f"https://{self._host(organization_id, project_id)}/records/namespaces/{quote(namespace, safe='')}/upsert",
             headers=self._headers(),
             records=safe_records,
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "upsert_approved_text",
+                cost_units=len(safe_records),
+            ),
         )
         return {
             **response,
@@ -778,8 +868,14 @@ class PineconeKnowledgeClient:
         namespace = tenant_project_namespace(organization_id, project_id, self.namespace_prefix)
         response = self.transport.request_json(
             provider_id="pinecone",
-            url=f"https://{self._host()}/records/namespaces/{quote(namespace, safe='')}/search",
+            url=f"https://{self._host(organization_id, project_id)}/records/namespaces/{quote(namespace, safe='')}/search",
             headers=self._headers(),
+            security_context=_provider_security_context(
+                organization_id,
+                project_id,
+                "search_text",
+                cost_units=top_k,
+            ),
             body={
                 "query": {"inputs": {"text": _bounded_text(query, field="query", maximum=2_000)}, "top_k": top_k},
                 "fields": list(fields),
