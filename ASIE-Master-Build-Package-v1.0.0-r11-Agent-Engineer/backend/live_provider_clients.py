@@ -328,6 +328,7 @@ class TavilyResearchClient:
             sector_id=sector_id,
             geography=geography,
             requested_include_domains=include_domains,
+            requested_exclude_domains=exclude_domains,
         )
         body: dict[str, Any] = {
             "query": _bounded_text(query, field="query", maximum=1_000),
@@ -335,7 +336,7 @@ class TavilyResearchClient:
             "topic": topic,
             "max_results": max_results,
             "include_domains": admission["include_domains"],
-            "exclude_domains": list(exclude_domains),
+            "exclude_domains": admission["exclude_domains"],
             "include_answer": False,
             "include_raw_content": False,
             "include_images": False,
@@ -412,10 +413,16 @@ class TavilyResearchClient:
     ) -> dict[str, Any]:
         if max_depth < 1 or max_depth > 5 or limit < 1 or limit > 200:
             raise ProviderConfigurationError("invalid_tavily_crawl_bounds")
-        admission = self._admission().authorize_content_url(
+        policy = self._admission()
+        admission = policy.authorize_content_url(
             source_id=source_id,
             url=url,
             operation="crawl",
+        )
+        graph_scope = policy.authorize_graph_scope(
+            admission=admission,
+            requested_select_paths=select_paths,
+            requested_exclude_paths=exclude_paths,
         )
         response = self.transport.request_json(
             provider_id="tavily",
@@ -426,8 +433,9 @@ class TavilyResearchClient:
                 "instructions": _bounded_text(instructions, field="instructions", maximum=2_000),
                 "max_depth": max_depth,
                 "limit": limit,
-                "select_paths": list(select_paths),
-                "exclude_paths": list(exclude_paths),
+                "select_domains": graph_scope["select_domains"],
+                "select_paths": graph_scope["select_paths"],
+                "exclude_paths": graph_scope["exclude_paths"],
                 "allow_external": False,
                 "extract_depth": "basic",
                 "include_images": False,
@@ -452,11 +460,13 @@ class TavilyResearchClient:
     ) -> dict[str, Any]:
         if max_depth < 1 or max_depth > 5 or limit < 1 or limit > 500:
             raise ProviderConfigurationError("invalid_tavily_map_bounds")
-        admission = self._admission().authorize_content_url(
+        policy = self._admission()
+        admission = policy.authorize_content_url(
             source_id=source_id,
             url=url,
             operation="map",
         )
+        graph_scope = policy.authorize_graph_scope(admission=admission)
         response = self.transport.request_json(
             provider_id="tavily",
             url="https://api.tavily.com/map",
@@ -466,6 +476,9 @@ class TavilyResearchClient:
                 "instructions": _bounded_text(instructions, field="instructions", maximum=2_000),
                 "max_depth": max_depth,
                 "limit": limit,
+                "select_domains": graph_scope["select_domains"],
+                "select_paths": graph_scope["select_paths"],
+                "exclude_paths": graph_scope["exclude_paths"],
                 "allow_external": False,
                 "include_usage": True,
             },

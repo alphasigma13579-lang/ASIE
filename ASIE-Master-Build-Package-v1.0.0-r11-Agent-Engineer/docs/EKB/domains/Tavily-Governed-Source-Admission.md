@@ -25,7 +25,7 @@
 
 ## قاعدة الاستخراج والزحف
 
-`extract/crawl/map` تتطلب مصدرًا `enabled` وموافقة `reviewer_decision=approved` وجميع أدلة الشروط والترخيص والنسبة والتصنيف وPDPL/NCA والغرض المشروع. المضيف والمسار يطابقان السجل حرفيًا ضمن `allowed_paths`. query parameters ممنوعة افتراضيًا.
+`extract/crawl/map` تتطلب مصدرًا `enabled` وموافقة `reviewer_decision=approved` وجميع أدلة الشروط والترخيص والنسبة والتصنيف وPDPL/NCA والغرض المشروع. المضيف والمسار يطابقان السجل حرفيًا ضمن `allowed_paths`. query parameters ممنوعة افتراضيًا. يرسل `crawl/map` فلاتر `select_domains/select_paths` مشتقة من السجل؛ يمكن للعميل تضييق المسار بمسار حرفي داخل الجذر فقط، ولا يستطيع تمرير regex حر أو توسيع الرسم الشبكي. تُرفض IP literals وlocalhost والنطاقات الداخلية والمسارات ذات dot-segments أو الترميز المزدوج.
 
 ## الحالة الحالية للمصادر البذرية
 
