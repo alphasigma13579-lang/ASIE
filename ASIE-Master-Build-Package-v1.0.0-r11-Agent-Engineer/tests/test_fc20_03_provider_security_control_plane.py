@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -14,6 +15,7 @@ from backend.provider_security_control_plane import (
     ProviderRuntimePolicy,
     ProviderSecurityControlPlane,
     ProviderSecurityError,
+    SQLiteProviderControlStore,
 )
 
 
@@ -343,3 +345,115 @@ def test_disabled_control_plane_denies_before_gateway_validation_or_open() -> No
     assert gateway.validations == 0
     assert opener.calls == 0
     assert "must-not-appear" not in json.dumps(gateway.audit_sink.snapshot())
+
+
+def test_sqlite_store_persists_quota_across_control_plane_instances(tmp_path) -> None:
+    database = tmp_path / "provider-control.sqlite3"
+    first_plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=2, cost_units=10)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(database)),
+    )
+    second_plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=2, cost_units=10)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(database)),
+    )
+    first_plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search"),
+    )
+    second_plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search"),
+    )
+    with pytest.raises(ProviderSecurityError, match="provider_request_quota_exhausted"):
+        first_plane.authorize(
+            provider_id="tavily",
+            url="https://api.tavily.com/search",
+            context=context("search"),
+        )
+
+
+def test_sqlite_admission_is_atomic_under_concurrent_workers(tmp_path) -> None:
+    plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=5, cost_units=100)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(tmp_path / "atomic.sqlite3")),
+    )
+
+    def attempt(_: int) -> str:
+        try:
+            plane.authorize(
+                provider_id="tavily",
+                url="https://api.tavily.com/search",
+                context=context("search"),
+            )
+            return "allowed"
+        except ProviderSecurityError as exc:
+            return str(exc)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        outcomes = list(executor.map(attempt, range(20)))
+    assert outcomes.count("allowed") == 5
+    assert outcomes.count("provider_request_quota_exhausted") == 15
+
+
+def test_sqlite_circuit_state_survives_new_control_plane_instance(tmp_path) -> None:
+    database = tmp_path / "circuit.sqlite3"
+    first_plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=10, threshold=2, cooldown=30)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(database)),
+        clock=lambda: 100.0,
+    )
+    admission = first_plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search"),
+    )
+    first_plane.record_failure(admission, transient=True)
+
+    second_plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=10, threshold=2, cooldown=30)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(database)),
+        clock=lambda: 100.0,
+    )
+    admission = second_plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search"),
+    )
+    second_plane.record_failure(admission, transient=True)
+
+    third_plane = ProviderSecurityControlPlane(
+        {"tavily": policy(requests=10, threshold=2, cooldown=30)},
+        enabled=True,
+        store=SQLiteProviderControlStore(str(database)),
+        clock=lambda: 100.0,
+    )
+    with pytest.raises(ProviderSecurityError, match="provider_circuit_open"):
+        third_plane.authorize(
+            provider_id="tavily",
+            url="https://api.tavily.com/search",
+            context=context("search"),
+        )
+
+
+def test_enabled_control_plane_from_env_requires_absolute_durable_store(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", "true")
+    monkeypatch.delenv("ASIE_PROVIDER_CONTROL_DB_PATH", raising=False)
+    with pytest.raises(ProviderSecurityError, match="provider_control_store_required"):
+        ProviderSecurityControlPlane.from_env()
+
+    monkeypatch.setenv(
+        "ASIE_PROVIDER_CONTROL_DB_PATH",
+        str(tmp_path / "configured.sqlite3"),
+    )
+    plane = ProviderSecurityControlPlane.from_env()
+    status = plane.status()
+    assert status["control_store_backend"] == "sqlite-wal-shared-host"
+    assert status["durable_control_store_required_when_enabled"] is True
