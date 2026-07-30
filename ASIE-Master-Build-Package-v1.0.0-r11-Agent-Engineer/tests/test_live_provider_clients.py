@@ -34,6 +34,7 @@ class FakeTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {
@@ -44,6 +45,7 @@ class FakeTransport:
                 "headers": dict(headers or {}),
                 "body": dict(body or {}),
                 "expected_statuses": tuple(expected_statuses),
+                "security_context": dict(security_context or {}),
             }
         )
         if provider_id == "pinecone" and "api.pinecone.io/indexes/" in url:
@@ -85,6 +87,7 @@ class FakeTransport:
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
+        security_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {
@@ -94,6 +97,7 @@ class FakeTransport:
                 "headers": dict(headers),
                 "records": [dict(record) for record in records],
                 "expected_statuses": tuple(expected_statuses),
+                "security_context": dict(security_context or {}),
             }
         )
         return {
@@ -126,6 +130,8 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
     transport = FakeTransport()
     client = DeepSeekNarrativeClient(transport=transport, api_key="secret", model="deepseek-v4-flash")
     result = client.create_narrative(
+        organization_id="org-1",
+        project_id="project-1",
         request_id="req-1",
         prompt_template_id="sanad.project-gap-explanation.v1",
         prompt_hash="a" * 64,
@@ -142,10 +148,14 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
     assert result["controlled_numbers"] == []
     assert result["sovereign_verdict"] is None
     assert result["human_review_status"] == "required_pending"
+    assert call["security_context"]["operation"] == "create_narrative"
+    assert call["security_context"]["organization_id"] == "org-1"
     assert result["prompt_content_stored"] is False
 
     with pytest.raises(ProviderConfigurationError, match="prompt_hash_must_be_sha256"):
         client.create_narrative(
+            organization_id="org-1",
+            project_id="project-1",
             request_id="req-2",
             prompt_template_id="x",
             prompt_hash="bad",
@@ -221,13 +231,19 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
 def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> None:
     transport = FakeTransport()
     client = GoogleLocationClient(transport=transport, api_key="google-secret")
-    client.geocode_address("حي العليا، الرياض")
+    client.geocode_address(
+        "حي العليا، الرياض",
+        organization_id="org-1",
+        project_id="project-1",
+    )
     call = transport.calls[-1]
     assert "google-secret" not in call["url"]
     assert call["headers"]["X-Goog-Api-Key"] == "google-secret"
     assert call["method"] == "GET"
 
     result = client.search_places_text(
+        organization_id="org-1",
+        project_id="project-1",
         text_query="مطاعم شاورما",
         latitude=24.7136,
         longitude=46.6753,
@@ -238,6 +254,7 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     assert "google-secret" not in call["url"]
     assert result["eligible_for_pinecone"] is False
     assert result["persistence_policy"] == "place_id_and_project_location_only_until_terms_review"
+    assert call["security_context"]["operation"] == "search_places_text"
 
 
 def test_pinecone_uses_existing_vision2030_index_and_tenant_project_namespace() -> None:
