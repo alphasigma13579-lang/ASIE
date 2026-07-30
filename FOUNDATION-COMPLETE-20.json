@@ -96,7 +96,7 @@
       "id": "FC20-02",
       "priority": "P0",
       "title": "Governed source registry and Tavily admission",
-      "state": "IN_PROGRESS",
+      "state": "COMPLETE",
       "depends_on": [
         "FC20-01"
       ],
@@ -114,13 +114,64 @@
         "Mostaql crawl denied",
         "client-supplied include_domains cannot widen server policy",
         "cross-tenant source review denied"
-      ]
+      ],
+      "completed_at": "2026-07-30T09:14:30Z",
+      "completion_evidence": {
+        "implementation_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/source_registry.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/tavily_source_admission.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_clients.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_intelligence_product.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FC20-02-GOVERNED-TAVILY-SOURCE-ADMISSION-2026-07-29.md",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/domains/Tavily-Governed-Source-Admission.md"
+        ],
+        "test_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_02_tavily_source_admission.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_provider_clients.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_foundation_complete_20_program.py"
+        ],
+        "workflow_run_id": [
+          "30488388541",
+          "30488388490",
+          "30488388587",
+          "30529593606",
+          "30529593251",
+          "30529593524"
+        ],
+        "commit_sha": "533d35fdf34025737b283c4f02f38971f650b192",
+        "implementation_commits": [
+          "ed95014b77a59bcb85ef9140569cc89922c317ce",
+          "533d35fdf34025737b283c4f02f38971f650b192"
+        ],
+        "rollback_proof": {
+          "strategy": "revert_commits_reverse_order",
+          "revert_targets": [
+            "533d35fdf34025737b283c4f02f38971f650b192",
+            "ed95014b77a59bcb85ef9140569cc89922c317ce"
+          ],
+          "prior_main": "ca68f3328379df244fc3ba42dfe00685964ec3ae",
+          "data_migration_required": false
+        },
+        "residual_risk_review": {
+          "status": "accepted_for_program_continuation",
+          "release_effect": "BLOCK remains enforced",
+          "open_risks": [
+            "External provider control plane remains incomplete until FC20-03 is completed",
+            "External evidence persistence and review lifecycle remain incomplete until FC20-04",
+            "Approved-source content remains review_required and cannot enter controlled assumptions automatically",
+            "External network and provider activation remain unauthorized"
+          ],
+          "tenant_scope_enforced": true,
+          "provider_calls_executed_in_tests": false,
+          "frozen_files_changed": false
+        }
+      }
     },
     {
       "id": "FC20-03",
       "priority": "P0",
       "title": "External provider security control plane",
-      "state": "BLOCKED_BY_PREDECESSOR",
+      "state": "IN_PROGRESS",
       "depends_on": [
         "FC20-02"
       ],
@@ -138,7 +189,8 @@
         "quota exhaustion and circuit-open fail safely",
         "secrets never appear in API, audit, logs, or artifacts",
         "provider response-size and schema violations rejected"
-      ]
+      ],
+      "started_at": "2026-07-30T09:14:30Z"
     },
     {
       "id": "FC20-04",
