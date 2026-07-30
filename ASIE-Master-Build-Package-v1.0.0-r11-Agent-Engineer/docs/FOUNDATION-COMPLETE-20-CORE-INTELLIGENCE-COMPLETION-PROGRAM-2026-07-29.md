@@ -42,9 +42,9 @@ The following are executable-source findings at the baseline, not judgments copi
 
 | ID | Priority | Package | Current state | Frozen-boundary gate |
 |---|---:|---|---|---|
-| FC20-01 | P0 | Canonical completeness ledger and EKB domain completion | OPEN | No |
-| FC20-02 | P0 | Governed source registry and Tavily admission | OPEN | IACR/ACR for external-source activation |
-| FC20-03 | P0 | External provider security control plane | Blocked by FC20-02 | IACR/ACR |
+| FC20-01 | P0 | Canonical completeness ledger and EKB domain completion | COMPLETE | No |
+| FC20-02 | P0 | Governed source registry and Tavily admission | COMPLETE | IACR/ACR for external-source activation |
+| FC20-03 | P0 | External provider security control plane | IN PROGRESS | IACR/ACR |
 | FC20-04 | P0 | External evidence persistence, review, and job lifecycle | Blocked | No frozen mutation |
 | FC20-05 | P0 | Vision 2030 knowledge authority and Pinecone lifecycle | Blocked | Provider/source activation gate |
 | FC20-06 | P1 | National and global economic intelligence | Blocked | ACR-AIA-04 class gate |
@@ -59,7 +59,7 @@ The following are executable-source findings at the baseline, not judgments copi
 | FC20-15 | P0 | Operations, observability, retention, and incident controls | Blocked | No frozen mutation |
 | FC20-16 | P0 | Closed Live Beta release and Hostinger deployment | Blocked by all packages | Exact-commit release decision |
 
-The detailed scope, dependency graph, negative acceptance tests, and frozen-boundary flags are authoritative in `/FOUNDATION-COMPLETE-20.json`.
+The detailed scope, dependency graph, negative acceptance tests, and frozen-boundary flags are authoritative in `/FOUNDATION-COMPLETE-20.json`. The table above is a reader-facing projection; if it ever differs, the machine manifest controls.
 
 ## 4. Execution order
 
