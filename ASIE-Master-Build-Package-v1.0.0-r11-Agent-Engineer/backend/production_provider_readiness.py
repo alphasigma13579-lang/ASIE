@@ -86,6 +86,9 @@ def build_presence_report(values: Mapping[str, Any] | None = None) -> dict[str, 
         blocking_reasons.append("external_network_policy_disabled")
     if not _truthy(source.get("ASIE_PROVIDER_CONTROL_PLANE_ENABLED")):
         blocking_reasons.append("provider_control_plane_disabled")
+    durable_store_configured = _present(source.get("ASIE_PROVIDER_CONTROL_DB_PATH"))
+    if not durable_store_configured:
+        blocking_reasons.append("provider_control_store_missing")
     if _truthy(source.get("ASIE_PROVIDER_GLOBAL_KILL_SWITCH")):
         blocking_reasons.append("provider_global_kill_switch_active")
     if any(state != "enabled" for state in provider_states.values()):
@@ -105,6 +108,8 @@ def build_presence_report(values: Mapping[str, Any] | None = None) -> dict[str, 
         "activation_controls": {
             "external_network_enabled": _truthy(source.get("ASIE_ALLOW_EXTERNAL_FETCH")),
             "provider_control_plane_enabled": _truthy(source.get("ASIE_PROVIDER_CONTROL_PLANE_ENABLED")),
+            "durable_control_store_configured": durable_store_configured,
+            "control_store_path_exposed": False,
             "global_kill_switch_active": _truthy(source.get("ASIE_PROVIDER_GLOBAL_KILL_SWITCH")),
             "provider_states": provider_states,
             "provider_kill_switches": provider_kill_switches,
