@@ -113,7 +113,8 @@ def test_provider_id_is_cryptographically_bounded_to_its_host(
     operation: str,
 ) -> None:
     plane = ProviderSecurityControlPlane(
-        {provider_id: policy(provider_id, state="enabled")}
+        {provider_id: policy(provider_id, state="enabled")},
+        enabled=True,
     )
     with pytest.raises(ProviderSecurityError, match="provider_host_mismatch"):
         plane.authorize(
@@ -153,12 +154,16 @@ def test_quota_and_cost_budget_are_tenant_scoped_and_atomic() -> None:
         {"tavily": policy(requests=2, cost_units=3)},
         enabled=True,
     )
-    for _ in range(2):
-        plane.authorize(
-            provider_id="tavily",
-            url="https://api.tavily.com/search",
-            context=context("search", cost_units=1),
-        )
+    first_admission = plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search", cost_units=1),
+    )
+    plane.authorize(
+        provider_id="tavily",
+        url="https://api.tavily.com/search",
+        context=context("search", cost_units=1),
+    )
     with pytest.raises(ProviderSecurityError, match="provider_request_quota_exhausted"):
         plane.authorize(
             provider_id="tavily",
@@ -170,7 +175,7 @@ def test_quota_and_cost_budget_are_tenant_scoped_and_atomic() -> None:
         url="https://api.tavily.com/search",
         context=context("search", organization_id="org-b", cost_units=3),
     )
-    assert other_tenant.scope_ref != plane.authorize.__name__
+    assert other_tenant.scope_ref != first_admission.scope_ref
     with pytest.raises(ProviderSecurityError, match="provider_cost_budget_exhausted"):
         plane.authorize(
             provider_id="tavily",
