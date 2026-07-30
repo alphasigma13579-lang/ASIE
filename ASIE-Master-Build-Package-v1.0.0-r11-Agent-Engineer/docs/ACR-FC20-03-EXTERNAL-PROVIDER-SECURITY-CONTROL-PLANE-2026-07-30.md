@@ -42,13 +42,14 @@
 - `backend/live_provider_clients.py`
 - `backend/live_provider_preflight.py`
 - `backend/production_provider_readiness.py`
+- `docker-compose.production.yml` (مسار المخزن فقط؛ لا يفعّل المزود)
 
 ## اختبارات القبول السلبية
 
 - غياب تفعيل control plane يمنع النقل قبل URL validation أو opener.
 - mismatch بين provider والمضيف مرفوض.
 - preflight لا يستطيع تنفيذ عملية live.
-- quotas وcost budgets معزولة حسب المؤسسة/المشروع.
+- quotas وcost budgets معزولة حسب المؤسسة/المشروع ومثبتة بمعاملة SQLite ذرية عبر workers على المضيف المشترك.
 - circuit يفتح بعد فشل عابر متكرر ويغلق بعد cooldown.
 - global/provider kill switches تمنع الطلب.
 - retries محدودة لـGET ولا تكشف المفتاح في audit.
@@ -56,7 +57,7 @@
 
 ## ما يمنع إغلاق FC20-03 حالياً
 
-- مخزن quota/circuit الحالي single-process ويحتاج backend مشتركًا قبل multi-replica activation.
+- مخزن SQLite WAL الحالي مشترك بين عمليات المضيف الواحد؛ أي نشر متعدد المضيفات يتطلب backend موزعًا قبل التفعيل.
 - يلزم تثبيت اتصال DNS/العنوان أو transport أقوى لإغلاق نافذة DNS rebinding بين الفحص والاتصال.
 - يلزم preflight/health وعقد schema فعلي لكل DeepSeek وTavily وGoogle وPinecone.
 - يلزم إثبات cancellation/timeout وresponse-contract violations عبر جميع المزودين.

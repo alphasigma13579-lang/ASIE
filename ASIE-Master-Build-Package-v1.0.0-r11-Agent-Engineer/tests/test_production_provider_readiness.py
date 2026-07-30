@@ -19,6 +19,7 @@ def ready_values() -> dict[str, str]:
         {
             "ASIE_ALLOW_EXTERNAL_FETCH": "true",
             "ASIE_PROVIDER_CONTROL_PLANE_ENABLED": "true",
+            "ASIE_PROVIDER_CONTROL_DB_PATH": "/var/lib/asie/provider-control.sqlite3",
             "ASIE_PROVIDER_GLOBAL_KILL_SWITCH": "false",
             "ASIE_EXTERNAL_ALLOWED_HOSTS": ",".join(
                 host for provider in LIVE_PROVIDER_CATALOG for host in provider.base_hosts
@@ -47,6 +48,7 @@ class ProductionProviderReadinessTests(unittest.TestCase):
         report = build_presence_report(values)
         self.assertEqual(report["status"], "blocked")
         self.assertIn("provider_control_plane_disabled", report["blocking_reasons"])
+        self.assertIn("provider_control_store_missing", report["blocking_reasons"])
         self.assertIn("provider_state_not_enabled", report["blocking_reasons"])
 
     def test_complete_control_configuration_passes_readiness_without_granting_authority(self) -> None:
@@ -55,6 +57,8 @@ class ProductionProviderReadinessTests(unittest.TestCase):
         self.assertEqual(report["status"], "ready")
         self.assertEqual(report["missing_required"], [])
         self.assertFalse(report["activation_authority_granted"])
+        self.assertTrue(report["activation_controls"]["durable_control_store_configured"])
+        self.assertFalse(report["activation_controls"]["control_store_path_exposed"])
         serialized = json.dumps(report)
         for name in REQUIRED_PROVIDER_SECRETS:
             self.assertNotIn(values[name], serialized)

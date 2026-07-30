@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import os
+from pathlib import Path
 import re
+import sqlite3
 from threading import RLock
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlsplit
 
 from backend.live_provider_catalog import LIVE_PROVIDER_CATALOG, LiveProviderDefinition
@@ -244,27 +246,43 @@ class _CircuitState:
     opened_until: float = 0.0
 
 
-class InMemoryProviderControlStore:
-    """Thread-safe single-process admission state.
+class ProviderControlStore(Protocol):
+    backend_id: str
 
-    FC20-03 keeps the interface narrow so a shared durable store can replace this
-    implementation before multi-replica provider activation.
-    """
+    def admit(
+        self,
+        key: tuple[str, str],
+        *,
+        now: float,
+        window_seconds: int,
+        request_limit: int,
+        cost_limit: int,
+        cost_units: int,
+    ) -> None: ...
+
+    def record_success(self, key: tuple[str, str]) -> None: ...
+
+    def record_failure(
+        self,
+        key: tuple[str, str],
+        *,
+        now: float,
+        threshold: int,
+        cooldown_seconds: int,
+    ) -> None: ...
+
+
+class InMemoryProviderControlStore:
+    """Thread-safe store for disabled/local tests only."""
+
+    backend_id = "memory-single-process"
 
     def __init__(self) -> None:
         self._lock = RLock()
         self._usage: dict[tuple[str, str], _UsageWindow] = {}
         self._circuits: dict[tuple[str, str], _CircuitState] = {}
 
-    def assert_circuit_closed(self, key: tuple[str, str], *, now: float) -> None:
-        with self._lock:
-            state = self._circuits.get(key)
-            if state and state.opened_until > now:
-                raise ProviderSecurityError("provider_circuit_open")
-            if state and state.opened_until and state.opened_until <= now:
-                self._circuits[key] = _CircuitState()
-
-    def consume(
+    def admit(
         self,
         key: tuple[str, str],
         *,
@@ -275,6 +293,12 @@ class InMemoryProviderControlStore:
         cost_units: int,
     ) -> None:
         with self._lock:
+            state = self._circuits.get(key)
+            if state and state.opened_until > now:
+                raise ProviderSecurityError("provider_circuit_open")
+            if state and state.opened_until and state.opened_until <= now:
+                self._circuits[key] = _CircuitState()
+
             window = self._usage.get(key)
             if window is None or now - window.started_at >= window_seconds:
                 window = _UsageWindow(started_at=now)
@@ -305,6 +329,199 @@ class InMemoryProviderControlStore:
                 state.opened_until = now + cooldown_seconds
 
 
+class SQLiteProviderControlStore:
+    """Cross-thread/process quota and circuit state for a single shared host."""
+
+    backend_id = "sqlite-wal-shared-host"
+
+    def __init__(self, path: str) -> None:
+        candidate = Path(str(path or "").strip())
+        if not candidate.is_absolute():
+            raise ProviderSecurityError("provider_control_store_path_must_be_absolute")
+        if not candidate.parent.exists() or not candidate.parent.is_dir():
+            raise ProviderSecurityError("provider_control_store_parent_missing")
+        self.path = candidate
+        self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            str(self.path),
+            timeout=5.0,
+            isolation_level=None,
+        )
+        connection.execute("PRAGMA busy_timeout=5000")
+        return connection
+
+    def _initialize(self) -> None:
+        try:
+            with self._connect() as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("PRAGMA synchronous=FULL")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS provider_control_usage (
+                        provider_id TEXT NOT NULL,
+                        scope_ref TEXT NOT NULL,
+                        window_started REAL NOT NULL,
+                        requests INTEGER NOT NULL,
+                        cost_units INTEGER NOT NULL,
+                        PRIMARY KEY (provider_id, scope_ref)
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS provider_control_circuit (
+                        provider_id TEXT NOT NULL,
+                        scope_ref TEXT NOT NULL,
+                        consecutive_failures INTEGER NOT NULL,
+                        opened_until REAL NOT NULL,
+                        PRIMARY KEY (provider_id, scope_ref)
+                    )
+                    """
+                )
+        except sqlite3.Error as exc:
+            raise ProviderSecurityError("provider_control_store_unavailable") from exc
+
+    def admit(
+        self,
+        key: tuple[str, str],
+        *,
+        now: float,
+        window_seconds: int,
+        request_limit: int,
+        cost_limit: int,
+        cost_units: int,
+    ) -> None:
+        provider_id, scope_ref = key
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            circuit = connection.execute(
+                """
+                SELECT consecutive_failures, opened_until
+                FROM provider_control_circuit
+                WHERE provider_id = ? AND scope_ref = ?
+                """,
+                (provider_id, scope_ref),
+            ).fetchone()
+            if circuit and float(circuit[1]) > now:
+                connection.rollback()
+                raise ProviderSecurityError("provider_circuit_open")
+            if circuit and float(circuit[1]) and float(circuit[1]) <= now:
+                connection.execute(
+                    """
+                    UPDATE provider_control_circuit
+                    SET consecutive_failures = 0, opened_until = 0
+                    WHERE provider_id = ? AND scope_ref = ?
+                    """,
+                    (provider_id, scope_ref),
+                )
+
+            usage = connection.execute(
+                """
+                SELECT window_started, requests, cost_units
+                FROM provider_control_usage
+                WHERE provider_id = ? AND scope_ref = ?
+                """,
+                (provider_id, scope_ref),
+            ).fetchone()
+            if usage is None or now - float(usage[0]) >= window_seconds:
+                window_started, requests, consumed_cost = now, 0, 0
+            else:
+                window_started, requests, consumed_cost = float(usage[0]), int(usage[1]), int(usage[2])
+            if requests + 1 > request_limit:
+                connection.rollback()
+                raise ProviderSecurityError("provider_request_quota_exhausted")
+            if consumed_cost + cost_units > cost_limit:
+                connection.rollback()
+                raise ProviderSecurityError("provider_cost_budget_exhausted")
+            connection.execute(
+                """
+                INSERT INTO provider_control_usage (
+                    provider_id, scope_ref, window_started, requests, cost_units
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(provider_id, scope_ref) DO UPDATE SET
+                    window_started = excluded.window_started,
+                    requests = excluded.requests,
+                    cost_units = excluded.cost_units
+                """,
+                (
+                    provider_id,
+                    scope_ref,
+                    window_started,
+                    requests + 1,
+                    consumed_cost + cost_units,
+                ),
+            )
+            connection.commit()
+        except ProviderSecurityError:
+            raise
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise ProviderSecurityError("provider_control_store_unavailable") from exc
+        finally:
+            connection.close()
+
+    def record_success(self, key: tuple[str, str]) -> None:
+        provider_id, scope_ref = key
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO provider_control_circuit (
+                        provider_id, scope_ref, consecutive_failures, opened_until
+                    ) VALUES (?, ?, 0, 0)
+                    ON CONFLICT(provider_id, scope_ref) DO UPDATE SET
+                        consecutive_failures = 0,
+                        opened_until = 0
+                    """,
+                    (provider_id, scope_ref),
+                )
+        except sqlite3.Error as exc:
+            raise ProviderSecurityError("provider_control_store_unavailable") from exc
+
+    def record_failure(
+        self,
+        key: tuple[str, str],
+        *,
+        now: float,
+        threshold: int,
+        cooldown_seconds: int,
+    ) -> None:
+        provider_id, scope_ref = key
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT consecutive_failures
+                FROM provider_control_circuit
+                WHERE provider_id = ? AND scope_ref = ?
+                """,
+                (provider_id, scope_ref),
+            ).fetchone()
+            failures = (int(row[0]) if row else 0) + 1
+            opened_until = now + cooldown_seconds if failures >= threshold else 0.0
+            connection.execute(
+                """
+                INSERT INTO provider_control_circuit (
+                    provider_id, scope_ref, consecutive_failures, opened_until
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(provider_id, scope_ref) DO UPDATE SET
+                    consecutive_failures = excluded.consecutive_failures,
+                    opened_until = excluded.opened_until
+                """,
+                (provider_id, scope_ref, failures, opened_until),
+            )
+            connection.commit()
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise ProviderSecurityError("provider_control_store_unavailable") from exc
+        finally:
+            connection.close()
+
+
 class ProviderSecurityControlPlane:
     """Fail-closed provider activation, scope, budget, and circuit admission."""
 
@@ -314,7 +531,7 @@ class ProviderSecurityControlPlane:
         *,
         enabled: bool = False,
         global_kill_switch: bool = False,
-        store: InMemoryProviderControlStore | None = None,
+        store: ProviderControlStore | None = None,
         clock: Clock = time.monotonic,
     ) -> None:
         self.policies = dict(policies)
@@ -329,10 +546,19 @@ class ProviderSecurityControlPlane:
             definition.provider_id: ProviderRuntimePolicy.from_definition(definition)
             for definition in LIVE_PROVIDER_CATALOG
         }
+        enabled = _env_bool("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", False)
+        if enabled:
+            store_path = os.getenv("ASIE_PROVIDER_CONTROL_DB_PATH", "").strip()
+            if not store_path:
+                raise ProviderSecurityError("provider_control_store_required")
+            store: ProviderControlStore = SQLiteProviderControlStore(store_path)
+        else:
+            store = InMemoryProviderControlStore()
         return cls(
             policies,
-            enabled=_env_bool("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", False),
+            enabled=enabled,
             global_kill_switch=_env_bool("ASIE_PROVIDER_GLOBAL_KILL_SWITCH", False),
+            store=store,
         )
 
     def authorize(
@@ -382,8 +608,7 @@ class ProviderSecurityControlPlane:
 
         key = (policy.provider_id, request_context.scope_ref)
         now = self.clock()
-        self.store.assert_circuit_closed(key, now=now)
-        self.store.consume(
+        self.store.admit(
             key,
             now=now,
             window_seconds=policy.window_seconds,
@@ -443,6 +668,8 @@ class ProviderSecurityControlPlane:
             ],
             "default_deny": True,
             "tenant_scoped_budgets": True,
+            "control_store_backend": self.store.backend_id,
+            "durable_control_store_required_when_enabled": True,
             "secret_values_exposed": False,
             "network_authorized": False,
         }

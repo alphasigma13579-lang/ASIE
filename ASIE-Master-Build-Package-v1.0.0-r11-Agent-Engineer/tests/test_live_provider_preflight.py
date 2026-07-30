@@ -34,3 +34,12 @@ def test_network_preflight_fails_before_transport_when_control_plane_is_disabled
     assert result["status"] == "blocked_provider_control_plane_disabled"
     assert result["secrets_exposed"] is False
     assert result["provider_security"]["enabled"] is False
+
+
+def test_preflight_rejects_enabled_control_plane_without_durable_store(monkeypatch) -> None:
+    monkeypatch.setenv("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", "true")
+    monkeypatch.delenv("ASIE_PROVIDER_CONTROL_DB_PATH", raising=False)
+    result = run(False)
+    assert result["status"] == "blocked_provider_control_configuration"
+    assert result["error"] == "provider_control_store_required"
+    assert result["provider_security"]["secret_values_exposed"] is False

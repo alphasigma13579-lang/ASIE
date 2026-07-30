@@ -8,7 +8,10 @@ from typing import Any
 
 from backend.external_acquisition import ExternalAcquisitionPolicy, GovernedExternalAcquisitionGateway
 from backend.live_provider_catalog import provider_catalog_snapshot
-from backend.provider_security_control_plane import ProviderSecurityControlPlane
+from backend.provider_security_control_plane import (
+    ProviderSecurityControlPlane,
+    ProviderSecurityError,
+)
 from backend.live_provider_clients import (
     GovernedProviderTransport,
     PineconeKnowledgeClient,
@@ -45,13 +48,27 @@ def _safe_index_summary(description: dict[str, Any]) -> dict[str, Any]:
 
 def run(network: bool) -> dict[str, Any]:
     policy = ExternalAcquisitionPolicy.from_env()
-    control_plane = ProviderSecurityControlPlane.from_env()
+    control_error: str | None = None
+    try:
+        control_plane = ProviderSecurityControlPlane.from_env()
+        control_status = control_plane.status()
+    except ProviderSecurityError as exc:
+        control_plane = None
+        control_error = str(exc)
+        control_status = {
+            "control_plane_id": "asie-provider-security-control-plane-v1",
+            "enabled": False,
+            "status": "invalid_configuration",
+            "reason": control_error,
+            "secret_values_exposed": False,
+            "network_authorized": False,
+        }
     result: dict[str, Any] = {
         "preflight_id": "asie-live-provider-preflight-v1",
         "network_requested": network,
         "network_policy": policy.snapshot(),
         "provider_catalog": provider_catalog_snapshot(),
-        "provider_security": control_plane.status(),
+        "provider_security": control_status,
         "pinecone": {
             "index_name": os.getenv("PINECONE_INDEX", "vision2030-kb"),
             "status": "not_checked",
@@ -59,13 +76,17 @@ def run(network: bool) -> dict[str, Any]:
         },
         "secrets_exposed": False,
     }
+    if control_error:
+        result["status"] = "blocked_provider_control_configuration"
+        result["error"] = control_error
+        return result
     if not network:
         result["status"] = "configuration_only"
         return result
     if not policy.enabled:
         result["status"] = "blocked_external_network_disabled"
         return result
-    if not control_plane.enabled:
+    if control_plane is None or not control_plane.enabled:
         result["status"] = "blocked_provider_control_plane_disabled"
         return result
     try:
