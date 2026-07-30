@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.external_acquisition import ExternalAcquisitionPolicy, GovernedExternalAcquisitionGateway
 from backend.live_provider_catalog import provider_catalog_snapshot
+from backend.provider_security_control_plane import ProviderSecurityControlPlane
 from backend.live_provider_clients import (
     GovernedProviderTransport,
     PineconeKnowledgeClient,
@@ -44,11 +45,13 @@ def _safe_index_summary(description: dict[str, Any]) -> dict[str, Any]:
 
 def run(network: bool) -> dict[str, Any]:
     policy = ExternalAcquisitionPolicy.from_env()
+    control_plane = ProviderSecurityControlPlane.from_env()
     result: dict[str, Any] = {
         "preflight_id": "asie-live-provider-preflight-v1",
         "network_requested": network,
         "network_policy": policy.snapshot(),
         "provider_catalog": provider_catalog_snapshot(),
+        "provider_security": control_plane.status(),
         "pinecone": {
             "index_name": os.getenv("PINECONE_INDEX", "vision2030-kb"),
             "status": "not_checked",
@@ -62,9 +65,12 @@ def run(network: bool) -> dict[str, Any]:
     if not policy.enabled:
         result["status"] = "blocked_external_network_disabled"
         return result
+    if not control_plane.enabled:
+        result["status"] = "blocked_provider_control_plane_disabled"
+        return result
     try:
         gateway = GovernedExternalAcquisitionGateway(policy)
-        transport = GovernedProviderTransport(gateway)
+        transport = GovernedProviderTransport(gateway, control_plane=control_plane)
         pinecone = PineconeKnowledgeClient.from_env(transport)
         description = pinecone.describe_index()
         summary = _safe_index_summary(description)
