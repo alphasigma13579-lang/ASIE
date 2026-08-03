@@ -12,6 +12,7 @@ from backend.provider_security_control_plane import (
     ProviderSecurityControlPlane,
     ProviderSecurityError,
 )
+from backend.provider_response_contracts import provider_response_contract_snapshot
 from backend.live_provider_clients import (
     GovernedProviderTransport,
     PineconeKnowledgeClient,
@@ -64,10 +65,17 @@ def run(network: bool) -> dict[str, Any]:
             "network_authorized": False,
         }
     result: dict[str, Any] = {
-        "preflight_id": "asie-live-provider-preflight-v1",
+        "preflight_id": "asie-live-provider-preflight-v2",
         "network_requested": network,
         "network_policy": policy.snapshot(),
         "provider_catalog": provider_catalog_snapshot(),
+        "response_contracts": provider_response_contract_snapshot(),
+        "live_checks": {
+            "deepseek": {"status": "not_checked", "operation": "create_narrative"},
+            "tavily": {"status": "not_checked", "operation": "search"},
+            "google_maps_platform": {"status": "not_checked", "operation": "geocode_address"},
+            "pinecone": {"status": "not_checked", "operation": "describe_index"},
+        },
         "provider_security": control_status,
         "pinecone": {
             "index_name": os.getenv("PINECONE_INDEX", "vision2030-kb"),
@@ -102,6 +110,10 @@ def run(network: bool) -> dict[str, Any]:
             and summary.get("chunk_text_compatible")
         )
         result["pinecone"] = {"status": "checked", **summary, "compatible": compatible}
+        result["live_checks"]["pinecone"] = {
+            "status": "passed" if compatible else "failed",
+            "operation": "describe_index",
+        }
         if compatible:
             result["status"] = "passed"
         elif not summary.get("ready"):
@@ -129,3 +141,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
