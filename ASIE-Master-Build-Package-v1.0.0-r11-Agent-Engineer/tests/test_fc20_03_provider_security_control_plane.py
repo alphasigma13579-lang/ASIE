@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -512,4 +511,3 @@ def test_enabled_control_plane_from_env_requires_absolute_durable_store(monkeypa
     status = plane.status()
     assert status["control_store_backend"] == "sqlite-wal-shared-host"
     assert status["durable_control_store_required_when_enabled"] is True
-
