@@ -15,6 +15,7 @@ from backend.external_acquisition import (
     GovernedExternalAcquisitionGateway,
     HostRateLimiter,
     _PinnedHTTPSConnection,
+    _PinnedHTTPSHandler,
 )
 
 
@@ -187,6 +188,30 @@ def test_pinned_https_connection_blocks_private_answer_before_socket_creation() 
     ):
         connection.connect()
     assert socket_attempted is False
+
+
+def test_pinned_https_handler_supports_python_313_default_tls_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    handler = _PinnedHTTPSHandler(public_resolver)
+    if hasattr(handler, "_check_hostname"):
+        delattr(handler, "_check_hostname")
+
+    captured: dict[str, Any] = {}
+    sentinel = object()
+
+    def fake_do_open(connection_factory: Any, request: Any, **kwargs: Any) -> object:
+        captured["connection_factory"] = connection_factory
+        captured["request"] = request
+        captured["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(handler, "do_open", fake_do_open)
+    request = object()
+    result = handler.https_open(request)
+
+    assert result is sentinel
+    assert captured["request"] is request
+    assert captured["kwargs"]["context"] is handler._context
+    assert "check_hostname" not in captured["kwargs"]
 
 
 def test_default_gateway_bypasses_environment_proxy_and_reports_dns_pinning() -> None:
