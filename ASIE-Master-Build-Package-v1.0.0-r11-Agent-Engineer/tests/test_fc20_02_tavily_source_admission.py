@@ -44,9 +44,29 @@ class RecordingTransport:
             "body": dict(body or {}),
             "security_context": _context_snapshot(security_context),
         })
+        if url.endswith("/search"):
+            payload: dict[str, Any] = {
+                "results": [],
+                "response_time": 0.0,
+                "request_id": "fake-search",
+            }
+        elif url.endswith("/crawl"):
+            payload = {
+                "base_url": "monshaat.gov.sa",
+                "results": [],
+                "response_time": 0.0,
+                "request_id": "fake-crawl",
+            }
+        else:
+            payload = {
+                "base_url": "monshaat.gov.sa",
+                "results": [],
+                "response_time": 0.0,
+                "request_id": "fake-map",
+            }
         return {
             "provider_id": provider_id,
-            "payload": {"results": []},
+            "payload": payload,
             "network_attempted": True,
             "review_status": "review_required",
             "eligible_for_controlled_assumptions": False,
