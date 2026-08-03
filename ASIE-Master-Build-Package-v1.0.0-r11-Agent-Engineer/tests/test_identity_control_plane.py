@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -119,4 +118,3 @@ class IdentityAndControlPlaneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
