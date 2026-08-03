@@ -43,7 +43,7 @@ jobs:
       ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "2097152"
       ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "0"
       ASIE_PROVIDER_CONTROL_PLANE_ENABLED: "true"
-      ASIE_PROVIDER_CONTROL_DB_PATH: ${{ runner.temp }}/fc20-03-provider-control.sqlite3
+      ASIE_PROVIDER_CONTROL_DB_PATH: /tmp/fc20-03-provider-control.sqlite3
       ASIE_PROVIDER_GLOBAL_KILL_SWITCH: "false"
       ASIE_PROVIDER_DEEPSEEK_STATE: preflight
       ASIE_PROVIDER_TAVILY_STATE: preflight
