@@ -63,6 +63,19 @@ class ProductionProviderReadinessTests(unittest.TestCase):
         for name in REQUIRED_PROVIDER_SECRETS:
             self.assertNotIn(values[name], serialized)
 
+    def test_multi_host_activation_requires_distributed_control_store(self) -> None:
+        values = ready_values()
+        values["ASIE_APPLICATION_REPLICAS"] = "2"
+        report = build_presence_report(values)
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("distributed_provider_control_store_required", report["blocking_reasons"])
+
+        values["ASIE_PROVIDER_CONTROL_STORE_KIND"] = "distributed"
+        report = build_presence_report(values)
+        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["activation_controls"]["application_replicas"], 2)
+        self.assertEqual(report["activation_controls"]["control_store_kind"], "distributed")
+
     def test_report_json_never_contains_secret_values(self) -> None:
         values = {name: "super-sensitive-value" for name in REQUIRED_PROVIDER_SECRETS}
         output = report_json(values)
@@ -91,3 +104,4 @@ class ProductionProviderReadinessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

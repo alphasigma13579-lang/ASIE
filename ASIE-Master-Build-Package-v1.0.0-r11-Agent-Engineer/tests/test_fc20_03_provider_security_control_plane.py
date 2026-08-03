@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import json
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, Mapping
 from urllib.error import URLError
@@ -321,12 +322,23 @@ class FakeResponse:
 class RetryOnceOpener:
     def __init__(self) -> None:
         self.calls = 0
+        self.timeouts: list[float] = []
 
     def open(self, request: Any, timeout: float) -> FakeResponse:
         self.calls += 1
+        self.timeouts.append(timeout)
         if self.calls == 1:
             raise URLError("temporary")
         return FakeResponse(request.full_url)
+
+
+class InvalidResponseOpener(RetryOnceOpener):
+    def open(self, request: Any, timeout: float) -> FakeResponse:
+        self.calls += 1
+        self.timeouts.append(timeout)
+        response = FakeResponse(request.full_url)
+        response.read = lambda amount=-1: b'{}'  # type: ignore[method-assign]
+        return response
 
 
 class FakeRateLimiter:
@@ -372,10 +384,69 @@ def test_governed_transport_retries_get_once_without_logging_secret() -> None:
         security_context=context("geocode_address"),
     )
     assert opener.calls == 2
+    assert opener.timeouts == [5.0, 5.0]
     assert sleeps == [0.01]
     assert gateway.validations >= 3
     assert result["provider_contract_version"] == "test-google_maps_platform-v1"
     assert "must-not-appear" not in json.dumps(gateway.audit_sink.snapshot())
+
+
+def test_governed_transport_cancels_before_network_and_between_retries() -> None:
+    opener = RetryOnceOpener()
+    gateway = FakeGateway(opener)
+    plane = ProviderSecurityControlPlane(
+        {"google_maps_platform": policy("google_maps_platform", max_get_attempts=2)},
+        enabled=True,
+    )
+    transport = GovernedProviderTransport(gateway=gateway, control_plane=plane)
+    cancelled = Event()
+    cancelled.set()
+    with pytest.raises(ExternalAcquisitionError, match="provider_request_cancelled"):
+        transport.request_json(
+            provider_id="google_maps_platform",
+            method="GET",
+            url="https://geocode.googleapis.com/v4/geocode/address/riyadh",
+            security_context=context("geocode_address"),
+            cancellation_signal=cancelled,
+        )
+    assert opener.calls == 0
+
+    cancelled.clear()
+
+    def cancel_during_backoff(_: float) -> None:
+        cancelled.set()
+
+    transport = GovernedProviderTransport(
+        gateway=gateway,
+        control_plane=plane,
+        sleep=cancel_during_backoff,
+    )
+    with pytest.raises(ExternalAcquisitionError, match="provider_request_cancelled"):
+        transport.request_json(
+            provider_id="google_maps_platform",
+            method="GET",
+            url="https://geocode.googleapis.com/v4/geocode/address/riyadh",
+            security_context=context("geocode_address"),
+            cancellation_signal=cancelled,
+        )
+    assert opener.calls == 1
+
+
+def test_response_contract_violation_fails_before_transport_success_audit() -> None:
+    opener = InvalidResponseOpener()
+    gateway = FakeGateway(opener)
+    plane = ProviderSecurityControlPlane({"tavily": policy()}, enabled=True)
+    transport = GovernedProviderTransport(gateway=gateway, control_plane=plane)
+    with pytest.raises(ExternalAcquisitionError, match="provider_response_contract_violation:tavily:search"):
+        transport.request_json(
+            provider_id="tavily",
+            url="https://api.tavily.com/search",
+            security_context=context("search"),
+            body={"query": "x"},
+        )
+    events = gateway.audit_sink.snapshot()["events"]
+    assert any(event["outcome"] == "failed" for event in events)
+    assert not any(event["outcome"] == "success" for event in events)
 
 
 def test_disabled_control_plane_denies_before_gateway_validation_or_open() -> None:
@@ -511,3 +582,4 @@ def test_enabled_control_plane_from_env_requires_absolute_durable_store(monkeypa
     status = plane.status()
     assert status["control_store_backend"] == "sqlite-wal-shared-host"
     assert status["durable_control_store_required_when_enabled"] is True
+

@@ -55,6 +55,15 @@ def _provider_kill_switch(values: Mapping[str, Any], provider_id: str) -> bool:
     return _truthy(values.get(f"ASIE_PROVIDER_{token}_KILL_SWITCH"))
 
 
+def _application_replicas(values: Mapping[str, Any]) -> int | None:
+    raw = str(values.get("ASIE_APPLICATION_REPLICAS") or "1").strip()
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return None
+    return replicas if replicas >= 1 else None
+
+
 def build_presence_report(values: Mapping[str, Any] | None = None) -> dict[str, Any]:
     source = values if values is not None else os.environ
     required = [_safe_status(name, source) for name in REQUIRED_PROVIDER_SECRETS]
@@ -87,8 +96,16 @@ def build_presence_report(values: Mapping[str, Any] | None = None) -> dict[str, 
     if not _truthy(source.get("ASIE_PROVIDER_CONTROL_PLANE_ENABLED")):
         blocking_reasons.append("provider_control_plane_disabled")
     durable_store_configured = _present(source.get("ASIE_PROVIDER_CONTROL_DB_PATH"))
+    control_store_kind = str(source.get("ASIE_PROVIDER_CONTROL_STORE_KIND") or "sqlite").strip().lower()
+    application_replicas = _application_replicas(source)
     if not durable_store_configured:
         blocking_reasons.append("provider_control_store_missing")
+    if control_store_kind not in {"sqlite", "distributed"}:
+        blocking_reasons.append("provider_control_store_kind_invalid")
+    if application_replicas is None:
+        blocking_reasons.append("application_replicas_invalid")
+    elif application_replicas > 1 and control_store_kind != "distributed":
+        blocking_reasons.append("distributed_provider_control_store_required")
     if _truthy(source.get("ASIE_PROVIDER_GLOBAL_KILL_SWITCH")):
         blocking_reasons.append("provider_global_kill_switch_active")
     if any(state != "enabled" for state in provider_states.values()):
@@ -109,6 +126,8 @@ def build_presence_report(values: Mapping[str, Any] | None = None) -> dict[str, 
             "external_network_enabled": _truthy(source.get("ASIE_ALLOW_EXTERNAL_FETCH")),
             "provider_control_plane_enabled": _truthy(source.get("ASIE_PROVIDER_CONTROL_PLANE_ENABLED")),
             "durable_control_store_configured": durable_store_configured,
+            "control_store_kind": control_store_kind,
+            "application_replicas": application_replicas,
             "control_store_path_exposed": False,
             "global_kill_switch_active": _truthy(source.get("ASIE_PROVIDER_GLOBAL_KILL_SWITCH")),
             "provider_states": provider_states,
@@ -161,3 +180,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
