@@ -12,6 +12,7 @@ on:
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_external_acquisition_gateway.py"
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_*.py"
       - ".github/workflows/live-intel-ci.yml"
+      - ".github/workflows/provider-live-preflight.yml"
       - ".github/workflows/deploy-hostinger.yml"
 
 permissions:
@@ -44,7 +45,11 @@ jobs:
       - name: Test provider clients and Pinecone isolation
         run: pytest -q --tb=short tests/test_live_provider_clients.py
       - name: Test provider preflight
-        run: pytest -q --tb=short tests/test_live_provider_preflight.py
+        run: |
+          pytest -q --tb=short \\
+            tests/test_live_provider_preflight.py \\
+            tests/test_bounded_live_provider_preflight.py \\
+            tests/test_provider_live_preflight_workflow_guardrails.py
       - name: Test deployment package guardrails
         run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
       - name: Validate production Compose model
