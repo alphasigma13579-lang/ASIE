@@ -864,7 +864,11 @@ class Repository:
             membership = None
             if organization_id:
                 membership = conn.execute("SELECT role FROM memberships WHERE user_id = ? AND organization_id = ? AND status = 'active'", (row["user_id"], organization_id)).fetchone()
-        # Tenant selection from a request header is never authoritative. A\n        # platform role receives tenant scope only through an active membership,\n        # which is the explicit and audited grant path.\n        scoped_organization_id = organization_id if membership is not None else None\n        return Principal(user_id=row["user_id"], session_id=row["session_id"], organization_id=scoped_organization_id, role=membership["role"] if membership else None, platform_role=row["platform_role"])
+        # Tenant selection from a request header is never authoritative. A
+        # platform role receives tenant scope only through an active membership,
+        # which is the explicit and audited grant path.
+        scoped_organization_id = organization_id if membership is not None else None
+        return Principal(user_id=row["user_id"], session_id=row["session_id"], organization_id=scoped_organization_id, role=membership["role"] if membership else None, platform_role=row["platform_role"])
 
     def revoke_session(self, token: str) -> bool:
         with closing(self.connect()) as conn:
