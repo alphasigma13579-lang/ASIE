@@ -1,6 +1,8 @@
+
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
 
 import pytest
@@ -15,9 +17,35 @@ from backend.live_provider_clients import (
     TavilyResearchClient,
     tenant_project_namespace,
 )
+from backend.provider_security_control_plane import ProviderRequestContext, TrustedProviderScope
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def trusted_scope(organization_id: str = "org-1", project_id: str = "project-1") -> TrustedProviderScope:
+    return TrustedProviderScope.for_tenant(
+        principal=SimpleNamespace(
+            user_id="user-1",
+            session_id="session-1",
+            organization_id=organization_id,
+            role="analyst",
+        ),
+        project_id=project_id,
+        project_organization_resolver=lambda _: organization_id,
+    )
+
+
+def context_snapshot(context: ProviderRequestContext | None) -> dict[str, Any]:
+    if context is None:
+        return {}
+    return {
+        "organization_id": context.organization_id,
+        "project_id": context.project_id,
+        "operation": context.operation,
+        "cost_units": context.cost_units,
+        "preflight": context.preflight,
+    }
 
 
 class FakeTransport:
@@ -34,7 +62,7 @@ class FakeTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {
@@ -45,7 +73,7 @@ class FakeTransport:
                 "headers": dict(headers or {}),
                 "body": dict(body or {}),
                 "expected_statuses": tuple(expected_statuses),
-                "security_context": dict(security_context or {}),
+                "security_context": context_snapshot(security_context),
             }
         )
         if provider_id == "pinecone" and "api.pinecone.io/indexes/" in url:
@@ -87,7 +115,7 @@ class FakeTransport:
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {
@@ -97,7 +125,7 @@ class FakeTransport:
                 "headers": dict(headers),
                 "records": [dict(record) for record in records],
                 "expected_statuses": tuple(expected_statuses),
-                "security_context": dict(security_context or {}),
+                "security_context": context_snapshot(security_context),
             }
         )
         return {
@@ -130,8 +158,7 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
     transport = FakeTransport()
     client = DeepSeekNarrativeClient(transport=transport, api_key="secret", model="deepseek-v4-flash")
     result = client.create_narrative(
-        organization_id="org-1",
-        project_id="project-1",
+        scope=trusted_scope(),
         request_id="req-1",
         prompt_template_id="sanad.project-gap-explanation.v1",
         prompt_hash="a" * 64,
@@ -154,8 +181,7 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
 
     with pytest.raises(ProviderConfigurationError, match="prompt_hash_must_be_sha256"):
         client.create_narrative(
-            organization_id="org-1",
-            project_id="project-1",
+            scope=trusted_scope(),
             request_id="req-2",
             prompt_template_id="x",
             prompt_hash="bad",
@@ -201,6 +227,7 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
         admission_policy=policy,
     )
     result = client.search(
+        scope=trusted_scope(),
         query="المنشآت الصغيرة في السعودية",
         sector_id="sme",
         geography="saudi_arabia",
@@ -216,6 +243,7 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
     assert result["eligible_for_controlled_assumptions"] is False
 
     crawl = client.crawl(
+        scope=trusted_scope(),
         source_id="MONSHAAT_OPEN_DATA",
         url="https://monshaat.gov.sa/open-data/indicators",
         instructions="ابحث عن البيانات المفتوحة",
@@ -233,8 +261,7 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     client = GoogleLocationClient(transport=transport, api_key="google-secret")
     client.geocode_address(
         "حي العليا، الرياض",
-        organization_id="org-1",
-        project_id="project-1",
+        scope=trusted_scope(),
     )
     call = transport.calls[-1]
     assert "google-secret" not in call["url"]
@@ -242,8 +269,7 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     assert call["method"] == "GET"
 
     result = client.search_places_text(
-        organization_id="org-1",
-        project_id="project-1",
+        scope=trusted_scope(),
         text_query="مطاعم شاورما",
         latitude=24.7136,
         longitude=46.6753,
@@ -272,8 +298,7 @@ def test_pinecone_uses_existing_vision2030_index_and_tenant_project_namespace() 
     assert "pinecone-secret" not in transport.calls[0]["url"]
 
     result = client.upsert_approved_text(
-        organization_id="org-1",
-        project_id="project-1",
+        scope=trusted_scope(),
         records=[
             {
                 "_id": "vision-2030-001",
@@ -297,8 +322,7 @@ def test_pinecone_uses_existing_vision2030_index_and_tenant_project_namespace() 
     assert upsert_call["records"][0]["project_ref"] != "project-1"
 
     search = client.search_text(
-        organization_id="org-1",
-        project_id="project-1",
+        scope=trusted_scope(),
         query="مستهدفات المنشآت الصغيرة",
     )
     assert search["retrieval_requires_evidence_validation"] is True
@@ -317,14 +341,12 @@ def test_pinecone_rejects_unreviewed_or_sensitive_records() -> None:
     }
     with pytest.raises(ProviderConfigurationError, match="requires_approved_review"):
         client.upsert_approved_text(
-            organization_id="org",
-            project_id="project",
+            scope=trusted_scope("org", "project"),
             records=[{**base, "review_status": "draft", "data_classification": "public"}],
         )
     with pytest.raises(ProviderConfigurationError, match="classification_forbidden"):
         client.upsert_approved_text(
-            organization_id="org",
-            project_id="project",
+            scope=trusted_scope("org", "project"),
             records=[{**base, "review_status": "approved", "data_classification": "secret"}],
         )
 
@@ -354,3 +376,4 @@ def test_live_clients_do_not_import_frozen_runtime() -> None:
     assert "deepseek-v4-flash" in source
     assert "include_answer\": False" in source
     assert "eligible_for_pinecone\": False" in source
+
