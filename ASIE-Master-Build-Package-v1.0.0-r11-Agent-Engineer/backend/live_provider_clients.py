@@ -18,8 +18,10 @@ from backend.external_acquisition import (
 )
 from backend.provider_security_control_plane import (
     ProviderAdmission,
+    ProviderRequestContext,
     ProviderSecurityControlPlane,
     ProviderSecurityError,
+    TrustedProviderScope,
 )
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 
@@ -38,7 +40,7 @@ class ProviderTransport(Protocol):
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]: ...
 
     def request_ndjson(
@@ -49,7 +51,7 @@ class ProviderTransport(Protocol):
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -81,7 +83,7 @@ class GovernedProviderTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]:
         encoded = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._request(
@@ -104,7 +106,7 @@ class GovernedProviderTransport:
         headers: Mapping[str, str],
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]:
         payload = "\n".join(json.dumps(record, ensure_ascii=False, separators=(",", ":")) for record in records).encode("utf-8")
         return self._request(
@@ -130,7 +132,7 @@ class GovernedProviderTransport:
         content_type: str,
         expected_statuses: Sequence[int],
         parse_json: bool,
-        security_context: Mapping[str, Any] | None,
+        security_context: ProviderRequestContext | None,
     ) -> dict[str, Any]:
         if not provider_id.strip():
             raise ExternalAcquisitionError("provider_id_required")
@@ -305,20 +307,15 @@ def tenant_project_namespace(organization_id: str, project_id: str, prefix: str 
 
 
 def _provider_security_context(
-    organization_id: str,
-    project_id: str,
+    scope: TrustedProviderScope,
     operation: str,
     *,
     cost_units: int = 1,
     preflight: bool = False,
-) -> dict[str, Any]:
-    return {
-        "organization_id": organization_id,
-        "project_id": project_id,
-        "operation": operation,
-        "cost_units": cost_units,
-        "preflight": preflight,
-    }
+) -> ProviderRequestContext:
+    if preflight != scope.preflight:
+        raise ProviderSecurityError("provider_scope_preflight_mismatch")
+    return scope.request_context(operation, cost_units=cost_units)
 
 
 @dataclass
@@ -338,8 +335,7 @@ class DeepSeekNarrativeClient:
     def create_narrative(
         self,
         *,
-        organization_id: str,
-        project_id: str,
+        scope: TrustedProviderScope,
         request_id: str,
         prompt_template_id: str,
         prompt_hash: str,
@@ -368,8 +364,7 @@ class DeepSeekNarrativeClient:
             provider_id="deepseek",
             url="https://api.deepseek.com/chat/completions",
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "create_narrative",
                 cost_units=max(1, (max_tokens + 999) // 1_000),
             ),
@@ -401,6 +396,7 @@ class DeepSeekNarrativeClient:
 class TavilyResearchClient:
     transport: ProviderTransport
     api_key: str
+    scope: TrustedProviderScope
     project_id: str | None = None
     admission_policy: TavilySourceAdmissionPolicy | None = None
 
@@ -409,17 +405,29 @@ class TavilyResearchClient:
         cls,
         transport: ProviderTransport | None = None,
         *,
+        scope: TrustedProviderScope,
         admission_policy: TavilySourceAdmissionPolicy | None = None,
     ) -> "TavilyResearchClient":
         return cls(
             transport=transport or GovernedProviderTransport(),
             api_key=_required_secret("TAVILY_API_KEY"),
+            scope=scope,
             project_id=os.getenv("TAVILY_PROJECT", "").strip() or None,
             admission_policy=admission_policy,
         )
 
     def _admission(self) -> TavilySourceAdmissionPolicy:
         return self.admission_policy or TavilySourceAdmissionPolicy.default_deny()
+
+    def _validated_scope(self, scope: TrustedProviderScope) -> TrustedProviderScope:
+        policy = self._admission()
+        if (
+            scope.preflight
+            or scope.organization_id != policy.organization_id
+            or scope.project_id != policy.project_id
+        ):
+            raise ProviderSecurityError("provider_scope_source_policy_mismatch")
+        return scope
 
     def _headers(self) -> dict[str, str]:
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -469,8 +477,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/search",
             security_context=_provider_security_context(
-                self._admission().organization_id,
-                self._admission().project_id,
+                self._validated_scope(self.scope),
                 "search",
                 cost_units=max_results,
             ),
@@ -518,8 +525,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/extract",
             security_context=_provider_security_context(
-                self._admission().organization_id,
-                self._admission().project_id,
+                self._validated_scope(self.scope),
                 "extract",
                 cost_units=len(urls) * (2 if depth == "advanced" else 1),
             ),
@@ -561,8 +567,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/crawl",
             security_context=_provider_security_context(
-                policy.organization_id,
-                policy.project_id,
+                self._validated_scope(self.scope),
                 "crawl",
                 cost_units=max(1, (limit + 9) // 10),
             ),
@@ -610,8 +615,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/map",
             security_context=_provider_security_context(
-                policy.organization_id,
-                policy.project_id,
+                self._validated_scope(self.scope),
                 "map",
                 cost_units=max(1, (limit + 19) // 20),
             ),
@@ -656,8 +660,7 @@ class GoogleLocationClient:
         self,
         address: str,
         *,
-        organization_id: str,
-        project_id: str,
+        scope: TrustedProviderScope,
     ) -> dict[str, Any]:
         encoded = quote(_bounded_text(address, field="address", maximum=1_500), safe="")
         return self.transport.request_json(
@@ -665,8 +668,7 @@ class GoogleLocationClient:
             method="GET",
             url=f"https://geocode.googleapis.com/v4/geocode/address/{encoded}",
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "geocode_address",
             ),
             headers={
@@ -680,8 +682,7 @@ class GoogleLocationClient:
     def search_places_text(
         self,
         *,
-        organization_id: str,
-        project_id: str,
+        scope: TrustedProviderScope,
         text_query: str,
         latitude: float | None = None,
         longitude: float | None = None,
@@ -713,8 +714,7 @@ class GoogleLocationClient:
             provider_id="google_maps_platform",
             url="https://places.googleapis.com/v1/places:searchText",
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "search_places_text",
                 cost_units=page_size,
             ),
@@ -756,19 +756,17 @@ class PineconeKnowledgeClient:
     def describe_index(
         self,
         *,
-        organization_id: str = "__platform__",
-        project_id: str = "provider-preflight",
-        preflight: bool = True,
+        scope: TrustedProviderScope | None = None,
     ) -> dict[str, Any]:
+        scope = scope or TrustedProviderScope.for_platform_preflight()
         response = self.transport.request_json(
             provider_id="pinecone",
             method="GET",
             url=f"https://api.pinecone.io/indexes/{quote(self.index_name, safe='')}",
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "describe_index",
-                preflight=preflight,
+                preflight=scope.preflight,
             ),
             headers=self._headers(),
             body=None,
@@ -788,13 +786,9 @@ class PineconeKnowledgeClient:
             "pinecone_is_source_of_truth": False,
         }
 
-    def _host(self, organization_id: str, project_id: str) -> str:
+    def _host(self, scope: TrustedProviderScope) -> str:
         if not self._index_host:
-            self.describe_index(
-                organization_id=organization_id,
-                project_id=project_id,
-                preflight=False,
-            )
+            self.describe_index(scope=scope)
         if not self._index_host:
             raise ExternalAcquisitionError("pinecone_index_host_unavailable")
         return self._index_host
@@ -802,13 +796,12 @@ class PineconeKnowledgeClient:
     def upsert_approved_text(
         self,
         *,
-        organization_id: str,
-        project_id: str,
+        scope: TrustedProviderScope,
         records: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
         if not records or len(records) > 100:
             raise ProviderConfigurationError("invalid_pinecone_record_batch")
-        namespace = tenant_project_namespace(organization_id, project_id, self.namespace_prefix)
+        namespace = tenant_project_namespace(scope.organization_id, scope.project_id, self.namespace_prefix)
         safe_records: list[dict[str, Any]] = []
         for record in records:
             record_id = _bounded_text(record.get("_id") or record.get("id"), field="record_id", maximum=512)
@@ -828,19 +821,18 @@ class PineconeKnowledgeClient:
                     "evidence_ref": _bounded_text(record.get("evidence_ref"), field="evidence_ref", maximum=240),
                     "review_status": review_status,
                     "data_classification": classification,
-                    "organization_ref": _namespace_part(organization_id),
-                    "project_ref": _namespace_part(project_id),
+                    "organization_ref": _namespace_part(scope.organization_id),
+                    "project_ref": _namespace_part(scope.project_id),
                     "ingested_at": _utc_now(),
                 }
             )
         response = self.transport.request_ndjson(
             provider_id="pinecone",
-            url=f"https://{self._host(organization_id, project_id)}/records/namespaces/{quote(namespace, safe='')}/upsert",
+            url=f"https://{self._host(scope)}/records/namespaces/{quote(namespace, safe='')}/upsert",
             headers=self._headers(),
             records=safe_records,
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "upsert_approved_text",
                 cost_units=len(safe_records),
             ),
@@ -857,22 +849,20 @@ class PineconeKnowledgeClient:
     def search_text(
         self,
         *,
-        organization_id: str,
-        project_id: str,
+        scope: TrustedProviderScope,
         query: str,
         top_k: int = 8,
         fields: Sequence[str] = ("chunk_text", "source_url", "source_id", "evidence_ref", "review_status"),
     ) -> dict[str, Any]:
         if top_k < 1 or top_k > 50:
             raise ProviderConfigurationError("invalid_pinecone_top_k")
-        namespace = tenant_project_namespace(organization_id, project_id, self.namespace_prefix)
+        namespace = tenant_project_namespace(scope.organization_id, scope.project_id, self.namespace_prefix)
         response = self.transport.request_json(
             provider_id="pinecone",
-            url=f"https://{self._host(organization_id, project_id)}/records/namespaces/{quote(namespace, safe='')}/search",
+            url=f"https://{self._host(scope)}/records/namespaces/{quote(namespace, safe='')}/search",
             headers=self._headers(),
             security_context=_provider_security_context(
-                organization_id,
-                project_id,
+                scope,
                 "search_text",
                 cost_units=top_k,
             ),

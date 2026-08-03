@@ -12,10 +12,12 @@ import pytest
 from backend.external_acquisition import AcquisitionAuditSink, ExternalAcquisitionError
 from backend.live_provider_clients import GovernedProviderTransport
 from backend.provider_security_control_plane import (
+    ProviderRequestContext,
     ProviderRuntimePolicy,
     ProviderSecurityControlPlane,
     ProviderSecurityError,
     SQLiteProviderControlStore,
+    TrustedProviderScope,
 )
 
 
@@ -68,14 +70,66 @@ def context(
     project_id: str = "project-a",
     cost_units: int = 1,
     preflight: bool = False,
-) -> dict[str, Any]:
-    return {
-        "organization_id": organization_id,
-        "project_id": project_id,
-        "operation": operation,
-        "cost_units": cost_units,
-        "preflight": preflight,
-    }
+) -> ProviderRequestContext:
+    if preflight:
+        scope = TrustedProviderScope.for_platform_preflight()
+    else:
+        principal = SimpleNamespace(
+            user_id="user-a",
+            session_id="session-a",
+            organization_id=organization_id,
+            role="analyst",
+        )
+        scope = TrustedProviderScope.for_tenant(
+            principal=principal,
+            project_id=project_id,
+            project_organization_resolver=lambda _: organization_id,
+        )
+    return scope.request_context(operation, cost_units=cost_units)
+
+
+def test_untrusted_mapping_is_rejected_before_quota_store() -> None:
+    plane = ProviderSecurityControlPlane(
+        {"tavily": policy()},
+        enabled=True,
+    )
+    with pytest.raises(ProviderSecurityError, match="provider_request_context_not_trusted"):
+        plane.authorize(
+            provider_id="tavily",
+            url="https://api.tavily.com/search",
+            context={
+                "organization_id": "org-forged",
+                "project_id": "project-forged",
+                "operation": "search",
+            },  # type: ignore[arg-type]
+        )
+    assert getattr(plane.store, "_usage") == {}
+
+
+def test_tenant_scope_requires_membership_and_authoritative_project_ownership() -> None:
+    principal = SimpleNamespace(
+        user_id="user-a",
+        session_id="session-a",
+        organization_id="org-a",
+        role="analyst",
+    )
+    with pytest.raises(ProviderSecurityError, match="provider_project_tenant_mismatch"):
+        TrustedProviderScope.for_tenant(
+            principal=principal,
+            project_id="project-b",
+            project_organization_resolver=lambda _: "org-b",
+        )
+    with pytest.raises(ProviderSecurityError, match="provider_active_tenant_membership_required"):
+        TrustedProviderScope.for_tenant(
+            principal=SimpleNamespace(
+                user_id="platform-admin",
+                session_id="session-admin",
+                organization_id="org-a",
+                role=None,
+            ),
+            project_id="project-a",
+            project_organization_resolver=lambda _: "org-a",
+        )
 
 
 def test_control_plane_is_disabled_by_default_and_exposes_no_secret_values(monkeypatch) -> None:

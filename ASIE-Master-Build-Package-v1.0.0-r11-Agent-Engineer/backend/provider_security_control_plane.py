@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import os
 from pathlib import Path
@@ -17,6 +17,7 @@ from backend.live_provider_catalog import LIVE_PROVIDER_CATALOG, LiveProviderDef
 Clock = Callable[[], float]
 _PROVIDER_STATES = frozenset({"disabled", "preflight", "enabled"})
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,160}$")
+_TRUSTED_PROVIDER_CONTEXT_PROOF = object()
 
 
 class ProviderSecurityError(PermissionError):
@@ -83,6 +84,92 @@ def _bounded_identifier(value: Any, *, field: str) -> str:
     return normalized
 
 
+class ProviderTenantPrincipal(Protocol):
+    user_id: str
+    session_id: str
+    organization_id: str | None
+    role: str | None
+
+
+@dataclass(frozen=True)
+class TrustedProviderScope:
+    """Server-authorized tenant/project scope used to create provider requests.
+
+    Tenant scopes can only be issued from an authenticated tenant principal and
+    an authoritative project ownership lookup. Platform preflight is isolated
+    to its synthetic non-tenant scope and cannot authorize live operations.
+    """
+
+    organization_id: str
+    project_id: str
+    preflight: bool
+    _proof: object = field(repr=False, compare=False)
+
+    @classmethod
+    def for_tenant(
+        cls,
+        *,
+        principal: ProviderTenantPrincipal | None,
+        project_id: str,
+        project_organization_resolver: Callable[[str], str | None],
+    ) -> "TrustedProviderScope":
+        if principal is None or not str(getattr(principal, "user_id", "")).strip():
+            raise ProviderSecurityError("provider_authenticated_principal_required")
+        if not str(getattr(principal, "session_id", "")).strip():
+            raise ProviderSecurityError("provider_authenticated_session_required")
+        if not str(getattr(principal, "role", "") or "").strip():
+            raise ProviderSecurityError("provider_active_tenant_membership_required")
+        organization_id = _bounded_identifier(
+            getattr(principal, "organization_id", None),
+            field="organization_id",
+        )
+        bounded_project_id = _bounded_identifier(project_id, field="project_id")
+        authoritative_organization_id = project_organization_resolver(bounded_project_id)
+        if authoritative_organization_id is None:
+            raise ProviderSecurityError("provider_project_not_found")
+        authoritative_organization_id = _bounded_identifier(
+            authoritative_organization_id,
+            field="project_organization_id",
+        )
+        if authoritative_organization_id != organization_id:
+            raise ProviderSecurityError("provider_project_tenant_mismatch")
+        return cls(
+            organization_id=organization_id,
+            project_id=bounded_project_id,
+            preflight=False,
+            _proof=_TRUSTED_PROVIDER_CONTEXT_PROOF,
+        )
+
+    @classmethod
+    def for_platform_preflight(cls) -> "TrustedProviderScope":
+        return cls(
+            organization_id="__platform__",
+            project_id="provider-preflight",
+            preflight=True,
+            _proof=_TRUSTED_PROVIDER_CONTEXT_PROOF,
+        )
+
+    def request_context(self, operation: str, *, cost_units: int = 1) -> "ProviderRequestContext":
+        if self._proof is not _TRUSTED_PROVIDER_CONTEXT_PROOF:
+            raise ProviderSecurityError("provider_scope_not_trusted")
+        if isinstance(cost_units, bool):
+            raise ProviderSecurityError("invalid_provider_context:cost_units")
+        try:
+            normalized_cost_units = int(cost_units)
+        except (TypeError, ValueError) as exc:
+            raise ProviderSecurityError("invalid_provider_context:cost_units") from exc
+        if normalized_cost_units < 1 or normalized_cost_units > 10_000:
+            raise ProviderSecurityError("invalid_provider_context:cost_units")
+        return ProviderRequestContext(
+            organization_id=self.organization_id,
+            project_id=self.project_id,
+            operation=_bounded_identifier(operation, field="operation"),
+            cost_units=normalized_cost_units,
+            preflight=self.preflight,
+            _proof=_TRUSTED_PROVIDER_CONTEXT_PROOF,
+        )
+
+
 @dataclass(frozen=True)
 class ProviderRequestContext:
     organization_id: str
@@ -90,15 +177,15 @@ class ProviderRequestContext:
     operation: str
     cost_units: int = 1
     preflight: bool = False
+    _proof: object = field(default=None, repr=False, compare=False)
 
-    @classmethod
-    def from_mapping(cls, value: Mapping[str, Any] | None) -> "ProviderRequestContext":
-        if not isinstance(value, Mapping):
-            raise ProviderSecurityError("provider_request_context_required")
-        organization_id = _bounded_identifier(value.get("organization_id"), field="organization_id")
-        project_id = _bounded_identifier(value.get("project_id"), field="project_id")
-        operation = _bounded_identifier(value.get("operation"), field="operation")
-        raw_cost = value.get("cost_units", 1)
+    def validate_trust(self) -> None:
+        if self._proof is not _TRUSTED_PROVIDER_CONTEXT_PROOF:
+            raise ProviderSecurityError("provider_request_context_not_trusted")
+        _bounded_identifier(self.organization_id, field="organization_id")
+        _bounded_identifier(self.project_id, field="project_id")
+        _bounded_identifier(self.operation, field="operation")
+        raw_cost = self.cost_units
         if isinstance(raw_cost, bool):
             raise ProviderSecurityError("invalid_provider_context:cost_units")
         try:
@@ -107,13 +194,6 @@ class ProviderRequestContext:
             raise ProviderSecurityError("invalid_provider_context:cost_units") from exc
         if cost_units < 1 or cost_units > 10_000:
             raise ProviderSecurityError("invalid_provider_context:cost_units")
-        return cls(
-            organization_id=organization_id,
-            project_id=project_id,
-            operation=operation,
-            cost_units=cost_units,
-            preflight=value.get("preflight") is True,
-        )
 
     @property
     def scope_ref(self) -> str:
@@ -566,7 +646,7 @@ class ProviderSecurityControlPlane:
         *,
         provider_id: str,
         url: str,
-        context: Mapping[str, Any] | None,
+        context: ProviderRequestContext | None,
     ) -> ProviderAdmission:
         if not self.enabled:
             raise ProviderSecurityError("provider_control_plane_disabled")
@@ -579,7 +659,10 @@ class ProviderSecurityControlPlane:
             raise ProviderSecurityError("provider_kill_switch_active")
         if policy.state == "disabled":
             raise ProviderSecurityError("provider_disabled")
-        request_context = ProviderRequestContext.from_mapping(context)
+        if not isinstance(context, ProviderRequestContext):
+            raise ProviderSecurityError("provider_request_context_not_trusted")
+        context.validate_trust()
+        request_context = context
         if request_context.operation not in policy.allowed_operations:
             raise ProviderSecurityError("provider_operation_not_allowed")
         if request_context.preflight:
@@ -668,8 +751,11 @@ class ProviderSecurityControlPlane:
             ],
             "default_deny": True,
             "tenant_scoped_budgets": True,
+            "tenant_scope_authority": "authenticated_membership_and_stored_project_ownership",
+            "raw_mapping_contexts_accepted": False,
             "control_store_backend": self.store.backend_id,
             "durable_control_store_required_when_enabled": True,
             "secret_values_exposed": False,
             "network_authorized": False,
         }
+
