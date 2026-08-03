@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -376,4 +375,3 @@ def test_live_clients_do_not_import_frozen_runtime() -> None:
     assert "deepseek-v4-flash" in source
     assert "include_answer\": False" in source
     assert "eligible_for_pinecone\": False" in source
-
