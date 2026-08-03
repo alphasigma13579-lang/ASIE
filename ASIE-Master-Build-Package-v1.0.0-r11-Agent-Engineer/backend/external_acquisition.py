@@ -361,11 +361,14 @@ class _PinnedHTTPSHandler(HTTPSHandler):
                 **kwargs,
             )
 
+        connection_kwargs: dict[str, Any] = {"context": self._context}
+        check_hostname = getattr(self, "_check_hostname", None)
+        if check_hostname is not None:
+            connection_kwargs["check_hostname"] = check_hostname
         return self.do_open(
             connection_factory,
             request,
-            context=self._context,
-            check_hostname=self._check_hostname,
+            **connection_kwargs,
         )
 
 
