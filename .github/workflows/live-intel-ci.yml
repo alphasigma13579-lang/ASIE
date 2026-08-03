@@ -39,16 +39,17 @@ jobs:
             backend/external_acquisition.py \
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
-            backend/live_provider_preflight.py
+            backend/live_provider_preflight.py \
+            backend/live_provider_bounded_preflight.py
       - name: Test governed acquisition gateway
         run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
       - name: Test provider clients and Pinecone isolation
         run: pytest -q --tb=short tests/test_live_provider_clients.py
       - name: Test provider preflight
         run: |
-          pytest -q --tb=short \\
-            tests/test_live_provider_preflight.py \\
-            tests/test_bounded_live_provider_preflight.py \\
+          pytest -q --tb=short \
+            tests/test_live_provider_preflight.py \
+            tests/test_bounded_live_provider_preflight.py \
             tests/test_provider_live_preflight_workflow_guardrails.py
       - name: Test deployment package guardrails
         run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
