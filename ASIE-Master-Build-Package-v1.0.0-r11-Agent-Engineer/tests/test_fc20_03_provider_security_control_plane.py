@@ -444,7 +444,7 @@ def test_response_contract_violation_fails_before_transport_success_audit() -> N
             security_context=context("search"),
             body={"query": "x"},
         )
-    events = gateway.audit_sink.snapshot()
+    events = gateway.audit_sink.snapshot()["events"]
     assert any(event["outcome"] == "failed" for event in events)
     assert not any(event["outcome"] == "success" for event in events)
 
