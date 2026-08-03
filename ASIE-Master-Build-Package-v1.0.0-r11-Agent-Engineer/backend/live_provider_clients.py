@@ -396,6 +396,7 @@ class DeepSeekNarrativeClient:
 class TavilyResearchClient:
     transport: ProviderTransport
     api_key: str
+    scope: TrustedProviderScope
     project_id: str | None = None
     admission_policy: TavilySourceAdmissionPolicy | None = None
 
@@ -404,11 +405,13 @@ class TavilyResearchClient:
         cls,
         transport: ProviderTransport | None = None,
         *,
+        scope: TrustedProviderScope,
         admission_policy: TavilySourceAdmissionPolicy | None = None,
     ) -> "TavilyResearchClient":
         return cls(
             transport=transport or GovernedProviderTransport(),
             api_key=_required_secret("TAVILY_API_KEY"),
+            scope=scope,
             project_id=os.getenv("TAVILY_PROJECT", "").strip() or None,
             admission_policy=admission_policy,
         )
@@ -435,7 +438,6 @@ class TavilyResearchClient:
     def search(
         self,
         *,
-        scope: TrustedProviderScope,
         query: str,
         sector_id: str = "general",
         geography: str = "saudi_arabia",
@@ -475,7 +477,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/search",
             security_context=_provider_security_context(
-                self._validated_scope(scope),
+                self._validated_scope(self.scope),
                 "search",
                 cost_units=max_results,
             ),
@@ -492,7 +494,6 @@ class TavilyResearchClient:
     def extract(
         self,
         *,
-        scope: TrustedProviderScope,
         urls: Sequence[str],
         source_ids: Mapping[str, str],
         query: str | None = None,
@@ -524,7 +525,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/extract",
             security_context=_provider_security_context(
-                self._validated_scope(scope),
+                self._validated_scope(self.scope),
                 "extract",
                 cost_units=len(urls) * (2 if depth == "advanced" else 1),
             ),
@@ -541,7 +542,6 @@ class TavilyResearchClient:
     def crawl(
         self,
         *,
-        scope: TrustedProviderScope,
         source_id: str,
         url: str,
         instructions: str,
@@ -567,7 +567,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/crawl",
             security_context=_provider_security_context(
-                self._validated_scope(scope),
+                self._validated_scope(self.scope),
                 "crawl",
                 cost_units=max(1, (limit + 9) // 10),
             ),
@@ -596,7 +596,6 @@ class TavilyResearchClient:
     def map_site(
         self,
         *,
-        scope: TrustedProviderScope,
         source_id: str,
         url: str,
         instructions: str,
@@ -616,7 +615,7 @@ class TavilyResearchClient:
             provider_id="tavily",
             url="https://api.tavily.com/map",
             security_context=_provider_security_context(
-                self._validated_scope(scope),
+                self._validated_scope(self.scope),
                 "map",
                 cost_units=max(1, (limit + 19) // 20),
             ),
