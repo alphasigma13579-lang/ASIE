@@ -16,6 +16,16 @@ def test_preflight_configuration_mode_exposes_no_secrets(monkeypatch) -> None:
     assert result["network_policy"]["enabled"] is False
     assert result["provider_security"]["enabled"] is False
     assert result["provider_security"]["network_authorized"] is False
+    assert result["response_contracts"]["operation_count"] == 10
+    assert result["response_contracts"]["all_contracts_fail_closed"] is True
+    assert result["response_contracts"]["content_auto_approved"] is False
+    assert set(result["live_checks"]) == {
+        "deepseek",
+        "tavily",
+        "google_maps_platform",
+        "pinecone",
+    }
+    assert all(item["status"] == "not_checked" for item in result["live_checks"].values())
 
 
 def test_network_preflight_fails_closed_when_external_fetch_is_disabled(monkeypatch) -> None:
@@ -43,3 +53,4 @@ def test_preflight_rejects_enabled_control_plane_without_durable_store(monkeypat
     assert result["status"] == "blocked_provider_control_configuration"
     assert result["error"] == "provider_control_store_required"
     assert result["provider_security"]["secret_values_exposed"] is False
+
