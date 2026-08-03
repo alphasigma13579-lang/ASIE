@@ -194,13 +194,12 @@ def test_default_gateway_bypasses_environment_proxy_and_reports_dns_pinning() ->
         enabled_policy(),
         resolver=public_resolver,
     )
-    proxy_handlers = [
-        handler
+    handler_names = {
+        handler.__class__.__name__
         for handler in gateway.opener.handlers
-        if handler.__class__.__name__ == "ProxyHandler"
-    ]
-    assert len(proxy_handlers) == 1
-    assert proxy_handlers[0].proxies == {}
+    }
+    assert "ProxyHandler" not in handler_names
+    assert "_PinnedHTTPSHandler" in handler_names
     assert gateway.status()["policy"]["dns_connection_pinning"] is True
     assert gateway.status()["policy"]["environment_proxy_bypass"] is True
 
