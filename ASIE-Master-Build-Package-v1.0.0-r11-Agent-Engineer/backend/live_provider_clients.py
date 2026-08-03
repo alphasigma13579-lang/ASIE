@@ -23,11 +23,24 @@ from backend.provider_security_control_plane import (
     ProviderSecurityError,
     TrustedProviderScope,
 )
+from backend.provider_response_contracts import (
+    PROVIDER_RESPONSE_CONTRACT_VERSION,
+    ProviderResponseContractError,
+    validate_pinecone,
+    validate_provider_response,
+)
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 
 
 class ProviderConfigurationError(RuntimeError):
     pass
+
+
+DEEPSEEK_ALLOWED_MODELS = frozenset({"deepseek-v4-flash", "deepseek-v4-pro"})
+
+
+class ProviderCancellationSignal(Protocol):
+    def is_set(self) -> bool: ...
 
 
 class ProviderTransport(Protocol):
@@ -41,6 +54,7 @@ class ProviderTransport(Protocol):
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
         security_context: ProviderRequestContext | None = None,
+        cancellation_signal: ProviderCancellationSignal | None = None,
     ) -> dict[str, Any]: ...
 
     def request_ndjson(
@@ -52,6 +66,7 @@ class ProviderTransport(Protocol):
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
         security_context: ProviderRequestContext | None = None,
+        cancellation_signal: ProviderCancellationSignal | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -84,6 +99,7 @@ class GovernedProviderTransport:
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
         security_context: ProviderRequestContext | None = None,
+        cancellation_signal: ProviderCancellationSignal | None = None,
     ) -> dict[str, Any]:
         encoded = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._request(
@@ -96,6 +112,7 @@ class GovernedProviderTransport:
             expected_statuses=expected_statuses,
             parse_json=True,
             security_context=security_context,
+            cancellation_signal=cancellation_signal,
         )
 
     def request_ndjson(
@@ -107,6 +124,7 @@ class GovernedProviderTransport:
         records: Sequence[Mapping[str, Any]],
         expected_statuses: Sequence[int] = (200, 201),
         security_context: ProviderRequestContext | None = None,
+        cancellation_signal: ProviderCancellationSignal | None = None,
     ) -> dict[str, Any]:
         payload = "\n".join(json.dumps(record, ensure_ascii=False, separators=(",", ":")) for record in records).encode("utf-8")
         return self._request(
@@ -119,6 +137,7 @@ class GovernedProviderTransport:
             expected_statuses=expected_statuses,
             parse_json=False,
             security_context=security_context,
+            cancellation_signal=cancellation_signal,
         )
 
     def _request(
@@ -133,7 +152,9 @@ class GovernedProviderTransport:
         expected_statuses: Sequence[int],
         parse_json: bool,
         security_context: ProviderRequestContext | None,
+        cancellation_signal: ProviderCancellationSignal | None,
     ) -> dict[str, Any]:
+        self._raise_if_cancelled(cancellation_signal)
         if not provider_id.strip():
             raise ExternalAcquisitionError("provider_id_required")
         try:
@@ -166,8 +187,10 @@ class GovernedProviderTransport:
 
         for attempt in range(1, attempts + 1):
             try:
+                self._raise_if_cancelled(cancellation_signal)
                 parsed = self.gateway._validate_url(url)
                 self.gateway.rate_limiter.wait(parsed.hostname or "")
+                self._raise_if_cancelled(cancellation_signal)
                 with self.gateway.opener.open(
                     request,
                     timeout=min(self.gateway.policy.timeout_seconds, admission.timeout_seconds),
@@ -184,10 +207,12 @@ class GovernedProviderTransport:
                     response_body = response.read(response_limit + 1)
                     if len(response_body) > response_limit:
                         raise ExternalAcquisitionError("provider_response_too_large")
+                self._raise_if_cancelled(cancellation_signal)
                 break
             except HTTPError as exc:
                 transient = exc.code in {408, 425, 429, 500, 502, 503, 504}
                 if transient and attempt < attempts:
+                    self._raise_if_cancelled(cancellation_signal)
                     self._audit(provider_id, urlsplit(url).hostname or "", "retry", f"provider_http_status:{exc.code}", admission)
                     self.sleep(admission.retry_delay_seconds * attempt)
                     continue
@@ -197,6 +222,7 @@ class GovernedProviderTransport:
                 raise ExternalAcquisitionError(reason) from exc
             except (URLError, TimeoutError, OSError) as exc:
                 if attempt < attempts:
+                    self._raise_if_cancelled(cancellation_signal)
                     self._audit(provider_id, urlsplit(url).hostname or "", "retry", f"provider_transport_error:{type(exc).__name__}", admission)
                     self.sleep(admission.retry_delay_seconds * attempt)
                     continue
@@ -228,6 +254,14 @@ class GovernedProviderTransport:
         else:
             payload = {"accepted": True}
 
+        try:
+            validate_provider_response(provider_id, admission.operation, payload)
+        except ProviderResponseContractError as exc:
+            self.control_plane.record_failure(admission, transient=False)
+            reason = str(exc)
+            self._audit(provider_id, parsed.hostname if parsed else "", "failed", reason, admission)
+            raise ExternalAcquisitionError(reason) from exc
+
         self.control_plane.record_success(admission)
         metadata = {
             **admission.audit_metadata(),
@@ -247,6 +281,8 @@ class GovernedProviderTransport:
             "provider_id": provider_id,
             "provider_operation": admission.operation,
             "provider_contract_version": admission.contract_version,
+            "response_contract_version": PROVIDER_RESPONSE_CONTRACT_VERSION,
+            "response_contract_validated": True,
             "tenant_scope_ref": admission.scope_ref,
             "url": final_url,
             "status_code": status,
@@ -258,6 +294,11 @@ class GovernedProviderTransport:
             "review_status": "review_required",
             "eligible_for_controlled_assumptions": False,
         }
+
+    @staticmethod
+    def _raise_if_cancelled(signal: ProviderCancellationSignal | None) -> None:
+        if signal is not None and signal.is_set():
+            raise ExternalAcquisitionError("provider_request_cancelled")
 
     def _audit(
         self,
@@ -318,11 +359,31 @@ def _provider_security_context(
     return scope.request_context(operation, cost_units=cost_units)
 
 
+def _validated_response(
+    response: dict[str, Any],
+    provider_id: str,
+    operation: str,
+) -> dict[str, Any]:
+    try:
+        validate_provider_response(provider_id, operation, response.get("payload"))
+    except ProviderResponseContractError as exc:
+        raise ExternalAcquisitionError(str(exc)) from exc
+    return {
+        **response,
+        "response_contract_version": PROVIDER_RESPONSE_CONTRACT_VERSION,
+        "response_contract_validated": True,
+    }
+
+
 @dataclass
 class DeepSeekNarrativeClient:
     transport: ProviderTransport
     api_key: str
     model: str = "deepseek-v4-flash"
+
+    def __post_init__(self) -> None:
+        if self.model not in DEEPSEEK_ALLOWED_MODELS:
+            raise ProviderConfigurationError("deepseek_model_not_allowlisted")
 
     @classmethod
     def from_env(cls, transport: ProviderTransport | None = None) -> "DeepSeekNarrativeClient":
@@ -377,6 +438,7 @@ class DeepSeekNarrativeClient:
                 "stream": False,
             },
         )
+        response = _validated_response(response, "deepseek", "create_narrative")
         return {
             **response,
             "request_id": request_id,
@@ -484,6 +546,7 @@ class TavilyResearchClient:
             headers=self._headers(),
             body=body,
         )
+        response = _validated_response(response, "tavily", "search")
         return {
             **response,
             "source_admission": admission,
@@ -532,6 +595,7 @@ class TavilyResearchClient:
             headers=self._headers(),
             body=body,
         )
+        response = _validated_response(response, "tavily", "extract")
         return {
             **response,
             "source_admissions": admissions,
@@ -586,6 +650,7 @@ class TavilyResearchClient:
                 "include_usage": True,
             },
         )
+        response = _validated_response(response, "tavily", "crawl")
         return {
             **response,
             "source_admission": admission,
@@ -632,6 +697,7 @@ class TavilyResearchClient:
                 "include_usage": True,
             },
         )
+        response = _validated_response(response, "tavily", "map")
         return {
             **response,
             "source_admission": admission,
@@ -663,7 +729,7 @@ class GoogleLocationClient:
         scope: TrustedProviderScope,
     ) -> dict[str, Any]:
         encoded = quote(_bounded_text(address, field="address", maximum=1_500), safe="")
-        return self.transport.request_json(
+        response = self.transport.request_json(
             provider_id="google_maps_platform",
             method="GET",
             url=f"https://geocode.googleapis.com/v4/geocode/address/{encoded}",
@@ -678,6 +744,7 @@ class GoogleLocationClient:
             },
             body=None,
         )
+        return _validated_response(response, "google_maps_platform", "geocode_address")
 
     def search_places_text(
         self,
@@ -724,6 +791,7 @@ class GoogleLocationClient:
             },
             body=body,
         )
+        response = _validated_response(response, "google_maps_platform", "search_places_text")
         return {
             **response,
             "persistence_policy": "place_id_and_project_location_only_until_terms_review",
@@ -771,6 +839,19 @@ class PineconeKnowledgeClient:
             headers=self._headers(),
             body=None,
         )
+        try:
+            validate_pinecone(
+                response.get("payload"),
+                "describe_index",
+                expected_index_name=self.index_name,
+            )
+        except ProviderResponseContractError as exc:
+            raise ExternalAcquisitionError(str(exc)) from exc
+        response = {
+            **response,
+            "response_contract_version": PROVIDER_RESPONSE_CONTRACT_VERSION,
+            "response_contract_validated": True,
+        }
         payload = response.get("payload")
         if not isinstance(payload, dict):
             raise ExternalAcquisitionError("invalid_pinecone_index_description")
@@ -837,6 +918,7 @@ class PineconeKnowledgeClient:
                 cost_units=len(safe_records),
             ),
         )
+        response = _validated_response(response, "pinecone", "upsert_approved_text")
         return {
             **response,
             "index_name": self.index_name,
@@ -871,6 +953,7 @@ class PineconeKnowledgeClient:
                 "fields": list(fields),
             },
         )
+        response = _validated_response(response, "pinecone", "search_text")
         return {
             **response,
             "index_name": self.index_name,
@@ -878,3 +961,4 @@ class PineconeKnowledgeClient:
             "source_of_truth": False,
             "retrieval_requires_evidence_validation": True,
         }
+
