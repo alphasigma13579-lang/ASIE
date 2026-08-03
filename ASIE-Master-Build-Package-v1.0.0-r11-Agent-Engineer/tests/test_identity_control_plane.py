@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from backend import asie_local_api as api
 from backend.repository import Repository
+from backend.provider_security_control_plane import ProviderSecurityError, TrustedProviderScope
 
 
 class IdentityAndControlPlaneTests(unittest.TestCase):
@@ -32,6 +34,27 @@ class IdentityAndControlPlaneTests(unittest.TestCase):
         self.assertTrue(own_principal and own_principal.can("project.edit"))
         self.assertFalse(other_principal and other_principal.can("snapshot.read"))
         self.assertEqual([project_a.project_id], [row["project_id"] for row in self.repo.list_projects(org_a["organization_id"])])
+
+    def test_platform_role_cannot_select_tenant_without_explicit_membership(self) -> None:
+        owner = self.repo.create_user(email="tenant-owner@example.test", display_name="Owner", password="strong-local-password-owner")
+        admin = self.repo.create_user(email="platform-admin@example.test", display_name="Admin", password="strong-local-password-admin", platform_role="platform_admin")
+        organization = self.repo.create_organization(name="Protected Tenant", owner_user_id=owner["user_id"])
+        project = self.repo.create_project({"name": "Protected", "organization_id": organization["organization_id"]})
+        token, _ = self.repo.create_session(email=admin["email"], password="strong-local-password-admin")
+
+        principal = self.repo.principal_for_token(token, organization["organization_id"])
+
+        self.assertIsNotNone(principal)
+        assert principal is not None
+        self.assertTrue(principal.can("platform.manage"))
+        self.assertIsNone(principal.organization_id)
+        self.assertIsNone(principal.role)
+        with self.assertRaisesRegex(ProviderSecurityError, "provider_active_tenant_membership_required"):
+            TrustedProviderScope.for_tenant(
+                principal=principal,
+                project_id=project.project_id,
+                project_organization_resolver=self.repo.project_organization_id,
+            )
 
     def test_password_is_not_stored_and_revoked_session_fails_closed(self) -> None:
         user = self.repo.create_user(email="session@example.test", display_name="Session", password="strong-local-password-c")
@@ -96,3 +119,4 @@ class IdentityAndControlPlaneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
