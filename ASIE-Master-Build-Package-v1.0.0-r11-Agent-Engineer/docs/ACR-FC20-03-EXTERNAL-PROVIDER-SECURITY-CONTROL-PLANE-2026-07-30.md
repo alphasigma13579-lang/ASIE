@@ -1,6 +1,6 @@
 # ACR-FC20-03 — External Provider Security Control Plane
 
-- الحالة: `IMPLEMENTATION_IN_PROGRESS`
+- الحالة: `COMPLETE`
 - البرنامج: `FOUNDATION-COMPLETE-20 / FC20-03`
 - النطاق: مصدر GitHub الرسمي فقط
 - قرار الإصدار: `BLOCK`
@@ -57,13 +57,14 @@
 - إجابة DNS خاصة/محجوزة تُرفض قبل إنشاء socket، والاتصال يستخدم IP رقمياً مثبتاً مع اسم TLS الأصلي.
 - presence-only secrets لا تعني production readiness.
 
-## ما يمنع إغلاق FC20-03 حالياً
+## قيود التشغيل المتبقية بعد الإغلاق
 
-- مخزن SQLite WAL الحالي مشترك بين عمليات المضيف الواحد؛ أي نشر متعدد المضيفات يتطلب backend موزعًا قبل التفعيل.
-- تم إغلاق نافذة DNS rebinding في النقل الافتراضي بربط الاتصال بعنوان IP عام متحقق منه وبمنع proxy البيئي؛ يلزم إبقاء هذا الإثبات ضمن CI.
-- يلزم preflight/health وعقد schema فعلي لكل DeepSeek وTavily وGoogle وPinecone.
-- يلزم إثبات cancellation/timeout وresponse-contract violations عبر جميع المزودين.
-- لا يوجد تفويض provider/network للبيئة الحية.
+- مخزن SQLite WAL صالح لعمليات المضيف الواحد فقط؛ أي نشر متعدد المضيفات يظل محجوبًا حتى اعتماد backend موزع.
+- بوابة DNS pinning وTLS/SNI ومنع proxy البيئي تبقى اختبارات CI إلزامية.
+- فشل timeout/rate-limit الحقيقي لم يُفتعل لدى المزودين؛ السلوك الحتمي للفشل مثبت offline، وتم نقل التمرين التشغيلي إلى FC20-15.
+- التفويض الحي المستخدم للـpreflight كان محدودًا بالتشغيلات المسجلة وانتهى بانتهائها؛ لا يوجد تفعيل مستمر للشبكة أو المزودات.
+
+هذه مخاطر تشغيل متبقية مقبولة لاستمرار البرنامج، ولا تمنح سلطة نشر أو إصدار.
 
 ## Rollback
 
@@ -95,5 +96,18 @@
 
 أدلة PR #113: head `67f02965b80b3db5946d3fc8255a0643561be776`؛ ASIE CI `30849216181` نجح مع `634 passed, 10 warnings`؛ LIVE-INTEL `30849215774` نجح؛ Production Provider Readiness `30849215897` نجح؛ Cross-Platform Determinism `30849215778` نجح.
 
-تبقى شروط الإغلاق الحية غير منفذة لعدم وجود تفويض شبكة/مزود أو مفاتيح اختبار في هذه الحزمة: live preflight محدود لكل مزود، مطابقة الاستجابة الحقيقية للعقد، وأخطاء timeout/rate-limit الحقيقية. لذلك تبقى الحالة `IMPLEMENTATION_IN_PROGRESS`، ويبقى FC20-04 محجوبًا ببوابة السلف إلى أن تُسجل أدلة الإغلاق المطلوبة في manifest.
+## إغلاق FC20-03 وفتح FC20-04 — 2026-08-04
+
+أُغلقت الحزمة تقنيًا على `main` عند commit `e63f1039ad5a2a1278f0c43a184bbfe4a4862125`، وسُجلت الأدلة التنفيذية في `FOUNDATION-COMPLETE-20.json`.
+
+- Secret-store presence gate: run [30853644493](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30853644493) نجح بلا كشف قيم.
+- DeepSeek bounded live preflight: run [30856284242](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30856284242) — HTTP 200، العقد والنموذج متوافقان.
+- Tavily bounded live preflight: run [30856375006](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30856375006) — HTTP 200، نتيجة واحدة وائتمان واحد، دون اعتماد تلقائي.
+- Google Geocoding bounded live preflight: run [30856449273](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30856449273) — HTTP 200 لعنوان عام ثابت دون حفظ الموقع.
+- Pinecone bootstrap: PR [#119](https://github.com/alphasigma13579-lang/ASIE/pull/119)، run [30857670636](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30857670636) أنشأ `vision2030-kb-e5` محميًا من الحذف، بلا vectors أو بيانات عملاء.
+- Pinecone final preflight: run [30857803201](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30857803201) — HTTP 200، ready، host مكتشف، `multilingual-e5-large` و`chunk_text` متوافقان، ولا كتابة.
+- إصلاح توافق Python 3.13 للنقل المثبت: PR [#118](https://github.com/alphasigma13579-lang/ASIE/pull/118) مع نجاح LIVE-INTEL [30855663636](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30855663636)، ASIE CI [30855663633](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30855663633)، والحتمية [30855663695](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30855663695).
+- Bootstrap guardrails: LIVE-INTEL [30857455373](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30857455373)، ASIE CI [30857455477](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30857455477)، والحتمية [30857455554](https://github.com/alphasigma13579-lang/ASIE/actions/runs/30857455554)، وجميعها ناجحة.
+
+لم تظهر الأسرار، ولم تُرسل بيانات عملاء، ولم تُحفظ payloads، ولم تتغير الملفات المجمدة. انتقل FC20-03 إلى `COMPLETE` وFC20-04 إلى `OPEN`. يبقى حكم الإصدار `BLOCK` وتبقى `external_network_authorized=false` و`provider_activation_authorized=false`.
 
