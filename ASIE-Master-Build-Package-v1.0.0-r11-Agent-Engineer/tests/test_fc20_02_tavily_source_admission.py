@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
 
 import pytest
 
 from backend.live_provider_clients import TavilyResearchClient
+from backend.provider_security_control_plane import ProviderRequestContext, TrustedProviderScope
 from backend.source_registry import normalize_source_review
 from backend.tavily_source_admission import SourceAdmissionError, TavilySourceAdmissionPolicy
+
+
+def _context_snapshot(context: ProviderRequestContext | None) -> dict[str, Any]:
+    if context is None:
+        return {}
+    return {
+        "organization_id": context.organization_id,
+        "project_id": context.project_id,
+        "operation": context.operation,
+        "cost_units": context.cost_units,
+        "preflight": context.preflight,
+    }
 
 
 class RecordingTransport:
@@ -22,13 +36,13 @@ class RecordingTransport:
         headers: Mapping[str, str] | None = None,
         body: Mapping[str, Any] | None = None,
         expected_statuses: Sequence[int] = (200,),
-        security_context: Mapping[str, Any] | None = None,
+        security_context: ProviderRequestContext | None = None,
     ) -> dict[str, Any]:
         self.calls.append({
             "provider_id": provider_id,
             "url": url,
             "body": dict(body or {}),
-            "security_context": dict(security_context or {}),
+            "security_context": _context_snapshot(security_context),
         })
         return {
             "provider_id": provider_id,
@@ -78,9 +92,20 @@ def client_for(records: Sequence[Mapping[str, Any]], *, organization_id: str = "
         project_id="project-a",
         records=records,
     )
+    scope = TrustedProviderScope.for_tenant(
+        principal=SimpleNamespace(
+            user_id="user-a",
+            session_id="session-a",
+            organization_id=organization_id,
+            role="analyst",
+        ),
+        project_id="project-a",
+        project_organization_resolver=lambda _: organization_id,
+    )
     return TavilyResearchClient(
         transport=transport,
         api_key="secret",
+        scope=scope,
         admission_policy=policy,
     ), transport
 
