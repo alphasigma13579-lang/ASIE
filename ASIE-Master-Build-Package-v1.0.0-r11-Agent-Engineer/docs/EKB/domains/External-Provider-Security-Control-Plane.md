@@ -43,7 +43,7 @@ FC20-03 ما زال `IN_PROGRESS`. التفعيل الخارجي غير مصرح
 
 - PR #112 دُمج في `main` عند `500ccba0b0b2d81708da789c6ff0c286c5415caa` بعد نجاح ASIE CI `30820331603` وLIVE-INTEL `30820328314` وCross-Platform Determinism `30820330663`.
 - يثبت هذا التغيير tenant/project scope الموثوق والرفض المتقاطع، ولا يثبت استجابة مزود حية.
-- فرع الإغلاق المرشح يضيف عقود استجابة fail-closed، cancellation/timeout evidence، وبوابة مخزن موزع عند تعدد النسخ. لا تصبح هذه أدلة إغلاق إلا بعد الدمج ونجاح CI.
+- PR #113 دُمج في `main` عند `34ec77d1c3b7abb3cde22c4302cfd69413e39edd` وأضاف عقود الاستجابة fail-closed وcancellation/timeout evidence وبوابة المخزن الموزع. أدلته: ASIE CI `30849216181` (`634 passed`) وLIVE-INTEL `30849215774` وProduction Provider Readiness `30849215897` وCross-Platform Determinism `30849215778`، وجميعها ناجحة.
 
 الحالة تظل `IN_PROGRESS`. الشبكة والمزودون معطلون، والفحوص الحية غير منفذة. لا يُفتح FC20-04 قبل انتقال manifest الموثق من FC20-03 إلى `COMPLETE`.
 

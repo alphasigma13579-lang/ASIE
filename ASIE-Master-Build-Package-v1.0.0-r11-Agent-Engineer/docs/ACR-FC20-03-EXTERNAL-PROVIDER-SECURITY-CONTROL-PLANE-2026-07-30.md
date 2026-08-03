@@ -84,7 +84,7 @@
 
 ## تدقيق معايير الإغلاق بعد PR #112
 
-أغلق الفرع `agent/fc20-03c-provider-contract-completion` المرشح غير الحي الفجوات التالية، وتبقى مرهونة بمراجعة ونجاح CI قبل اعتبارها أدلة مدمجة:
+أغلق PR [#113](https://github.com/alphasigma13579-lang/ASIE/pull/113) المدمج في `main` عند `34ec77d1c3b7abb3cde22c4302cfd69413e39edd` الفجوات غير الحية التالية:
 
 - عقود استجابة fail-closed ومثبتة الإصدار لعمليات DeepSeek وTavily وGoogle Maps Platform وPinecone.
 - منع tool calls غير المصرح بها ومنع نموذج DeepSeek خارج allowlist.
@@ -92,6 +92,8 @@
 - cancellation تعاوني قبل الشبكة وبين retries وإثبات أصغر timeout.
 - منع الاستعداد متعدد النسخ عند استخدام SQLite بدل مخزن موزع.
 - كشف صريح لحالة كل فحص حي دون ادعاء أنه نُفذ.
+
+أدلة PR #113: head `67f02965b80b3db5946d3fc8255a0643561be776`؛ ASIE CI `30849216181` نجح مع `634 passed, 10 warnings`؛ LIVE-INTEL `30849215774` نجح؛ Production Provider Readiness `30849215897` نجح؛ Cross-Platform Determinism `30849215778` نجح.
 
 تبقى شروط الإغلاق الحية غير منفذة لعدم وجود تفويض شبكة/مزود أو مفاتيح اختبار في هذه الحزمة: live preflight محدود لكل مزود، مطابقة الاستجابة الحقيقية للعقد، وأخطاء timeout/rate-limit الحقيقية. لذلك تبقى الحالة `IMPLEMENTATION_IN_PROGRESS`، ويبقى FC20-04 محجوبًا ببوابة السلف إلى أن تُسجل أدلة الإغلاق المطلوبة في manifest.
 
