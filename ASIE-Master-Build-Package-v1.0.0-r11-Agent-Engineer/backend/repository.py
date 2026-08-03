@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import sqlite3
@@ -425,23 +424,7 @@ class Repository:
                 );
                 CREATE TABLE IF NOT EXISTS intelligence_synthesis_packs (
                     pack_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
-                    context_hash TEXT NOT NULL, pack_hash TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
-                    FOREIGN KEY(organization_id) REFERENCES organizations(organization_id), FOREIGN KEY(project_id) REFERENCES projects(project_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS assumptions (
-                    assumption_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    input_key TEXT NOT NULL,
-                    label TEXT NOT NULL,
-                    value TEXT NOT NULL,
-                    unit TEXT NOT NULL,
-                    owner TEXT NOT NULL,
-            …13788 tokens truncated…["context_hash"], "state": row["state"]}
-
-    def update_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, payload: dict[str, Any], expected_version: int, principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.update", target_id=context_build_id, correlation_id=correlation_id)
-        updated = dict(payload) | {"context_build_id": context_build_id, "organization_id": organization_id, "project_id": project_id, "updated_at": now_iso()}
+…14613 tokens truncated…id, "updated_at": now_iso()}
         with closing(self.connect()) as conn:
             result = conn.execute("UPDATE intelligence_contexts SET context_hash = ?, state = ?, version = version + 1, payload_json = ?, updated_at = ? WHERE context_build_id = ? AND organization_id = ? AND project_id = ? AND version = ?", (str(updated.get("context_hash") or ""), str(updated.get("state") or "DRAFT"), json_dumps(updated), updated["updated_at"], context_build_id, organization_id, project_id, expected_version))
             if result.rowcount != 1:
@@ -728,4 +711,3 @@ class Repository:
         filters = json_loads(data.pop("filters_json", None), {})
         lineage = json_loads(data.pop("lineage_json", None), {})
         return data | {"input_columns": input_columns, "filters": filters, "lineage": lineage}
-
