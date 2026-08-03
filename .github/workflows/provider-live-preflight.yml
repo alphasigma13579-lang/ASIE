@@ -1,0 +1,93 @@
+name: FC20-03 Bounded Live Provider Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: One provider to probe; run and review each provider separately
+        required: true
+        type: choice
+        options:
+          - deepseek
+          - tavily
+          - google_maps_platform
+          - pinecone
+      confirm_live_preflight:
+        description: I authorize one minimal external request with possible test cost
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fc20-03-live-preflight-${{ inputs.provider }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-live-preflight:
+    if: ${{ inputs.confirm_live_preflight == true }}
+    environment: provider-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+      ASIE_LIVE_PREFLIGHT_AUTHORIZED: "true"
+      ASIE_ALLOW_EXTERNAL_FETCH: "true"
+      ASIE_EXTERNAL_ALLOWED_HOSTS: api.deepseek.com,api.tavily.com,geocode.googleapis.com,api.pinecone.io,*.pinecone.io
+      ASIE_EXTERNAL_TIMEOUT_SECONDS: "12"
+      ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "2097152"
+      ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "0"
+      ASIE_PROVIDER_CONTROL_PLANE_ENABLED: "true"
+      ASIE_PROVIDER_CONTROL_DB_PATH: ${{ runner.temp }}/fc20-03-provider-control.sqlite3
+      ASIE_PROVIDER_GLOBAL_KILL_SWITCH: "false"
+      ASIE_PROVIDER_DEEPSEEK_STATE: preflight
+      ASIE_PROVIDER_TAVILY_STATE: preflight
+      ASIE_PROVIDER_GOOGLE_MAPS_PLATFORM_STATE: preflight
+      ASIE_PROVIDER_PINECONE_STATE: preflight
+      ASIE_PROVIDER_DEEPSEEK_KILL_SWITCH: "false"
+      ASIE_PROVIDER_TAVILY_KILL_SWITCH: "false"
+      ASIE_PROVIDER_GOOGLE_MAPS_PLATFORM_KILL_SWITCH: "false"
+      ASIE_PROVIDER_PINECONE_KILL_SWITCH: "false"
+      ASIE_PROVIDER_DEEPSEEK_REQUESTS_PER_WINDOW: "1"
+      ASIE_PROVIDER_TAVILY_REQUESTS_PER_WINDOW: "1"
+      ASIE_PROVIDER_GOOGLE_MAPS_PLATFORM_REQUESTS_PER_WINDOW: "1"
+      ASIE_PROVIDER_PINECONE_REQUESTS_PER_WINDOW: "1"
+      ASIE_PROVIDER_DEEPSEEK_COST_UNITS_PER_WINDOW: "1"
+      ASIE_PROVIDER_TAVILY_COST_UNITS_PER_WINDOW: "1"
+      ASIE_PROVIDER_GOOGLE_MAPS_PLATFORM_COST_UNITS_PER_WINDOW: "1"
+      ASIE_PROVIDER_PINECONE_COST_UNITS_PER_WINDOW: "1"
+      ASIE_PROVIDER_DEEPSEEK_MAX_GET_ATTEMPTS: "1"
+      ASIE_PROVIDER_TAVILY_MAX_GET_ATTEMPTS: "1"
+      ASIE_PROVIDER_GOOGLE_MAPS_PLATFORM_MAX_GET_ATTEMPTS: "1"
+      ASIE_PROVIDER_PINECONE_MAX_GET_ATTEMPTS: "1"
+      DEEPSEEK_MODEL: deepseek-v4-flash
+      GOOGLE_MAPS_LANGUAGE: ar
+      GOOGLE_MAPS_REGION: SA
+      PINECONE_INDEX: ${{ vars.PINECONE_INDEX || 'vision2030-kb' }}
+      PINECONE_API_VERSION: "2026-04"
+      PINECONE_EMBED_MODEL: ${{ vars.PINECONE_EMBED_MODEL || 'multilingual-e5-large' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile bounded preflight
+        run: python -m py_compile backend/live_provider_bounded_preflight.py
+      - name: Run one bounded and redacted live provider probe
+        env:
+          DEEPSEEK_API_KEY: ${{ inputs.provider == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
+          TAVILY_API_KEY: ${{ inputs.provider == 'tavily' && secrets.TAVILY_API_KEY || '' }}
+          TAVILY_PROJECT: ${{ inputs.provider == 'tavily' && secrets.TAVILY_PROJECT || '' }}
+          GOOGLE_MAPS_API_KEY: ${{ inputs.provider == 'google_maps_platform' && secrets.GOOGLE_MAPS_API_KEY || '' }}
+          PINECONE_API_KEY: ${{ inputs.provider == 'pinecone' && secrets.PINECONE_API_KEY || '' }}
+        run: |
+          umask 077
+          python -m backend.live_provider_bounded_preflight \
+            --provider "${{ inputs.provider }}" \
+            --network
+
