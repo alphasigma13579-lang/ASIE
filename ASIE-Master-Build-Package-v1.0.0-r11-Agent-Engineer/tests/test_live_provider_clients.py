@@ -86,11 +86,44 @@ class FakeTransport:
                 },
             }
         elif provider_id == "deepseek":
-            payload = {"choices": [{"message": {"role": "assistant", "content": "مسودة تفسيرية"}}]}
+            payload = {
+                "id": "chat-1",
+                "object": "chat.completion",
+                "model": "deepseek-v4-flash",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "مسودة تفسيرية"},
+                }],
+                "usage": {"completion_tokens": 4, "prompt_tokens": 8, "total_tokens": 12},
+            }
         elif provider_id == "tavily":
-            payload = {"results": [{"url": "https://example.com", "content": "source"}], "request_id": "tv-1"}
+            if url.endswith("/search"):
+                results: Any = [{
+                    "title": "Official source",
+                    "url": "https://example.com/source",
+                    "content": "source",
+                    "score": 0.9,
+                }]
+                payload = {"results": results, "response_time": 0.1, "usage": {"credits": 1}, "request_id": "tv-1"}
+            elif url.endswith("/map"):
+                payload = {"base_url": "example.com", "results": ["https://example.com/source"], "response_time": 0.1, "usage": {"credits": 1}, "request_id": "tv-1"}
+            else:
+                payload = {
+                    "base_url": "example.com",
+                    "results": [{"url": "https://example.com/source", "raw_content": "source"}],
+                    "failed_results": [],
+                    "response_time": 0.1,
+                    "usage": {"credits": 1},
+                    "request_id": "tv-1",
+                }
         elif provider_id == "google_maps_platform":
-            payload = {"results": [{"placeId": "place-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+            if "places:searchText" in url:
+                payload = {"places": [{"id": "place-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+            else:
+                payload = {"results": [{"placeId": "place-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+        elif provider_id == "pinecone" and url.endswith("/search"):
+            payload = {"result": {"hits": [{"_id": "doc-1", "_score": 0.9, "fields": {"review_status": "approved"}}]}}
         else:
             payload = {}
         return {
@@ -187,6 +220,8 @@ def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> N
             context_refs=["evidence:1"],
             messages=[{"role": "user", "content": "test"}],
         )
+    with pytest.raises(ProviderConfigurationError, match="deepseek_model_not_allowlisted"):
+        DeepSeekNarrativeClient(transport=transport, api_key="secret", model="unreviewed-model")
 
 
 def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None:
@@ -374,3 +409,4 @@ def test_live_clients_do_not_import_frozen_runtime() -> None:
     assert "deepseek-v4-flash" in source
     assert "include_answer\": False" in source
     assert "eligible_for_pinecone\": False" in source
+
