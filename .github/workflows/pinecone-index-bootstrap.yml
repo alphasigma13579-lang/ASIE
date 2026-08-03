@@ -1,0 +1,49 @@
+name: FC20-03C Pinecone Integrated Index Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_create_index:
+        description: Type exactly CREATE vision2030-kb-e5 to authorize one protected Pinecone index creation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fc20-03c-pinecone-index-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  create-protected-integrated-index:
+    if: ${{ inputs.confirm_create_index == 'CREATE vision2030-kb-e5' }}
+    environment: provider-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    env:
+      PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+      ASIE_PINECONE_INDEX_BOOTSTRAP_AUTHORIZED: "true"
+      ASIE_ALLOW_EXTERNAL_FETCH: "true"
+      ASIE_EXTERNAL_ALLOWED_HOSTS: api.pinecone.io
+      ASIE_EXTERNAL_TIMEOUT_SECONDS: "12"
+      ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "524288"
+      ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "0"
+      PINECONE_SOURCE_INDEX: ${{ vars.PINECONE_INDEX || 'vision2030-kb' }}
+      PINECONE_TARGET_INDEX: vision2030-kb-e5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Compile Pinecone bootstrap
+        run: python -m py_compile backend/pinecone_index_bootstrap.py
+      - name: Create one protected integrated index
+        env:
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        run: |
+          umask 077
+          python -m backend.pinecone_index_bootstrap --network

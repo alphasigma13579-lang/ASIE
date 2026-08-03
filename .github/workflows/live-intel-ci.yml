@@ -5,6 +5,7 @@ on:
     paths:
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_acquisition.py"
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_*.py"
+      - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/pinecone_index_bootstrap.py"
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/deploy/**"
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docker-compose.production.yml"
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/.env.production.example"
@@ -13,6 +14,7 @@ on:
       - "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_*.py"
       - ".github/workflows/live-intel-ci.yml"
       - ".github/workflows/provider-live-preflight.yml"
+      - ".github/workflows/pinecone-index-bootstrap.yml"
       - ".github/workflows/deploy-hostinger.yml"
 
 permissions:
@@ -40,7 +42,8 @@ jobs:
             backend/live_provider_catalog.py \
             backend/live_provider_clients.py \
             backend/live_provider_preflight.py \
-            backend/live_provider_bounded_preflight.py
+            backend/live_provider_bounded_preflight.py \
+            backend/pinecone_index_bootstrap.py
       - name: Test governed acquisition gateway
         run: pytest -q --tb=short tests/test_external_acquisition_gateway.py
       - name: Test provider clients and Pinecone isolation
@@ -50,7 +53,9 @@ jobs:
           pytest -q --tb=short \
             tests/test_live_provider_preflight.py \
             tests/test_bounded_live_provider_preflight.py \
-            tests/test_provider_live_preflight_workflow_guardrails.py
+            tests/test_provider_live_preflight_workflow_guardrails.py \
+            tests/test_pinecone_index_bootstrap.py \
+            tests/test_pinecone_index_bootstrap_workflow_guardrails.py
       - name: Test deployment package guardrails
         run: pytest -q --tb=short tests/test_live_intel_deployment_package.py
       - name: Validate production Compose model
