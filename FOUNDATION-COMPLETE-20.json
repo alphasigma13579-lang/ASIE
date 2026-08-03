@@ -171,7 +171,7 @@
       "id": "FC20-03",
       "priority": "P0",
       "title": "External provider security control plane",
-      "state": "IN_PROGRESS",
+      "state": "COMPLETE",
       "depends_on": [
         "FC20-02"
       ],
@@ -190,13 +190,159 @@
         "secrets never appear in API, audit, logs, or artifacts",
         "provider response-size and schema violations rejected"
       ],
-      "started_at": "2026-07-30T09:14:30Z"
+      "started_at": "2026-07-30T09:14:30Z",
+      "completed_at": "2026-08-03T22:13:22Z",
+      "completion_evidence": {
+        "implementation_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_acquisition.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/provider_security_control_plane.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_catalog.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_clients.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/provider_response_contracts.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_preflight.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/live_provider_bounded_preflight.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/production_provider_readiness.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/provider_secret_store_readiness.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/pinecone_index_bootstrap.py",
+          ".github/workflows/provider-preflight-secret-store.yml",
+          ".github/workflows/provider-live-preflight.yml",
+          ".github/workflows/pinecone-index-bootstrap.yml",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FC20-03-EXTERNAL-PROVIDER-SECURITY-CONTROL-PLANE-2026-07-30.md",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/domains/External-Provider-Security-Control-Plane.md"
+        ],
+        "test_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_external_acquisition_gateway.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_03_provider_security_control_plane.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_provider_clients.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_provider_response_contracts.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_live_provider_preflight.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_production_provider_readiness.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_provider_secret_store_readiness.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_provider_preflight_secret_store_guardrails.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_bounded_live_provider_preflight.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_provider_live_preflight_workflow_guardrails.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_pinecone_index_bootstrap.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_pinecone_index_bootstrap_workflow_guardrails.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_foundation_complete_20_program.py"
+        ],
+        "workflow_run_id": [
+          "30820331603",
+          "30820328314",
+          "30820330663",
+          "30849216181",
+          "30849215774",
+          "30849215897",
+          "30849215778",
+          "30850572487",
+          "30850573321",
+          "30853644493",
+          "30854716814",
+          "30854716986",
+          "30854716921",
+          "30855090600",
+          "30855090578",
+          "30855090543",
+          "30855663633",
+          "30855663636",
+          "30855663695",
+          "30857455477",
+          "30857455373",
+          "30857455554",
+          "30856284242",
+          "30856375006",
+          "30856449273",
+          "30857670636",
+          "30857803201"
+        ],
+        "commit_sha": "e63f1039ad5a2a1278f0c43a184bbfe4a4862125",
+        "implementation_commits": [
+          "f71966f34c2d55b178bb9ddc9645c9956d3da9a1",
+          "500ccba0b0b2d81708da789c6ff0c286c5415caa",
+          "34ec77d1c3b7abb3cde22c4302cfd69413e39edd",
+          "3bf96e0d4ecb86e1d5548c040b671589ac73c5d4",
+          "7649a0fc45d9481036ff7b5cc94128e2d750ec95",
+          "98d8f166e24defe731ef96f33c1ee216fcb2167b",
+          "b73a7b5349eaf09b3d4a2882e4d7d6666f680aa9",
+          "9411bfc098ee9852a8c0b72a1b3fcda68545161b",
+          "e63f1039ad5a2a1278f0c43a184bbfe4a4862125"
+        ],
+        "pull_requests": [
+          111,
+          112,
+          113,
+          114,
+          115,
+          116,
+          117,
+          118,
+          119
+        ],
+        "live_preflight": {
+          "deepseek": {
+            "workflow_run_id": "30856284242",
+            "status": "PASS",
+            "status_code": 200
+          },
+          "tavily": {
+            "workflow_run_id": "30856375006",
+            "status": "PASS",
+            "status_code": 200,
+            "usage_credits": 1
+          },
+          "google_maps_platform": {
+            "workflow_run_id": "30856449273",
+            "status": "PASS",
+            "status_code": 200
+          },
+          "pinecone": {
+            "workflow_run_id": "30857803201",
+            "status": "PASS",
+            "status_code": 200,
+            "index": "vision2030-kb-e5",
+            "model": "multilingual-e5-large",
+            "source_text_field": "chunk_text"
+          }
+        },
+        "rollback_proof": {
+          "strategy": "revert_commits_reverse_order",
+          "revert_targets": [
+            "e63f1039ad5a2a1278f0c43a184bbfe4a4862125",
+            "9411bfc098ee9852a8c0b72a1b3fcda68545161b",
+            "b73a7b5349eaf09b3d4a2882e4d7d6666f680aa9",
+            "98d8f166e24defe731ef96f33c1ee216fcb2167b",
+            "7649a0fc45d9481036ff7b5cc94128e2d750ec95",
+            "3bf96e0d4ecb86e1d5548c040b671589ac73c5d4",
+            "34ec77d1c3b7abb3cde22c4302cfd69413e39edd",
+            "500ccba0b0b2d81708da789c6ff0c286c5415caa",
+            "f71966f34c2d55b178bb9ddc9645c9956d3da9a1"
+          ],
+          "prior_main": "0bb5b999028b65fd54217c4eb72f5b03cd862e3a",
+          "data_migration_required": false,
+          "external_resource_note": "The protected Pinecone index vision2030-kb-e5 contains no vectors; deletion is a separate explicitly authorized operation and is not part of rollback."
+        },
+        "residual_risk_review": {
+          "status": "accepted_for_program_continuation",
+          "release_effect": "BLOCK remains enforced",
+          "open_risks": [
+            "Provider activation and persistent external-network authorization remain prohibited by this manifest.",
+            "SQLite control state supports a shared host only; multi-host provider deployment remains blocked until a distributed control store is approved.",
+            "Real provider rate-limit and timeout failures were not deliberately induced; deterministic failure handling remains covered offline and operational exercises move to FC20-15.",
+            "The protected Pinecone index exists but contains no approved evidence vectors; admission, lifecycle, deletion propagation, and review remain owned by FC20-04 and FC20-05."
+          ],
+          "customer_data_sent_in_live_preflight": false,
+          "secrets_exposed": false,
+          "provider_payloads_persisted": false,
+          "provider_activation_authorized": false,
+          "public_release_authorized": false,
+          "frozen_files_changed": false
+        }
+      }
     },
     {
       "id": "FC20-04",
       "priority": "P0",
       "title": "External evidence persistence, review, and job lifecycle",
-      "state": "BLOCKED_BY_PREDECESSOR",
+      "state": "OPEN",
       "depends_on": [
         "FC20-02",
         "FC20-03"
@@ -215,7 +361,10 @@
         "stale and revoked source rejected",
         "partial provider failure cannot create approved evidence",
         "audit failure is visible and does not silently approve"
-      ]
+      ],
+      "opened_at": "2026-08-03T22:13:22Z",
+      "opened_from_commit": "e63f1039ad5a2a1278f0c43a184bbfe4a4862125",
+      "kickoff_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-04-EXTERNAL-EVIDENCE-LIFECYCLE-KICKOFF-2026-08-04.md"
     },
     {
       "id": "FC20-05",
