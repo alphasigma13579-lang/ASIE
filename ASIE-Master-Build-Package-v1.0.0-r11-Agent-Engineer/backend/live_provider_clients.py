@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -880,4 +879,3 @@ class PineconeKnowledgeClient:
             "source_of_truth": False,
             "retrieval_requires_evidence_validation": True,
         }
-
