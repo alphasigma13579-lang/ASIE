@@ -222,11 +222,11 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
     client = TavilyResearchClient(
         transport=transport,
         api_key="secret",
+        scope=trusted_scope(),
         project_id="asie",
         admission_policy=policy,
     )
     result = client.search(
-        scope=trusted_scope(),
         query="المنشآت الصغيرة في السعودية",
         sector_id="sme",
         geography="saudi_arabia",
@@ -242,7 +242,6 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
     assert result["eligible_for_controlled_assumptions"] is False
 
     crawl = client.crawl(
-        scope=trusted_scope(),
         source_id="MONSHAAT_OPEN_DATA",
         url="https://monshaat.gov.sa/open-data/indicators",
         instructions="ابحث عن البيانات المفتوحة",
