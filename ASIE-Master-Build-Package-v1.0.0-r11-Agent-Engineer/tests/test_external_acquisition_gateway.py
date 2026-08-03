@@ -14,6 +14,7 @@ from backend.external_acquisition import (
     ExternalConnectorSpec,
     GovernedExternalAcquisitionGateway,
     HostRateLimiter,
+    _PinnedHTTPSConnection,
 )
 
 
@@ -53,6 +54,23 @@ class FakeOpener:
         if not self.responses:
             raise AssertionError("unexpected external request")
         return self.responses.popleft()
+
+
+class DummySocket:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class RecordingTLSContext:
+    def __init__(self) -> None:
+        self.server_names: list[str] = []
+
+    def wrap_socket(self, sock: DummySocket, *, server_hostname: str) -> DummySocket:
+        self.server_names.append(server_hostname)
+        return sock
 
 
 def public_resolver(host: str, port: int):
@@ -109,6 +127,81 @@ def test_https_allowlist_and_private_network_guards() -> None:
     )
     with pytest.raises(ExternalAcquisitionError, match="external_private_or_reserved_address_blocked"):
         private_gateway.fetch_json(source_id="test", url="https://api.example.com/data")
+
+
+def test_pinned_https_connection_uses_validated_ip_and_original_tls_name() -> None:
+    resolver_calls: list[tuple[str, int]] = []
+    connection_attempts: list[tuple[str, int]] = []
+    tls_context = RecordingTLSContext()
+
+    def resolver(host: str, port: int):
+        resolver_calls.append((host, port))
+        return [
+            (2, 1, 6, "", ("8.8.8.8", port)),
+            (2, 1, 6, "", ("1.1.1.1", port)),
+        ]
+
+    connection = _PinnedHTTPSConnection(
+        "api.example.com",
+        resolver=resolver,
+        context=tls_context,
+    )
+
+    def create_connection(
+        address: tuple[str, int],
+        timeout: object,
+        source_address: object,
+    ) -> DummySocket:
+        connection_attempts.append(address)
+        return DummySocket()
+
+    connection._create_connection = create_connection
+    connection.connect()
+
+    assert resolver_calls == [("api.example.com", 443)]
+    assert connection_attempts == [("8.8.8.8", 443)]
+    assert tls_context.server_names == ["api.example.com"]
+
+
+def test_pinned_https_connection_blocks_private_answer_before_socket_creation() -> None:
+    connection = _PinnedHTTPSConnection(
+        "api.example.com",
+        resolver=private_resolver,
+        context=RecordingTLSContext(),
+    )
+    socket_attempted = False
+
+    def create_connection(
+        address: tuple[str, int],
+        timeout: object,
+        source_address: object,
+    ) -> DummySocket:
+        nonlocal socket_attempted
+        socket_attempted = True
+        return DummySocket()
+
+    connection._create_connection = create_connection
+    with pytest.raises(
+        ExternalAcquisitionError,
+        match="external_private_or_reserved_address_blocked",
+    ):
+        connection.connect()
+    assert socket_attempted is False
+
+
+def test_default_gateway_bypasses_environment_proxy_and_reports_dns_pinning() -> None:
+    gateway = GovernedExternalAcquisitionGateway(
+        enabled_policy(),
+        resolver=public_resolver,
+    )
+    handler_names = {
+        handler.__class__.__name__
+        for handler in gateway.opener.handlers
+    }
+    assert "ProxyHandler" not in handler_names
+    assert "_PinnedHTTPSHandler" in handler_names
+    assert gateway.status()["policy"]["dns_connection_pinning"] is True
+    assert gateway.status()["policy"]["environment_proxy_bypass"] is True
 
 
 def test_api_json_fetch_returns_review_required_envelope() -> None:

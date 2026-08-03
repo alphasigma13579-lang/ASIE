@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+from http.client import HTTPSConnection
 import ipaddress
 import json
 import os
@@ -11,7 +12,13 @@ import time
 from typing import Any, Callable, Iterable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import (
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 from urllib.robotparser import RobotFileParser
 
 
@@ -129,6 +136,8 @@ class ExternalAcquisitionPolicy:
             "allowed_hosts": list(self.allowed_hosts),
             "https_only": True,
             "private_networks_blocked": True,
+            "dns_connection_pinning": True,
+            "environment_proxy_bypass": True,
             "credentials_in_url_blocked": True,
             "timeout_seconds": self.timeout_seconds,
             "max_response_bytes": self.max_response_bytes,
@@ -270,6 +279,96 @@ def _default_resolver(host: str, port: int) -> Iterable[tuple[Any, ...]]:
     return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
 
 
+def _resolve_public_addresses(
+    resolver: Resolver,
+    host: str,
+    port: int,
+) -> tuple[str, ...]:
+    try:
+        literal = ipaddress.ip_address(host)
+        addresses = [literal]
+    except ValueError:
+        try:
+            resolved = list(resolver(host, port))
+        except OSError as exc:
+            raise ExternalAcquisitionError("external_dns_resolution_failed") from exc
+        addresses = []
+        for row in resolved:
+            try:
+                sockaddr = row[4]
+            except (IndexError, TypeError) as exc:
+                raise ExternalAcquisitionError(
+                    "external_dns_returned_invalid_address"
+                ) from exc
+            if not sockaddr:
+                continue
+            try:
+                addresses.append(ipaddress.ip_address(sockaddr[0]))
+            except (ValueError, TypeError) as exc:
+                raise ExternalAcquisitionError(
+                    "external_dns_returned_invalid_address"
+                ) from exc
+    if not addresses:
+        raise ExternalAcquisitionError("external_dns_no_addresses")
+    if any(not address.is_global for address in addresses):
+        raise ExternalAcquisitionError("external_private_or_reserved_address_blocked")
+    return tuple(dict.fromkeys(str(address) for address in addresses))
+
+
+class _PinnedHTTPSConnection(HTTPSConnection):
+    """Connect to a validated numeric address while retaining host-bound TLS."""
+
+    def __init__(self, host: str, *, resolver: Resolver, **kwargs: Any) -> None:
+        self._resolver = resolver
+        super().__init__(host, **kwargs)
+
+    def connect(self) -> None:
+        if self._tunnel_host:
+            raise ExternalAcquisitionError("external_proxy_tunnel_forbidden")
+        port = self.port or 443
+        addresses = _resolve_public_addresses(self._resolver, self.host, port)
+        last_error: OSError | None = None
+        for address in addresses:
+            raw_socket: Any | None = None
+            try:
+                raw_socket = self._create_connection(
+                    (address, port),
+                    self.timeout,
+                    self.source_address,
+                )
+                self.sock = self._context.wrap_socket(
+                    raw_socket,
+                    server_hostname=self.host,
+                )
+                return
+            except OSError as exc:
+                last_error = exc
+                if raw_socket is not None:
+                    raw_socket.close()
+        raise OSError("external_pinned_connection_failed") from last_error
+
+
+class _PinnedHTTPSHandler(HTTPSHandler):
+    def __init__(self, resolver: Resolver) -> None:
+        super().__init__()
+        self._resolver = resolver
+
+    def https_open(self, request: Request):
+        def connection_factory(host: str, **kwargs: Any) -> _PinnedHTTPSConnection:
+            return _PinnedHTTPSConnection(
+                host,
+                resolver=self._resolver,
+                **kwargs,
+            )
+
+        return self.do_open(
+            connection_factory,
+            request,
+            context=self._context,
+            check_hostname=self._check_hostname,
+        )
+
+
 class _GovernedRedirectHandler(HTTPRedirectHandler):
     def __init__(self, validator: Callable[[str], None]) -> None:
         super().__init__()
@@ -304,7 +403,11 @@ class GovernedExternalAcquisitionGateway:
         self.audit_sink = audit_sink or AcquisitionAuditSink()
         self.resolver = resolver
         self.rate_limiter = rate_limiter or HostRateLimiter(self.policy.min_interval_seconds)
-        self.opener = opener or build_opener(_GovernedRedirectHandler(self._validate_url))
+        self.opener = opener or build_opener(
+            ProxyHandler({}),
+            _PinnedHTTPSHandler(self.resolver),
+            _GovernedRedirectHandler(self._validate_url),
+        )
 
     def status(self) -> dict[str, Any]:
         return {
@@ -480,27 +583,7 @@ class GovernedExternalAcquisitionGateway:
         return parsed
 
     def _validate_host_addresses(self, host: str, port: int) -> None:
-        try:
-            literal = ipaddress.ip_address(host)
-            addresses = [literal]
-        except ValueError:
-            try:
-                resolved = list(self.resolver(host, port))
-            except OSError as exc:
-                raise ExternalAcquisitionError("external_dns_resolution_failed") from exc
-            addresses = []
-            for row in resolved:
-                sockaddr = row[4]
-                if not sockaddr:
-                    continue
-                try:
-                    addresses.append(ipaddress.ip_address(sockaddr[0]))
-                except ValueError as exc:
-                    raise ExternalAcquisitionError("external_dns_returned_invalid_address") from exc
-        if not addresses:
-            raise ExternalAcquisitionError("external_dns_no_addresses")
-        if any(not address.is_global for address in addresses):
-            raise ExternalAcquisitionError("external_private_or_reserved_address_blocked")
+        _resolve_public_addresses(self.resolver, host, port)
 
     def _record_failure(self, *, source_id: str, url: str, mode: str, reason: str) -> None:
         parsed = urlsplit(url)

@@ -32,6 +32,7 @@
 - ربط المضيف خاص بالمزود، ولا تكفي allowlist الشبكة العامة.
 - retries مسموحة لطلبات GET العابرة فقط وبحد أقصى صغير؛ POST لا يعاد تلقائيًا.
 - response size والtimeout يأخذان الأصغر بين سياسة الشبكة وسياسة المزود.
+- النقل الافتراضي يربط socket بعنوان IP عام تم التحقق منه في لحظة الاتصال، مع إبقاء اسم المضيف الأصلي لـTLS/SNI والتحقق من الشهادة، ولا يرث proxy من البيئة.
 - الخطأ في quota أو budget أو circuit أو schema/JSON يفشل مغلقًا.
 - لا اتصال مباشر بـAAS Runtime أو Finance أو Snapshot.
 
@@ -53,12 +54,13 @@
 - circuit يفتح بعد فشل عابر متكرر ويغلق بعد cooldown.
 - global/provider kill switches تمنع الطلب.
 - retries محدودة لـGET ولا تكشف المفتاح في audit.
+- إجابة DNS خاصة/محجوزة تُرفض قبل إنشاء socket، والاتصال يستخدم IP رقمياً مثبتاً مع اسم TLS الأصلي.
 - presence-only secrets لا تعني production readiness.
 
 ## ما يمنع إغلاق FC20-03 حالياً
 
 - مخزن SQLite WAL الحالي مشترك بين عمليات المضيف الواحد؛ أي نشر متعدد المضيفات يتطلب backend موزعًا قبل التفعيل.
-- يلزم تثبيت اتصال DNS/العنوان أو transport أقوى لإغلاق نافذة DNS rebinding بين الفحص والاتصال.
+- تم إغلاق نافذة DNS rebinding في النقل الافتراضي بربط الاتصال بعنوان IP عام متحقق منه وبمنع proxy البيئي؛ يلزم إبقاء هذا الإثبات ضمن CI.
 - يلزم preflight/health وعقد schema فعلي لكل DeepSeek وTavily وGoogle وPinecone.
 - يلزم إثبات cancellation/timeout وresponse-contract violations عبر جميع المزودين.
 - لا يوجد تفويض provider/network للبيئة الحية.
