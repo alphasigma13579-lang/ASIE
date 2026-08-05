@@ -1,10 +1,12 @@
-# FC20-04 P0-A — Pre-Commit Verification Evidence
+# FC20-04 P0-A — Verification and Promotion Evidence
 
-- **Status:** `IMPLEMENTATION VERIFIED / COMMIT AND CI PENDING`
+- **Status:** `MERGED / FC20-04 COMPLETE`
 - **Branch:** `codex/fc20-04-p0-a`
 - **Baseline:** `main@054d41605b7d3249e76866f1a56eda355427f93a`
 - **Network/provider authority:** not granted; no external calls were executed
-- **Commit/push:** not performed
+- **Implementation SHA:** `ef4579c7f41dead63a506f7cdf6e163d11dd5c74`
+- **Merge commit:** `853e2b706a9e0bc49f7da061106f8c89f7c56612`
+- **Pull request:** #122
 
 ## Implemented closure controls
 
@@ -92,13 +94,18 @@ the storage/API cases, the explicit denylist.
 - Rollback before commit is removal of these untracked surgical files only; no existing
   database table or frozen runtime file needs destructive rollback.
 
-## Remaining official closure gates
+## Official closure gates
 
-This evidence must not be used to mark FC20-04 `COMPLETE` until all of the following exist:
+All required gates are now satisfied:
 
-1. reviewed commit SHA containing only the surgical allowlist;
-2. successful required CI workflow run IDs bound to that exact SHA;
-3. an explicit disposition or repair record for the three repository-baseline failures;
-4. frozen-file diff evidence from the committed candidate;
-5. update of the FC20-04 EKB/domain record and `FOUNDATION-COMPLETE-20.json` using the
-   committed evidence, not this pre-commit workspace state.
+1. the reviewed implementation is the exact tree in `ef4579c7f41dead63a506f7cdf6e163d11dd5c74`;
+2. ASIE CI `30968258858` and Cross-Platform Determinism `30968258854` passed on that SHA;
+3. the three Windows baseline failures remain explicitly dispositioned above and outside the surgical allowlist;
+4. the committed candidate changed no frozen file;
+5. PR #122 was squash-merged at `853e2b706a9e0bc49f7da061106f8c89f7c56612`;
+6. the EKB and `FOUNDATION-COMPLETE-20.json` now bind completion to these committed facts.
+
+Provider retries and quotas remain owned by FC20-03. Production pagination, job
+observability, retention, backup, and incident exercises remain owned by FC20-15. This
+ownership clarification does not weaken the FC20-04 admission boundary and does not
+authorize a network, provider, worker, endpoint, or release.

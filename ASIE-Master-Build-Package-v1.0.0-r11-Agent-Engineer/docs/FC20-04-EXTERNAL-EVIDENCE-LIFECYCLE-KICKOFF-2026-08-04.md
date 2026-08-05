@@ -1,6 +1,6 @@
 # FC20-04 — External Evidence Persistence, Review, and Job Lifecycle
 
-- **الحالة:** `OPEN`
+- **الحالة:** `COMPLETE`
 - **الأولوية:** `P0`
 - **المالك:** Project Owner
 - **الإصدار:** 1.0
@@ -31,11 +31,10 @@
 
 ## P1
 
-- retries آمنة للخطوات القابلة للإعادة فقط.
-- partial-failure accounting على مستوى المصدر والمهمة.
-- supersession وrevocation وfreshness invalidation.
-- pagination وحدود الحجم والحصة لكل tenant.
-- واجهات observability للـjobs دون كشف بيانات مستأجر آخر.
+- اكتملت داخل FC20-04: cancellation، result/failure accounting المحدود، supersession، revocation، freshness invalidation، والعزل الكامل لسجل التدقيق.
+- تبقى retries والحصص الخاصة باستدعاءات المزود محكومة بعقود FC20-03 ولا تُكرر هنا.
+- تبقى pagination التشغيلية، job observability، retention، backup، وincident exercises ضمن FC20-15 قبل أي تشغيل إنتاجي.
+- هذا الفصل في الملكية لا يفتح endpoint أو worker ولا يمنح صلاحية شبكة أو مزود.
 
 ## قائمة الملفات الجراحية المسموحة
 
@@ -105,3 +104,13 @@
 ## نقطة البدء
 
 ابدأ بجرد مخازن evidence/jobs الحالية وعقود API والمigrations، ثم قدم gap map قبل أي تعديل. لا يُنفذ أي اتصال خارجي أثناء هذا الجرد.
+
+## سجل الإغلاق — 2026-08-05
+
+- نُفذت العقود الخمسة والمخزن المعزول وauthorization وmigration registry وبوابة approved context في PR #122.
+- implementation SHA: `ef4579c7f41dead63a506f7cdf6e163d11dd5c74`.
+- merge commit على `main`: `853e2b706a9e0bc49f7da061106f8c89f7c56612`.
+- نجح ASIE CI `30968258858` وCross-Platform Determinism `30968258854` على SHA التنفيذ نفسه.
+- أثبتت الاختبارات offline: `30 passed`، وأثبتت Runtime Freeze + FOUNDATION: `17 passed`.
+- لم تتغير الملفات المجمدة، ولم تُستخدم شبكة أو أسرار أو payloads حية.
+- بقي حكم الإصدار `BLOCK`، وانتقلت FC20-05 إلى `ACR_REQUIRED` دون بدء تنفيذها.

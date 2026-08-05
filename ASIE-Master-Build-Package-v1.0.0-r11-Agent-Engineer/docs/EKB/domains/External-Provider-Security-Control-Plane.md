@@ -50,5 +50,4 @@ FC20-03 هو `COMPLETE` تقنيًا عند commit `e63f1039ad5a2a1278f0c43a184b
 - نجحت التشغيلات الحية: DeepSeek `30856284242`، Tavily `30856375006`، Google `30856449273`، وPinecone `30857803201`.
 - PR #119 عند commit `e63f1039ad5a2a1278f0c43a184bbfe4a4862125` أنشأ فهرس `vision2030-kb-e5` المتوافق والمحمي؛ run `30857670636` لم يكتب vectors أو بيانات عملاء.
 
-الحالة الآن `COMPLETE` لـFC20-03 و`OPEN` لـFC20-04. الشبكة والمزودون يظلان معطلين افتراضيًا، وحكم الإصدار يبقى `BLOCK`.
-
+الحالة الآن `COMPLETE` لكل من FC20-03 وFC20-04. أُغلق FC20-04 عبر PR #122: implementation SHA `ef4579c7f41dead63a506f7cdf6e163d11dd5c74`، merge commit `853e2b706a9e0bc49f7da061106f8c89f7c56612`، ونجاح ASIE CI `30968258858` وCross-Platform Determinism `30968258854`. انتقلت FC20-05 إلى `ACR_REQUIRED` فقط؛ الشبكة والمزودون يظلان معطلين، وحكم الإصدار يبقى `BLOCK`.

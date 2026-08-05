@@ -123,11 +123,12 @@ def test_complete_package_evidence_uses_exact_sha_and_workflow_ids() -> None:
         assert all(str(workflow_id).isdigit() for workflow_id in workflow_ids)
         assert evidence["residual_risk_review"]["frozen_files_changed"] is False
 
-def test_fc20_03_completion_opens_fc20_04_without_authorizing_launch() -> None:
+def test_fc20_04_completion_gates_fc20_05_without_authorizing_launch() -> None:
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     fc20_03 = packages["FC20-03"]
     fc20_04 = packages["FC20-04"]
+    fc20_05 = packages["FC20-05"]
 
     assert fc20_03["state"] == "COMPLETE"
     assert fc20_03["completion_evidence"]["commit_sha"] == "e63f1039ad5a2a1278f0c43a184bbfe4a4862125"
@@ -136,10 +137,15 @@ def test_fc20_03_completion_opens_fc20_04_without_authorizing_launch() -> None:
         for provider in fc20_03["completion_evidence"]["live_preflight"].values()
     )
     assert fc20_03["completion_evidence"]["residual_risk_review"]["frozen_files_changed"] is False
-    assert fc20_04["state"] == "OPEN"
+    assert fc20_04["state"] == "COMPLETE"
     assert all(packages[dependency]["state"] == "COMPLETE" for dependency in fc20_04["depends_on"])
+    assert fc20_04["completion_evidence"]["commit_sha"] == "ef4579c7f41dead63a506f7cdf6e163d11dd5c74"
+    assert fc20_04["completion_evidence"]["workflow_run_id"] == ["30968258854", "30968258858"]
+    assert fc20_04["completion_evidence"]["residual_risk_review"]["frozen_files_changed"] is False
+    assert fc20_05["state"] == "ACR_REQUIRED"
+    assert fc20_05["acr"] is True
+    assert all(packages[dependency]["state"] == "COMPLETE" for dependency in fc20_05["depends_on"])
     assert manifest["current_release_verdict"] == "BLOCK"
     assert manifest["external_network_authorized"] is False
     assert manifest["provider_activation_authorized"] is False
     assert manifest["public_release_authorized"] is False
-
