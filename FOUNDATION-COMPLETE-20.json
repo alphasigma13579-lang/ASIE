@@ -342,7 +342,7 @@
       "id": "FC20-04",
       "priority": "P0",
       "title": "External evidence persistence, review, and job lifecycle",
-      "state": "OPEN",
+      "state": "COMPLETE",
       "depends_on": [
         "FC20-02",
         "FC20-03"
@@ -352,7 +352,7 @@
       "scope": [
         "Persist discovery candidates, extraction jobs, hashes, provenance, freshness, review, and supersession",
         "Tenant/project ownership and object authorization",
-        "Idempotent async job lifecycle with retries, cancellation, partial-failure accounting, and audit",
+        "Idempotent job lifecycle with cancellation, bounded result/failure accounting, and audit; provider retries and quotas remain governed by FC20-03, while production observability and retention remain governed by FC20-15",
         "No unreviewed external payload enters approved intelligence context"
       ],
       "tests": [
@@ -364,13 +364,59 @@
       ],
       "opened_at": "2026-08-03T22:13:22Z",
       "opened_from_commit": "e63f1039ad5a2a1278f0c43a184bbfe4a4862125",
-      "kickoff_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-04-EXTERNAL-EVIDENCE-LIFECYCLE-KICKOFF-2026-08-04.md"
+      "kickoff_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-04-EXTERNAL-EVIDENCE-LIFECYCLE-KICKOFF-2026-08-04.md",
+      "completed_at": "2026-08-05T02:29:54Z",
+      "completion_evidence": {
+        "implementation_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_evidence_authorization.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_evidence_contracts.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/external_evidence_persistence.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-04-P0-A-PRE-COMMIT-EVIDENCE-2026-08-05.md"
+        ],
+        "test_paths": [
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_04_external_evidence_contracts.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_04_external_evidence_migrations.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_04_external_evidence_persistence.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_04_external_evidence_tenant_isolation.py",
+          "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_04_external_evidence_admission.py"
+        ],
+        "workflow_run_id": [
+          "30968258854",
+          "30968258858"
+        ],
+        "commit_sha": "ef4579c7f41dead63a506f7cdf6e163d11dd5c74",
+        "merge_commit_sha": "853e2b706a9e0bc49f7da061106f8c89f7c56612",
+        "pull_requests": [
+          122
+        ],
+        "rollback_proof": {
+          "strategy": "revert_merge_commit_and_disable_external_evidence_consumers",
+          "revert_target": "853e2b706a9e0bc49f7da061106f8c89f7c56612",
+          "prior_main": "054d41605b7d3249e76866f1a56eda355427f93a",
+          "data_migration_required": false,
+          "schema_note": "The additive external_evidence_* schema is isolated. Reverting code leaves any created tables dormant; destructive table deletion requires separate authorization."
+        },
+        "residual_risk_review": {
+          "status": "accepted_for_program_continuation",
+          "release_effect": "BLOCK remains enforced",
+          "open_risks": [
+            "The module is an offline governed foundation and is not wired to a live endpoint or worker.",
+            "Provider retry and quota policy remains in FC20-03; production job observability, retention, backup, and incident exercises remain in FC20-15.",
+            "Three pre-existing Windows full-suite failures remain dispositioned outside the FC20-04 surgical allowlist; both required pull-request workflows passed on the exact implementation SHA."
+          ],
+          "external_network_used": false,
+          "provider_activation_authorized": false,
+          "secrets_exposed": false,
+          "raw_provider_payloads_persisted": false,
+          "frozen_files_changed": false
+        }
+      }
     },
     {
       "id": "FC20-05",
       "priority": "P0",
       "title": "Vision 2030 knowledge authority and Pinecone lifecycle",
-      "state": "BLOCKED_BY_PREDECESSOR",
+      "state": "ACR_REQUIRED",
       "depends_on": [
         "FC20-03",
         "FC20-04"
@@ -389,7 +435,10 @@
         "changed content versions and removes stale tail safely",
         "cross-tenant retrieval denied",
         "deletion and reindex are tenant-scoped and auditable"
-      ]
+      ],
+      "unblocked_at": "2026-08-05T02:29:54Z",
+      "unblocked_by_commit": "853e2b706a9e0bc49f7da061106f8c89f7c56612",
+      "gate_note": "FC20-04 is complete. FC20-05 requires its separate ACR before implementation and grants no network or provider authority."
     },
     {
       "id": "FC20-06",
