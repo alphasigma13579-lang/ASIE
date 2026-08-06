@@ -65,9 +65,10 @@ class PostMergeReviewArtifactRepairTests(unittest.TestCase):
     def test_artifact_name_and_required_report_are_fixed(self) -> None:
         self.assertIn("--name rel-beta-07-complete-evidence", self.workflow)
         self.assertIn(
-            "test -f gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json",
+            "find gov-rel-09-input -type f -path '*/rel-beta-07-final/beta-release-gate-report.json'",
             self.workflow,
         )
+        self.assertIn('echo "ASIE_GATE_REPORT_PATH=$report_path" >> "$GITHUB_ENV"', self.workflow)
         self.assertIn("name: gov-rel-09-governed-freeze-review", self.workflow)
         self.assertIn("--require-eligible", self.workflow)
         self.assertIn("governed-freeze-review.sha256", self.workflow)
@@ -90,6 +91,7 @@ class PostMergeReviewArtifactRepairTests(unittest.TestCase):
         self.assertIn("current_main=\"$(git rev-parse origin/main)\"", self.workflow)
         self.assertIn('test "$checked_out" = "$ASIE_REVIEW_COMMIT"', self.workflow)
         self.assertIn('test "$current_main" = "$ASIE_REVIEW_COMMIT"', self.workflow)
+        self.assertIn('--gate-report "$ASIE_GATE_REPORT_PATH"', self.workflow)
 
     def test_workflow_has_read_only_permissions(self) -> None:
         self.assertIn("permissions:\n  contents: read\n  actions: read", self.workflow)

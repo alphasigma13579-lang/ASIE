@@ -16,10 +16,12 @@ from backend.release_freeze_contract import (
     controlled_unfreeze_record,
 )
 from tools.gov_rel_10_controlled_unfreeze import (
+    DEFERRED,
     REJECTED,
     REVIEW_SCHEMA,
     VERIFIED,
     evaluate_controlled_unfreeze,
+    main as controlled_unfreeze_main,
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +122,30 @@ def valid_gate(commit: str = "a" * 40) -> dict:
     return report
 
 
+def foundation_pending_gate(commit: str = "a" * 40) -> dict:
+    report = valid_gate(commit)
+    report.pop("report_hash")
+    report["decision"] = "NO_GO"
+    report["release_allowed"] = False
+    report["technical_limited_beta_allowed"] = False
+    report["critical_failures"] = ["foundation_completion_program_cleared"]
+    report["checks"] = list(report["checks"]) + [
+        {
+            "check_id": "foundation_completion_program_cleared",
+            "passed": False,
+            "critical": True,
+            "evidence": {
+                "program_id": "FOUNDATION-COMPLETE-20",
+                "status": "ACTIVE_IMPLEMENTATION_PROGRAM",
+                "current_release_verdict": "BLOCK",
+            },
+            "message": "",
+        }
+    ]
+    report["report_hash"] = canonical_sha256(report)
+    return report
+
+
 class ControlledUnfreezeTests(unittest.TestCase):
     def test_exact_limited_gate_and_marker_are_verified_without_public_authority(self) -> None:
         report = evaluate_controlled_unfreeze(
@@ -181,6 +207,140 @@ class ControlledUnfreezeTests(unittest.TestCase):
         self.assertEqual(REJECTED, report["decision"])
         self.assertIn("technical_limited_gate_state", report["failures"])
 
+    def test_foundation_pending_no_go_defers_without_granting_release(self) -> None:
+        report = evaluate_controlled_unfreeze(
+            foundation_pending_gate(),
+            valid_marker(),
+            expected_commit="a" * 40,
+            frozen_files_unchanged=True,
+        )
+        self.assertEqual(DEFERRED, report["decision"])
+        self.assertTrue(report["foundation_deferral"]["active"])
+        self.assertEqual(["technical_limited_gate_state"], report["failures"])
+        self.assertFalse(report["technical_limited_release_gate_allowed"])
+        self.assertFalse(report["public_release_authorized"])
+        self.assertFalse(report["external_network_authorized"])
+        self.assertFalse(report["provider_activation_authorized"])
+
+    def test_foundation_pending_with_extra_critical_failure_rejects(self) -> None:
+        gate = foundation_pending_gate()
+        gate.pop("report_hash")
+        gate["critical_failures"] = [
+            "foundation_completion_program_cleared",
+            "sec_beta_01_identity_lockdown",
+        ]
+        gate["report_hash"] = canonical_sha256(gate)
+        report = evaluate_controlled_unfreeze(
+            gate,
+            valid_marker(),
+            expected_commit="a" * 40,
+            frozen_files_unchanged=True,
+        )
+        self.assertEqual(REJECTED, report["decision"])
+        self.assertFalse(report["foundation_deferral"]["active"])
+
+    def test_foundation_pending_with_failed_smoke_rejects(self) -> None:
+        gate = foundation_pending_gate()
+        gate.pop("report_hash")
+        gate["checks"] = [
+            {**check, "passed": False}
+            if check["check_id"] == "private_deployment_smoke_passed"
+            else check
+            for check in gate["checks"]
+        ]
+        gate["report_hash"] = canonical_sha256(gate)
+        report = evaluate_controlled_unfreeze(
+            gate,
+            valid_marker(),
+            expected_commit="a" * 40,
+            frozen_files_unchanged=True,
+        )
+        self.assertEqual(REJECTED, report["decision"])
+        self.assertFalse(report["foundation_deferral"]["active"])
+
+    def test_foundation_pending_without_deliberate_block_state_rejects(self) -> None:
+        gate = foundation_pending_gate()
+        gate.pop("report_hash")
+        gate["checks"] = [
+            {
+                **check,
+                "evidence": {**check["evidence"], "current_release_verdict": "GO"},
+            }
+            if check["check_id"] == "foundation_completion_program_cleared"
+            else check
+            for check in gate["checks"]
+        ]
+        gate["report_hash"] = canonical_sha256(gate)
+        report = evaluate_controlled_unfreeze(
+            gate,
+            valid_marker(),
+            expected_commit="a" * 40,
+            frozen_files_unchanged=True,
+        )
+        self.assertEqual(REJECTED, report["decision"])
+        self.assertFalse(report["foundation_deferral"]["active"])
+
+    def test_foundation_pending_with_tampered_marker_rejects(self) -> None:
+        marker = valid_marker()
+        marker["controlled_unfreeze"]["eligibility_review_run_id"] = "attacker"
+        report = evaluate_controlled_unfreeze(
+            foundation_pending_gate(),
+            marker,
+            expected_commit="a" * 40,
+            frozen_files_unchanged=True,
+        )
+        self.assertEqual(REJECTED, report["decision"])
+        self.assertFalse(report["foundation_deferral"]["active"])
+
+    def test_foundation_pending_with_frozen_hash_drift_rejects(self) -> None:
+        report = evaluate_controlled_unfreeze(
+            foundation_pending_gate(),
+            valid_marker(),
+            expected_commit="a" * 40,
+            frozen_files_unchanged=False,
+        )
+        self.assertEqual(REJECTED, report["decision"])
+        self.assertFalse(report["foundation_deferral"]["active"])
+
+    def test_require_verified_cli_defers_only_with_explicit_flag(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            gate_path = tmp_path / "gate.json"
+            marker_path = tmp_path / "marker.json"
+            gate_path.write_text(
+                json.dumps(foundation_pending_gate()), encoding="utf-8"
+            )
+            marker_path.write_text(json.dumps(valid_marker()), encoding="utf-8")
+            base_args = [
+                "--gate-report",
+                str(gate_path),
+                "--freeze-marker",
+                str(marker_path),
+                "--expected-commit",
+                "a" * 40,
+                "--repository-root",
+                str(REPOSITORY_ROOT),
+                "--output",
+                str(tmp_path / "review.json"),
+                "--require-verified",
+            ]
+            self.assertEqual(1, controlled_unfreeze_main(base_args))
+            self.assertEqual(
+                0,
+                controlled_unfreeze_main(base_args + ["--allow-foundation-deferral"]),
+            )
+            gate = foundation_pending_gate()
+            gate.pop("report_hash")
+            gate["critical_failures"] = ["sec_beta_01_identity_lockdown"]
+            gate["report_hash"] = canonical_sha256(gate)
+            gate_path.write_text(json.dumps(gate), encoding="utf-8")
+            self.assertEqual(
+                1,
+                controlled_unfreeze_main(base_args + ["--allow-foundation-deferral"]),
+            )
+
     def test_frozen_hash_drift_rejects_transition(self) -> None:
         report = evaluate_controlled_unfreeze(
             valid_gate(),
@@ -199,6 +359,7 @@ class ControlledUnfreezeTests(unittest.TestCase):
         self.assertIn("env.ASIE_FREEZE_STATUS == 'CLEARED'", workflow)
         self.assertIn("tools.gov_rel_10_controlled_unfreeze", workflow)
         self.assertIn("--require-verified", workflow)
+        self.assertIn("--allow-foundation-deferral", workflow)
         self.assertIn("gov-rel-10-controlled-unfreeze-review", workflow)
 
     def test_allowlist_is_disjoint_from_every_frozen_runtime_file(self) -> None:

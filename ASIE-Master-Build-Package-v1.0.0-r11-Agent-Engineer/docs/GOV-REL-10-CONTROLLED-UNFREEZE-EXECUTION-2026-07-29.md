@@ -39,6 +39,24 @@ requires a separate governance decision.
 5. Any missing/tampered proof, stale commit, public `GO`, external capability
    activation, or frozen-file hash drift fails closed.
 
+## Foundation completion deferral (FOUNDATION-COMPLETE-20)
+
+While `FOUNDATION-COMPLETE-20.json` deliberately blocks release
+(`status: ACTIVE_IMPLEMENTATION_PROGRAM`, `current_release_verdict: BLOCK`),
+the fresh exact-commit gate is expected to produce `NO_GO` whose only critical
+failure is `foundation_completion_program_cleared`. The reviewer recognizes
+exactly that shape — with marker integrity, contract integrity, commit binding,
+private smoke success, all four external capabilities degraded, and unchanged
+frozen hashes — as `UNFREEZE_DEFERRED_FOUNDATION_PENDING` instead of
+`REJECT_UNFREEZE`, and only when the workflow passes the explicit
+`--allow-foundation-deferral` flag alongside `--require-verified`.
+
+The deferred decision grants nothing: `technical_limited_release_gate_allowed`
+stays `false` and no public, network, or provider authority is produced. Any
+additional critical failure, tampered marker or report, non-deliberate
+foundation state, failed smoke, activated capability, or frozen-hash drift
+still fails closed as `REJECT_UNFREEZE`.
+
 ## Protected boundaries
 
 The package does not change any file listed in
