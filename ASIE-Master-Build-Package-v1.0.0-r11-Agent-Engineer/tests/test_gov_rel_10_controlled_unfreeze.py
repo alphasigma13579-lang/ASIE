@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -303,8 +304,6 @@ class ControlledUnfreezeTests(unittest.TestCase):
         self.assertFalse(report["foundation_deferral"]["active"])
 
     def test_require_verified_cli_defers_only_with_explicit_flag(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             gate_path = tmp_path / "gate.json"

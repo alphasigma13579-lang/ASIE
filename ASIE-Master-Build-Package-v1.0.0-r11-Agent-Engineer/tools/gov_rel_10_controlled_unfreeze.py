@@ -231,6 +231,12 @@ def evaluate_controlled_unfreeze(
         contract_ok=contract_ok,
         commit_bound=commit_bound,
     )
+    # "technical_limited_gate_state" is this validator's own check id: it fails
+    # whenever the fresh gate decision is not CONDITIONAL_GO. The gate report's
+    # critical failure "foundation_completion_program_cleared" is verified
+    # separately inside _foundation_deferral_evidence. Deferral requires the
+    # validator failure list to contain exactly the gate-state check and nothing
+    # else, so every other integrity check must still pass.
     deferred = bool(
         not verified
         and failures == ["technical_limited_gate_state"]
