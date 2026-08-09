@@ -606,6 +606,20 @@ def _legacy_numbers_supported(
 
     walk(document)
     if model.periods:
+        count = Decimal(len(model.periods))
+        average = (
+            lambda field: sum(
+                (getattr(row, field) for row in model.periods), ZERO
+            )
+            / count
+        )
+        total_capex = sum(
+            (row.capex_additions for row in model.periods), ZERO
+        )
+        working_capital = max(
+            (row.net_working_capital for row in model.periods),
+            default=ZERO,
+        )
         aggregate_monthly_units = sum(
             (
                 Decimal(point["value"])
@@ -613,8 +627,70 @@ def _legacy_numbers_supported(
                 for point in stream["volume_series"]
             ),
             ZERO,
-        ) / Decimal(len(model.periods))
-        values.append(aggregate_monthly_units)
+        ) / count
+        scheduled_payments = tuple(
+            row.interest_paid + row.principal_paid
+            for row in model.debt_schedule
+        )
+        active_payments = tuple(
+            value for value in scheduled_payments if value > ZERO
+        )
+        representative_payment = (
+            sum(active_payments, ZERO)
+            / Decimal(len(active_payments))
+            if active_payments
+            else ZERO
+        )
+        depreciation_monthly = average("depreciation")
+        depreciation_years = (
+            ZERO
+            if depreciation_monthly <= ZERO
+            else total_capex
+            / (depreciation_monthly * Decimal("12"))
+        )
+        average_revenue = average("revenue")
+        contribution_margin = (
+            average("gross_profit") / average_revenue
+            if average_revenue != ZERO
+            else ZERO
+        )
+        values.extend(
+            (
+                aggregate_monthly_units,
+                total_capex,
+                working_capital,
+                total_capex + working_capital,
+                sum(
+                    (
+                        row.equity_cash_flow
+                        for row in model.periods[:12]
+                    ),
+                    ZERO,
+                ),
+                sum(
+                    (row.debt_drawdowns for row in model.periods),
+                    ZERO,
+                ),
+                representative_payment,
+                representative_payment * Decimal("12"),
+                depreciation_monthly,
+                depreciation_years,
+                contribution_margin,
+                *(
+                    average(field)
+                    for field in (
+                        "revenue",
+                        "cogs",
+                        "gross_profit",
+                        "net_income",
+                        "ebitda",
+                        "ebit",
+                        "cash_from_operations",
+                        "operating_expenses",
+                    )
+                ),
+            )
+        )
     aggregate_absolute = sum((abs(value) for value in values), ZERO)
     values.extend(
         (
