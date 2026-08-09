@@ -704,3 +704,35 @@ def test_legacy_range_guard_checks_depreciation_years_quotient() -> None:
     assert payload["status"] == "not_ready"
     assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
 
+def test_legacy_bullet_payment_includes_zero_service_tenor_months() -> None:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-bullet",
+            "drawdowns": [{"period": "2026-01", "amount": "12000"}],
+            "annual_rate": "0",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "bullet",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    profile = output["legacy_projection"]["payload"][
+        "debt_service_profile"
+    ]
+
+    assert profile["monthly_payment"] == 1000.0
+    assert profile["annual_debt_service"] == 12000.0
+
