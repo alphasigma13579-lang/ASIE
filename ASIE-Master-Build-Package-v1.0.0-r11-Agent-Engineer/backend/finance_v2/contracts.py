@@ -49,6 +49,7 @@ REQUIRED_TOP_LEVEL = frozenset(
         "working_capital",
         "financing",
         "fiscal_policy",
+        "valuation_policy",
         "scenarios",
         "metadata",
     }
@@ -162,6 +163,7 @@ def validate_finance_input(
     _validate_working_capital(document["working_capital"], horizon)
     _validate_financing(document["financing"], horizon)
     _validate_fiscal(document["fiscal_policy"])
+    _validate_valuation(document["valuation_policy"])
     _validate_scenarios(document["scenarios"])
 
     try:
@@ -228,12 +230,16 @@ def _validate_closed_shape(document: Mapping[str, Any]) -> None:
     for index, raw in enumerate(_sequence(financing.get("debt_tranches"), "$.financing.debt_tranches", minimum=0, maximum=20)):
         ref = f"$.financing.debt_tranches[{index}]"
         row = _mapping(raw, ref)
-        _reject_unknown(row, {"tranche_id", "drawdowns", "annual_rate", "tenor_months", "principal_grace_months", "interest_grace_policy", "repayment_profile", "balloon_amount", "fees", "lineage"}, ref)
+        _reject_unknown(row, {"tranche_id", "drawdowns", "annual_rate", "tenor_months", "principal_grace_months", "interest_grace_policy", "repayment_profile", "balloon_amount", "fee_treatment", "fees", "lineage"}, ref)
         for item_index, raw_draw in enumerate(_sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)):
             _reject_unknown(_mapping(raw_draw, f"{ref}.drawdowns[{item_index}]"), {"period", "amount"}, f"{ref}.drawdowns[{item_index}]")
         for item_index, raw_fee in enumerate(_sequence(row.get("fees"), f"{ref}.fees", minimum=0, maximum=30)):
             _reject_unknown(_mapping(raw_fee, f"{ref}.fees[{item_index}]"), {"fee_id", "period", "amount"}, f"{ref}.fees[{item_index}]")
         _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    valuation = _mapping(document["valuation_policy"], "$.valuation_policy")
+    _reject_unknown(valuation, {"discount_rate_annual", "finance_rate_annual", "reinvestment_rate_annual", "lineage"}, "$.valuation_policy")
+    _close_lineage(valuation.get("lineage"), "$.valuation_policy.lineage")
 
     fiscal = _mapping(document["fiscal_policy"], "$.fiscal_policy")
     _reject_unknown(fiscal, {"policy_id", "effective_from", "modules", "vat_rate", "income_tax_rate", "zakat_rate", "lineage"}, "$.fiscal_policy")
@@ -363,8 +369,14 @@ def _validate_capex(value: Any, horizon: frozenset[str]) -> None:
         ref = f"$.capex_assets[{index}]"
         row = _mapping(raw, ref)
         _period_in_horizon(row.get("acquisition_period"), f"{ref}.acquisition_period", horizon)
-        parse_decimal(row.get("cost"), f"{ref}.cost", allow_negative=False)
-        parse_decimal(row.get("residual_value"), f"{ref}.residual_value", allow_negative=False)
+        cost = parse_decimal(row.get("cost"), f"{ref}.cost", allow_negative=False)
+        residual = parse_decimal(
+            row.get("residual_value"), f"{ref}.residual_value", allow_negative=False
+        )
+        if residual > cost:
+            raise FinanceContractError(
+                "FIN2_CAPEX_RESIDUAL", f"{ref}.residual_value", "must not exceed cost"
+            )
         life = row.get("useful_life_months")
         if isinstance(life, bool) or not isinstance(life, int) or not 1 <= life <= 1200:
             raise FinanceContractError(
@@ -450,6 +462,12 @@ def _validate_financing(value: Any, horizon: frozenset[str]) -> None:
             raise FinanceContractError(
                 "FIN2_DEBT_PROFILE", f"{ref}.repayment_profile", "unsupported"
             )
+        if row.get("fee_treatment") != "expense_upfront":
+            raise FinanceContractError(
+                "FIN2_DEBT_FEE_TREATMENT",
+                f"{ref}.fee_treatment",
+                "S2-B requires explicit expense_upfront treatment",
+            )
         drawdowns = _sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)
         for item_index, draw in enumerate(drawdowns):
             draw_ref = f"{ref}.drawdowns[{item_index}]"
@@ -476,6 +494,7 @@ def _validate_fiscal(value: Any) -> None:
             "FIN2_FISCAL_MODULES", "$.fiscal_policy.modules", "invalid or duplicate modules"
         )
     rate_fields = {"vat": "vat_rate", "income_tax": "income_tax_rate", "zakat": "zakat_rate"}
+    combined = Decimal("0")
     for module in modules:
         rate = parse_decimal(
             policy.get(rate_fields[module]),
@@ -486,7 +505,28 @@ def _validate_fiscal(value: Any) -> None:
             raise FinanceContractError(
                 "FIN2_FISCAL_RATE", f"$.fiscal_policy.{rate_fields[module]}", "must be <= 1"
             )
+        if module != "vat":
+            combined += rate
+    if combined > 1:
+        raise FinanceContractError(
+            "FIN2_FISCAL_RATE",
+            "$.fiscal_policy.modules",
+            "combined income tax and zakat rates must be <= 1",
+        )
     _validate_lineage(policy.get("lineage"), "$.fiscal_policy.lineage")
+
+
+def _validate_valuation(value: Any) -> None:
+    policy = _mapping(value, "$.valuation_policy")
+    for name in ("discount_rate_annual", "finance_rate_annual", "reinvestment_rate_annual"):
+        rate = parse_decimal(policy.get(name), f"$.valuation_policy.{name}", allow_negative=False)
+        if rate > Decimal("10"):
+            raise FinanceContractError(
+                "FIN2_VALUATION_RATE",
+                f"$.valuation_policy.{name}",
+                "annual rate must be <= 10",
+            )
+    _validate_lineage(policy.get("lineage"), "$.valuation_policy.lineage")
 
 
 def _validate_scenarios(value: Any) -> None:
