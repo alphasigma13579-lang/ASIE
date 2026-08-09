@@ -369,8 +369,14 @@ def _validate_capex(value: Any, horizon: frozenset[str]) -> None:
         ref = f"$.capex_assets[{index}]"
         row = _mapping(raw, ref)
         _period_in_horizon(row.get("acquisition_period"), f"{ref}.acquisition_period", horizon)
-        parse_decimal(row.get("cost"), f"{ref}.cost", allow_negative=False)
-        parse_decimal(row.get("residual_value"), f"{ref}.residual_value", allow_negative=False)
+        cost = parse_decimal(row.get("cost"), f"{ref}.cost", allow_negative=False)
+        residual = parse_decimal(
+            row.get("residual_value"), f"{ref}.residual_value", allow_negative=False
+        )
+        if residual > cost:
+            raise FinanceContractError(
+                "FIN2_CAPEX_RESIDUAL", f"{ref}.residual_value", "must not exceed cost"
+            )
         life = row.get("useful_life_months")
         if isinstance(life, bool) or not isinstance(life, int) or not 1 <= life <= 1200:
             raise FinanceContractError(
@@ -482,6 +488,7 @@ def _validate_fiscal(value: Any) -> None:
             "FIN2_FISCAL_MODULES", "$.fiscal_policy.modules", "invalid or duplicate modules"
         )
     rate_fields = {"vat": "vat_rate", "income_tax": "income_tax_rate", "zakat": "zakat_rate"}
+    combined = ZERO
     for module in modules:
         rate = parse_decimal(
             policy.get(rate_fields[module]),
@@ -492,6 +499,14 @@ def _validate_fiscal(value: Any) -> None:
             raise FinanceContractError(
                 "FIN2_FISCAL_RATE", f"$.fiscal_policy.{rate_fields[module]}", "must be <= 1"
             )
+        if module != "vat":
+            combined += rate
+    if combined > 1:
+        raise FinanceContractError(
+            "FIN2_FISCAL_RATE",
+            "$.fiscal_policy.modules",
+            "combined income tax and zakat rates must be <= 1",
+        )
     _validate_lineage(policy.get("lineage"), "$.fiscal_policy.lineage")
 
 
