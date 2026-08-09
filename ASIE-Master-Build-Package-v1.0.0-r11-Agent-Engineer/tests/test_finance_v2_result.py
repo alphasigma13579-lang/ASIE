@@ -194,9 +194,67 @@ def test_not_ready_custom_reviewed_debt_serializes_blocker_without_exception() -
     assert output["status"] == "not_ready"
     assert output["subledgers"]["debt"] == []
     assert output["statements"]["income_statement"][0]["values"] == []
+    assert output["cash_flows"] == {
+        "unlevered_fcf": [],
+        "equity_cash_flow": [],
+        "cfads": [],
+    }
+    assert output["invariants"] == []
+    assert set(output["metrics"]) == {
+        "npv_unlevered",
+        "irr_unlevered",
+        "mirr_unlevered",
+        "payback_months",
+        "break_even",
+        "funding_need",
+        "dscr_min",
+        "llcr",
+    }
+    assert set(output["metrics"].values()) == {None}
     assert [row["code"] for row in output["blockers"]] == [
         "FIN2_DEBT_PROFILE_UNSUPPORTED"
     ]
+
+
+def test_result_schema_allows_unavailable_values_only_outside_ready_gate() -> None:
+    schema_path = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "schemas"
+        / "finance"
+        / "finance-result.v2.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    properties = schema["properties"]
+    ready = schema["allOf"][0]["then"]["properties"]
+
+    assert "subledgers" in schema["required"]
+    assert properties["subledgers"]["required"] == [
+        "capex",
+        "working_capital",
+        "debt",
+        "fiscal",
+    ]
+    for statement in (
+        "income_statement",
+        "balance_sheet",
+        "cash_flow_statement",
+    ):
+        values = properties["statements"]["properties"][statement]["items"][
+            "properties"
+        ]["values"]
+        ready_values = ready["statements"]["properties"][statement]["items"][
+            "properties"
+        ]["values"]
+        assert values["minItems"] == 0
+        assert ready_values["minItems"] == 1
+    for flow in ("unlevered_fcf", "equity_cash_flow", "cfads"):
+        assert properties["cash_flows"]["properties"][flow]["minItems"] == 0
+        assert ready["cash_flows"]["properties"][flow]["minItems"] == 1
+    assert properties["invariants"]["minItems"] == 0
+    assert ready["invariants"]["minItems"] == 14
+    for metric in ("npv_unlevered", "funding_need"):
+        assert {"type": "null"} in properties["metrics"]["properties"][metric]["anyOf"]
+        assert ready["metrics"]["properties"][metric]["type"] == "string"
 
 
 def test_legacy_projection_rounds_ratios_to_v2_policy() -> None:
