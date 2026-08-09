@@ -315,6 +315,7 @@ def test_debt_grace_must_be_less_than_tenor() -> None:
             "principal_grace_months": 12,
             "interest_grace_policy": "paid",
             "repayment_profile": "annuity",
+            "fee_treatment": "expense_upfront",
             "fees": [],
             "lineage": lineage(),
         }
