@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_EVEN
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 from typing import Any
 
-from .contracts import ValidatedFinanceInput
+from .contracts import FinanceContractError, ValidatedFinanceInput
 from .model import FinancialModel, FinancialPeriod, ZERO
 
 
@@ -26,6 +26,12 @@ def serialize_finance_result(
     *,
     include_legacy_projection: bool = False,
 ) -> dict[str, Any]:
+    if model.source_input_hash != validated.input_hash:
+        raise FinanceContractError(
+            "FIN2_MODEL_INPUT_MISMATCH",
+            "$.input_hash",
+            "financial model was built from a different validated input",
+        )
     document = validated.thaw()
     rounding = document["rounding_policy"]
     money_scale = rounding["money_scale"]
@@ -190,7 +196,68 @@ def serialize_finance_result(
             }
         ),
     }
+    if include_legacy_projection:
+        _apply_legacy_parity(result, money_scale, ratio_scale)
     return result
+
+
+def _apply_legacy_parity(
+    result: dict[str, Any],
+    money_scale: int,
+    ratio_scale: int,
+) -> None:
+    payload = result["legacy_projection"]["payload"]
+    baseline = payload.get("baseline")
+    if baseline is None:
+        return
+    pairs = (
+        ("npv", "npv_unlevered", money_scale),
+        ("irr", "irr_unlevered", ratio_scale),
+        ("payback_months", "payback_months", ratio_scale),
+        ("break_even_units", "break_even", money_scale),
+        ("funding_gap", "funding_need", money_scale),
+        ("funding_need_after_equity", "funding_need", money_scale),
+        ("dscr", "dscr_min", ratio_scale),
+    )
+    maximum = ZERO
+    failed = False
+    for legacy_key, metric_key, scale in pairs:
+        actual = baseline[legacy_key]
+        expected = result["metrics"][metric_key]
+        if actual is None or expected is None:
+            failed = failed or actual is not None or expected is not None
+            continue
+        variance = abs(
+            Decimal(str(actual))
+            - Decimal(_decimal(Decimal(expected), scale))
+        )
+        maximum = max(maximum, variance)
+        failed = failed or variance != ZERO
+
+    for invariant in result["invariants"]:
+        if invariant["invariant_id"] != "legacy_projection_parity":
+            continue
+        invariant["status"] = "failed" if failed else "passed"
+        invariant["maximum_variance"] = _decimal(
+            maximum, max(money_scale, ratio_scale)
+        )
+        invariant["reason"] = (
+            "derived_legacy_projection_mismatch" if failed else ""
+        )
+        break
+
+    if failed:
+        result["status"] = "not_ready"
+        for scenario in result["scenarios"]:
+            scenario["status"] = "not_ready"
+        result["blockers"].append(
+            {
+                "code": "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY",
+                "severity": "high",
+                "field_ref": "$.legacy_projection.payload.baseline",
+                "message_ar": "فشل تطابق الإسقاط المشتق مع نتيجة Finance v2.",
+            }
+        )
 
 
 def _statement(
@@ -513,4 +580,8 @@ def _legacy_float(value: Decimal | None, scale: int) -> float | None:
 
 def _decimal(value: Decimal, scale: int) -> str:
     quantum = Decimal(1).scaleb(-scale)
-    return format(value.quantize(quantum, rounding=ROUND_HALF_EVEN), "f")
+    digits = len(value.as_tuple().digits)
+    with localcontext() as context:
+        context.prec = max(28, digits + scale + 4)
+        rounded = value.quantize(quantum, rounding=ROUND_HALF_EVEN)
+    return format(rounded, "f")
