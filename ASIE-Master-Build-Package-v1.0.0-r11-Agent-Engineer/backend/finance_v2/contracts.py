@@ -133,6 +133,7 @@ def validate_finance_input(
             "$",
             f"unknown top-level fields: {','.join(sorted(unknown))}",
         )
+    _validate_closed_shape(document)
     if document["schema_version"] != "finance-model-input.v2":
         raise FinanceContractError(
             "FIN2_SCHEMA_VERSION", "$.schema_version", "unsupported schema version"
@@ -180,6 +181,91 @@ def validate_finance_input(
         canonical_document=canonical,
         input_hash=canonical_sha256(document),
     )
+
+
+def _validate_closed_shape(document: Mapping[str, Any]) -> None:
+    _reject_unknown(_mapping(document["forecast"], "$.forecast"), {"start_period", "monthly_periods", "construction_periods"}, "$.forecast")
+    _reject_unknown(_mapping(document["archetype_ref"], "$.archetype_ref"), {"archetype_id", "version", "registry_hash"}, "$.archetype_ref")
+    _reject_unknown(_mapping(document["rounding_policy"], "$.rounding_policy"), {"money_scale", "ratio_scale", "mode"}, "$.rounding_policy")
+    _reject_unknown(_mapping(document["metadata"], "$.metadata"), {"approved_manifest_id", "approved_manifest_hash", "policy_ref"}, "$.metadata")
+
+    for index, raw in enumerate(_sequence(document["revenue_streams"], "$.revenue_streams", minimum=1, maximum=200)):
+        ref = f"$.revenue_streams[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"stream_id", "model_kind", "unit", "volume_series", "price_series", "variable_cost_series", "capacity_series", "lineage"}, ref)
+        for name in ("volume_series", "price_series", "variable_cost_series", "capacity_series"):
+            if name in row:
+                _close_series(row[name], f"{ref}.{name}")
+        _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    for index, raw in enumerate(_sequence(document["operating_costs"], "$.operating_costs", minimum=0, maximum=500)):
+        ref = f"$.operating_costs[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"cost_id", "behavior", "driver_ref", "schedule", "lineage"}, ref)
+        _close_series(row.get("schedule"), f"{ref}.schedule")
+        _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    for index, raw in enumerate(_sequence(document["capex_assets"], "$.capex_assets", minimum=0, maximum=500)):
+        ref = f"$.capex_assets[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"asset_id", "acquisition_period", "cost", "useful_life_months", "depreciation_method", "residual_value", "disposal_period", "replacement_asset_ref", "lineage"}, ref)
+        _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    working = _mapping(document["working_capital"], "$.working_capital")
+    _reject_unknown(working, {"mode", "dso_days", "dio_days", "dpo_days", "accounts_receivable", "inventory", "accounts_payable", "lineage"}, "$.working_capital")
+    for name in ("accounts_receivable", "inventory", "accounts_payable"):
+        if name in working:
+            _close_series(working[name], f"$.working_capital.{name}")
+    _close_lineage(working.get("lineage"), "$.working_capital.lineage")
+
+    financing = _mapping(document["financing"], "$.financing")
+    _reject_unknown(financing, {"equity_contributions", "debt_tranches"}, "$.financing")
+    for index, raw in enumerate(_sequence(financing.get("equity_contributions"), "$.financing.equity_contributions", minimum=1, maximum=50)):
+        ref = f"$.financing.equity_contributions[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"period", "amount", "lineage"}, ref)
+        _close_lineage(row.get("lineage"), f"{ref}.lineage")
+    for index, raw in enumerate(_sequence(financing.get("debt_tranches"), "$.financing.debt_tranches", minimum=0, maximum=20)):
+        ref = f"$.financing.debt_tranches[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"tranche_id", "drawdowns", "annual_rate", "tenor_months", "principal_grace_months", "interest_grace_policy", "repayment_profile", "balloon_amount", "fees", "lineage"}, ref)
+        for item_index, raw_draw in enumerate(_sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)):
+            _reject_unknown(_mapping(raw_draw, f"{ref}.drawdowns[{item_index}]"), {"period", "amount"}, f"{ref}.drawdowns[{item_index}]")
+        for item_index, raw_fee in enumerate(_sequence(row.get("fees"), f"{ref}.fees", minimum=0, maximum=30)):
+            _reject_unknown(_mapping(raw_fee, f"{ref}.fees[{item_index}]"), {"fee_id", "period", "amount"}, f"{ref}.fees[{item_index}]")
+        _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    fiscal = _mapping(document["fiscal_policy"], "$.fiscal_policy")
+    _reject_unknown(fiscal, {"policy_id", "effective_from", "modules", "vat_rate", "income_tax_rate", "zakat_rate", "lineage"}, "$.fiscal_policy")
+    _close_lineage(fiscal.get("lineage"), "$.fiscal_policy.lineage")
+
+    for index, raw in enumerate(_sequence(document["scenarios"], "$.scenarios", minimum=1, maximum=20)):
+        ref = f"$.scenarios[{index}]"
+        row = _mapping(raw, ref)
+        _reject_unknown(row, {"scenario_id", "kind", "overrides", "simulation"}, ref)
+        for item_index, raw_override in enumerate(_sequence(row.get("overrides"), f"{ref}.overrides", minimum=0, maximum=200)):
+            _reject_unknown(_mapping(raw_override, f"{ref}.overrides[{item_index}]"), {"target_ref", "operation", "value"}, f"{ref}.overrides[{item_index}]")
+        if "simulation" in row:
+            _reject_unknown(_mapping(row["simulation"], f"{ref}.simulation"), {"seed", "iterations", "distribution_profile_ref", "correlation_profile_ref"}, f"{ref}.simulation")
+
+
+def _close_series(value: Any, field_ref: str) -> None:
+    for index, raw in enumerate(_sequence(value, field_ref, minimum=1, maximum=240)):
+        _reject_unknown(_mapping(raw, f"{field_ref}[{index}]"), {"period", "value"}, f"{field_ref}[{index}]")
+
+
+def _close_lineage(value: Any, field_ref: str) -> None:
+    _reject_unknown(_mapping(value, field_ref), {"assumption_refs", "evidence_refs"}, field_ref)
+
+
+def _reject_unknown(row: Mapping[str, Any], allowed: set[str], field_ref: str) -> None:
+    unknown = set(row).difference(allowed)
+    if unknown:
+        raise FinanceContractError(
+            "FIN2_UNKNOWN_FIELD",
+            field_ref,
+            f"unknown fields: {','.join(sorted(unknown))}",
+        )
 
 
 def _validate_server_binding(document: Mapping[str, Any], binding: ServerBinding) -> None:
