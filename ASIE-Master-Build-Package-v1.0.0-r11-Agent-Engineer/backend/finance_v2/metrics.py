@@ -26,8 +26,11 @@ def npv_monthly(cashflows: Iterable[Decimal], annual_rate: Decimal) -> Decimal:
 
 
 def irr_annual(cashflows: tuple[Decimal, ...]) -> Decimal | None:
-    if not cashflows or not any(value < ZERO for value in cashflows) or not any(
-        value > ZERO for value in cashflows
+    if (
+        not cashflows
+        or not any(value < ZERO for value in cashflows)
+        or not any(value > ZERO for value in cashflows)
+        or cashflow_sign_changes(cashflows) != 1
     ):
         return None
 
@@ -95,24 +98,38 @@ def payback_months(cashflows: Iterable[Decimal]) -> Decimal | None:
     return Decimal(0) if cumulative == ZERO else None
 
 
+def cashflow_sign_changes(cashflows: tuple[Decimal, ...]) -> int:
+    signs = [Decimal(1) if value > ZERO else Decimal(-1) for value in cashflows if value != ZERO]
+    return sum(1 for left, right in zip(signs, signs[1:]) if left != right)
+
+
 def minimum_dscr(
     cfads: tuple[Decimal, ...],
     debt_service: tuple[Decimal, ...],
 ) -> Decimal | None:
-    ratios = [
-        cash / service
-        for cash, service in zip(cfads, debt_service, strict=True)
-        if service > ZERO
-    ]
+    """Minimum rolling-12-month DSCR; shorter fragments are never annualized."""
+    if len(cfads) != len(debt_service):
+        raise ValueError("CFADS and debt service lengths differ")
+    ratios: list[Decimal] = []
+    for start in range(0, len(cfads) - 11):
+        service = sum(debt_service[start : start + 12], ZERO)
+        if service > ZERO:
+            cash = sum(cfads[start : start + 12], ZERO)
+            ratios.append(cash / service)
     return min(ratios) if ratios else None
 
 
 def llcr(
     cfads: tuple[Decimal, ...],
-    debt_service: tuple[Decimal, ...],
-    opening_debt: Decimal,
+    debt_balances: tuple[Decimal, ...],
     annual_discount_rate: Decimal,
 ) -> Decimal | None:
-    if opening_debt <= ZERO or not any(service > ZERO for service in debt_service):
-        return None
-    return npv_monthly(cfads, annual_discount_rate) / opening_debt
+    """Minimum LLCR over periods with debt, using future CFADS at each test date."""
+    if len(cfads) != len(debt_balances):
+        raise ValueError("CFADS and debt balance lengths differ")
+    ratios = [
+        npv_monthly(cfads[index:], annual_discount_rate) / balance
+        for index, balance in enumerate(debt_balances)
+        if balance > ZERO
+    ]
+    return min(ratios) if ratios else None
