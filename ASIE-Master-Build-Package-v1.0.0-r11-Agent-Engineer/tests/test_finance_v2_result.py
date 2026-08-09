@@ -627,3 +627,49 @@ def test_legacy_range_guard_checks_cross_stream_volume_aggregate() -> None:
     assert payload["status"] == "not_ready"
     assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
 
+def test_legacy_range_guard_checks_aggregate_debt_draws() -> None:
+    document = valid_document()
+    periods = monthly_periods("2026-01", 24)
+    document["forecast"]["monthly_periods"] = 24
+    stream = document["revenue_streams"][0]
+    for field, value in (
+        ("volume_series", "100"),
+        ("price_series", "25.50"),
+        ("variable_cost_series", "10"),
+    ):
+        stream[field] = [
+            {"period": period, "value": value} for period in periods
+        ]
+
+    amount = "1" + ("0" * 308)
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": f"debt-{index}",
+            "drawdowns": [{"period": period, "amount": amount}],
+            "annual_rate": "0",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "equal_principal",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+        for index, period in enumerate(("2026-01", "2027-01"), start=1)
+    ]
+
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    assert all(float(row.debt_closing) != float("inf") for row in model.periods)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
+
