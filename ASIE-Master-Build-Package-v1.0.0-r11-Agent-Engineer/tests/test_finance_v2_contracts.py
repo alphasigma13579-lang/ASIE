@@ -64,9 +64,15 @@ def valid_document() -> dict:
                 "stream_id": "rev-primary",
                 "model_kind": "product_unit",
                 "unit": "unit",
-                "volume_series": [{"period": periods[0], "value": "100"}],
-                "price_series": [{"period": periods[0], "value": "25.50"}],
-                "variable_cost_series": [{"period": periods[0], "value": "10"}],
+                "volume_series": [
+                    {"period": period, "value": "100"} for period in periods
+                ],
+                "price_series": [
+                    {"period": period, "value": "25.50"} for period in periods
+                ],
+                "variable_cost_series": [
+                    {"period": period, "value": "10"} for period in periods
+                ],
                 "lineage": lineage(),
             }
         ],
@@ -238,6 +244,14 @@ def test_series_rejects_duplicate_unordered_and_out_of_horizon_periods() -> None
     with pytest.raises(FinanceContractError) as error:
         validate_finance_input(outside, binding=binding())
     assert error.value.code == "FIN2_PERIOD_HORIZON"
+
+
+def test_recurring_series_must_explicitly_cover_full_horizon() -> None:
+    document = valid_document()
+    document["revenue_streams"][0]["price_series"].pop()
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(document, binding=binding())
+    assert error.value.code == "FIN2_PERIOD_COVERAGE"
 
 
 def test_unregistered_revenue_formula_surface_is_rejected() -> None:
