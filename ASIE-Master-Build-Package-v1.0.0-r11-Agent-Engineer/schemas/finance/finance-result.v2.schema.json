@@ -513,7 +513,23 @@
           "invariant_id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "enum": [
+              "balance_equation",
+              "cash_statement_balance_sheet",
+              "cash_rollforward",
+              "retained_earnings_rollforward",
+              "ppe_rollforward",
+              "debt_rollforward",
+              "sources_uses_balance",
+              "gross_profit_equation",
+              "ebit_equation",
+              "cash_flow_equation",
+              "finite_numbers",
+              "period_order",
+              "legacy_projection_parity",
+              "deterministic_replay"
+            ]
           },
           "status": {
             "enum": [
@@ -543,7 +559,8 @@
             "maxLength": 240
           }
         }
-      }
+      },
+      "maxItems": 14
     },
     "scenarios": {
       "type": "array",
@@ -691,9 +708,131 @@
           "const": "finance-result.v2"
         },
         "payload": {
-          "type": "object"
+          "type": "object",
+          "required": [
+            "status",
+            "baseline",
+            "scenarios",
+            "sensitivity",
+            "operational_sensitivity",
+            "operating_model",
+            "capex_breakdown",
+            "opex_breakdown",
+            "debt_service_profile",
+            "monte_carlo",
+            "assumption_refs"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "ready",
+                "not_ready"
+              ]
+            },
+            "baseline": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "scenarios": {
+              "type": "array"
+            },
+            "sensitivity": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "operational_sensitivity": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "operating_model": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capex_breakdown": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "opex_breakdown": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "debt_service_profile": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "monte_carlo": {
+              "type": "object"
+            },
+            "assumption_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blockers": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "additionalProperties": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "derived"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "minProperties": 11
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_available"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "allOf": [
