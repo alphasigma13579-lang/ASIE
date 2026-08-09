@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/project-archetype.v1.schema.json",
+  "title": "ASIE Project Archetype v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "archetype_id",
+    "version",
+    "family",
+    "status",
+    "owner",
+    "last_reviewed",
+    "isic_bindings",
+    "revenue_models",
+    "drivers",
+    "technical_units",
+    "required_schedules",
+    "required_policies",
+    "evidence_minimums",
+    "validation_rule_ids",
+    "golden_case_refs",
+    "review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "project-archetype.v1"
+    },
+    "archetype_id": {
+      "type": "string",
+      "pattern": "^arc_[a-z0-9_-]{3,80}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "family": {
+      "enum": [
+        "retail_trade",
+        "manufacturing",
+        "food_hospitality",
+        "professional_services",
+        "saas_subscription",
+        "marketplace_commission",
+        "real_estate_lease",
+        "transport_logistics",
+        "capacity_health_education",
+        "agriculture_cycle",
+        "construction_contract"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "finance_reviewed",
+        "sector_reviewed",
+        "approved_l1",
+        "deprecated"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "last_reviewed": {
+      "type": "string",
+      "format": "date"
+    },
+    "supersedes": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "isic_bindings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "classification_system",
+          "version",
+          "code_pattern",
+          "source_ref"
+        ],
+        "properties": {
+          "classification_system": {
+            "const": "ISIC4-SA"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "code_pattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      }
+    },
+    "revenue_models": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "product_unit",
+          "service_capacity",
+          "subscription",
+          "project_contract",
+          "commission_gmv",
+          "room_bed_seat",
+          "rent_lease",
+          "agriculture_cycle",
+          "manufacturing_yield",
+          "transport_trip",
+          "professional_hours",
+          "custom_reviewed"
+        ]
+      }
+    },
+    "drivers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "driver_id",
+          "label_ar",
+          "value_type",
+          "unit",
+          "required",
+          "validation_rule_ids"
+        ],
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "pattern": "^drv_[a-z0-9_-]{2,80}$"
+          },
+          "label_ar": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "value_type": {
+            "enum": [
+              "decimal",
+              "integer",
+              "boolean",
+              "enum",
+              "schedule",
+              "reference"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "allowed_values": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "validation_rule_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          }
+        }
+      }
+    },
+    "technical_units": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      }
+    },
+    "capacity_constraints": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "constraint_id",
+          "left_driver_ref",
+          "operator",
+          "right_driver_ref"
+        ],
+        "properties": {
+          "constraint_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "left_driver_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "operator": {
+            "enum": [
+              "<=",
+              "<",
+              ">=",
+              ">",
+              "=="
+            ]
+          },
+          "right_driver_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "message_ar": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "required_schedules": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "revenue",
+          "opex",
+          "capex",
+          "working_capital",
+          "debt",
+          "fiscal",
+          "staffing",
+          "capacity"
+        ]
+      }
+    },
+    "required_policies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "rounding",
+          "working_capital",
+          "depreciation",
+          "debt",
+          "vat",
+          "income_tax",
+          "zakat",
+          "revenue_recognition"
+        ]
+      }
+    },
+    "evidence_minimums": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field_ref",
+          "minimum_status",
+          "source_types"
+        ],
+        "properties": {
+          "field_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minimum_status": {
+            "enum": [
+              "reference_only",
+              "reviewed",
+              "approved"
+            ]
+          },
+          "source_types": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "official_open_data",
+                "supplier_quote",
+                "contract",
+                "license",
+                "market_research",
+                "approved_assumption",
+                "professional_review"
+              ]
+            }
+          },
+          "max_age_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650
+          }
+        }
+      }
+    },
+    "validation_rule_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      }
+    },
+    "golden_case_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "input_hash",
+          "expected_hash",
+          "status"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "input_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "expected_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "finance_reviewed",
+              "sector_reviewed",
+              "approved"
+            ]
+          }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finance_reviewer_status",
+        "sector_reviewer_status"
+      ],
+      "properties": {
+        "finance_reviewer_status": {
+          "enum": [
+            "unassigned",
+            "pending",
+            "accepted",
+            "rejected"
+          ]
+        },
+        "sector_reviewer_status": {
+          "enum": [
+            "unassigned",
+            "pending",
+            "accepted",
+            "rejected"
+          ]
+        },
+        "finance_review_ref": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "sector_review_ref": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "deprecation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effective_on",
+        "replacement_ref"
+      ],
+      "properties": {
+        "effective_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "replacement_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved_l1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "review": {
+            "properties": {
+              "finance_reviewer_status": {
+                "const": "accepted"
+              },
+              "sector_reviewer_status": {
+                "const": "accepted"
+              }
+            }
+          },
+          "golden_case_refs": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "deprecated"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deprecation"
+        ]
+      }
+    }
+  ]
+}

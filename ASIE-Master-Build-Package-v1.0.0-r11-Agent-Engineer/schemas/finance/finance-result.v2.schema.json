@@ -1,0 +1,967 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/finance-result.v2.schema.json",
+  "title": "ASIE Finance Result v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "engine_version",
+    "status",
+    "organization_id",
+    "project_id",
+    "run_id",
+    "input_document_id",
+    "input_hash",
+    "archetype_ref",
+    "currency",
+    "periods",
+    "rounding_policy",
+    "statements",
+    "cash_flows",
+    "metrics",
+    "invariants",
+    "scenarios",
+    "lineage",
+    "blockers",
+    "legacy_projection"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "finance-result.v2"
+    },
+    "engine_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "not_ready",
+        "invalid"
+      ]
+    },
+    "organization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "input_document_id": {
+      "type": "string",
+      "pattern": "^fmi_[A-Za-z0-9_-]{8,80}$"
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "archetype_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype_id",
+        "version",
+        "registry_hash"
+      ],
+      "properties": {
+        "archetype_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "registry_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "periods": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 240,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+      }
+    },
+    "rounding_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "money_scale",
+        "ratio_scale",
+        "mode"
+      ],
+      "properties": {
+        "money_scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "ratio_scale": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 8
+        },
+        "mode": {
+          "const": "ROUND_HALF_EVEN"
+        }
+      }
+    },
+    "statements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "income_statement",
+        "balance_sheet",
+        "cash_flow_statement"
+      ],
+      "properties": {
+        "income_statement": {
+          "type": "array",
+          "minItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line_id",
+              "values",
+              "formula_id",
+              "input_refs"
+            ],
+            "properties": {
+              "line_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "period",
+                    "value"
+                  ],
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                    },
+                    "value": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                    }
+                  }
+                }
+              },
+              "formula_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "input_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        "balance_sheet": {
+          "type": "array",
+          "minItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line_id",
+              "values",
+              "formula_id",
+              "input_refs"
+            ],
+            "properties": {
+              "line_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "period",
+                    "value"
+                  ],
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                    },
+                    "value": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                    }
+                  }
+                }
+              },
+              "formula_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "input_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        "cash_flow_statement": {
+          "type": "array",
+          "minItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line_id",
+              "values",
+              "formula_id",
+              "input_refs"
+            ],
+            "properties": {
+              "line_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "period",
+                    "value"
+                  ],
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                    },
+                    "value": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                    }
+                  }
+                }
+              },
+              "formula_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "input_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cash_flows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unlevered_fcf",
+        "equity_cash_flow",
+        "cfads"
+      ],
+      "properties": {
+        "unlevered_fcf": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          }
+        },
+        "equity_cash_flow": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          }
+        },
+        "cfads": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          }
+        }
+      }
+    },
+    "subledgers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capex": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "working_capital": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "debt": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "fiscal": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "npv_unlevered",
+        "irr_unlevered",
+        "mirr_unlevered",
+        "payback_months",
+        "break_even",
+        "funding_need",
+        "dscr_min",
+        "llcr"
+      ],
+      "properties": {
+        "npv_unlevered": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "irr_unlevered": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mirr_unlevered": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payback_months": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "break_even": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "funding_need": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "dscr_min": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "llcr": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "margin_gross": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "margin_ebitda": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "margin_net": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "invariant_id",
+          "status",
+          "tolerance",
+          "maximum_variance",
+          "period_refs"
+        ],
+        "properties": {
+          "invariant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "enum": [
+              "balance_equation",
+              "cash_statement_balance_sheet",
+              "cash_rollforward",
+              "retained_earnings_rollforward",
+              "ppe_rollforward",
+              "debt_rollforward",
+              "sources_uses_balance",
+              "gross_profit_equation",
+              "ebit_equation",
+              "cash_flow_equation",
+              "finite_numbers",
+              "period_order",
+              "legacy_projection_parity",
+              "deterministic_replay"
+            ]
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_applicable"
+            ]
+          },
+          "tolerance": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          },
+          "maximum_variance": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          },
+          "period_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      },
+      "maxItems": 14
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "status",
+          "metrics"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready",
+              "invalid"
+            ]
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "simulation_summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "seed": {
+                "type": "integer"
+              },
+              "iterations": {
+                "type": "integer"
+              },
+              "distribution_profile_ref": {
+                "type": "string"
+              },
+              "correlation_profile_ref": {
+                "type": "string"
+              },
+              "quantiles": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assumption_refs",
+        "evidence_refs",
+        "formula_registry_version"
+      ],
+      "properties": {
+        "assumption_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "formula_registry_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "severity",
+          "field_ref",
+          "message_ar"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^FIN2_[A-Z0-9_]{3,80}$"
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "field_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message_ar": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        }
+      }
+    },
+    "legacy_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "derived_from",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "finance.result.v1-compatible"
+        },
+        "status": {
+          "enum": [
+            "derived",
+            "not_available"
+          ]
+        },
+        "derived_from": {
+          "const": "finance-result.v2"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "status",
+            "baseline",
+            "scenarios",
+            "sensitivity",
+            "operational_sensitivity",
+            "operating_model",
+            "capex_breakdown",
+            "opex_breakdown",
+            "debt_service_profile",
+            "monte_carlo",
+            "assumption_refs"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "ready",
+                "not_ready"
+              ]
+            },
+            "baseline": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "scenarios": {
+              "type": "array"
+            },
+            "sensitivity": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "operational_sensitivity": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "operating_model": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capex_breakdown": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "opex_breakdown": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "debt_service_profile": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "monte_carlo": {
+              "type": "object"
+            },
+            "assumption_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blockers": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "derived"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "minProperties": 11
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_available"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          },
+          "invariants": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "status": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "not_ready",
+              "invalid"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+    },
+    "nonnegative": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+    },
+    "nullableDecimal": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "period": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+    },
+    "statementLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line_id",
+        "values",
+        "formula_id",
+        "input_refs"
+      ],
+      "properties": {
+        "line_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "period",
+              "value"
+            ],
+            "properties": {
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              }
+            }
+          }
+        },
+        "formula_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "input_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      }
+    }
+  }
+}
