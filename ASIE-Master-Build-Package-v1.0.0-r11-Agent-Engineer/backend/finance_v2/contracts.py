@@ -49,6 +49,7 @@ REQUIRED_TOP_LEVEL = frozenset(
         "working_capital",
         "financing",
         "fiscal_policy",
+        "valuation_policy",
         "scenarios",
         "metadata",
     }
@@ -162,6 +163,7 @@ def validate_finance_input(
     _validate_working_capital(document["working_capital"], horizon)
     _validate_financing(document["financing"], horizon)
     _validate_fiscal(document["fiscal_policy"])
+    _validate_valuation(document["valuation_policy"])
     _validate_scenarios(document["scenarios"])
 
     try:
@@ -234,6 +236,10 @@ def _validate_closed_shape(document: Mapping[str, Any]) -> None:
         for item_index, raw_fee in enumerate(_sequence(row.get("fees"), f"{ref}.fees", minimum=0, maximum=30)):
             _reject_unknown(_mapping(raw_fee, f"{ref}.fees[{item_index}]"), {"fee_id", "period", "amount"}, f"{ref}.fees[{item_index}]")
         _close_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    valuation = _mapping(document["valuation_policy"], "$.valuation_policy")
+    _reject_unknown(valuation, {"discount_rate_annual", "finance_rate_annual", "reinvestment_rate_annual", "lineage"}, "$.valuation_policy")
+    _close_lineage(valuation.get("lineage"), "$.valuation_policy.lineage")
 
     fiscal = _mapping(document["fiscal_policy"], "$.fiscal_policy")
     _reject_unknown(fiscal, {"policy_id", "effective_from", "modules", "vat_rate", "income_tax_rate", "zakat_rate", "lineage"}, "$.fiscal_policy")
@@ -487,6 +493,19 @@ def _validate_fiscal(value: Any) -> None:
                 "FIN2_FISCAL_RATE", f"$.fiscal_policy.{rate_fields[module]}", "must be <= 1"
             )
     _validate_lineage(policy.get("lineage"), "$.fiscal_policy.lineage")
+
+
+def _validate_valuation(value: Any) -> None:
+    policy = _mapping(value, "$.valuation_policy")
+    for name in ("discount_rate_annual", "finance_rate_annual", "reinvestment_rate_annual"):
+        rate = parse_decimal(policy.get(name), f"$.valuation_policy.{name}", allow_negative=False)
+        if rate > Decimal("10"):
+            raise FinanceContractError(
+                "FIN2_VALUATION_RATE",
+                f"$.valuation_policy.{name}",
+                "annual rate must be <= 10",
+            )
+    _validate_lineage(policy.get("lineage"), "$.valuation_policy.lineage")
 
 
 def _validate_scenarios(value: Any) -> None:
