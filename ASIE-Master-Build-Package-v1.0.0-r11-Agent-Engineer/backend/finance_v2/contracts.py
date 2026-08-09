@@ -488,7 +488,7 @@ def _validate_fiscal(value: Any) -> None:
             "FIN2_FISCAL_MODULES", "$.fiscal_policy.modules", "invalid or duplicate modules"
         )
     rate_fields = {"vat": "vat_rate", "income_tax": "income_tax_rate", "zakat": "zakat_rate"}
-    combined = ZERO
+    combined = Decimal("0")
     for module in modules:
         rate = parse_decimal(
             policy.get(rate_fields[module]),
