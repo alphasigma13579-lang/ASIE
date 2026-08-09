@@ -673,3 +673,34 @@ def test_legacy_range_guard_checks_aggregate_debt_draws() -> None:
     assert payload["status"] == "not_ready"
     assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
 
+def test_legacy_range_guard_checks_depreciation_years_quotient() -> None:
+    document = valid_document()
+    cost = "1" + ("0" * 302)
+    residual = ("9" * 302) + ".99999999"
+    document["capex_assets"] = [
+        {
+            "asset_id": "asset-near-residual",
+            "acquisition_period": "2026-01",
+            "cost": cost,
+            "residual_value": residual,
+            "useful_life_months": 12,
+            "depreciation_method": "straight_line",
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    assert float(model.periods[0].capex_additions) != float("inf")
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
+
