@@ -106,7 +106,24 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
         if output["metrics"]["dscr_min"] is None
         else float(output["metrics"]["dscr_min"])
     )
-    assert payload["monte_carlo"] == {"status": "not_ready", "p_pass": None}
+    monte_carlo = payload["monte_carlo"]
+    assert monte_carlo["status"] == "not_ready"
+    assert {
+        "seed",
+        "iterations",
+        "p_pass",
+        "p10_profit",
+        "p50_profit",
+        "p90_profit",
+        "distribution_profile",
+        "correlation_ref",
+        "convergence",
+        "label_ar",
+        "label_en",
+        "warning",
+    } <= set(monte_carlo)
+    assert monte_carlo["iterations"] == 0
+    assert monte_carlo["convergence"]["status"] == "not_ready"
     assert payload["sensitivity"] is None
     assert payload["operational_sensitivity"] is None
 
@@ -138,6 +155,14 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
     assert payload["assumption_refs"] == ["asm-1"]
     assert payload["operating_model"]["monthly_units"] == 100.0
     assert {
+        "use_operating_capacity",
+        "capacity_units_per_day",
+        "operating_days_per_month",
+        "utilization_rate",
+        "monthly_units",
+        "unit_source",
+    } <= set(payload["operating_model"])
+    assert {
         "total_capex",
         "depreciation_monthly",
         "capex_equipment",
@@ -150,6 +175,91 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
         "rent_monthly",
         "utilities_monthly",
     } <= set(payload["opex_breakdown"])
+    assert {
+        "status",
+        "debt_amount",
+        "monthly_payment",
+        "annual_debt_service",
+        "dscr",
+        "loan_grace_months",
+        "warning",
+    } <= set(payload["debt_service_profile"])
+    assert payload["debt_service_profile"]["status"] == "ready"
+    for nested in (
+        "operating_model",
+        "capex_breakdown",
+        "opex_breakdown",
+        "debt_service_profile",
+    ):
+        assert payload["baseline"][nested] == payload[nested]
+        assert payload["scenarios"][0][nested] == payload[nested]
+
+
+def test_legacy_capex_fallback_preserves_unclassified_v2_total() -> None:
+    document = valid_document()
+    document["capex_assets"] = [
+        {
+            "asset_id": "asset-unclassified",
+            "acquisition_period": "2026-01",
+            "cost": "12000",
+            "residual_value": "0",
+            "useful_life_months": 60,
+            "depreciation_method": "straight_line",
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    capex = output["legacy_projection"]["payload"]["capex_breakdown"]
+
+    assert capex["total_capex"] == 12000.0
+    assert capex["legacy_startup_cost"] == capex["total_capex"]
+    assert capex["capex_equipment"] == 0.0
+    assert capex["capex_fitout"] == 0.0
+    assert capex["capex_licenses_local"] == 0.0
+    assert capex["depreciation_years"] == 5.0
+
+
+def test_legacy_debt_profile_has_complete_consumer_shape() -> None:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-1",
+            "drawdowns": [{"period": "2026-01", "amount": "12000"}],
+            "annual_rate": "0.05",
+            "tenor_months": 12,
+            "principal_grace_months": 2,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "annuity",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    profile = output["legacy_projection"]["payload"][
+        "debt_service_profile"
+    ]
+
+    assert profile["status"] == "ready"
+    assert profile["debt_amount"] == 12000.0
+    assert profile["monthly_payment"] is not None
+    assert profile["annual_debt_service"] is not None
+    assert profile["loan_grace_months"] == 2
+    assert isinstance(profile["warning"], str)
 
 
 def test_balance_sheet_equity_projection_is_cumulative() -> None:
