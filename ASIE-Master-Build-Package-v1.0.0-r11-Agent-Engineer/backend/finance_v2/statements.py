@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Any
 
 from .contracts import ValidatedFinanceInput, parse_decimal
@@ -20,6 +20,15 @@ from .model import FinancialModel, FinancialPeriod, ZERO
 
 def build_financial_model(validated: ValidatedFinanceInput) -> FinancialModel:
     document = validated.thaw()
+    with localcontext() as context:
+        context.prec = _required_precision(document)
+        return _build_financial_model(validated, document)
+
+
+def _build_financial_model(
+    validated: ValidatedFinanceInput,
+    document: dict[str, Any],
+) -> FinancialModel:
     periods = validated.periods
     blockers: list[dict[str, str]] = []
 
@@ -28,7 +37,15 @@ def build_financial_model(validated: ValidatedFinanceInput) -> FinancialModel:
     except UnsupportedDebtProfile as exc:
         debt = tuple()
         blockers.append(_blocker("FIN2_DEBT_PROFILE_UNSUPPORTED", "$.financing", str(exc)))
-        return FinancialModel((), debt, (), {}, "not_ready", tuple(blockers))
+        return FinancialModel(
+            periods=(),
+            debt_schedule=debt,
+            invariants=(),
+            metrics={},
+            status="not_ready",
+            blockers=tuple(blockers),
+            source_input_hash=validated.input_hash,
+        )
 
     if "vat" in document["fiscal_policy"]["modules"]:
         blockers.append(
@@ -191,6 +208,7 @@ def build_financial_model(validated: ValidatedFinanceInput) -> FinancialModel:
         metrics=metrics,
         status=status,
         blockers=tuple(blockers),
+        source_input_hash=validated.input_hash,
     )
 
 
@@ -332,3 +350,24 @@ def _blocker(code: str, field_ref: str, message: str) -> dict[str, str]:
         "field_ref": field_ref,
         "message_ar": message,
     }
+
+def _required_precision(document: dict[str, Any]) -> int:
+    maximum_digits = 1
+
+    def walk(value: Any) -> None:
+        nonlocal maximum_digits
+        if isinstance(value, dict):
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+        elif isinstance(value, str):
+            digits = sum(character.isdigit() for character in value)
+            maximum_digits = max(maximum_digits, digits)
+
+    walk(document)
+    # Products combine two admitted series and roll-forwards accumulate up to
+    # 240 periods. The guard digits preserve cents and ratio_scale=8 outputs.
+    return max(96, maximum_digits * 4 + 32)
+
