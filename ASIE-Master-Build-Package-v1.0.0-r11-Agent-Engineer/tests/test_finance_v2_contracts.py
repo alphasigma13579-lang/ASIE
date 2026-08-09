@@ -205,6 +205,27 @@ def test_missing_and_unknown_top_level_fields_fail_closed() -> None:
     assert error.value.code == "FIN2_UNKNOWN_FIELD"
 
 
+def test_unknown_nested_fields_are_rejected_instead_of_ignored() -> None:
+    revenue = valid_document()
+    revenue["revenue_streams"][0]["expression"] = "eval(user_input)"
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(revenue, binding=binding())
+    assert error.value.code == "FIN2_UNKNOWN_FIELD"
+    assert error.value.field_ref == "$.revenue_streams[0]"
+
+    period = valid_document()
+    period["revenue_streams"][0]["price_series"][0]["currency_override"] = "USD"
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(period, binding=binding())
+    assert error.value.code == "FIN2_UNKNOWN_FIELD"
+
+    scenario = valid_document()
+    scenario["scenarios"][0]["client_authoritative"] = True
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(scenario, binding=binding())
+    assert error.value.code == "FIN2_UNKNOWN_FIELD"
+
+
 def test_exactly_one_baseline_is_required() -> None:
     for scenarios in (
         [{"scenario_id": "scn_down", "kind": "deterministic", "overrides": []}],
