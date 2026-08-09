@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from backend.finance_v2 import build_financial_model, validate_finance_input
+from backend.finance_v2.metrics import cashflow_sign_changes, irr_annual, llcr, minimum_dscr
 from tests.test_finance_v2_contracts import binding, lineage, valid_document
 
 
@@ -209,3 +210,42 @@ def test_revenue_cost_equations_hold_across_bounded_cases(
     assert first.gross_profit == first.revenue - first.cogs
     assert first.ebitda == Decimal(expected_profit)
     assert first.ebit == first.ebitda - first.depreciation
+
+
+def test_irr_is_suppressed_for_multiple_sign_changes() -> None:
+    flows = (Decimal("-100"), Decimal("230"), Decimal("-132"))
+    assert cashflow_sign_changes(flows) == 2
+    assert irr_annual(flows) is None
+
+
+def test_dscr_is_rolling_twelve_months_and_not_short_fragment() -> None:
+    assert minimum_dscr((Decimal("10"),) * 11, (Decimal("5"),) * 11) is None
+    assert minimum_dscr((Decimal("10"),) * 12, (Decimal("5"),) * 12) == Decimal("2")
+
+
+def test_llcr_uses_actual_period_debt_balances() -> None:
+    cfads = (Decimal("100"),) * 12
+    balances = (Decimal("1000"),) * 6 + (Decimal("500"),) * 6
+    value = llcr(cfads, balances, Decimal("0.10"))
+    assert value is not None
+    assert value > 0
+
+
+def test_missing_debt_fee_treatment_fails_contract_admission() -> None:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-policy",
+            "drawdowns": [{"period": "2026-01", "amount": "1200"}],
+            "annual_rate": "0",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "bullet",
+            "fees": [],
+            "lineage": lineage(),
+        }
+    ]
+    with pytest.raises(Exception) as error:
+        validate_finance_input(document, binding=binding())
+    assert getattr(error.value, "code", "") == "FIN2_DEBT_FEE_TREATMENT"
