@@ -104,6 +104,7 @@ Persisted DIB / approved Project inputs
 - العملة ISO-4217، وعملة تشغيل واحدة في S2. العملات المتعددة `not_supported` حتى ACR لاحق.
 - كل نتيجة تحمل `schema_version` و`engine_version` و`archetype_version` و`rounding_policy` و`input_hash`.
 - seed مطلوب لأي محاكاة؛ نفس المدخلات والإصدارات والـseed تعطي نفس البايتات المنطقية بعد canonical serialization.
+- `valuation_policy` إلزامية وتحمل discount/finance/reinvestment annual rates مع lineage؛ لا معدل افتراضي صامت.
 
 ### null/default
 
@@ -146,6 +147,7 @@ Persisted DIB / approved Project inputs
 - OPEX line items: ثابت، متغير، step، موسمي؛ كل بند له schedule وassumption/evidence refs.
 - CAPEX asset groups: تكلفة، تاريخ اقتناء، عمر نافع، residual value، طريقة إهلاك، replacement policy.
 - S2 يدعم straight-line فقط ويعلن غيره `not_supported`.
+- يبدأ الإهلاك في شهر acquisition/placed-in-service الحالي حتى يضاف حقل placed-in-service مستقل بعقد لاحق.
 - سجل الأصول يطابق PPE roll-forward: opening + additions - disposals - depreciation = closing.
 
 ### 6.4 رأس المال العامل
@@ -159,6 +161,7 @@ Persisted DIB / approved Project inputs
 - مصادر واستخدامات متوازنة.
 - شرائح دين متعددة، drawdowns، fees، annual rate، tenor، grace، amortization وballoon.
 - grace يطبق فعلياً على principal/interest وفق policy، لا يُعرض فقط.
+- كل drawdown يعامل كقرض فرعي يبدأ أول الفترة، وتحتسب فائدته من شهر السحب؛ tenor/grace مرتبطان بكل drawdown.
 - جدول الدين يطابق: opening + drawdowns + capitalized interest - principal = closing.
 - DSCR وLLCR لا يظهران ready ما لم يكتمل تعريف CFADS وجدول الدين.
 
@@ -166,6 +169,7 @@ Persisted DIB / approved Project inputs
 
 - المحرك generic policy-driven.
 - `vat` و`income_tax` و`zakat` وحدات مستقلة ذات effective dates ومصدر/مراجع.
+- في S2-B تبقى VAT `not_ready` حتى يضاف عقد input/output tax ledger؛ لا يجوز تقديرها من الإيراد وحده.
 - لا يزعم المحرك اختيار السياسة النظامية الصحيحة؛ الاختيار مدخل معتمد.
 - إذا كان مستوى المخرج يتطلب سياسة ناقصة تكون النتيجة `not_ready`.
 
