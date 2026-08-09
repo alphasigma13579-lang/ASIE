@@ -519,3 +519,77 @@ def test_legacy_parity_failure_blocks_ready_result() -> None:
         "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY"
     )
 
+def test_legacy_range_guard_includes_values_derived_from_input() -> None:
+    document = valid_document()
+    volume = "1" + ("0" * 309)
+    stream = document["revenue_streams"][0]
+    for point in stream["volume_series"]:
+        point["value"] = volume
+    for point in stream["price_series"]:
+        point["value"] = "0.00000001"
+    for point in stream["variable_cost_series"]:
+        point["value"] = "0"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+
+    assert float(model.periods[0].revenue) != float("inf")
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
+
+
+def test_legacy_monthly_payment_ignores_post_tenor_forecast_months() -> None:
+    def projection(months: int) -> dict:
+        document = valid_document()
+        periods = monthly_periods("2026-01", months)
+        document["forecast"]["monthly_periods"] = months
+        stream = document["revenue_streams"][0]
+        for field, value in (
+            ("volume_series", "100"),
+            ("price_series", "25.50"),
+            ("variable_cost_series", "10"),
+        ):
+            stream[field] = [
+                {"period": period, "value": value} for period in periods
+            ]
+        document["financing"]["debt_tranches"] = [
+            {
+                "tranche_id": "debt-1",
+                "drawdowns": [
+                    {"period": "2026-01", "amount": "12000"}
+                ],
+                "annual_rate": "0.05",
+                "tenor_months": 12,
+                "principal_grace_months": 0,
+                "interest_grace_policy": "paid",
+                "repayment_profile": "annuity",
+                "fee_treatment": "expense_upfront",
+                "fees": [],
+                "lineage": {
+                    "assumption_refs": ["asm-1"],
+                    "evidence_refs": ["ev-1"],
+                },
+            }
+        ]
+        validated = validate_finance_input(document, binding=binding())
+        model = build_financial_model(validated)
+        output = serialize_finance_result(
+            validated, model, include_legacy_projection=True
+        )
+        return output["legacy_projection"]["payload"][
+            "debt_service_profile"
+        ]
+
+    twelve = projection(12)
+    twenty_four = projection(24)
+
+    assert twelve["monthly_payment"] == twenty_four["monthly_payment"]
+    assert twelve["annual_debt_service"] == (
+        twenty_four["annual_debt_service"]
+    )
+
