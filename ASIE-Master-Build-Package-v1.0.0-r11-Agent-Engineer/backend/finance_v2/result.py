@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_EVEN, localcontext
+from math import isfinite
 from typing import Any
 
 from .contracts import FinanceContractError, ValidatedFinanceInput
@@ -227,9 +228,12 @@ def _apply_legacy_parity(
         if actual is None or expected is None:
             failed = failed or actual is not None or expected is not None
             continue
+        expected_float = float(_decimal(Decimal(expected), scale))
+        if not isfinite(expected_float) or not isfinite(float(actual)):
+            failed = True
+            continue
         variance = abs(
-            Decimal(str(actual))
-            - Decimal(_decimal(Decimal(expected), scale))
+            Decimal(str(actual)) - Decimal(str(expected_float))
         )
         maximum = max(maximum, variance)
         failed = failed or variance != ZERO
@@ -300,20 +304,39 @@ def _legacy_projection(
 ) -> dict[str, Any]:
     monte_carlo = _legacy_not_ready_monte_carlo()
     if not model.periods:
-        payload: dict[str, Any] = {
-            "status": "not_ready",
-            "baseline": None,
-            "scenarios": [],
-            "sensitivity": None,
-            "operational_sensitivity": None,
-            "operating_model": None,
-            "capex_breakdown": None,
-            "opex_breakdown": None,
-            "debt_service_profile": None,
-            "monte_carlo": monte_carlo,
-            "assumption_refs": lineage["assumption_refs"],
-            "blockers": list(model.blockers),
-        }
+        payload = _legacy_unavailable_payload(
+            lineage,
+            list(model.blockers),
+            monte_carlo,
+        )
+    elif model.metrics.get("break_even") is None:
+        payload = _legacy_unavailable_payload(
+            lineage,
+            [
+                *model.blockers,
+                {
+                    "code": "FIN2_LEGACY_BREAK_EVEN_UNAVAILABLE",
+                    "severity": "high",
+                    "field_ref": "$.metrics.break_even",
+                    "message_ar": "لا يمكن تمثيل نقطة التعادل المطلوبة في عقد v1.",
+                },
+            ],
+            monte_carlo,
+        )
+    elif not _legacy_numbers_supported(model):
+        payload = _legacy_unavailable_payload(
+            lineage,
+            [
+                *model.blockers,
+                {
+                    "code": "FIN2_LEGACY_NUMBER_RANGE",
+                    "severity": "high",
+                    "field_ref": "$.legacy_projection",
+                    "message_ar": "تتجاوز قيمة مالية نطاق الأرقام الآمن لعقد v1.",
+                },
+            ],
+            monte_carlo,
+        )
     else:
         count = Decimal(len(model.periods))
         average = (
@@ -427,6 +450,7 @@ def _legacy_projection(
             ),
         }
         baseline = {
+            "scenario_id": "baseline",
             "startup_cost": float(_decimal(total_capex, money_scale)),
             "revenue": float(_decimal(average_revenue, money_scale)),
             "variable_total": float(
@@ -496,7 +520,7 @@ def _legacy_projection(
         payload = {
             "status": model.status,
             "baseline": baseline,
-            "scenarios": [{"scenario_id": "baseline", **baseline}],
+            "scenarios": [dict(baseline)],
             "sensitivity": None,
             "operational_sensitivity": None,
             "operating_model": operating_model,
@@ -513,6 +537,44 @@ def _legacy_projection(
         "derived_from": "finance-result.v2",
         "payload": payload,
     }
+
+
+def _legacy_unavailable_payload(
+    lineage: dict[str, list[str]],
+    blockers: list[dict[str, Any]],
+    monte_carlo: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "not_ready",
+        "baseline": None,
+        "scenarios": [],
+        "sensitivity": None,
+        "operational_sensitivity": None,
+        "operating_model": None,
+        "capex_breakdown": None,
+        "opex_breakdown": None,
+        "debt_service_profile": None,
+        "monte_carlo": monte_carlo,
+        "assumption_refs": lineage["assumption_refs"],
+        "blockers": blockers,
+    }
+
+
+def _legacy_numbers_supported(model: FinancialModel) -> bool:
+    values: list[Decimal] = []
+    for row in (*model.periods, *model.debt_schedule):
+        values.extend(
+            value
+            for field in row.__dataclass_fields__
+            if isinstance((value := getattr(row, field)), Decimal)
+        )
+    values.extend(
+        value for value in model.metrics.values() if isinstance(value, Decimal)
+    )
+    try:
+        return all(isfinite(float(value)) for value in values)
+    except (OverflowError, ValueError):
+        return False
 
 
 def _legacy_not_ready_monte_carlo() -> dict[str, Any]:
