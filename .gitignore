@@ -38,3 +38,6 @@ Thumbs.db
 *.tar
 *.tar.gz
 *.pdf
+
+# Versioned public legal-evidence snapshot
+!ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/legal/third-party/saudi-open-data/Open_Data_License_En.pdf
