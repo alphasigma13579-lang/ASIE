@@ -692,6 +692,7 @@
               "principal_grace_months",
               "interest_grace_policy",
               "repayment_profile",
+              "fee_treatment",
               "fees",
               "lineage"
             ],
@@ -811,6 +812,11 @@
                     }
                   }
                 }
+              },
+              "fee_treatment": {
+                "enum": [
+                  "expense_upfront"
+                ]
               }
             }
           }
