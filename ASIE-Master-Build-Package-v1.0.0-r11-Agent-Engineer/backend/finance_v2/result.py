@@ -384,8 +384,8 @@ def _legacy_projection(
             if active_debt_payments
             else ZERO
         )
-        first_year_debt_service = sum(
-            scheduled_debt_payment[:12], ZERO
+        annualized_debt_service = (
+            representative_monthly_payment * Decimal("12")
         )
         depreciation_monthly = average("depreciation")
         depreciation_years = (
@@ -451,7 +451,7 @@ def _legacy_projection(
                 else None
             ),
             "annual_debt_service": (
-                float(_decimal(first_year_debt_service, money_scale))
+                float(_decimal(annualized_debt_service, money_scale))
                 if has_debt
                 else None
             ),
@@ -605,6 +605,16 @@ def _legacy_numbers_supported(
                 values.append(Decimal(value))
 
     walk(document)
+    if model.periods:
+        aggregate_monthly_units = sum(
+            (
+                Decimal(point["value"])
+                for stream in document["revenue_streams"]
+                for point in stream["volume_series"]
+            ),
+            ZERO,
+        ) / Decimal(len(model.periods))
+        values.append(aggregate_monthly_units)
     try:
         return all(isfinite(float(value)) for value in values)
     except (OverflowError, ValueError):
