@@ -1,0 +1,1065 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/finance-model-input.v2.schema.json",
+  "title": "ASIE Finance Model Input v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_id",
+    "organization_id",
+    "project_id",
+    "run_id",
+    "currency",
+    "forecast",
+    "archetype_ref",
+    "rounding_policy",
+    "revenue_streams",
+    "operating_costs",
+    "capex_assets",
+    "working_capital",
+    "financing",
+    "fiscal_policy",
+    "scenarios"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "finance-model-input.v2"
+    },
+    "document_id": {
+      "type": "string",
+      "pattern": "^fmi_[A-Za-z0-9_-]{8,80}$"
+    },
+    "organization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "forecast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_period",
+        "monthly_periods"
+      ],
+      "properties": {
+        "start_period": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "monthly_periods": {
+          "type": "integer",
+          "minimum": 12,
+          "maximum": 240
+        },
+        "construction_periods": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "default": 0
+        }
+      }
+    },
+    "archetype_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype_id",
+        "version",
+        "registry_hash"
+      ],
+      "properties": {
+        "archetype_id": {
+          "type": "string",
+          "pattern": "^arc_[a-z0-9_-]{3,80}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "registry_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "rounding_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "money_scale",
+        "ratio_scale",
+        "mode"
+      ],
+      "properties": {
+        "money_scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "ratio_scale": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 8
+        },
+        "mode": {
+          "enum": [
+            "ROUND_HALF_EVEN"
+          ]
+        }
+      }
+    },
+    "revenue_streams": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stream_id",
+          "model_kind",
+          "unit",
+          "volume_series",
+          "price_series",
+          "variable_cost_series",
+          "lineage"
+        ],
+        "properties": {
+          "stream_id": {
+            "type": "string",
+            "pattern": "^rev_[A-Za-z0-9_-]{1,80}$"
+          },
+          "model_kind": {
+            "enum": [
+              "product_unit",
+              "service_capacity",
+              "subscription",
+              "project_contract",
+              "commission_gmv",
+              "room_bed_seat",
+              "rent_lease",
+              "agriculture_cycle",
+              "manufacturing_yield",
+              "transport_trip",
+              "professional_hours",
+              "custom_reviewed"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "volume_series": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "period",
+                "value"
+              ],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            },
+            "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+          },
+          "price_series": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "period",
+                "value"
+              ],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            },
+            "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+          },
+          "variable_cost_series": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "period",
+                "value"
+              ],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            },
+            "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+          },
+          "capacity_series": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "period",
+                "value"
+              ],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            },
+            "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+          },
+          "lineage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assumption_refs",
+              "evidence_refs"
+            ],
+            "properties": {
+              "assumption_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "evidence_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "operating_costs": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cost_id",
+          "behavior",
+          "schedule",
+          "lineage"
+        ],
+        "properties": {
+          "cost_id": {
+            "type": "string",
+            "pattern": "^opex_[A-Za-z0-9_-]{1,80}$"
+          },
+          "behavior": {
+            "enum": [
+              "fixed",
+              "variable",
+              "step",
+              "seasonal"
+            ]
+          },
+          "driver_ref": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "schedule": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "period",
+                "value"
+              ],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            },
+            "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+          },
+          "lineage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assumption_refs",
+              "evidence_refs"
+            ],
+            "properties": {
+              "assumption_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "evidence_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "capex_assets": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asset_id",
+          "acquisition_period",
+          "cost",
+          "useful_life_months",
+          "depreciation_method",
+          "residual_value",
+          "lineage"
+        ],
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "pattern": "^asset_[A-Za-z0-9_-]{1,80}$"
+          },
+          "acquisition_period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "cost": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          },
+          "useful_life_months": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1200
+          },
+          "depreciation_method": {
+            "enum": [
+              "straight_line"
+            ]
+          },
+          "residual_value": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          },
+          "disposal_period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "replacement_asset_ref": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "lineage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assumption_refs",
+              "evidence_refs"
+            ],
+            "properties": {
+              "assumption_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "evidence_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "working_capital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "lineage"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "days",
+            "explicit_schedule"
+          ]
+        },
+        "dso_days": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "dio_days": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "dpo_days": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "accounts_receivable": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "period",
+              "value"
+            ],
+            "properties": {
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              }
+            }
+          },
+          "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+        },
+        "inventory": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "period",
+              "value"
+            ],
+            "properties": {
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              }
+            }
+          },
+          "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+        },
+        "accounts_payable": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "period",
+              "value"
+            ],
+            "properties": {
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              },
+              "value": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              }
+            }
+          },
+          "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+        },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assumption_refs",
+            "evidence_refs"
+          ],
+          "properties": {
+            "assumption_refs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "evidence_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "days"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dso_days",
+              "dio_days",
+              "dpo_days"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "explicit_schedule"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "accounts_receivable",
+              "inventory",
+              "accounts_payable"
+            ]
+          }
+        }
+      ]
+    },
+    "financing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "equity_contributions",
+        "debt_tranches"
+      ],
+      "properties": {
+        "equity_contributions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "period",
+              "amount",
+              "lineage"
+            ],
+            "properties": {
+              "period": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              },
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              },
+              "lineage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "assumption_refs",
+                  "evidence_refs"
+                ],
+                "properties": {
+                  "assumption_refs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  },
+                  "evidence_refs": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "debt_tranches": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tranche_id",
+              "drawdowns",
+              "annual_rate",
+              "tenor_months",
+              "principal_grace_months",
+              "interest_grace_policy",
+              "repayment_profile",
+              "fees",
+              "lineage"
+            ],
+            "properties": {
+              "tranche_id": {
+                "type": "string",
+                "pattern": "^debt_[A-Za-z0-9_-]{1,80}$"
+              },
+              "drawdowns": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "period",
+                    "amount"
+                  ],
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                    },
+                    "amount": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                    }
+                  }
+                }
+              },
+              "annual_rate": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              },
+              "tenor_months": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 600
+              },
+              "principal_grace_months": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 120
+              },
+              "interest_grace_policy": {
+                "enum": [
+                  "paid",
+                  "capitalized"
+                ]
+              },
+              "repayment_profile": {
+                "enum": [
+                  "annuity",
+                  "equal_principal",
+                  "bullet",
+                  "custom_reviewed"
+                ]
+              },
+              "balloon_amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              },
+              "fees": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "fee_id",
+                    "period",
+                    "amount"
+                  ],
+                  "properties": {
+                    "fee_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "period": {
+                      "type": "string",
+                      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                    },
+                    "amount": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                    }
+                  }
+                }
+              },
+              "lineage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "assumption_refs",
+                  "evidence_refs"
+                ],
+                "properties": {
+                  "assumption_refs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  },
+                  "evidence_refs": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fiscal_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "effective_from",
+        "modules",
+        "lineage"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "modules": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "vat",
+              "income_tax",
+              "zakat"
+            ]
+          }
+        },
+        "vat_rate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "income_tax_rate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "zakat_rate": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assumption_refs",
+            "evidence_refs"
+          ],
+          "properties": {
+            "assumption_refs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "evidence_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "kind",
+          "overrides"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "pattern": "^scn_[A-Za-z0-9_-]{1,80}$"
+          },
+          "kind": {
+            "enum": [
+              "baseline",
+              "deterministic",
+              "simulation"
+            ]
+          },
+          "overrides": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target_ref",
+                "operation",
+                "value"
+              ],
+              "properties": {
+                "target_ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "operation": {
+                  "enum": [
+                    "replace",
+                    "multiply",
+                    "add"
+                  ]
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+                }
+              }
+            }
+          },
+          "simulation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "seed",
+              "iterations",
+              "distribution_profile_ref"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "iterations": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 100000
+              },
+              "distribution_profile_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "correlation_profile_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approved_manifest_id": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "approved_manifest_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "policy_ref": {
+          "type": "string",
+          "maxLength": 160
+        }
+      }
+    }
+  },
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+    },
+    "nonnegative": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+    },
+    "period": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+    },
+    "series": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "period",
+          "value"
+        ],
+        "properties": {
+          "period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "value": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          }
+        }
+      },
+      "description": "Periods must be unique, ordered, and inside forecast horizon; semantic validation is required in addition to JSON Schema."
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assumption_refs",
+        "evidence_refs"
+      ],
+      "properties": {
+        "assumption_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      }
+    }
+  }
+}
