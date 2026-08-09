@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import Decimal
 
 from backend.finance_v2 import (
     build_financial_model,
     canonical_json,
+    monthly_periods,
     serialize_finance_result,
     validate_finance_input,
 )
@@ -159,3 +161,82 @@ def test_balance_sheet_equity_projection_is_cumulative() -> None:
     contributed = balance["contributed_equity"]
     assert contributed[0]["value"] == "100000.00"
     assert contributed[-1]["value"] == "100000.00"
+
+def test_scenario_metrics_use_the_same_governed_scales_as_top_level() -> None:
+    output = result()
+    assert output["scenarios"][0]["metrics"] == output["metrics"]
+
+
+def test_not_ready_custom_reviewed_debt_serializes_blocker_without_exception() -> None:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-custom",
+            "drawdowns": [{"period": "2026-01", "amount": "1000"}],
+            "annual_rate": "0.05",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "custom_reviewed",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+
+    assert model.status == "not_ready"
+    output = serialize_finance_result(validated, model)
+    assert output["status"] == "not_ready"
+    assert output["subledgers"]["debt"] == []
+    assert output["statements"]["income_statement"][0]["values"] == []
+    assert [row["code"] for row in output["blockers"]] == [
+        "FIN2_DEBT_PROFILE_UNSUPPORTED"
+    ]
+
+
+def test_legacy_projection_rounds_ratios_to_v2_policy() -> None:
+    output = result(legacy=True)
+    baseline = output["legacy_projection"]["payload"]["baseline"]
+
+    for legacy_key, metric_key in (
+        ("irr", "irr_unlevered"),
+        ("payback_months", "payback_months"),
+        ("dscr", "dscr_min"),
+    ):
+        expected = output["metrics"][metric_key]
+        assert baseline[legacy_key] == (
+            None if expected is None else float(expected)
+        )
+
+
+def test_legacy_annual_cashflow_is_first_twelve_months_not_full_horizon() -> None:
+    document = valid_document()
+    periods = monthly_periods("2026-01", 24)
+    document["forecast"]["monthly_periods"] = 24
+    stream = document["revenue_streams"][0]
+    for field, value in (
+        ("volume_series", "100"),
+        ("price_series", "25.50"),
+        ("variable_cost_series", "10"),
+    ):
+        stream[field] = [{"period": period, "value": value} for period in periods]
+
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    cashflows = [Decimal(value) for value in output["cash_flows"]["equity_cash_flow"]]
+    annual = output["legacy_projection"]["payload"]["baseline"]["annual_cashflow"]
+
+    assert len(cashflows) == 24
+    assert annual == float(sum(cashflows[:12], Decimal("0")))
+    assert annual != float(sum(cashflows, Decimal("0")))
+
