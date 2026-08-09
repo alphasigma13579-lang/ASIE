@@ -72,6 +72,7 @@ def test_finance_input_contract_binds_identity_versions_and_core_ledgers() -> No
         "working_capital",
         "financing",
         "fiscal_policy",
+        "valuation_policy",
         "scenarios",
         "metadata",
     } <= required
