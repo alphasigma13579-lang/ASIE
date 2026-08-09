@@ -106,10 +106,6 @@ def test_archetype_interface_has_all_mandatory_families_and_human_gate() -> None
         "approved_l1",
         "deprecated",
     ]
-    legacy_required = set(
-        document["properties"]["legacy_projection"]["properties"]["payload"]["required"]
-    )
-    assert {"baseline", "scenarios", "debt_service_profile", "monte_carlo"} <= legacy_required
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True)
     assert '"approved_l1"' in encoded
     assert '"finance_reviewer_status"' in encoded
@@ -133,6 +129,10 @@ def test_finance_result_contract_requires_three_statements_and_fail_closed_evide
     assert document["properties"]["legacy_projection"]["properties"]["derived_from"][
         "const"
     ] == "finance-result.v2"
+    legacy_required = set(
+        document["properties"]["legacy_projection"]["properties"]["payload"]["required"]
+    )
+    assert {"baseline", "scenarios", "debt_service_profile", "monte_carlo"} <= legacy_required
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True)
     assert '"maxItems": 0' in encoded
     assert '"minItems": 1' in encoded
