@@ -23,7 +23,7 @@
 
 ## Engines
 
-- `Finance-Engine`: الحسابات المالية والحساسية وMonte Carlo.
+- [`Finance-Engine`](Finance-Engine.md): الحسابات المالية والقوائم والحساسية والمحاكاة وفق ACR-FIN-002.
 - `Monte-Carlo-and-Sensitivity`: منطق MC والبوابات.
 - `Market-Estimation-Engine`: P25/P75/Weighted Median.
 - `Market-Intelligence`: منافسون ومقارنات وسوق.
