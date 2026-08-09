@@ -71,6 +71,7 @@ def test_zero_rate_equal_principal_debt_honors_grace_and_reaches_zero() -> None:
             "principal_grace_months": 2,
             "interest_grace_policy": "paid",
             "repayment_profile": "equal_principal",
+            "fee_treatment": "expense_upfront",
             "fees": [],
             "lineage": lineage(),
         }
@@ -98,6 +99,7 @@ def test_capitalized_interest_is_non_cash_and_balances_with_debt() -> None:
             "principal_grace_months": 2,
             "interest_grace_policy": "capitalized",
             "repayment_profile": "annuity",
+            "fee_treatment": "expense_upfront",
             "fees": [],
             "lineage": lineage(),
         }
@@ -131,6 +133,7 @@ def test_financing_fee_is_expensed_but_classified_once_in_cash_flow() -> None:
             "principal_grace_months": 0,
             "interest_grace_policy": "paid",
             "repayment_profile": "bullet",
+            "fee_treatment": "expense_upfront",
             "fees": [{"fee_id": "fee-1", "period": "2026-01", "amount": "25"}],
             "lineage": lineage(),
         }
