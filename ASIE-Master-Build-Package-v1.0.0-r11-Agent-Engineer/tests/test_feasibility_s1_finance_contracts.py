@@ -131,7 +131,9 @@ def test_finance_result_contract_requires_three_statements_and_fail_closed_evide
         "const"
     ] == "finance-result.v2"
     legacy_required = set(
-        document["properties"]["legacy_projection"]["properties"]["payload"]["required"]
+        document["properties"]["legacy_projection"]["allOf"][0]["then"]["properties"][
+            "payload"
+        ]["required"]
     )
     assert {"baseline", "scenarios", "debt_service_profile", "monte_carlo"} <= legacy_required
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True)
