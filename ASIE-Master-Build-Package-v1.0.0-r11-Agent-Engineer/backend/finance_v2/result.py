@@ -615,6 +615,13 @@ def _legacy_numbers_supported(
             ZERO,
         ) / Decimal(len(model.periods))
         values.append(aggregate_monthly_units)
+    aggregate_absolute = sum((abs(value) for value in values), ZERO)
+    values.extend(
+        (
+            aggregate_absolute,
+            aggregate_absolute * Decimal("12"),
+        )
+    )
     try:
         return all(isfinite(float(value)) for value in values)
     except (OverflowError, ValueError):
