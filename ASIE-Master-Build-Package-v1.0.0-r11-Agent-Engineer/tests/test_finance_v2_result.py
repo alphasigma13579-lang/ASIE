@@ -544,7 +544,7 @@ def test_legacy_range_guard_includes_values_derived_from_input() -> None:
 
 
 def test_legacy_monthly_payment_ignores_post_tenor_forecast_months() -> None:
-    def projection(months: int) -> dict:
+    def projection(months: int, draw_period: str = "2026-01") -> dict:
         document = valid_document()
         periods = monthly_periods("2026-01", months)
         document["forecast"]["monthly_periods"] = months
@@ -561,7 +561,7 @@ def test_legacy_monthly_payment_ignores_post_tenor_forecast_months() -> None:
             {
                 "tranche_id": "debt-1",
                 "drawdowns": [
-                    {"period": "2026-01", "amount": "12000"}
+                    {"period": draw_period, "amount": "12000"}
                 ],
                 "annual_rate": "0.05",
                 "tenor_months": 12,
@@ -592,4 +592,38 @@ def test_legacy_monthly_payment_ignores_post_tenor_forecast_months() -> None:
     assert twelve["annual_debt_service"] == (
         twenty_four["annual_debt_service"]
     )
+
+    delayed = projection(24, draw_period="2027-01")
+    assert delayed["monthly_payment"] is not None
+    assert delayed["annual_debt_service"] == pytest.approx(
+        delayed["monthly_payment"] * 12,
+        abs=0.01,
+    )
+    assert delayed["annual_debt_service"] > 0
+
+def test_legacy_range_guard_checks_cross_stream_volume_aggregate() -> None:
+    document = valid_document()
+    first = document["revenue_streams"][0]
+    second = json.loads(json.dumps(first))
+    second["stream_id"] = "rev-secondary"
+    document["revenue_streams"].append(second)
+    for stream in document["revenue_streams"]:
+        for point in stream["volume_series"]:
+            point["value"] = "1" + ("0" * 308)
+        for point in stream["price_series"]:
+            point["value"] = "0.00000001"
+        for point in stream["variable_cost_series"]:
+            point["value"] = "0"
+
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    assert float(model.periods[0].revenue) != float("inf")
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
 
