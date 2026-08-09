@@ -97,6 +97,12 @@ def valid_document() -> dict:
             "modules": [],
             "lineage": lineage(),
         },
+        "valuation_policy": {
+            "discount_rate_annual": "0.12",
+            "finance_rate_annual": "0.08",
+            "reinvestment_rate_annual": "0.10",
+            "lineage": lineage(),
+        },
         "scenarios": [
             {"scenario_id": "scn_baseline", "kind": "baseline", "overrides": []}
         ],
