@@ -20,7 +20,8 @@
     "working_capital",
     "financing",
     "fiscal_policy",
-    "scenarios"
+    "scenarios",
+    "metadata"
   ],
   "properties": {
     "schema_version": {
@@ -886,7 +887,66 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "modules": {
+                "contains": {
+                  "const": "vat"
+                }
+              }
+            },
+            "required": [
+              "modules"
+            ]
+          },
+          "then": {
+            "required": [
+              "vat_rate"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "modules": {
+                "contains": {
+                  "const": "income_tax"
+                }
+              }
+            },
+            "required": [
+              "modules"
+            ]
+          },
+          "then": {
+            "required": [
+              "income_tax_rate"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "modules": {
+                "contains": {
+                  "const": "zakat"
+                }
+              }
+            },
+            "required": [
+              "modules"
+            ]
+          },
+          "then": {
+            "required": [
+              "zakat_rate"
+            ]
+          }
+        }
+      ]
     },
     "scenarios": {
       "type": "array",
@@ -975,7 +1035,24 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "baseline"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     },
     "metadata": {
       "type": "object",
@@ -993,7 +1070,12 @@
           "type": "string",
           "maxLength": 160
         }
-      }
+      },
+      "required": [
+        "approved_manifest_id",
+        "approved_manifest_hash",
+        "policy_ref"
+      ]
     }
   },
   "$defs": {
