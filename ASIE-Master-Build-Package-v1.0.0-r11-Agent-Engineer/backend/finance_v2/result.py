@@ -315,7 +315,7 @@ def _legacy_projection(
                 "debt_amount": float(_decimal(sum((row.debt_drawdowns for row in model.periods), ZERO), scale)),
             },
             "monte_carlo": {"status": "not_ready", "p_pass": None},
-            "assumption_refs": [],
+            "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
     return {
