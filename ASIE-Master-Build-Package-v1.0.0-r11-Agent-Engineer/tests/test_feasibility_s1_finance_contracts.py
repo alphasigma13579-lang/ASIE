@@ -125,13 +125,18 @@ def test_finance_result_contract_requires_three_statements_and_fail_closed_evide
     }
     assert document["properties"]["schema_version"]["const"] == "finance-result.v2"
     invariants = document["properties"]["invariants"]
-    assert invariants["minItems"] == invariants["maxItems"] == 14
+    assert invariants["minItems"] == 0
+    assert invariants["maxItems"] == 14
+    ready_invariants = document["allOf"][0]["then"]["properties"]["invariants"]
+    assert ready_invariants["minItems"] == 14
     assert len(invariants["items"]["properties"]["invariant_id"]["enum"]) == 14
     assert document["properties"]["legacy_projection"]["properties"]["derived_from"][
         "const"
     ] == "finance-result.v2"
     legacy_required = set(
-        document["properties"]["legacy_projection"]["properties"]["payload"]["required"]
+        document["properties"]["legacy_projection"]["allOf"][0]["then"]["properties"][
+            "payload"
+        ]["required"]
     )
     assert {"baseline", "scenarios", "debt_service_profile", "monte_carlo"} <= legacy_required
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True)

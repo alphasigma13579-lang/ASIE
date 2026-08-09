@@ -11,11 +11,13 @@ from .contracts import (
     validate_finance_input,
 )
 from .model import FinancialModel, FinancialPeriod, InvariantResult
+from .result import ENGINE_VERSION, serialize_finance_result
 from .serialization import canonical_json, canonical_sha256
 from .statements import build_financial_model
 from .timeline import add_months, monthly_periods, period_from_index, period_index
 
 __all__ = [
+    "ENGINE_VERSION",
     "FinanceContractError",
     "FinancialModel",
     "FinancialPeriod",
@@ -30,5 +32,6 @@ __all__ = [
     "parse_decimal",
     "period_from_index",
     "period_index",
+    "serialize_finance_result",
     "validate_finance_input",
 ]
