@@ -6,7 +6,15 @@ from typing import Any
 from .contracts import ValidatedFinanceInput, parse_decimal
 from .debt import UnsupportedDebtProfile, build_debt_schedule
 from .invariants import evaluate_invariants
-from .metrics import irr_annual, llcr, minimum_dscr, mirr_annual, npv_monthly, payback_months
+from .metrics import (
+    cashflow_sign_changes,
+    irr_annual,
+    llcr,
+    minimum_dscr,
+    mirr_annual,
+    npv_monthly,
+    payback_months,
+)
 from .model import FinancialModel, FinancialPeriod, ZERO
 
 
@@ -149,11 +157,20 @@ def build_financial_model(validated: ValidatedFinanceInput) -> FinancialModel:
     finance_rate = parse_decimal(valuation["finance_rate_annual"], "$.valuation_policy.finance_rate_annual", allow_negative=False)
     reinvestment = parse_decimal(valuation["reinvestment_rate_annual"], "$.valuation_policy.reinvestment_rate_annual", allow_negative=False)
     unlevered_flows = tuple(row.unlevered_fcf for row in period_rows)
+    sign_changes = cashflow_sign_changes(unlevered_flows)
+    if sign_changes > 1:
+        blockers.append(
+            _blocker(
+                "FIN2_IRR_AMBIGUOUS",
+                "$.metrics.irr_unlevered",
+                f"cash flow has {sign_changes} sign changes; IRR is suppressed",
+            )
+        )
     cfads = tuple(row.cfads for row in period_rows)
     debt_service = tuple(
         item.interest_paid + item.principal_paid + item.fees_paid for item in debt
     )
-    total_debt = sum((item.drawdowns for item in debt), ZERO)
+    debt_balances = tuple(item.closing_balance for item in debt)
     ending_cash_values = tuple(row.ending_cash for row in period_rows)
 
     metrics: dict[str, Decimal | None] = {
@@ -164,7 +181,7 @@ def build_financial_model(validated: ValidatedFinanceInput) -> FinancialModel:
         "break_even": _break_even(document, periods, opex),
         "funding_need": max(ZERO, -min(ending_cash_values, default=ZERO)),
         "dscr_min": minimum_dscr(cfads, debt_service),
-        "llcr": llcr(cfads, debt_service, total_debt, discount),
+        "llcr": llcr(cfads, debt_balances, discount),
     }
     status = "not_ready" if blockers else "ready"
     return FinancialModel(
