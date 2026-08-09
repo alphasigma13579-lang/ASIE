@@ -4,13 +4,17 @@ import json
 import re
 from decimal import Decimal
 
+import pytest
+
 from backend.finance_v2 import (
+    FinanceContractError,
     build_financial_model,
     canonical_json,
     monthly_periods,
     serialize_finance_result,
     validate_finance_input,
 )
+from backend.finance_v2.result import _apply_legacy_parity
 from tests.test_finance_v2_contracts import binding, valid_document
 
 
@@ -106,6 +110,12 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
         if output["metrics"]["dscr_min"] is None
         else float(output["metrics"]["dscr_min"])
     )
+    parity = next(
+        row
+        for row in output["invariants"]
+        if row["invariant_id"] == "legacy_projection_parity"
+    )
+    assert parity["status"] == "passed"
     monte_carlo = payload["monte_carlo"]
     assert monte_carlo["status"] == "not_ready"
     assert {
@@ -407,4 +417,54 @@ def test_legacy_annual_cashflow_is_first_twelve_months_not_full_horizon() -> Non
     assert len(cashflows) == 24
     assert annual == float(sum(cashflows[:12], Decimal("0")))
     assert annual != float(sum(cashflows, Decimal("0")))
+
+def test_serializer_rejects_model_from_different_validated_input() -> None:
+    first = validate_finance_input(valid_document(), binding=binding())
+    model = build_financial_model(first)
+    changed = valid_document()
+    for point in changed["revenue_streams"][0]["price_series"]:
+        point["value"] = "26.50"
+    second = validate_finance_input(changed, binding=binding())
+
+    with pytest.raises(FinanceContractError) as error:
+        serialize_finance_result(second, model)
+    assert error.value.code == "FIN2_MODEL_INPUT_MISMATCH"
+
+
+def test_large_admitted_decimals_serialize_without_context_failure() -> None:
+    document = valid_document()
+    price = "12345678901234567890123"
+    for point in document["revenue_streams"][0]["price_series"]:
+        point["value"] = price
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+
+    revenue = next(
+        row
+        for row in output["statements"]["income_statement"]
+        if row["line_id"] == "revenue"
+    )
+    assert revenue["values"][0]["value"] == (
+        "1234567890123456789012300.00"
+    )
+
+
+def test_legacy_parity_failure_blocks_ready_result() -> None:
+    output = result(legacy=True)
+    output["legacy_projection"]["payload"]["baseline"]["npv"] += 1.0
+
+    _apply_legacy_parity(output, money_scale=2, ratio_scale=6)
+
+    parity = next(
+        row
+        for row in output["invariants"]
+        if row["invariant_id"] == "legacy_projection_parity"
+    )
+    assert parity["status"] == "failed"
+    assert output["status"] == "not_ready"
+    assert output["scenarios"][0]["status"] == "not_ready"
+    assert output["blockers"][-1]["code"] == (
+        "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY"
+    )
 
