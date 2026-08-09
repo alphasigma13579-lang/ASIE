@@ -139,6 +139,7 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
 
 
     required_baseline = {
+        "scenario_id",
         "startup_cost",
         "revenue",
         "variable_total",
@@ -162,6 +163,7 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
         "dscr",
     }
     assert required_baseline <= set(payload["baseline"])
+    assert payload["baseline"]["scenario_id"] == "baseline"
     assert payload["assumption_refs"] == ["asm-1"]
     assert payload["operating_model"]["monthly_units"] == 100.0
     assert {
@@ -438,7 +440,9 @@ def test_large_admitted_decimals_serialize_without_context_failure() -> None:
         point["value"] = price
     validated = validate_finance_input(document, binding=binding())
     model = build_financial_model(validated)
-    output = serialize_finance_result(validated, model)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
 
     revenue = next(
         row
@@ -448,6 +452,53 @@ def test_large_admitted_decimals_serialize_without_context_failure() -> None:
     assert revenue["values"][0]["value"] == (
         "1234567890123456789012300.00"
     )
+    assert output["status"] == "ready"
+    parity = next(
+        row
+        for row in output["invariants"]
+        if row["invariant_id"] == "legacy_projection_parity"
+    )
+    assert parity["status"] == "passed"
+
+
+def test_legacy_projection_is_not_ready_when_break_even_is_unavailable() -> None:
+    document = valid_document()
+    document["revenue_streams"][0]["model_kind"] = "service_capacity"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    assert model.status == "ready"
+    assert model.metrics["break_even"] is None
+
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["baseline"] is None
+    assert payload["scenarios"] == []
+    assert payload["blockers"][-1]["code"] == (
+        "FIN2_LEGACY_BREAK_EVEN_UNAVAILABLE"
+    )
+
+
+def test_legacy_projection_blocks_values_outside_float_range() -> None:
+    document = valid_document()
+    price = "1" + ("0" * 309)
+    for point in document["revenue_streams"][0]["price_series"]:
+        point["value"] = price
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated, model, include_legacy_projection=True
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "ready"
+    assert payload["status"] == "not_ready"
+    assert payload["baseline"] is None
+    assert payload["blockers"][-1]["code"] == "FIN2_LEGACY_NUMBER_RANGE"
 
 
 def test_legacy_parity_failure_blocks_ready_result() -> None:
