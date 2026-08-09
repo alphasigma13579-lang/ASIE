@@ -323,7 +323,7 @@ def _legacy_projection(
             ],
             monte_carlo,
         )
-    elif not _legacy_numbers_supported(model):
+    elif not _legacy_numbers_supported(model, document):
         payload = _legacy_unavailable_payload(
             lineage,
             [
@@ -365,9 +365,12 @@ def _legacy_projection(
             ),
             ZERO,
         ) / count
-        debt_service = tuple(
-            row.interest_paid + row.principal_paid + row.fees_paid
+        scheduled_debt_payment = tuple(
+            row.interest_paid + row.principal_paid
             for row in model.debt_schedule
+        )
+        active_debt_payments = tuple(
+            value for value in scheduled_debt_payment if value > ZERO
         )
         debt_amount = sum(
             (row.debt_drawdowns for row in model.periods), ZERO
@@ -375,8 +378,15 @@ def _legacy_projection(
         has_debt = debt_amount > ZERO or any(
             row.debt_closing > ZERO for row in model.periods
         )
-        average_debt_service = sum(debt_service, ZERO) / count
-        first_year_debt_service = sum(debt_service[:12], ZERO)
+        representative_monthly_payment = (
+            sum(active_debt_payments, ZERO)
+            / Decimal(len(active_debt_payments))
+            if active_debt_payments
+            else ZERO
+        )
+        first_year_debt_service = sum(
+            scheduled_debt_payment[:12], ZERO
+        )
         depreciation_monthly = average("depreciation")
         depreciation_years = (
             ZERO
@@ -432,7 +442,11 @@ def _legacy_projection(
             "status": "ready",
             "debt_amount": float(_decimal(debt_amount, money_scale)),
             "monthly_payment": (
-                float(_decimal(average_debt_service, money_scale))
+                float(
+                    _decimal(
+                        representative_monthly_payment, money_scale
+                    )
+                )
                 if has_debt
                 else None
             ),
@@ -560,7 +574,10 @@ def _legacy_unavailable_payload(
     }
 
 
-def _legacy_numbers_supported(model: FinancialModel) -> bool:
+def _legacy_numbers_supported(
+    model: FinancialModel,
+    document: dict[str, Any],
+) -> bool:
     values: list[Decimal] = []
     for row in (*model.periods, *model.debt_schedule):
         values.extend(
@@ -571,6 +588,23 @@ def _legacy_numbers_supported(model: FinancialModel) -> bool:
     values.extend(
         value for value in model.metrics.values() if isinstance(value, Decimal)
     )
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+        elif isinstance(value, str):
+            candidate = value.removeprefix("-")
+            if (
+                candidate.count(".") <= 1
+                and candidate.replace(".", "").isdigit()
+            ):
+                values.append(Decimal(value))
+
+    walk(document)
     try:
         return all(isfinite(float(value)) for value in values)
     except (OverflowError, ValueError):
