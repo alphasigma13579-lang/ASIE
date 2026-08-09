@@ -162,6 +162,7 @@ Persisted DIB / approved Project inputs
 - شرائح دين متعددة، drawdowns، fees، annual rate، tenor، grace، amortization وballoon.
 - grace يطبق فعلياً على principal/interest وفق policy، لا يُعرض فقط.
 - كل drawdown يعامل كقرض فرعي يبدأ أول الفترة، وتحتسب فائدته من شهر السحب؛ tenor/grace مرتبطان بكل drawdown.
+- معالجة الرسوم لا تكون ضمنية؛ S2-B يدعم `expense_upfront` فقط ويصنف دفعها في CFF مع منع الازدواج النقدي.
 - جدول الدين يطابق: opening + drawdowns + capitalized interest - principal = closing.
 - DSCR وLLCR لا يظهران ready ما لم يكتمل تعريف CFADS وجدول الدين.
 
@@ -182,6 +183,7 @@ Persisted DIB / approved Project inputs
 - Cash Flow: CFO, CFI, CFF، opening/ending cash.
 - Unlevered FCF وEquity cash flow منفصلان.
 - metrics: NPV, IRR, MIRR, payback, break-even, DSCR, LLCR، margins، funding need.
+- IRR يحجب عند تعدد تغيّر إشارة التدفق، DSCR هو minimum rolling-12-month، وLLCR يقاس على رصيد الدين الفعلي لكل فترة.
 
 ## 7. الثوابت المحاسبية والحسابية
 
