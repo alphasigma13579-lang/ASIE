@@ -471,6 +471,13 @@ def _validate_series(
         seen.add(period)
         previous = current
         parse_decimal(row.get("value"), f"{ref}.value", allow_negative=allow_negative)
+    if seen != horizon:
+        missing = sorted(horizon.difference(seen))
+        raise FinanceContractError(
+            "FIN2_PERIOD_COVERAGE",
+            field_ref,
+            f"series must explicitly cover the full horizon; missing {len(missing)} periods",
+        )
 
 
 def _validate_lineage(value: Any, field_ref: str) -> None:
