@@ -73,6 +73,7 @@ def test_finance_input_contract_binds_identity_versions_and_core_ledgers() -> No
         "financing",
         "fiscal_policy",
         "scenarios",
+        "metadata",
     } <= required
     assert document["properties"]["schema_version"]["const"] == "finance-model-input.v2"
     assert document["properties"]["forecast"]["properties"]["monthly_periods"] == {
@@ -80,6 +81,13 @@ def test_finance_input_contract_binds_identity_versions_and_core_ledgers() -> No
         "minimum": 12,
         "maximum": 240,
     }
+    assert document["properties"]["metadata"]["required"] == [
+        "approved_manifest_id",
+        "approved_manifest_hash",
+        "policy_ref",
+    ]
+    baseline_rule = document["properties"]["scenarios"]["allOf"][0]
+    assert baseline_rule["minContains"] == baseline_rule["maxContains"] == 1
     assert document["$defs"]["decimal"]["type"] == "string"
     assert "pattern" in document["$defs"]["decimal"]
     assert document["properties"]["rounding_policy"]["properties"]["mode"]["enum"] == [
@@ -98,6 +106,10 @@ def test_archetype_interface_has_all_mandatory_families_and_human_gate() -> None
         "approved_l1",
         "deprecated",
     ]
+    legacy_required = set(
+        document["properties"]["legacy_projection"]["properties"]["payload"]["required"]
+    )
+    assert {"baseline", "scenarios", "debt_service_profile", "monte_carlo"} <= legacy_required
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True)
     assert '"approved_l1"' in encoded
     assert '"finance_reviewer_status"' in encoded
@@ -115,7 +127,9 @@ def test_finance_result_contract_requires_three_statements_and_fail_closed_evide
         "cash_flow_statement",
     }
     assert document["properties"]["schema_version"]["const"] == "finance-result.v2"
-    assert document["properties"]["invariants"]["minItems"] >= 14
+    invariants = document["properties"]["invariants"]
+    assert invariants["minItems"] == invariants["maxItems"] == 14
+    assert len(invariants["items"]["properties"]["invariant_id"]["enum"]) == 14
     assert document["properties"]["legacy_projection"]["properties"]["derived_from"][
         "const"
     ] == "finance-result.v2"
