@@ -230,7 +230,7 @@ def _validate_closed_shape(document: Mapping[str, Any]) -> None:
     for index, raw in enumerate(_sequence(financing.get("debt_tranches"), "$.financing.debt_tranches", minimum=0, maximum=20)):
         ref = f"$.financing.debt_tranches[{index}]"
         row = _mapping(raw, ref)
-        _reject_unknown(row, {"tranche_id", "drawdowns", "annual_rate", "tenor_months", "principal_grace_months", "interest_grace_policy", "repayment_profile", "balloon_amount", "fees", "lineage"}, ref)
+        _reject_unknown(row, {"tranche_id", "drawdowns", "annual_rate", "tenor_months", "principal_grace_months", "interest_grace_policy", "repayment_profile", "balloon_amount", "fee_treatment", "fees", "lineage"}, ref)
         for item_index, raw_draw in enumerate(_sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)):
             _reject_unknown(_mapping(raw_draw, f"{ref}.drawdowns[{item_index}]"), {"period", "amount"}, f"{ref}.drawdowns[{item_index}]")
         for item_index, raw_fee in enumerate(_sequence(row.get("fees"), f"{ref}.fees", minimum=0, maximum=30)):
@@ -461,6 +461,12 @@ def _validate_financing(value: Any, horizon: frozenset[str]) -> None:
         }:
             raise FinanceContractError(
                 "FIN2_DEBT_PROFILE", f"{ref}.repayment_profile", "unsupported"
+            )
+        if row.get("fee_treatment") != "expense_upfront":
+            raise FinanceContractError(
+                "FIN2_DEBT_FEE_TREATMENT",
+                f"{ref}.fee_treatment",
+                "S2-B requires explicit expense_upfront treatment",
             )
         drawdowns = _sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)
         for item_index, draw in enumerate(drawdowns):
