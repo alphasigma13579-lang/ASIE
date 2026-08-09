@@ -642,8 +642,13 @@ def _legacy_float(value: Decimal | None, scale: int) -> float | None:
 
 def _decimal(value: Decimal, scale: int) -> str:
     quantum = Decimal(1).scaleb(-scale)
-    digits = len(value.as_tuple().digits)
+    coefficient_digits = len(value.as_tuple().digits)
+    integer_digits = max(1, value.adjusted() + 1)
     with localcontext() as context:
-        context.prec = max(28, digits + scale + 4)
+        context.prec = max(
+            28,
+            coefficient_digits + scale + 4,
+            integer_digits + scale + 4,
+        )
         rounded = value.quantize(quantum, rounding=ROUND_HALF_EVEN)
     return format(rounded, "f")
