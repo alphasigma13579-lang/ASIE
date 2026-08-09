@@ -231,6 +231,7 @@ def _legacy_projection(
     money_scale: int,
     ratio_scale: int,
 ) -> dict[str, Any]:
+    monte_carlo = _legacy_not_ready_monte_carlo()
     if not model.periods:
         payload: dict[str, Any] = {
             "status": "not_ready",
@@ -242,20 +243,29 @@ def _legacy_projection(
             "capex_breakdown": None,
             "opex_breakdown": None,
             "debt_service_profile": None,
-            "monte_carlo": {"status": "not_ready", "p_pass": None},
+            "monte_carlo": monte_carlo,
             "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
     else:
         count = Decimal(len(model.periods))
-        average = lambda field: sum((getattr(row, field) for row in model.periods), ZERO) / count
+        average = (
+            lambda field: sum(
+                (getattr(row, field) for row in model.periods), ZERO
+            )
+            / count
+        )
         total_capex = sum((row.capex_additions for row in model.periods), ZERO)
-        working_capital = max((row.net_working_capital for row in model.periods), default=ZERO)
+        working_capital = max(
+            (row.net_working_capital for row in model.periods), default=ZERO
+        )
         funding_need = model.metrics.get("funding_need") or ZERO
         average_revenue = average("revenue")
         average_gross = average("gross_profit")
         contribution_margin = (
-            average_gross / average_revenue if average_revenue != ZERO else ZERO
+            average_gross / average_revenue
+            if average_revenue != ZERO
+            else ZERO
         )
         monthly_units = sum(
             (
@@ -264,24 +274,108 @@ def _legacy_projection(
                 for point in stream["volume_series"]
             ),
             ZERO,
-        ) / Decimal(len(model.periods))
-        average_debt_service = sum(
+        ) / count
+        debt_service = tuple(
+            row.interest_paid + row.principal_paid + row.fees_paid
+            for row in model.debt_schedule
+        )
+        debt_amount = sum(
+            (row.debt_drawdowns for row in model.periods), ZERO
+        )
+        has_debt = debt_amount > ZERO or any(
+            row.debt_closing > ZERO for row in model.periods
+        )
+        average_debt_service = sum(debt_service, ZERO) / count
+        first_year_debt_service = sum(debt_service[:12], ZERO)
+        depreciation_monthly = average("depreciation")
+        depreciation_years = (
+            ZERO
+            if depreciation_monthly <= ZERO
+            else total_capex / (depreciation_monthly * Decimal("12"))
+        )
+        loan_grace_months = max(
             (
-                row.interest_paid + row.principal_paid + row.fees_paid
-                for row in model.debt_schedule
+                int(row["principal_grace_months"])
+                for row in document["financing"]["debt_tranches"]
             ),
-            ZERO,
-        ) / Decimal(len(model.periods))
+            default=0,
+        )
+
+        operating_model = {
+            "use_operating_capacity": False,
+            "capacity_units_per_day": 0.0,
+            "operating_days_per_month": 0.0,
+            "utilization_rate": 0.0,
+            "monthly_units": float(_decimal(monthly_units, money_scale)),
+            "unit_source": "manual_monthly_units",
+        }
+        capex_breakdown = {
+            "capex_equipment": 0.0,
+            "capex_fitout": 0.0,
+            "capex_licenses_local": 0.0,
+            "legacy_startup_cost": float(
+                _decimal(total_capex, money_scale)
+            ),
+            "total_capex": float(_decimal(total_capex, money_scale)),
+            "depreciation_years": float(
+                _decimal(depreciation_years, ratio_scale)
+            ),
+            "depreciation_monthly": float(
+                _decimal(depreciation_monthly, money_scale)
+            ),
+        }
+        opex_breakdown = {
+            "payroll_monthly": 0.0,
+            "rent_monthly": 0.0,
+            "utilities_monthly": 0.0,
+            "marketing_monthly": 0.0,
+            "maintenance_monthly": 0.0,
+            "legacy_monthly_fixed_cost": float(
+                _decimal(average("operating_expenses"), money_scale)
+            ),
+            "total_monthly_opex": float(
+                _decimal(average("operating_expenses"), money_scale)
+            ),
+        }
+        dscr = _legacy_float(model.metrics.get("dscr_min"), ratio_scale)
+        debt_service_profile = {
+            "status": "ready",
+            "debt_amount": float(_decimal(debt_amount, money_scale)),
+            "monthly_payment": (
+                float(_decimal(average_debt_service, money_scale))
+                if has_debt
+                else None
+            ),
+            "annual_debt_service": (
+                float(_decimal(first_year_debt_service, money_scale))
+                if has_debt
+                else None
+            ),
+            "dscr": dscr,
+            "loan_grace_months": loan_grace_months,
+            "warning": (
+                ""
+                if not has_debt or dscr is None or dscr >= 1.2
+                else "DSCR below 1.2 pressure threshold."
+            ),
+        }
         baseline = {
             "startup_cost": float(_decimal(total_capex, money_scale)),
             "revenue": float(_decimal(average_revenue, money_scale)),
-            "variable_total": float(_decimal(average("cogs"), money_scale)),
+            "variable_total": float(
+                _decimal(average("cogs"), money_scale)
+            ),
             "gross_profit": float(_decimal(average_gross, money_scale)),
-            "monthly_profit": float(_decimal(average("net_income"), money_scale)),
+            "monthly_profit": float(
+                _decimal(average("net_income"), money_scale)
+            ),
             "annual_cashflow": float(
                 _decimal(
                     sum(
-                        (row.equity_cash_flow for row in model.periods[:12]),
+                        (
+                            row.equity_cash_flow
+                            for row in model.periods[:12]
+                        ),
                         ZERO,
                     ),
                     money_scale,
@@ -289,25 +383,48 @@ def _legacy_projection(
             ),
             "ebitda": float(_decimal(average("ebitda"), money_scale)),
             "ebit": float(_decimal(average("ebit"), money_scale)),
-            "depreciation_monthly": float(_decimal(average("depreciation"), money_scale)),
-            "net_operating_cashflow": float(_decimal(average("cash_from_operations"), money_scale)),
+            "depreciation_monthly": capex_breakdown[
+                "depreciation_monthly"
+            ],
+            "net_operating_cashflow": float(
+                _decimal(average("cash_from_operations"), money_scale)
+            ),
             "break_even_units": _legacy_float(
                 model.metrics.get("break_even"), money_scale
             ),
             "funding_gap": float(_decimal(funding_need, money_scale)),
-            "funding_need_after_equity": float(_decimal(funding_need, money_scale)),
-            "contribution_margin": float(_decimal(contribution_margin, 6)),
-            "working_capital_need": float(_decimal(working_capital, money_scale)),
-            "initial_investment": float(_decimal(total_capex + working_capital, money_scale)),
-            "npv": float(_decimal(model.metrics.get("npv_unlevered") or ZERO, money_scale)),
+            "funding_need_after_equity": float(
+                _decimal(funding_need, money_scale)
+            ),
+            "contribution_margin": float(
+                _decimal(contribution_margin, ratio_scale)
+            ),
+            "working_capital_need": float(
+                _decimal(working_capital, money_scale)
+            ),
+            "initial_investment": float(
+                _decimal(total_capex + working_capital, money_scale)
+            ),
+            "npv": float(
+                _decimal(
+                    model.metrics.get("npv_unlevered") or ZERO,
+                    money_scale,
+                )
+            ),
             "irr": _legacy_float(
                 model.metrics.get("irr_unlevered"), ratio_scale
             ),
             "payback_months": _legacy_float(
                 model.metrics.get("payback_months"), ratio_scale
             ),
-            "debt_service_monthly": float(_decimal(average_debt_service, money_scale)),
-            "dscr": _legacy_float(model.metrics.get("dscr_min"), ratio_scale),
+            "debt_service_monthly": debt_service_profile[
+                "monthly_payment"
+            ],
+            "dscr": dscr,
+            "operating_model": operating_model,
+            "capex_breakdown": capex_breakdown,
+            "opex_breakdown": opex_breakdown,
+            "debt_service_profile": debt_service_profile,
         }
         payload = {
             "status": model.status,
@@ -315,36 +432,11 @@ def _legacy_projection(
             "scenarios": [{"scenario_id": "baseline", **baseline}],
             "sensitivity": None,
             "operational_sensitivity": None,
-            "operating_model": {
-                "monthly_units": float(_decimal(monthly_units, money_scale)),
-                "use_operating_capacity": False,
-                "utilization_rate": None,
-                "source": "finance-result.v2",
-            },
-            "capex_breakdown": {
-                "capex_equipment": 0.0,
-                "capex_fitout": 0.0,
-                "capex_licenses_local": 0.0,
-                "legacy_startup_cost": 0.0,
-                "total_capex": float(_decimal(total_capex, money_scale)),
-                "depreciation_years": None,
-                "depreciation_monthly": float(_decimal(average("depreciation"), money_scale)),
-            },
-            "opex_breakdown": {
-                "payroll_monthly": 0.0,
-                "rent_monthly": 0.0,
-                "utilities_monthly": 0.0,
-                "marketing_monthly": 0.0,
-                "maintenance_monthly": 0.0,
-                "legacy_monthly_fixed_cost": 0.0,
-                "total_monthly_opex": float(_decimal(average("operating_expenses"), money_scale)),
-            },
-            "debt_service_profile": {
-                "status": "ready" if any(row.debt_closing > ZERO for row in model.periods) else "no_debt",
-                "dscr": baseline["dscr"],
-                "debt_amount": float(_decimal(sum((row.debt_drawdowns for row in model.periods), ZERO), money_scale)),
-            },
-            "monte_carlo": {"status": "not_ready", "p_pass": None},
+            "operating_model": operating_model,
+            "capex_breakdown": capex_breakdown,
+            "opex_breakdown": opex_breakdown,
+            "debt_service_profile": debt_service_profile,
+            "monte_carlo": monte_carlo,
             "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
@@ -355,6 +447,27 @@ def _legacy_projection(
         "payload": payload,
     }
 
+
+def _legacy_not_ready_monte_carlo() -> dict[str, Any]:
+    return {
+        "status": "not_ready",
+        "seed": 0,
+        "iterations": 0,
+        "p_pass": None,
+        "p10_profit": None,
+        "p50_profit": None,
+        "p90_profit": None,
+        "distribution_profile": "NOT_READY",
+        "correlation_ref": "NOT_READY",
+        "convergence": {
+            "min_iterations": 0,
+            "actual_iterations": 0,
+            "status": "not_ready",
+        },
+        "label_ar": "احتمال اجتياز بوابات الجدوى",
+        "label_en": "Probability of passing feasibility gates",
+        "warning": "NOT_READY: FIN2_SIMULATION_NOT_READY",
+    }
 
 def _collect_lineage(document: dict[str, Any]) -> dict[str, list[str]]:
     assumptions: set[str] = set()
