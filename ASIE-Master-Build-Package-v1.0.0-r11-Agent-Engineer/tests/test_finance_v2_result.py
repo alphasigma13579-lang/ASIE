@@ -109,6 +109,47 @@ def test_legacy_projection_is_derived_from_same_model_without_recalculation() ->
     assert payload["operational_sensitivity"] is None
 
 
+    required_baseline = {
+        "startup_cost",
+        "revenue",
+        "variable_total",
+        "gross_profit",
+        "monthly_profit",
+        "annual_cashflow",
+        "ebitda",
+        "ebit",
+        "depreciation_monthly",
+        "net_operating_cashflow",
+        "break_even_units",
+        "funding_gap",
+        "funding_need_after_equity",
+        "contribution_margin",
+        "working_capital_need",
+        "initial_investment",
+        "npv",
+        "irr",
+        "payback_months",
+        "debt_service_monthly",
+        "dscr",
+    }
+    assert required_baseline <= set(payload["baseline"])
+    assert payload["assumption_refs"] == ["asm-1"]
+    assert payload["operating_model"]["monthly_units"] == 100.0
+    assert {
+        "total_capex",
+        "depreciation_monthly",
+        "capex_equipment",
+        "capex_fitout",
+        "capex_licenses_local",
+    } <= set(payload["capex_breakdown"])
+    assert {
+        "total_monthly_opex",
+        "payroll_monthly",
+        "rent_monthly",
+        "utilities_monthly",
+    } <= set(payload["opex_breakdown"])
+
+
 def test_balance_sheet_equity_projection_is_cumulative() -> None:
     output = result()
     balance = {
