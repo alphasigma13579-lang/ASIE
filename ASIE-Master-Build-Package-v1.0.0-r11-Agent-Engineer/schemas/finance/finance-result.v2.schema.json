@@ -709,19 +709,6 @@
         },
         "payload": {
           "type": "object",
-          "required": [
-            "status",
-            "baseline",
-            "scenarios",
-            "sensitivity",
-            "operational_sensitivity",
-            "operating_model",
-            "capex_breakdown",
-            "opex_breakdown",
-            "debt_service_profile",
-            "monte_carlo",
-            "assumption_refs"
-          ],
           "properties": {
             "status": {
               "enum": [
@@ -808,7 +795,20 @@
           "then": {
             "properties": {
               "payload": {
-                "minProperties": 11
+                "minProperties": 11,
+                "required": [
+                  "status",
+                  "baseline",
+                  "scenarios",
+                  "sensitivity",
+                  "operational_sensitivity",
+                  "operating_model",
+                  "capex_breakdown",
+                  "opex_breakdown",
+                  "debt_service_profile",
+                  "monte_carlo",
+                  "assumption_refs"
+                ]
               }
             }
           }
