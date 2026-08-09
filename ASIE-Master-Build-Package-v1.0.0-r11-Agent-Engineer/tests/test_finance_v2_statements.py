@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from backend.finance_v2 import build_financial_model, validate_finance_input
+from backend.finance_v2 import FinanceContractError, build_financial_model, validate_finance_input
 from backend.finance_v2.metrics import cashflow_sign_changes, irr_annual, llcr, minimum_dscr
 from tests.test_finance_v2_contracts import binding, lineage, valid_document
 
@@ -246,6 +246,6 @@ def test_missing_debt_fee_treatment_fails_contract_admission() -> None:
             "lineage": lineage(),
         }
     ]
-    with pytest.raises(Exception) as error:
+    with pytest.raises(FinanceContractError) as error:
         validate_finance_input(document, binding=binding())
     assert getattr(error.value, "code", "") == "FIN2_DEBT_FEE_TREATMENT"
