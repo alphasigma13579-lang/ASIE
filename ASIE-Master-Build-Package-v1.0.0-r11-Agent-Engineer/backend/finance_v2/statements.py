@@ -363,11 +363,14 @@ def _required_precision(document: dict[str, Any]) -> int:
             for child in value:
                 walk(child)
         elif isinstance(value, str):
-            digits = sum(character.isdigit() for character in value)
-            maximum_digits = max(maximum_digits, digits)
+            candidate = value.removeprefix("-")
+            if candidate.count(".") <= 1 and candidate.replace(".", "").isdigit():
+                digits = len(candidate.replace(".", ""))
+                maximum_digits = max(maximum_digits, digits)
 
     walk(document)
-    # Products combine two admitted series and roll-forwards accumulate up to
-    # 240 periods. The guard digits preserve cents and ratio_scale=8 outputs.
-    return max(96, maximum_digits * 4 + 32)
+    # Products combine two admitted decimal series. Ordinary inputs retain the
+    # established 28-digit behavior; unusually large admitted values receive
+    # enough local precision for the product plus guard digits.
+    return max(28, maximum_digits * 2 + 8)
 
