@@ -365,24 +365,14 @@ def _legacy_projection(
             ),
             ZERO,
         ) / count
-        scheduled_debt_payment = tuple(
-            row.interest_paid + row.principal_paid
-            for row in model.debt_schedule
-        )
-        active_debt_payments = tuple(
-            value for value in scheduled_debt_payment if value > ZERO
+        representative_monthly_payment = (
+            _representative_debt_payment(model)
         )
         debt_amount = sum(
             (row.debt_drawdowns for row in model.periods), ZERO
         )
         has_debt = debt_amount > ZERO or any(
             row.debt_closing > ZERO for row in model.periods
-        )
-        representative_monthly_payment = (
-            sum(active_debt_payments, ZERO)
-            / Decimal(len(active_debt_payments))
-            if active_debt_payments
-            else ZERO
         )
         annualized_debt_service = (
             representative_monthly_payment * Decimal("12")
@@ -574,6 +564,28 @@ def _legacy_unavailable_payload(
     }
 
 
+def _representative_debt_payment(model: FinancialModel) -> Decimal:
+    scheduled = tuple(
+        row.interest_paid + row.principal_paid
+        for row in model.debt_schedule
+    )
+    active_indices = tuple(
+        index
+        for index, row in enumerate(model.debt_schedule)
+        if (
+            row.opening_balance > ZERO
+            or row.drawdowns > ZERO
+            or row.closing_balance > ZERO
+        )
+    )
+    if not active_indices:
+        return ZERO
+    return (
+        sum((scheduled[index] for index in active_indices), ZERO)
+        / Decimal(len(active_indices))
+    )
+
+
 def _legacy_numbers_supported(
     model: FinancialModel,
     document: dict[str, Any],
@@ -628,19 +640,7 @@ def _legacy_numbers_supported(
             ),
             ZERO,
         ) / count
-        scheduled_payments = tuple(
-            row.interest_paid + row.principal_paid
-            for row in model.debt_schedule
-        )
-        active_payments = tuple(
-            value for value in scheduled_payments if value > ZERO
-        )
-        representative_payment = (
-            sum(active_payments, ZERO)
-            / Decimal(len(active_payments))
-            if active_payments
-            else ZERO
-        )
+        representative_payment = _representative_debt_payment(model)
         depreciation_monthly = average("depreciation")
         depreciation_years = (
             ZERO
