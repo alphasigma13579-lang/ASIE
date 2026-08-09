@@ -1,0 +1,539 @@
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from .serialization import canonical_json, canonical_sha256
+from .timeline import monthly_periods, period_index
+
+
+_DECIMAL = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]{1,8})?$")
+_SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
+
+REVENUE_MODELS = frozenset(
+    {
+        "product_unit",
+        "service_capacity",
+        "subscription",
+        "project_contract",
+        "commission_gmv",
+        "room_bed_seat",
+        "rent_lease",
+        "agriculture_cycle",
+        "manufacturing_yield",
+        "transport_trip",
+        "professional_hours",
+        "custom_reviewed",
+    }
+)
+
+REQUIRED_TOP_LEVEL = frozenset(
+    {
+        "schema_version",
+        "document_id",
+        "organization_id",
+        "project_id",
+        "run_id",
+        "currency",
+        "forecast",
+        "archetype_ref",
+        "rounding_policy",
+        "revenue_streams",
+        "operating_costs",
+        "capex_assets",
+        "working_capital",
+        "financing",
+        "fiscal_policy",
+        "scenarios",
+        "metadata",
+    }
+)
+
+
+class FinanceContractError(ValueError):
+    def __init__(self, code: str, field_ref: str, message: str) -> None:
+        super().__init__(f"{code} at {field_ref}: {message}")
+        self.code = code
+        self.field_ref = field_ref
+        self.message = message
+
+
+@dataclass(frozen=True, slots=True)
+class ServerBinding:
+    organization_id: str
+    project_id: str
+    run_id: str
+    approved_manifest_id: str
+    approved_manifest_hash: str
+    policy_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedFinanceInput:
+    document_id: str
+    organization_id: str
+    project_id: str
+    run_id: str
+    currency: str
+    periods: tuple[str, ...]
+    canonical_document: str
+    input_hash: str
+
+    def thaw(self) -> dict[str, Any]:
+        return json.loads(self.canonical_document)
+
+
+def parse_decimal(
+    value: Any,
+    field_ref: str,
+    *,
+    allow_negative: bool = True,
+) -> Decimal:
+    if not isinstance(value, str) or not _DECIMAL.fullmatch(value):
+        raise FinanceContractError(
+            "FIN2_DECIMAL_FORMAT",
+            field_ref,
+            "value must be a plain decimal string with at most 8 fractional digits",
+        )
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation as exc:
+        raise FinanceContractError("FIN2_DECIMAL_FORMAT", field_ref, "invalid decimal") from exc
+    if not parsed.is_finite():
+        raise FinanceContractError("FIN2_DECIMAL_FINITE", field_ref, "value must be finite")
+    if not allow_negative and parsed < 0:
+        raise FinanceContractError("FIN2_DECIMAL_NEGATIVE", field_ref, "value must be non-negative")
+    return parsed
+
+
+def validate_finance_input(
+    document: Mapping[str, Any],
+    *,
+    binding: ServerBinding,
+) -> ValidatedFinanceInput:
+    if not isinstance(document, Mapping):
+        raise FinanceContractError("FIN2_DOCUMENT_TYPE", "$", "document must be an object")
+
+    missing = REQUIRED_TOP_LEVEL.difference(document)
+    if missing:
+        raise FinanceContractError(
+            "FIN2_REQUIRED_FIELD",
+            "$",
+            f"missing required fields: {','.join(sorted(missing))}",
+        )
+    unknown = set(document).difference(REQUIRED_TOP_LEVEL)
+    if unknown:
+        raise FinanceContractError(
+            "FIN2_UNKNOWN_FIELD",
+            "$",
+            f"unknown top-level fields: {','.join(sorted(unknown))}",
+        )
+    if document["schema_version"] != "finance-model-input.v2":
+        raise FinanceContractError(
+            "FIN2_SCHEMA_VERSION", "$.schema_version", "unsupported schema version"
+        )
+
+    _validate_server_binding(document, binding)
+    currency = document["currency"]
+    if not isinstance(currency, str) or not _CURRENCY.fullmatch(currency):
+        raise FinanceContractError(
+            "FIN2_CURRENCY", "$.currency", "currency must be an ISO-4217 alpha-3 code"
+        )
+
+    forecast = _mapping(document["forecast"], "$.forecast")
+    start_period = _text(forecast.get("start_period"), "$.forecast.start_period")
+    count = forecast.get("monthly_periods")
+    try:
+        periods = monthly_periods(start_period, count)
+    except (TypeError, ValueError) as exc:
+        raise FinanceContractError("FIN2_FORECAST_HORIZON", "$.forecast", str(exc)) from exc
+    horizon = frozenset(periods)
+
+    _validate_rounding(document["rounding_policy"])
+    _validate_revenue(document["revenue_streams"], horizon)
+    _validate_opex(document["operating_costs"], horizon)
+    _validate_capex(document["capex_assets"], horizon)
+    _validate_working_capital(document["working_capital"], horizon)
+    _validate_financing(document["financing"], horizon)
+    _validate_fiscal(document["fiscal_policy"])
+    _validate_scenarios(document["scenarios"])
+
+    try:
+        canonical = canonical_json(document)
+    except (TypeError, ValueError) as exc:
+        raise FinanceContractError(
+            "FIN2_CANONICAL_SERIALIZATION", "$", "document is not canonically serializable"
+        ) from exc
+
+    return ValidatedFinanceInput(
+        document_id=_text(document["document_id"], "$.document_id"),
+        organization_id=binding.organization_id,
+        project_id=binding.project_id,
+        run_id=binding.run_id,
+        currency=currency,
+        periods=periods,
+        canonical_document=canonical,
+        input_hash=canonical_sha256(document),
+    )
+
+
+def _validate_server_binding(document: Mapping[str, Any], binding: ServerBinding) -> None:
+    expected = {
+        "$.organization_id": (document["organization_id"], binding.organization_id),
+        "$.project_id": (document["project_id"], binding.project_id),
+        "$.run_id": (document["run_id"], binding.run_id),
+    }
+    metadata = _mapping(document["metadata"], "$.metadata")
+    expected.update(
+        {
+            "$.metadata.approved_manifest_id": (
+                metadata.get("approved_manifest_id"),
+                binding.approved_manifest_id,
+            ),
+            "$.metadata.approved_manifest_hash": (
+                metadata.get("approved_manifest_hash"),
+                binding.approved_manifest_hash,
+            ),
+            "$.metadata.policy_ref": (metadata.get("policy_ref"), binding.policy_ref),
+        }
+    )
+    for field_ref, (actual, trusted) in expected.items():
+        if not isinstance(trusted, str) or not trusted:
+            raise FinanceContractError(
+                "FIN2_SERVER_BINDING_MISSING", field_ref, "trusted server binding is missing"
+            )
+        if actual != trusted:
+            raise FinanceContractError(
+                "FIN2_SERVER_BINDING_MISMATCH",
+                field_ref,
+                "document value does not match trusted server context",
+            )
+    if not _SHA256.fullmatch(binding.approved_manifest_hash):
+        raise FinanceContractError(
+            "FIN2_MANIFEST_HASH",
+            "$.metadata.approved_manifest_hash",
+            "manifest hash must be sha256-prefixed lowercase hex",
+        )
+
+
+def _validate_rounding(value: Any) -> None:
+    policy = _mapping(value, "$.rounding_policy")
+    if policy.get("mode") != "ROUND_HALF_EVEN":
+        raise FinanceContractError(
+            "FIN2_ROUNDING_MODE", "$.rounding_policy.mode", "unsupported rounding mode"
+        )
+    money_scale = policy.get("money_scale")
+    ratio_scale = policy.get("ratio_scale")
+    if isinstance(money_scale, bool) or not isinstance(money_scale, int) or not 0 <= money_scale <= 4:
+        raise FinanceContractError(
+            "FIN2_ROUNDING_SCALE", "$.rounding_policy.money_scale", "must be 0..4"
+        )
+    if isinstance(ratio_scale, bool) or not isinstance(ratio_scale, int) or not 4 <= ratio_scale <= 8:
+        raise FinanceContractError(
+            "FIN2_ROUNDING_SCALE", "$.rounding_policy.ratio_scale", "must be 4..8"
+        )
+
+
+def _validate_revenue(value: Any, horizon: frozenset[str]) -> None:
+    rows = _sequence(value, "$.revenue_streams", minimum=1, maximum=200)
+    _unique_ids(rows, "stream_id", "$.revenue_streams")
+    for index, raw in enumerate(rows):
+        ref = f"$.revenue_streams[{index}]"
+        row = _mapping(raw, ref)
+        if row.get("model_kind") not in REVENUE_MODELS:
+            raise FinanceContractError(
+                "FIN2_REVENUE_MODEL", f"{ref}.model_kind", "unregistered revenue model"
+            )
+        for name in ("volume_series", "price_series", "variable_cost_series"):
+            _validate_series(row.get(name), f"{ref}.{name}", horizon, allow_negative=False)
+        if "capacity_series" in row:
+            _validate_series(
+                row["capacity_series"], f"{ref}.capacity_series", horizon, allow_negative=False
+            )
+        _validate_lineage(row.get("lineage"), f"{ref}.lineage")
+
+
+def _validate_opex(value: Any, horizon: frozenset[str]) -> None:
+    rows = _sequence(value, "$.operating_costs", minimum=0, maximum=500)
+    _unique_ids(rows, "cost_id", "$.operating_costs")
+    for index, raw in enumerate(rows):
+        ref = f"$.operating_costs[{index}]"
+        row = _mapping(raw, ref)
+        if row.get("behavior") not in {"fixed", "variable", "step", "seasonal"}:
+            raise FinanceContractError("FIN2_OPEX_BEHAVIOR", f"{ref}.behavior", "unsupported")
+        _validate_series(row.get("schedule"), f"{ref}.schedule", horizon, allow_negative=False)
+        _validate_lineage(row.get("lineage"), f"{ref}.lineage")
+
+
+def _validate_capex(value: Any, horizon: frozenset[str]) -> None:
+    rows = _sequence(value, "$.capex_assets", minimum=0, maximum=500)
+    _unique_ids(rows, "asset_id", "$.capex_assets")
+    for index, raw in enumerate(rows):
+        ref = f"$.capex_assets[{index}]"
+        row = _mapping(raw, ref)
+        _period_in_horizon(row.get("acquisition_period"), f"{ref}.acquisition_period", horizon)
+        parse_decimal(row.get("cost"), f"{ref}.cost", allow_negative=False)
+        parse_decimal(row.get("residual_value"), f"{ref}.residual_value", allow_negative=False)
+        life = row.get("useful_life_months")
+        if isinstance(life, bool) or not isinstance(life, int) or not 1 <= life <= 1200:
+            raise FinanceContractError(
+                "FIN2_CAPEX_LIFE", f"{ref}.useful_life_months", "must be 1..1200"
+            )
+        if row.get("depreciation_method") != "straight_line":
+            raise FinanceContractError(
+                "FIN2_DEPRECIATION_METHOD",
+                f"{ref}.depreciation_method",
+                "only straight_line is supported in S2",
+            )
+        if "disposal_period" in row:
+            _period_in_horizon(row["disposal_period"], f"{ref}.disposal_period", horizon)
+        _validate_lineage(row.get("lineage"), f"{ref}.lineage")
+
+
+def _validate_working_capital(value: Any, horizon: frozenset[str]) -> None:
+    row = _mapping(value, "$.working_capital")
+    mode = row.get("mode")
+    if mode == "days":
+        for name in ("dso_days", "dio_days", "dpo_days"):
+            parse_decimal(row.get(name), f"$.working_capital.{name}", allow_negative=False)
+    elif mode == "explicit_schedule":
+        for name in ("accounts_receivable", "inventory", "accounts_payable"):
+            _validate_series(
+                row.get(name), f"$.working_capital.{name}", horizon, allow_negative=False
+            )
+    else:
+        raise FinanceContractError(
+            "FIN2_WORKING_CAPITAL_MODE", "$.working_capital.mode", "unsupported mode"
+        )
+    _validate_lineage(row.get("lineage"), "$.working_capital.lineage")
+
+
+def _validate_financing(value: Any, horizon: frozenset[str]) -> None:
+    financing = _mapping(value, "$.financing")
+    equity = _sequence(
+        financing.get("equity_contributions"),
+        "$.financing.equity_contributions",
+        minimum=1,
+        maximum=50,
+    )
+    for index, raw in enumerate(equity):
+        ref = f"$.financing.equity_contributions[{index}]"
+        row = _mapping(raw, ref)
+        _period_in_horizon(row.get("period"), f"{ref}.period", horizon)
+        parse_decimal(row.get("amount"), f"{ref}.amount", allow_negative=False)
+        _validate_lineage(row.get("lineage"), f"{ref}.lineage")
+
+    debt = _sequence(
+        financing.get("debt_tranches"),
+        "$.financing.debt_tranches",
+        minimum=0,
+        maximum=20,
+    )
+    _unique_ids(debt, "tranche_id", "$.financing.debt_tranches")
+    for index, raw in enumerate(debt):
+        ref = f"$.financing.debt_tranches[{index}]"
+        row = _mapping(raw, ref)
+        parse_decimal(row.get("annual_rate"), f"{ref}.annual_rate", allow_negative=False)
+        tenor = row.get("tenor_months")
+        grace = row.get("principal_grace_months")
+        if isinstance(tenor, bool) or not isinstance(tenor, int) or not 1 <= tenor <= 600:
+            raise FinanceContractError("FIN2_DEBT_TENOR", f"{ref}.tenor_months", "must be 1..600")
+        if isinstance(grace, bool) or not isinstance(grace, int) or not 0 <= grace <= 120:
+            raise FinanceContractError(
+                "FIN2_DEBT_GRACE", f"{ref}.principal_grace_months", "must be 0..120"
+            )
+        if grace >= tenor:
+            raise FinanceContractError(
+                "FIN2_DEBT_GRACE", f"{ref}.principal_grace_months", "must be less than tenor"
+            )
+        if row.get("interest_grace_policy") not in {"paid", "capitalized"}:
+            raise FinanceContractError(
+                "FIN2_DEBT_INTEREST_GRACE", f"{ref}.interest_grace_policy", "unsupported"
+            )
+        if row.get("repayment_profile") not in {
+            "annuity",
+            "equal_principal",
+            "bullet",
+            "custom_reviewed",
+        }:
+            raise FinanceContractError(
+                "FIN2_DEBT_PROFILE", f"{ref}.repayment_profile", "unsupported"
+            )
+        drawdowns = _sequence(row.get("drawdowns"), f"{ref}.drawdowns", minimum=1, maximum=50)
+        for item_index, draw in enumerate(drawdowns):
+            draw_ref = f"{ref}.drawdowns[{item_index}]"
+            item = _mapping(draw, draw_ref)
+            _period_in_horizon(item.get("period"), f"{draw_ref}.period", horizon)
+            parse_decimal(item.get("amount"), f"{draw_ref}.amount", allow_negative=False)
+        for item_index, fee in enumerate(
+            _sequence(row.get("fees"), f"{ref}.fees", minimum=0, maximum=30)
+        ):
+            fee_ref = f"{ref}.fees[{item_index}]"
+            item = _mapping(fee, fee_ref)
+            _period_in_horizon(item.get("period"), f"{fee_ref}.period", horizon)
+            parse_decimal(item.get("amount"), f"{fee_ref}.amount", allow_negative=False)
+        if "balloon_amount" in row:
+            parse_decimal(row["balloon_amount"], f"{ref}.balloon_amount", allow_negative=False)
+        _validate_lineage(row.get("lineage"), f"{ref}.lineage")
+
+
+def _validate_fiscal(value: Any) -> None:
+    policy = _mapping(value, "$.fiscal_policy")
+    modules = _sequence(policy.get("modules"), "$.fiscal_policy.modules", minimum=0, maximum=3)
+    if len(set(modules)) != len(modules) or not set(modules) <= {"vat", "income_tax", "zakat"}:
+        raise FinanceContractError(
+            "FIN2_FISCAL_MODULES", "$.fiscal_policy.modules", "invalid or duplicate modules"
+        )
+    rate_fields = {"vat": "vat_rate", "income_tax": "income_tax_rate", "zakat": "zakat_rate"}
+    for module in modules:
+        rate = parse_decimal(
+            policy.get(rate_fields[module]),
+            f"$.fiscal_policy.{rate_fields[module]}",
+            allow_negative=False,
+        )
+        if rate > 1:
+            raise FinanceContractError(
+                "FIN2_FISCAL_RATE", f"$.fiscal_policy.{rate_fields[module]}", "must be <= 1"
+            )
+    _validate_lineage(policy.get("lineage"), "$.fiscal_policy.lineage")
+
+
+def _validate_scenarios(value: Any) -> None:
+    rows = _sequence(value, "$.scenarios", minimum=1, maximum=20)
+    _unique_ids(rows, "scenario_id", "$.scenarios")
+    baseline_count = 0
+    for index, raw in enumerate(rows):
+        ref = f"$.scenarios[{index}]"
+        row = _mapping(raw, ref)
+        kind = row.get("kind")
+        if kind not in {"baseline", "deterministic", "simulation"}:
+            raise FinanceContractError("FIN2_SCENARIO_KIND", f"{ref}.kind", "unsupported")
+        baseline_count += int(kind == "baseline")
+        overrides = _sequence(row.get("overrides"), f"{ref}.overrides", minimum=0, maximum=200)
+        for item_index, raw_override in enumerate(overrides):
+            override_ref = f"{ref}.overrides[{item_index}]"
+            override = _mapping(raw_override, override_ref)
+            if override.get("operation") not in {"replace", "multiply", "add"}:
+                raise FinanceContractError(
+                    "FIN2_SCENARIO_OPERATION", f"{override_ref}.operation", "unsupported"
+                )
+            parse_decimal(override.get("value"), f"{override_ref}.value")
+        if kind == "simulation":
+            simulation = _mapping(row.get("simulation"), f"{ref}.simulation")
+            seed = simulation.get("seed")
+            iterations = simulation.get("iterations")
+            if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2147483647:
+                raise FinanceContractError(
+                    "FIN2_SIMULATION_SEED", f"{ref}.simulation.seed", "invalid seed"
+                )
+            if (
+                isinstance(iterations, bool)
+                or not isinstance(iterations, int)
+                or not 100 <= iterations <= 100000
+            ):
+                raise FinanceContractError(
+                    "FIN2_SIMULATION_ITERATIONS",
+                    f"{ref}.simulation.iterations",
+                    "must be 100..100000",
+                )
+    if baseline_count != 1:
+        raise FinanceContractError(
+            "FIN2_BASELINE_COUNT", "$.scenarios", "exactly one baseline scenario is required"
+        )
+
+
+def _validate_series(
+    value: Any,
+    field_ref: str,
+    horizon: frozenset[str],
+    *,
+    allow_negative: bool,
+) -> None:
+    rows = _sequence(value, field_ref, minimum=1, maximum=240)
+    previous: int | None = None
+    seen: set[str] = set()
+    for index, raw in enumerate(rows):
+        ref = f"{field_ref}[{index}]"
+        row = _mapping(raw, ref)
+        period = _period_in_horizon(row.get("period"), f"{ref}.period", horizon)
+        if period in seen:
+            raise FinanceContractError("FIN2_PERIOD_DUPLICATE", f"{ref}.period", "duplicate period")
+        current = period_index(period)
+        if previous is not None and current <= previous:
+            raise FinanceContractError(
+                "FIN2_PERIOD_ORDER", f"{ref}.period", "periods must be strictly increasing"
+            )
+        seen.add(period)
+        previous = current
+        parse_decimal(row.get("value"), f"{ref}.value", allow_negative=allow_negative)
+
+
+def _validate_lineage(value: Any, field_ref: str) -> None:
+    lineage = _mapping(value, field_ref)
+    assumptions = _sequence(
+        lineage.get("assumption_refs"), f"{field_ref}.assumption_refs", minimum=1, maximum=100
+    )
+    evidence = _sequence(
+        lineage.get("evidence_refs"), f"{field_ref}.evidence_refs", minimum=0, maximum=100
+    )
+    for index, ref in enumerate((*assumptions, *evidence)):
+        if not isinstance(ref, str) or not ref:
+            raise FinanceContractError(
+                "FIN2_LINEAGE_REF", f"{field_ref}[{index}]", "lineage refs must be non-empty text"
+            )
+
+
+def _period_in_horizon(value: Any, field_ref: str, horizon: frozenset[str]) -> str:
+    period = _text(value, field_ref)
+    try:
+        period_index(period)
+    except ValueError as exc:
+        raise FinanceContractError("FIN2_PERIOD_FORMAT", field_ref, str(exc)) from exc
+    if period not in horizon:
+        raise FinanceContractError("FIN2_PERIOD_HORIZON", field_ref, "period is outside forecast")
+    return period
+
+
+def _unique_ids(rows: Sequence[Any], key: str, field_ref: str) -> None:
+    seen: set[str] = set()
+    for index, raw in enumerate(rows):
+        row = _mapping(raw, f"{field_ref}[{index}]")
+        identifier = _text(row.get(key), f"{field_ref}[{index}].{key}")
+        if identifier in seen:
+            raise FinanceContractError(
+                "FIN2_DUPLICATE_ID", f"{field_ref}[{index}].{key}", "duplicate identifier"
+            )
+        seen.add(identifier)
+
+
+def _mapping(value: Any, field_ref: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise FinanceContractError("FIN2_OBJECT_TYPE", field_ref, "must be an object")
+    return value
+
+
+def _sequence(
+    value: Any,
+    field_ref: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> Sequence[Any]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise FinanceContractError("FIN2_ARRAY_TYPE", field_ref, "must be an array")
+    if not minimum <= len(value) <= maximum:
+        raise FinanceContractError(
+            "FIN2_ARRAY_BOUNDS", field_ref, f"must contain {minimum}..{maximum} items"
+        )
+    return value
+
+
+def _text(value: Any, field_ref: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise FinanceContractError("FIN2_TEXT_TYPE", field_ref, "must be non-empty text")
+    return value
