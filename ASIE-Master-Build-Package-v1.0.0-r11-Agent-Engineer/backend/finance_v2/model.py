@@ -77,6 +77,7 @@ class FinancialModel:
     metrics: dict[str, Decimal | None]
     status: str
     blockers: tuple[dict[str, str], ...]
+    source_input_hash: str
 
     def period(self, period: str) -> FinancialPeriod:
         for row in self.periods:
