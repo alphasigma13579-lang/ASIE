@@ -8,6 +8,16 @@ from .model import FinancialModel, FinancialPeriod, ZERO
 
 
 ENGINE_VERSION = "2.0.0-dark.1"
+_METRIC_KEYS = (
+    "npv_unlevered",
+    "irr_unlevered",
+    "mirr_unlevered",
+    "payback_months",
+    "break_even",
+    "funding_need",
+    "dscr_min",
+    "llcr",
+)
 
 
 def serialize_finance_result(
@@ -134,8 +144,10 @@ def serialize_finance_result(
             ],
         },
         "metrics": {
-            key: _metric_decimal(key, value, money_scale, ratio_scale)
-            for key, value in model.metrics.items()
+            key: _metric_decimal(
+                key, model.metrics.get(key), money_scale, ratio_scale
+            )
+            for key in _METRIC_KEYS
         },
         "invariants": [
             {
@@ -153,8 +165,10 @@ def serialize_finance_result(
                 "scenario_id": "scn_baseline",
                 "status": model.status,
                 "metrics": {
-                    key: _metric_decimal(key, value, money_scale, ratio_scale)
-                    for key, value in model.metrics.items()
+                    key: _metric_decimal(
+                        key, model.metrics.get(key), money_scale, ratio_scale
+                    )
+                    for key in _METRIC_KEYS
                 },
             }
         ],
