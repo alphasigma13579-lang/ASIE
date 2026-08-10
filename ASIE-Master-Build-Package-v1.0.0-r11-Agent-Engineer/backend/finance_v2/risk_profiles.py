@@ -322,6 +322,12 @@ def validate_risk_profile(
             "$.status",
             "unsupported lifecycle status",
         )
+    if not binding.authoritative and status == "approved":
+        raise FinanceContractError(
+            "FIN2_PROFILE_APPROVED_REQUIRES_ADMISSION",
+            "$.status",
+            "approved status requires authoritative registry admission",
+        )
     created_at = _validate_metadata(
         document["metadata"],
         binding.as_of_date,
