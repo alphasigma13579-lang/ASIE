@@ -298,7 +298,7 @@ def _binding(
     else:
         dependencies = ()
     distribution_variable_ids = (
-        ("var_price", "var_volume")
+        tuple(document["variable_ids"])
         if document["schema_version"]
         == "finance-simulation-correlation-profile.v1"
         else ()
