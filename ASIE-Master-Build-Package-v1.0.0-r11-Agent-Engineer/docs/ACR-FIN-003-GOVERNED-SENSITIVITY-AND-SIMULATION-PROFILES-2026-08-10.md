@@ -131,7 +131,7 @@ Approved Manifest
 - bounds: minimum ≤ mode/mean/value ≤ maximum؛ stddev/sigma > 0.
 - discrete values/probabilities بنفس الطول، probabilities غير سالبة ومجموعها 1 ضمن tolerance.
 - calibration period_from ≤ period_to وfreshness policy.
-- approved status يتطلب approvals مكتملة للأدوار المطلوبة ولا rejection.
+- approved status يفرضه الـSchema بموافقات الأدوار الخمسة ومنع أي rejection، ثم يتحقق C3B من هوية المراجعين والأدلة وعدم التكرار.
 - matrix dimensions = عدد variables؛ القيم ضمن [-1,1]؛ symmetry؛ diagonal=1؛ PSD.
 - simulation minimum ≤ maximum؛ batch size صالح؛ stable_batches ≤ available batches.
 - sensitivity axes مختلفة، cells = حاصل أطوال المحورين ≤ maximum_cells، ولا overlap.
