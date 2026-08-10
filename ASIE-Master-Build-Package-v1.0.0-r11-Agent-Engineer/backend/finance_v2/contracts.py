@@ -149,6 +149,55 @@ def parse_scenario_target(value: Any, field_ref: str) -> dict[str, str]:
     }
 
 
+def _scenario_target_scope(
+    target: Mapping[str, str],
+) -> tuple[tuple[str, ...], str | None]:
+    if "revenue_id" in target:
+        return (
+            (
+                "revenue_streams",
+                target["revenue_id"],
+                target["revenue_series"],
+            ),
+            target["revenue_period"],
+        )
+    if "opex_id" in target:
+        return (
+            ("operating_costs", target["opex_id"], "schedule"),
+            target["opex_period"],
+        )
+    if "asset_id" in target:
+        return (
+            ("capex_assets", target["asset_id"], target["asset_field"]),
+            None,
+        )
+    if "working_field" in target:
+        return (("working_capital", target["working_field"]), None)
+    if "valuation_field" in target:
+        return (("valuation_policy", target["valuation_field"]), None)
+    return (
+        ("debt_tranches", target["tranche_id"], target["tranche_field"]),
+        None,
+    )
+
+
+def _scenario_targets_overlap(
+    left: Mapping[str, str],
+    right: Mapping[str, str],
+) -> bool:
+    left_scope, left_period = _scenario_target_scope(left)
+    right_scope, right_period = _scenario_target_scope(right)
+    if left_scope != right_scope:
+        return False
+    if left_period is None or right_period is None:
+        return True
+    return (
+        left_period == "*"
+        or right_period == "*"
+        or left_period == right_period
+    )
+
+
 def validate_finance_input(
     document: Mapping[str, Any],
     *,
@@ -622,6 +671,7 @@ def _validate_scenarios(value: Any) -> None:
             )
 
         seen_targets: set[str] = set()
+        parsed_targets: list[dict[str, str]] = []
         for item_index, raw_override in enumerate(overrides):
             override_ref = f"{ref}.overrides[{item_index}]"
             override = _mapping(raw_override, override_ref)
@@ -633,14 +683,27 @@ def _validate_scenarios(value: Any) -> None:
                     "unsupported",
                 )
             target_ref = override.get("target_ref")
-            parse_scenario_target(target_ref, f"{override_ref}.target_ref")
+            target = parse_scenario_target(
+                target_ref,
+                f"{override_ref}.target_ref",
+            )
             if target_ref in seen_targets:
                 raise FinanceContractError(
                     "FIN2_SCENARIO_TARGET_DUPLICATE",
                     f"{override_ref}.target_ref",
                     "a target may be overridden only once per scenario",
                 )
+            if any(
+                _scenario_targets_overlap(target, prior)
+                for prior in parsed_targets
+            ):
+                raise FinanceContractError(
+                    "FIN2_SCENARIO_TARGET_OVERLAP",
+                    f"{override_ref}.target_ref",
+                    "wildcard and period targets must not overlap",
+                )
             seen_targets.add(target_ref)
+            parsed_targets.append(target)
             parsed = parse_decimal(
                 override.get("value"),
                 f"{override_ref}.value",
