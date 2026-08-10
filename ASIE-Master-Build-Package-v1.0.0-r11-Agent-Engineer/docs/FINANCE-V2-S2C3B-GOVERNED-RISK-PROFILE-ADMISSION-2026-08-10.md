@@ -75,11 +75,19 @@ Authoritative admission requires all of the following:
 - every approval evidence ref belongs to the trusted evidence set;
 - approval timestamps are not before profile creation or after the trusted as-of date;
 - correlation and archetype dependencies match trusted dependency hashes;
+- a correlation distribution also appears as the exact schema/id/version/hash tuple in the Approved Manifest;
 - correlation variable IDs equal the resolved distribution variable set.
 
-The binding uses immutable tuples with governed cardinality caps. An authoritative profile must have status `approved`. Draft and intermediate statuses are usable only through the non-admission validation path and remain non-executable.
+The binding uses immutable tuples with governed cardinality caps. An authoritative profile must have status `approved`. Draft and intermediate statuses are usable only through the non-admission validation path and remain non-executable. Conversely, non-authoritative validation rejects `approved` status so it cannot mint a result that can be mistaken for registry admission.
 
 ## 5. Semantic invariants
+
+### Common lifecycle and syntax
+
+- authoritative admission is the only path that accepts `approved` status;
+- non-authoritative validation accepts draft/intermediate lifecycle states only;
+- dates require canonical `YYYY-MM-DD` syntax;
+- timestamps require canonical RFC-3339 syntax with uppercase `T` and a timezone.
 
 ### Distribution
 
@@ -95,13 +103,13 @@ The binding uses immutable tuples with governed cardinality caps. An authoritati
 
 ### Correlation
 
-- distribution dependency bound by ref+hash and exact resolved variable set;
+- distribution dependency bound by ref+hash, exact Approved Manifest tuple and exact resolved variable set;
 - 2..50 unique governed variable IDs;
 - exact square dimensions;
 - coefficient range `[-1,1]`;
 - governed symmetry, diagonal and PSD tolerances;
 - `non_psd_behavior=reject`;
-- deterministic Decimal LDLᵀ PSD check with no clipping or nearest-PSD repair.
+- deterministic Decimal LDLᵀ PSD check that preserves every positive pivot, with no clipping or nearest-PSD repair.
 
 The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 
@@ -119,7 +127,7 @@ The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 ### Sensitivity
 
 - exactly two unique, pattern-valid axes;
-- unique values per axis;
+- unique values per axis and non-negative values for every `multiply` operation;
 - no target overlap between axes and fixed overrides;
 - allowlisted metrics;
 - actual cell product does not exceed the declared maximum and hard cap 441.
@@ -130,13 +138,17 @@ The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 |---|---|---|
 | client profile substitution | canonical hash + exact trusted tuple | hash/ref substitution negatives |
 | unapproved manifest selection | exact profile and policy ref+version+hash membership | missing profile/policy negatives |
+| unapproved dependency composition | exact correlation distribution tuple in Approved Manifest | registry-bound-but-unmanifested distribution negative |
+| forged approved validation result | reject `approved` in non-authoritative mode | approved-vs-intermediate mode test |
 | cross-tenant registry entry | server-bound scope/owner comparison | organization/global negatives |
 | forged reviewer or evidence | role→identity and evidence allowlists | forged identity/evidence negatives |
 | future/stale governance record | created/review/as-of and calibration ordering | future review/calibration negatives |
 | unbounded object | pre-hash depth/node/text/cardinality limits | float/depth/malformed-type negatives |
 | overlapping financial target | parsed target overlap rejection | wildcard/month and fixed-target negatives |
 | invalid probability model | bounds/sigma/probability invariants | probability/sigma negatives |
-| invalid correlation | dependency-variable equality + range/symmetry/diagonal/PSD | mismatch, singular-boundary and non-PSD tests |
+| invalid correlation | dependency-variable equality + range/symmetry/diagonal/PSD | mismatch, small-positive-pivot, singular-boundary and non-PSD tests |
+| invalid sensitivity multiplier | reject negative axis/fixed `multiply` values | negative multiplier negatives |
+| schema-incompatible date/time | exact canonical syntax before Python parsing | compact/week-date/space-separator negatives |
 | replaceable RNG vector | schema ref+hash + trusted dependency equality | missing/mismatched vector negatives |
 | ineffective convergence policy | batch/tolerance/metric consistency | impossible/zero/missing-output negatives |
 | premature engine use | hard `execution_ready=False` | engine-not-ready test |
