@@ -99,7 +99,7 @@ Approved Manifest
 
 ### 4.3 Simulation policy
 
-- RNG: `pcg64_dxsm_v1` مع reference vector إلزامي.
+- RNG: `pcg64_dxsm_v1` مع reference vector ref+content_hash إلزاميين.
 - اشتقاق stream: seed + scenario + variable وفق إصدار ثابت.
 - حدود iterations/batch تمنع الاستنزاف.
 - convergence يراقب metrics وquantiles عبر batches.
@@ -119,7 +119,7 @@ Approved Manifest
 - `content_hash` هو SHA-256 لـcanonical JSON بعد حذف حقل `content_hash` نفسه فقط.
 - canonical serialization هي سياسة Finance v2 نفسها.
 - ref دون hash أو hash mismatch: رفض.
-- نفس Finance input/profile hashes/policy version/seed يعطي نفس stream وlogical output bytes.
+- نفس Finance input/profile/dependency hashes/policy version/seed يعطي نفس stream وlogical output bytes.
 - أي تغيير في calibration أو review أو parameters ينتج version/hash جديدًا؛ لا overwrite.
 - historical results لا تعاد حسابها ولا تُعدّل.
 
@@ -138,6 +138,17 @@ Approved Manifest
 - refs/hashes تطابق registry snapshot وApproved Manifest.
 
 الفشل في أي قاعدة ينتج blocker `FIN2_*` ولا fallback.
+
+### 6.1 حد C3B الموثوق للقبول
+
+يعتمد C3B فصلًا صريحًا بين **محتوى الـprofile** و**سياق القبول الخادمي**:
+
+- يبقى ملف الـprofile ثابتًا؛ لا يُضمّن `registry_snapshot_hash` أو tenant authority أو Approved Manifest داخله، لأن تضمين hash السجل داخل ملف يحسب السجل hash له يخلق اعتمادًا دائريًا ويكسر قابلية إعادة الإنتاج.
+- ينشئ الخادم فقط `ResolvedRiskProfileBinding` بعد حل السجل والـApproved Manifest في سياق المستأجر الموثوق.
+- يثبت العقد الخارجي: schema/id/version/content_hash، registry snapshot، scope/owner، organization، Approved Manifest id/hash، policy ref/version/hash، exact manifest profile tuples، resolved distribution variable IDs، reviewer identities، evidence refs، dependency hashes (including RNG reference-vector hash)، وas-of date.
+- القبول authoritative يتطلب عضوية tuple الدقيقة للـprofile والـpolicy داخل الـApproved Manifest، وتطابق tenant/global scope، وربط هوية كل مراجع ودليله.
+- `ValidatedRiskProfile` الناتج يحمل `execution_ready=False` دائمًا في C3B؛ طلب الجاهزية التنفيذية يفشل بـ`FIN2_PROFILE_ENGINE_NOT_READY`.
+- `admit_risk_profile` هو مسار القبول authoritative؛ أما التحقق غير authoritative فمسموح فقط لملفات draft/test غير المختومة ولا يعطي جاهزية تنفيذ.
 
 ## 7. الأمن والاعتمادية
 

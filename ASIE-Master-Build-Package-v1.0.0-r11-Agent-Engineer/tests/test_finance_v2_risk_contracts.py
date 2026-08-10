@@ -9,6 +9,9 @@ SCHEMA_DIR = ROOT / "schemas" / "finance"
 DOC = ROOT / "docs" / (
     "ACR-FIN-003-GOVERNED-SENSITIVITY-AND-SIMULATION-PROFILES-2026-08-10.md"
 )
+C3B_DOC = ROOT / "docs" / (
+    "FINANCE-V2-S2C3B-GOVERNED-RISK-PROFILE-ADMISSION-2026-08-10.md"
+)
 DISTRIBUTION = SCHEMA_DIR / (
     "finance-simulation-distribution-profile.v1.schema.json"
 )
@@ -121,11 +124,25 @@ def test_simulation_policy_pins_rng_limits_and_fail_closed_convergence() -> None
 
     rng = document["properties"]["rng"]
     assert rng["properties"]["algorithm"]["const"] == "pcg64_dxsm_v1"
-    assert "reference_vector_ref" in rng["required"]
+    assert {
+        "reference_vector_ref",
+        "reference_vector_hash",
+    } <= set(rng["required"])
+    assert rng["properties"]["reference_vector_hash"]["pattern"] == (
+        "^sha256:[a-f0-9]{64}$"
+    )
     iterations = document["properties"]["iterations"]["properties"]
     assert iterations["maximum"]["maximum"] == 100000
     convergence = document["properties"]["convergence"]
     assert convergence["properties"]["failure_policy"]["const"] == "not_ready"
+    threshold_metric = document["properties"]["outputs"]["properties"][
+        "probability_thresholds"
+    ]["items"]["properties"]["metric_id"]["enum"]
+    assert set(threshold_metric) == set(
+        document["properties"]["outputs"]["properties"]["metric_ids"][
+            "items"
+        ]["enum"]
+    )
     assert "lineage" in document["required"]
     assert "metadata" in document["required"]
     assert {
@@ -166,6 +183,9 @@ def test_acr_keeps_engine_and_professional_claims_blocked() -> None:
         "Quantitative Reviewer",
         "لا محاكاة إنتاجية",
         "لا تغيّر الحكم",
+        "ResolvedRiskProfileBinding",
+        "registry_snapshot_hash",
+        "FIN2_PROFILE_ENGINE_NOT_READY",
     ):
         assert token in text
 
@@ -188,3 +208,19 @@ def test_approved_profiles_require_all_roles_and_no_rejection() -> None:
             "const": "rejected"
         }
         assert len(required_roles["allOf"]) == 5
+
+
+def test_c3b_admission_evidence_keeps_registry_and_execution_boundaries() -> None:
+    text = C3B_DOC.read_text(encoding="utf-8")
+
+    for token in (
+        "ResolvedRiskProfileBinding",
+        "registry_snapshot_hash",
+        "Approved Manifest",
+        "execution_ready=False",
+        "FIN2_PROFILE_ENGINE_NOT_READY",
+        "O(n^3)",
+        "cross-tenant",
+        "IMPLEMENTED_AWAITING_EXACT_HEAD_CI_AND_REVIEW",
+    ):
+        assert token in text
