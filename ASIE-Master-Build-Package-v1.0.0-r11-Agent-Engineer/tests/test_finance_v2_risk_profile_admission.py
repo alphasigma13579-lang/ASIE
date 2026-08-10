@@ -421,6 +421,26 @@ def test_registry_admission_requires_authoritative_binding() -> None:
     assert error.value.code == "FIN2_PROFILE_ADMISSION_MODE"
 
 
+def test_non_authoritative_validation_cannot_mint_approved_result() -> None:
+    approved = distribution_profile()
+    with pytest.raises(FinanceContractError) as error:
+        validate_risk_profile(
+            approved,
+            binding=_binding(approved, authoritative=False),
+        )
+    assert error.value.code == "FIN2_PROFILE_APPROVED_REQUIRES_ADMISSION"
+
+    intermediate = distribution_profile()
+    intermediate["status"] = "finance_reviewed"
+    _finalize(intermediate)
+    result = validate_risk_profile(
+        intermediate,
+        binding=_binding(intermediate, authoritative=False),
+    )
+    assert result.status == "finance_reviewed"
+    assert result.execution_ready is False
+
+
 def test_canonical_hash_is_order_independent_and_excludes_only_hash() -> None:
     document = distribution_profile()
     reordered = dict(reversed(list(document.items())))
