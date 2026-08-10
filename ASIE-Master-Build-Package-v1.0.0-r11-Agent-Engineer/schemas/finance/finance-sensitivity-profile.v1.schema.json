@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/finance-sensitivity-profile.v1.schema.json",
+  "title": "ASIE Finance Sensitivity Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "version",
+    "content_hash",
+    "status",
+    "currency",
+    "archetype_ref",
+    "axes",
+    "fixed_overrides",
+    "metric_ids",
+    "maximum_cells",
+    "review",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "finance-sensitivity-profile.v1"
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^fsn_[A-Za-z0-9_-]{4,100}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "calibrated",
+        "finance_reviewed",
+        "sector_reviewed",
+        "approved"
+      ]
+    },
+    "archetype_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype_id",
+        "version",
+        "registry_hash"
+      ],
+      "properties": {
+        "archetype_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "registry_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "axes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "axis_id",
+          "target_ref",
+          "operation",
+          "values",
+          "lineage"
+        ],
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "pattern": "^axis_[A-Za-z0-9_-]{1,80}$"
+          },
+          "target_ref": {
+            "type": "string",
+            "pattern": "^(?:\\$\\.revenue_streams\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:volume_series|price_series|variable_cost_series|capacity_series)\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.operating_costs\\[[A-Za-z0-9_-]{1,84}\\]\\.schedule\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.capex_assets\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:cost|residual_value)|\\$\\.working_capital\\.(?:dso_days|dio_days|dpo_days)|\\$\\.valuation_policy\\.(?:discount_rate_annual|finance_rate_annual|reinvestment_rate_annual)|\\$\\.financing\\.debt_tranches\\[[A-Za-z0-9_-]{1,84}\\]\\.annual_rate)$",
+            "maxLength": 200
+          },
+          "operation": {
+            "enum": [
+              "replace",
+              "multiply",
+              "add"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 21,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+            }
+          },
+          "lineage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assumption_refs",
+              "evidence_refs"
+            ],
+            "properties": {
+              "assumption_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "evidence_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fixed_overrides": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target_ref",
+          "operation",
+          "value",
+          "lineage"
+        ],
+        "properties": {
+          "target_ref": {
+            "type": "string",
+            "pattern": "^(?:\\$\\.revenue_streams\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:volume_series|price_series|variable_cost_series|capacity_series)\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.operating_costs\\[[A-Za-z0-9_-]{1,84}\\]\\.schedule\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.capex_assets\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:cost|residual_value)|\\$\\.working_capital\\.(?:dso_days|dio_days|dpo_days)|\\$\\.valuation_policy\\.(?:discount_rate_annual|finance_rate_annual|reinvestment_rate_annual)|\\$\\.financing\\.debt_tranches\\[[A-Za-z0-9_-]{1,84}\\]\\.annual_rate)$",
+            "maxLength": 200
+          },
+          "operation": {
+            "enum": [
+              "replace",
+              "multiply",
+              "add"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+          },
+          "lineage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assumption_refs",
+              "evidence_refs"
+            ],
+            "properties": {
+              "assumption_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "evidence_refs": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "metric_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "npv_unlevered",
+          "irr_unlevered",
+          "mirr_unlevered",
+          "payback_months",
+          "break_even",
+          "funding_need",
+          "dscr_min",
+          "llcr"
+        ]
+      }
+    },
+    "maximum_cells": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 441
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_roles",
+        "approvals"
+      ],
+      "properties": {
+        "required_roles": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "finance_reviewer",
+              "sector_expert",
+              "quantitative_reviewer",
+              "qa",
+              "security"
+            ]
+          }
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "role",
+              "reviewer_ref",
+              "status",
+              "reviewed_at",
+              "evidence_ref"
+            ],
+            "properties": {
+              "role": {
+                "enum": [
+                  "finance_reviewer",
+                  "sector_expert",
+                  "quantitative_reviewer",
+                  "qa",
+                  "security"
+                ]
+              },
+              "reviewer_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "status": {
+                "enum": [
+                  "approved",
+                  "rejected"
+                ]
+              },
+              "reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "evidence_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_ref",
+        "effective_from",
+        "created_at"
+      ],
+      "properties": {
+        "owner_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date"
+        },
+        "supersedes_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    }
+  }
+}
