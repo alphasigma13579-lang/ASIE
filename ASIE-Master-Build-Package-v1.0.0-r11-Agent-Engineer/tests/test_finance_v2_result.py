@@ -35,7 +35,7 @@ def test_v2_result_has_identity_versions_three_statements_and_fourteen_invariant
     output = result()
 
     assert output["schema_version"] == "finance-result.v2"
-    assert output["engine_version"] == "2.0.0-dark.1"
+    assert output["engine_version"] == "2.0.0-dark.2"
     assert output["status"] == "ready"
     assert output["organization_id"] == "org-1"
     assert output["project_id"] == "project-1"

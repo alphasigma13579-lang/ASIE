@@ -6,9 +6,10 @@ from typing import Any
 
 from .contracts import FinanceContractError, ValidatedFinanceInput
 from .model import FinancialModel, FinancialPeriod, ZERO
+from .scenarios import evaluate_scenarios
 
 
-ENGINE_VERSION = "2.0.0-dark.1"
+ENGINE_VERSION = "2.0.0-dark.2"
 _METRIC_KEYS = (
     "npv_unlevered",
     "irr_unlevered",
@@ -38,11 +39,46 @@ def serialize_finance_result(
     money_scale = rounding["money_scale"]
     ratio_scale = rounding["ratio_scale"]
     lineage = _collect_lineage(document)
+    scenario_evaluations = evaluate_scenarios(validated, model)
+    scenario_blockers = [
+        blocker
+        for evaluation in scenario_evaluations
+        for blocker in evaluation.blockers
+    ]
+    legacy_scenario_blockers = (
+        [
+            {
+                "code": "FIN2_LEGACY_SCENARIO_PROJECTION_NOT_READY",
+                "severity": "high",
+                "field_ref": "$.legacy_projection",
+                "message_ar": (
+                    "لا يتاح إسقاط v1 عند طلب سيناريو غير baseline "
+                    "حتى يكتمل إسقاط السيناريو واختبار تطابقه."
+                ),
+            }
+        ]
+        if include_legacy_projection
+        and any(
+            evaluation.kind != "baseline"
+            for evaluation in scenario_evaluations
+        )
+        else []
+    )
+    result_blockers = [
+        *model.blockers,
+        *scenario_blockers,
+        *legacy_scenario_blockers,
+    ]
+    result_status = (
+        "not_ready"
+        if model.status == "ready" and result_blockers
+        else model.status
+    )
 
     result = {
         "schema_version": "finance-result.v2",
         "engine_version": ENGINE_VERSION,
-        "status": model.status,
+        "status": result_status,
         "organization_id": validated.organization_id,
         "project_id": validated.project_id,
         "run_id": validated.run_id,
@@ -169,26 +205,39 @@ def serialize_finance_result(
         ],
         "scenarios": [
             {
-                "scenario_id": "scn_baseline",
-                "status": model.status,
+                "scenario_id": evaluation.scenario_id,
+                "kind": evaluation.kind,
+                "status": evaluation.status,
+                "input_hash": evaluation.input_hash,
+                "override_refs": list(evaluation.override_refs),
                 "metrics": {
                     key: _metric_decimal(
-                        key, model.metrics.get(key), money_scale, ratio_scale
+                        key,
+                        evaluation.metrics.get(key),
+                        money_scale,
+                        ratio_scale,
                     )
                     for key in _METRIC_KEYS
                 },
+                **(
+                    {"simulation_summary": evaluation.simulation_summary}
+                    if evaluation.simulation_summary is not None
+                    else {}
+                ),
             }
+            for evaluation in scenario_evaluations
         ],
         "lineage": {
             **lineage,
             "formula_registry_version": ENGINE_VERSION,
         },
-        "blockers": list(model.blockers),
+        "blockers": result_blockers,
         "legacy_projection": (
             _legacy_projection(
                 model, document, lineage, money_scale, ratio_scale
             )
             if include_legacy_projection
+            and not legacy_scenario_blockers
             else {
                 "schema_version": "finance.result.v1-compatible",
                 "status": "not_available",

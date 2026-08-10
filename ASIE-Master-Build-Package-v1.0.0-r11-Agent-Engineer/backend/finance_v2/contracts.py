@@ -14,6 +14,22 @@ from .timeline import monthly_periods, period_index
 _DECIMAL = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]{1,8})?$")
 _SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_SCENARIO_TARGET = re.compile(
+    r"^(?:"
+    r"\$\.revenue_streams\[(?P<revenue_id>[A-Za-z0-9_-]{1,84})\]\."
+    r"(?P<revenue_series>volume_series|price_series|variable_cost_series|capacity_series)"
+    r"\[(?P<revenue_period>\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\]\.value"
+    r"|\$\.operating_costs\[(?P<opex_id>[A-Za-z0-9_-]{1,84})\]\.schedule"
+    r"\[(?P<opex_period>\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\]\.value"
+    r"|\$\.capex_assets\[(?P<asset_id>[A-Za-z0-9_-]{1,84})\]\."
+    r"(?P<asset_field>cost|residual_value)"
+    r"|\$\.working_capital\.(?P<working_field>dso_days|dio_days|dpo_days)"
+    r"|\$\.valuation_policy\."
+    r"(?P<valuation_field>discount_rate_annual|finance_rate_annual|reinvestment_rate_annual)"
+    r"|\$\.financing\.debt_tranches\[(?P<tranche_id>[A-Za-z0-9_-]{1,84})\]\."
+    r"(?P<tranche_field>annual_rate)"
+    r")$"
+)
 
 REVENUE_MODELS = frozenset(
     {
@@ -110,6 +126,76 @@ def parse_decimal(
     if not allow_negative and parsed < 0:
         raise FinanceContractError("FIN2_DECIMAL_NEGATIVE", field_ref, "value must be non-negative")
     return parsed
+
+
+def parse_scenario_target(value: Any, field_ref: str) -> dict[str, str]:
+    if not isinstance(value, str):
+        raise FinanceContractError(
+            "FIN2_SCENARIO_TARGET",
+            field_ref,
+            "target_ref must be a string",
+        )
+    match = _SCENARIO_TARGET.fullmatch(value)
+    if match is None:
+        raise FinanceContractError(
+            "FIN2_SCENARIO_TARGET",
+            field_ref,
+            "target_ref is outside the governed scenario allowlist",
+        )
+    return {
+        key: item
+        for key, item in match.groupdict().items()
+        if item is not None
+    }
+
+
+def _scenario_target_scope(
+    target: Mapping[str, str],
+) -> tuple[tuple[str, ...], str | None]:
+    if "revenue_id" in target:
+        return (
+            (
+                "revenue_streams",
+                target["revenue_id"],
+                target["revenue_series"],
+            ),
+            target["revenue_period"],
+        )
+    if "opex_id" in target:
+        return (
+            ("operating_costs", target["opex_id"], "schedule"),
+            target["opex_period"],
+        )
+    if "asset_id" in target:
+        return (
+            ("capex_assets", target["asset_id"], target["asset_field"]),
+            None,
+        )
+    if "working_field" in target:
+        return (("working_capital", target["working_field"]), None)
+    if "valuation_field" in target:
+        return (("valuation_policy", target["valuation_field"]), None)
+    return (
+        ("debt_tranches", target["tranche_id"], target["tranche_field"]),
+        None,
+    )
+
+
+def _scenario_targets_overlap(
+    left: Mapping[str, str],
+    right: Mapping[str, str],
+) -> bool:
+    left_scope, left_period = _scenario_target_scope(left)
+    right_scope, right_period = _scenario_target_scope(right)
+    if left_scope != right_scope:
+        return False
+    if left_period is None or right_period is None:
+        return True
+    return (
+        left_period == "*"
+        or right_period == "*"
+        or left_period == right_period
+    )
 
 
 def validate_finance_input(
@@ -532,30 +618,116 @@ def _validate_valuation(value: Any) -> None:
 def _validate_scenarios(value: Any) -> None:
     rows = _sequence(value, "$.scenarios", minimum=1, maximum=20)
     _unique_ids(rows, "scenario_id", "$.scenarios")
-    baseline_count = 0
+    baseline_count = sum(
+        int(_mapping(raw, f"$.scenarios[{index}]").get("kind") == "baseline")
+        for index, raw in enumerate(rows)
+    )
+    if baseline_count != 1:
+        raise FinanceContractError(
+            "FIN2_BASELINE_COUNT",
+            "$.scenarios",
+            "exactly one baseline scenario is required",
+        )
+
     for index, raw in enumerate(rows):
         ref = f"$.scenarios[{index}]"
         row = _mapping(raw, ref)
         kind = row.get("kind")
         if kind not in {"baseline", "deterministic", "simulation"}:
-            raise FinanceContractError("FIN2_SCENARIO_KIND", f"{ref}.kind", "unsupported")
-        baseline_count += int(kind == "baseline")
-        overrides = _sequence(row.get("overrides"), f"{ref}.overrides", minimum=0, maximum=200)
+            raise FinanceContractError(
+                "FIN2_SCENARIO_KIND",
+                f"{ref}.kind",
+                "unsupported",
+            )
+        overrides = _sequence(
+            row.get("overrides"),
+            f"{ref}.overrides",
+            minimum=0,
+            maximum=200,
+        )
+        if kind == "baseline" and overrides:
+            raise FinanceContractError(
+                "FIN2_BASELINE_OVERRIDE",
+                f"{ref}.overrides",
+                "baseline must not contain overrides",
+            )
+        if kind == "deterministic" and not overrides:
+            raise FinanceContractError(
+                "FIN2_SCENARIO_OVERRIDE_REQUIRED",
+                f"{ref}.overrides",
+                "deterministic scenario requires at least one override",
+            )
+        if kind == "simulation" and overrides:
+            raise FinanceContractError(
+                "FIN2_SIMULATION_OVERRIDE",
+                f"{ref}.overrides",
+                "simulation scenario must use its governed profile",
+            )
+        if kind != "simulation" and "simulation" in row:
+            raise FinanceContractError(
+                "FIN2_SCENARIO_SIMULATION_UNEXPECTED",
+                f"{ref}.simulation",
+                "simulation settings are allowed only for simulation scenarios",
+            )
+
+        seen_targets: set[str] = set()
+        parsed_targets: list[dict[str, str]] = []
         for item_index, raw_override in enumerate(overrides):
             override_ref = f"{ref}.overrides[{item_index}]"
             override = _mapping(raw_override, override_ref)
-            if override.get("operation") not in {"replace", "multiply", "add"}:
+            operation = override.get("operation")
+            if operation not in {"replace", "multiply", "add"}:
                 raise FinanceContractError(
-                    "FIN2_SCENARIO_OPERATION", f"{override_ref}.operation", "unsupported"
+                    "FIN2_SCENARIO_OPERATION",
+                    f"{override_ref}.operation",
+                    "unsupported",
                 )
-            parse_decimal(override.get("value"), f"{override_ref}.value")
+            target_ref = override.get("target_ref")
+            target = parse_scenario_target(
+                target_ref,
+                f"{override_ref}.target_ref",
+            )
+            if target_ref in seen_targets:
+                raise FinanceContractError(
+                    "FIN2_SCENARIO_TARGET_DUPLICATE",
+                    f"{override_ref}.target_ref",
+                    "a target may be overridden only once per scenario",
+                )
+            if any(
+                _scenario_targets_overlap(target, prior)
+                for prior in parsed_targets
+            ):
+                raise FinanceContractError(
+                    "FIN2_SCENARIO_TARGET_OVERLAP",
+                    f"{override_ref}.target_ref",
+                    "wildcard and period targets must not overlap",
+                )
+            seen_targets.add(target_ref)
+            parsed_targets.append(target)
+            parsed = parse_decimal(
+                override.get("value"),
+                f"{override_ref}.value",
+            )
+            if operation == "multiply" and parsed < 0:
+                raise FinanceContractError(
+                    "FIN2_SCENARIO_MULTIPLIER_NEGATIVE",
+                    f"{override_ref}.value",
+                    "multiplier must be non-negative",
+                )
+
         if kind == "simulation":
             simulation = _mapping(row.get("simulation"), f"{ref}.simulation")
             seed = simulation.get("seed")
             iterations = simulation.get("iterations")
-            if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2147483647:
+            if (
+                isinstance(seed, bool)
+                or not isinstance(seed, int)
+                or not 0 <= seed <= 2147483647
+            ):
                 raise FinanceContractError(
-                    "FIN2_SIMULATION_SEED", f"{ref}.simulation.seed", "invalid seed"
+                    "FIN2_SIMULATION_SEED",
+                    f"{ref}.simulation.seed",
+                    "invalid seed",
                 )
             if (
                 isinstance(iterations, bool)
@@ -567,10 +739,6 @@ def _validate_scenarios(value: Any) -> None:
                     f"{ref}.simulation.iterations",
                     "must be 100..100000",
                 )
-    if baseline_count != 1:
-        raise FinanceContractError(
-            "FIN2_BASELINE_COUNT", "$.scenarios", "exactly one baseline scenario is required"
-        )
 
 
 def _validate_series(

@@ -994,7 +994,9 @@
                 "target_ref": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 200
+                  "maxLength": 200,
+                  "pattern": "^(?:\\$\\.revenue_streams\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:volume_series|price_series|variable_cost_series|capacity_series)\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.operating_costs\\[[A-Za-z0-9_-]{1,84}\\]\\.schedule\\[(?:\\*|[0-9]{4}-(?:0[1-9]|1[0-2]))\\]\\.value|\\$\\.capex_assets\\[[A-Za-z0-9_-]{1,84}\\]\\.(?:cost|residual_value)|\\$\\.working_capital\\.(?:dso_days|dio_days|dpo_days)|\\$\\.valuation_policy\\.(?:discount_rate_annual|finance_rate_annual|reinvestment_rate_annual)|\\$\\.financing\\.debt_tranches\\[[A-Za-z0-9_-]{1,84}\\]\\.annual_rate)$",
+                  "description": "Governed allowlisted Finance v2 driver reference; arbitrary JSON paths are rejected."
                 },
                 "operation": {
                   "enum": [
@@ -1041,7 +1043,79 @@
               }
             }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "baseline"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "overrides": {
+                  "maxItems": 0
+                }
+              },
+              "not": {
+                "required": [
+                  "simulation"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "deterministic"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "overrides": {
+                  "minItems": 1
+                }
+              },
+              "not": {
+                "required": [
+                  "simulation"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "simulation"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "simulation"
+              ],
+              "properties": {
+                "overrides": {
+                  "maxItems": 0
+                }
+              }
+            }
+          }
+        ]
       },
       "allOf": [
         {
