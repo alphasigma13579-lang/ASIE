@@ -80,6 +80,7 @@ ValidatedFinanceInput (immutable canonical document)
 - لا migration ولا كتابة بيانات ولا feature flag ولا runtime activation.
 - التراجع قبل الدمج: إغلاق PR وحذف الفرع.
 - التراجع بعد الدمج: revert واحد لشريحة S2-C2؛ Finance v1 والغلاف المجمد لم يتغيرا.
+- عند طلب legacy projection مع أي scenario غير baseline، يكون الإسقاط `not_available` والنتيجة `not_ready` حتى يكتمل إسقاط السيناريو وتطابقه؛ لا يعاد baseline فقط باعتباره توافقًا كاملاً.
 - baseline-only input يظل صالحًا، لكن `finance-result.v2.scenarios[]` أصبح يصرح `kind` و`input_hash` و`override_refs`. هذه إضافة داخل عقد v2 الداكن وترافقها زيادة `engine_version` إلى `2.0.0-dark.2`.
 
 ## 7. الفجوات المتبقية المانعة
