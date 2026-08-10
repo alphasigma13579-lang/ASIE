@@ -49,7 +49,8 @@
       "required": [
         "algorithm",
         "stream_derivation",
-        "reference_vector_ref"
+        "reference_vector_ref",
+        "reference_vector_hash"
       ],
       "properties": {
         "algorithm": {
@@ -62,6 +63,10 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "reference_vector_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       }
     },
@@ -211,7 +216,15 @@
             ],
             "properties": {
               "metric_id": {
-                "type": "string"
+                "enum": [
+                  "npv_unlevered",
+                  "irr_unlevered",
+                  "mirr_unlevered",
+                  "payback_months",
+                  "funding_need",
+                  "dscr_min",
+                  "llcr"
+                ]
               },
               "operator": {
                 "enum": [

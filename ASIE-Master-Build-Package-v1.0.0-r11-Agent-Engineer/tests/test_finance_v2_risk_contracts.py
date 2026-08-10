@@ -124,11 +124,25 @@ def test_simulation_policy_pins_rng_limits_and_fail_closed_convergence() -> None
 
     rng = document["properties"]["rng"]
     assert rng["properties"]["algorithm"]["const"] == "pcg64_dxsm_v1"
-    assert "reference_vector_ref" in rng["required"]
+    assert {
+        "reference_vector_ref",
+        "reference_vector_hash",
+    } <= set(rng["required"])
+    assert rng["properties"]["reference_vector_hash"]["pattern"] == (
+        "^sha256:[a-f0-9]{64}$"
+    )
     iterations = document["properties"]["iterations"]["properties"]
     assert iterations["maximum"]["maximum"] == 100000
     convergence = document["properties"]["convergence"]
     assert convergence["properties"]["failure_policy"]["const"] == "not_ready"
+    threshold_metric = document["properties"]["outputs"]["properties"][
+        "probability_thresholds"
+    ]["items"]["properties"]["metric_id"]["enum"]
+    assert set(threshold_metric) == set(
+        document["properties"]["outputs"]["properties"]["metric_ids"][
+            "items"
+        ]["enum"]
+    )
     assert "lineage" in document["required"]
     assert "metadata" in document["required"]
     assert {

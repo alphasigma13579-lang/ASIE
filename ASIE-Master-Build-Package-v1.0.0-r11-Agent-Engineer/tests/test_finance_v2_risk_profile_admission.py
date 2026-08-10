@@ -30,6 +30,7 @@ EVIDENCE_REFS = tuple(f"evidence:{role}" for role in ROLES)
 H_ARCHETYPE = "sha256:" + "a" * 64
 H_DISTRIBUTION = "sha256:" + "b" * 64
 H_POLICY = "sha256:" + "c" * 64
+H_VECTOR = "sha256:" + "1" * 64
 H_REGISTRY = "sha256:" + "d" * 64
 H_MANIFEST = "sha256:" + "e" * 64
 
@@ -163,6 +164,7 @@ def simulation_policy() -> dict:
                 "algorithm": "pcg64_dxsm_v1",
                 "stream_derivation": "seed_scenario_variable_v1",
                 "reference_vector_ref": "test-vector:pcg64-dxsm-v1",
+                "reference_vector_hash": H_VECTOR,
             },
             "iterations": {
                 "minimum": 1000,
@@ -295,6 +297,8 @@ def _binding(
         dependencies = (
             ("distribution:fdp_default@1.0.0", H_DISTRIBUTION),
         )
+    elif document["schema_version"] == "finance-simulation-policy.v1":
+        dependencies = (("test-vector:pcg64-dxsm-v1", H_VECTOR),)
     else:
         dependencies = ()
     distribution_variable_ids = (
@@ -706,6 +710,32 @@ def test_simulation_policy_semantic_invariants(
     document = simulation_policy()
     mutation(document)
     _assert_rejected(document, code)
+
+
+def test_rng_reference_vector_requires_trusted_content_hash() -> None:
+    missing = simulation_policy()
+    _assert_rejected(
+        missing,
+        "FIN2_PROFILE_DEPENDENCY_UNBOUND",
+        binding_transform=lambda binding: replace(
+            binding,
+            dependency_hashes=(),
+        ),
+    )
+
+    mismatched = simulation_policy()
+    mismatched["rng"]["reference_vector_hash"] = "sha256:" + "f" * 64
+    _assert_rejected(mismatched, "FIN2_PROFILE_DEPENDENCY_UNBOUND")
+
+
+def test_empty_lineage_never_admits_an_authoritative_value() -> None:
+    document = sensitivity_profile()
+    document["axes"][0]["lineage"] = {
+        "assumption_refs": [],
+        "evidence_refs": [],
+    }
+
+    _assert_rejected(document, "FIN2_PROFILE_LINEAGE_EMPTY")
 
 
 def test_sensitivity_axes_targets_and_cell_budget_are_governed() -> None:

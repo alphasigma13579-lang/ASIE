@@ -200,6 +200,7 @@ class ValidatedRiskProfile:
     policy_ref: str
     policy_version: str
     policy_hash: str
+    dependency_hashes: tuple[tuple[str, str], ...]
     canonical_document: str
     execution_ready: bool
 
@@ -331,7 +332,7 @@ def validate_risk_profile(
     elif kind == "correlation":
         _validate_correlation(document, binding)
     elif kind == "policy":
-        _validate_policy(document)
+        _validate_policy(document, binding)
     else:
         _validate_sensitivity(document, binding)
 
@@ -356,6 +357,7 @@ def validate_risk_profile(
         policy_ref=binding.policy_ref,
         policy_version=binding.policy_version,
         policy_hash=binding.policy_hash,
+        dependency_hashes=binding.dependency_hashes,
         canonical_document=canonical,
         execution_ready=False,
     )
@@ -1397,13 +1399,26 @@ def _is_positive_semidefinite(
     return True
 
 
-def _validate_policy(document: Mapping[str, Any]) -> None:
+def _validate_policy(
+    document: Mapping[str, Any],
+    binding: ResolvedRiskProfileBinding,
+) -> None:
     _validate_lineage(document["lineage"], "$.lineage")
     rng = _mapping(document["rng"], "$.rng")
     _require_fields(
         rng,
-        {"algorithm", "stream_derivation", "reference_vector_ref"},
-        {"algorithm", "stream_derivation", "reference_vector_ref"},
+        {
+            "algorithm",
+            "stream_derivation",
+            "reference_vector_ref",
+            "reference_vector_hash",
+        },
+        {
+            "algorithm",
+            "stream_derivation",
+            "reference_vector_ref",
+            "reference_vector_hash",
+        },
         "$.rng",
     )
     if (
@@ -1415,11 +1430,22 @@ def _validate_policy(document: Mapping[str, Any]) -> None:
             "$.rng",
             "RNG algorithm or stream derivation is not pinned",
         )
-    _text(
+    reference_vector_ref = _text(
         rng["reference_vector_ref"],
         "$.rng.reference_vector_ref",
         maximum=200,
     )
+    reference_vector_hash = _hash(
+        rng["reference_vector_hash"],
+        "$.rng.reference_vector_hash",
+    )
+    dependencies = dict(binding.dependency_hashes)
+    if dependencies.get(reference_vector_ref) != reference_vector_hash:
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_UNBOUND",
+            "$.rng.reference_vector_ref",
+            "RNG reference vector is not bound to trusted content hash",
+        )
     iterations = _mapping(document["iterations"], "$.iterations")
     _require_fields(
         iterations,
@@ -1864,6 +1890,7 @@ def _validate_lineage(value: Any, field_ref: str) -> None:
         {"assumption_refs", "evidence_refs"},
         field_ref,
     )
+    total_refs = 0
     for name, maximum in (("assumption_refs", 160), ("evidence_refs", 200)):
         items = _sequence(
             row[name],
@@ -1885,6 +1912,13 @@ def _validate_lineage(value: Any, field_ref: str) -> None:
                 f"{field_ref}.{name}",
                 "lineage refs must be unique",
             )
+        total_refs += len(parsed_items)
+    if total_refs == 0:
+        raise FinanceContractError(
+            "FIN2_PROFILE_LINEAGE_EMPTY",
+            field_ref,
+            "lineage requires at least one assumption or evidence reference",
+        )
 
 
 def _validate_archetype(

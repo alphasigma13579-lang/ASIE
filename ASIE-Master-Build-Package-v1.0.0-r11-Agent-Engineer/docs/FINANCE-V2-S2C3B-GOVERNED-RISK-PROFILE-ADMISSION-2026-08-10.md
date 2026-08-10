@@ -107,12 +107,12 @@ The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 
 ### Simulation policy
 
-- pinned RNG algorithm, stream derivation and reference vector;
+- pinned RNG algorithm and stream derivation, plus reference-vector ref+content_hash;
 - governed iteration and batch bounds;
 - available-batch consistency;
 - positive convergence tolerance through at least one of relative/absolute tolerance;
 - convergence metrics are an allowlisted subset of output metrics;
-- output metrics and quantiles are allowlisted and unique;
+- output metrics, threshold metrics and quantiles are schema/semantic allowlisted and unique;
 - thresholds target declared outputs and are non-duplicated;
 - convergence failure remains `not_ready`.
 
@@ -137,6 +137,7 @@ The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 | overlapping financial target | parsed target overlap rejection | wildcard/month and fixed-target negatives |
 | invalid probability model | bounds/sigma/probability invariants | probability/sigma negatives |
 | invalid correlation | dependency-variable equality + range/symmetry/diagonal/PSD | mismatch, singular-boundary and non-PSD tests |
+| replaceable RNG vector | schema ref+hash + trusted dependency equality | missing/mismatched vector negatives |
 | ineffective convergence policy | batch/tolerance/metric consistency | impossible/zero/missing-output negatives |
 | premature engine use | hard `execution_ready=False` | engine-not-ready test |
 
