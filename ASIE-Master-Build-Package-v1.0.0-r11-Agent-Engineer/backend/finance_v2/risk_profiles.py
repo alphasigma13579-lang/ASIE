@@ -28,6 +28,10 @@ _ID_PATTERN = {
 _VARIABLE_ID = re.compile(r"^var_[A-Za-z0-9_-]{1,80}$")
 _AXIS_ID = re.compile(r"^axis_[A-Za-z0-9_-]{1,80}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_DATE_FORMAT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATETIME_FORMAT = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
 
 _REQUIRED_ROLES = frozenset(
     {
@@ -1368,7 +1372,7 @@ def _is_positive_semidefinite(
             )
             if pivot < -tolerance:
                 return False
-            if abs(pivot) <= tolerance:
+            if pivot <= 0:
                 diagonal[column] = Decimal("0")
                 for row in range(column + 1, size):
                     residual = matrix[row][column] - sum(
@@ -1705,6 +1709,12 @@ def _validate_sensitivity(
             _profile_decimal(item, f"{ref}.values[{item_index}]")
             for item_index, item in enumerate(values)
         ]
+        if operation == "multiply" and any(value < 0 for value in parsed_values):
+            raise FinanceContractError(
+                "FIN2_SCENARIO_MULTIPLIER_NEGATIVE",
+                f"{ref}.values",
+                "sensitivity multipliers must be non-negative",
+            )
         if len(set(parsed_values)) != len(parsed_values):
             raise FinanceContractError(
                 "FIN2_PROFILE_AXIS_VALUES",
@@ -1746,7 +1756,13 @@ def _validate_sensitivity(
                 f"{ref}.operation",
                 "unsupported operation",
             )
-        _profile_decimal(row["value"], f"{ref}.value")
+        parsed_value = _profile_decimal(row["value"], f"{ref}.value")
+        if operation == "multiply" and parsed_value < 0:
+            raise FinanceContractError(
+                "FIN2_SCENARIO_MULTIPLIER_NEGATIVE",
+                f"{ref}.value",
+                "sensitivity multiplier must be non-negative",
+            )
         _validate_lineage(row["lineage"], f"{ref}.lineage")
     _validate_unique_metrics(
         document["metric_ids"],
@@ -2201,11 +2217,11 @@ def _currency(value: Any, field_ref: str) -> str:
 
 
 def _date(value: Any, field_ref: str) -> date:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _DATE_FORMAT.fullmatch(value) is None:
         raise FinanceContractError(
             "FIN2_PROFILE_DATE",
             field_ref,
-            "date must be ISO-8601 text",
+            "date must be ISO-8601 YYYY-MM-DD",
         )
     try:
         return date.fromisoformat(value)
@@ -2218,11 +2234,11 @@ def _date(value: Any, field_ref: str) -> date:
 
 
 def _datetime(value: Any, field_ref: str) -> datetime:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _DATETIME_FORMAT.fullmatch(value) is None:
         raise FinanceContractError(
             "FIN2_PROFILE_DATETIME",
             field_ref,
-            "timestamp must be ISO-8601 text",
+            "timestamp must be RFC-3339 with uppercase T and timezone",
         )
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
