@@ -45,9 +45,33 @@ def serialize_finance_result(
         for evaluation in scenario_evaluations
         for blocker in evaluation.blockers
     ]
+    legacy_scenario_blockers = (
+        [
+            {
+                "code": "FIN2_LEGACY_SCENARIO_PROJECTION_NOT_READY",
+                "severity": "high",
+                "field_ref": "$.legacy_projection",
+                "message_ar": (
+                    "لا يتاح إسقاط v1 عند طلب سيناريو غير baseline "
+                    "حتى يكتمل إسقاط السيناريو واختبار تطابقه."
+                ),
+            }
+        ]
+        if include_legacy_projection
+        and any(
+            evaluation.kind != "baseline"
+            for evaluation in scenario_evaluations
+        )
+        else []
+    )
+    result_blockers = [
+        *model.blockers,
+        *scenario_blockers,
+        *legacy_scenario_blockers,
+    ]
     result_status = (
         "not_ready"
-        if model.status == "ready" and scenario_blockers
+        if model.status == "ready" and result_blockers
         else model.status
     )
 
@@ -207,12 +231,13 @@ def serialize_finance_result(
             **lineage,
             "formula_registry_version": ENGINE_VERSION,
         },
-        "blockers": [*model.blockers, *scenario_blockers],
+        "blockers": result_blockers,
         "legacy_projection": (
             _legacy_projection(
                 model, document, lineage, money_scale, ratio_scale
             )
             if include_legacy_projection
+            and not legacy_scenario_blockers
             else {
                 "schema_version": "finance.result.v1-compatible",
                 "status": "not_available",
