@@ -599,6 +599,38 @@ def test_calibration_cannot_be_future_or_historical_with_zero_sample() -> None:
 
 
 @pytest.mark.parametrize(
+    ("mutation", "code"),
+    [
+        (
+            lambda document: document["metadata"].__setitem__(
+                "effective_from", "20260801"
+            ),
+            "FIN2_PROFILE_DATE",
+        ),
+        (
+            lambda document: document["variables"][0]["calibration"].__setitem__(
+                "period_from", "2026-W31-5"
+            ),
+            "FIN2_PROFILE_DATE",
+        ),
+        (
+            lambda document: document["review"]["approvals"][0].__setitem__(
+                "reviewed_at", "2026-08-01 10:00:00+03:00"
+            ),
+            "FIN2_PROFILE_DATETIME",
+        ),
+    ],
+)
+def test_authoritative_dates_use_canonical_contract_formats(
+    mutation: Callable[[dict], None],
+    code: str,
+) -> None:
+    document = distribution_profile()
+    mutation(document)
+    _assert_rejected(document, code)
+
+
+@pytest.mark.parametrize(
     "rho",
     ["-0.5", "0", "0.25", "0.99"],
 )
@@ -611,6 +643,18 @@ def test_psd_validator_accepts_governed_equicorrelation_boundary(
         ["1", rho, rho],
         [rho, "1", rho],
         [rho, rho, "1"],
+    ]
+
+    assert _admit(_finalize(document)).kind == "correlation"
+
+
+def test_psd_validator_preserves_small_positive_pivots() -> None:
+    document = correlation_profile()
+    document["variable_ids"] = ["var_a", "var_b", "var_c"]
+    document["matrix"] = [
+        ["1", "0.9999995", "0"],
+        ["0.9999995", "1", "0.0005"],
+        ["0", "0.0005", "1"],
     ]
 
     assert _admit(_finalize(document)).kind == "correlation"
@@ -736,6 +780,18 @@ def test_empty_lineage_never_admits_an_authoritative_value() -> None:
     }
 
     _assert_rejected(document, "FIN2_PROFILE_LINEAGE_EMPTY")
+
+
+def test_sensitivity_multiply_operations_reject_negative_values() -> None:
+    axis = sensitivity_profile()
+    axis["axes"][1]["values"] = ["-0.8", "1", "1.2"]
+    _assert_rejected(axis, "FIN2_SCENARIO_MULTIPLIER_NEGATIVE")
+
+    fixed = sensitivity_profile()
+    fixed["fixed_overrides"][0].update(
+        {"operation": "multiply", "value": "-0.1"}
+    )
+    _assert_rejected(fixed, "FIN2_SCENARIO_MULTIPLIER_NEGATIVE")
 
 
 def test_sensitivity_axes_targets_and_cell_budget_are_governed() -> None:
