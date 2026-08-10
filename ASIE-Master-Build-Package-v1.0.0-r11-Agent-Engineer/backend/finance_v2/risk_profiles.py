@@ -173,6 +173,7 @@ class ResolvedRiskProfileBinding:
     approved_manifest_id: str
     approved_manifest_hash: str
     policy_ref: str
+    as_of_date: str
     manifest_profiles: tuple[ManifestProfileBinding, ...] = ()
     authorized_reviewers: tuple[tuple[str, str], ...] = ()
     evidence_refs: tuple[str, ...] = ()

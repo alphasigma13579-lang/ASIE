@@ -305,6 +305,7 @@ def _binding(
         approved_manifest_id="manifest:approved",
         approved_manifest_hash=H_MANIFEST,
         policy_ref=policy_ref,
+        as_of_date="2026-08-10",
         manifest_profiles=manifest_profiles,
         authorized_reviewers=REVIEWERS,
         evidence_refs=EVIDENCE_REFS,
