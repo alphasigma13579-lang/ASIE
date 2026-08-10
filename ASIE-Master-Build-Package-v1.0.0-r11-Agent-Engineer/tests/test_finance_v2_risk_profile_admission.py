@@ -285,6 +285,20 @@ def _binding(
             content_hash=policy_hash,
         )
         manifest_profiles = (current, policy)
+        if document["schema_version"] == (
+            "finance-simulation-correlation-profile.v1"
+        ):
+            manifest_profiles = (
+                *manifest_profiles,
+                ManifestProfileBinding(
+                    schema_version=(
+                        "finance-simulation-distribution-profile.v1"
+                    ),
+                    profile_id="fdp_default",
+                    version="1.0.0",
+                    content_hash=H_DISTRIBUTION,
+                ),
+            )
     dependencies: tuple[tuple[str, str], ...]
     if document["schema_version"] in {
         "finance-simulation-distribution-profile.v1",
@@ -697,6 +711,24 @@ def test_correlation_dependency_hash_is_bound_to_registry_resolution() -> None:
     document["distribution_profile_hash"] = "sha256:" + "f" * 64
 
     _assert_rejected(document, "FIN2_PROFILE_DEPENDENCY_UNBOUND")
+
+
+def test_correlation_distribution_is_pinned_by_approved_manifest() -> None:
+    document = correlation_profile()
+
+    _assert_rejected(
+        document,
+        "FIN2_PROFILE_DEPENDENCY_MANIFEST_UNBOUND",
+        binding_transform=lambda binding: replace(
+            binding,
+            manifest_profiles=tuple(
+                item
+                for item in binding.manifest_profiles
+                if item.schema_version
+                != "finance-simulation-distribution-profile.v1"
+            ),
+        ),
+    )
 
 
 def test_correlation_variables_match_resolved_distribution_exactly() -> None:
