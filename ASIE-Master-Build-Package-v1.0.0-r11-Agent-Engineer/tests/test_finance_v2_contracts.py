@@ -323,3 +323,84 @@ def test_debt_grace_must_be_less_than_tenor() -> None:
     with pytest.raises(FinanceContractError) as error:
         validate_finance_input(document, binding=binding())
     assert error.value.code == "FIN2_DEBT_GRACE"
+
+
+def test_scenario_kind_contracts_fail_closed() -> None:
+    target = "$.revenue_streams[rev-primary].volume_series[*].value"
+
+    baseline_override = valid_document()
+    baseline_override["scenarios"][0]["overrides"] = [
+        {"target_ref": target, "operation": "multiply", "value": "0.9"}
+    ]
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(baseline_override, binding=binding())
+    assert error.value.code == "FIN2_BASELINE_OVERRIDE"
+
+    deterministic_empty = valid_document()
+    deterministic_empty["scenarios"].append(
+        {"scenario_id": "scn_down", "kind": "deterministic", "overrides": []}
+    )
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(deterministic_empty, binding=binding())
+    assert error.value.code == "FIN2_SCENARIO_OVERRIDE_REQUIRED"
+
+
+def test_scenario_targets_are_allowlisted_and_unique() -> None:
+    unsupported = valid_document()
+    unsupported["scenarios"].append(
+        {
+            "scenario_id": "scn_down",
+            "kind": "deterministic",
+            "overrides": [
+                {
+                    "target_ref": "$.organization_id",
+                    "operation": "replace",
+                    "value": "1",
+                }
+            ],
+        }
+    )
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(unsupported, binding=binding())
+    assert error.value.code == "FIN2_SCENARIO_TARGET"
+
+    duplicate = valid_document()
+    target = "$.operating_costs[opex-fixed].schedule[*].value"
+    duplicate["scenarios"].append(
+        {
+            "scenario_id": "scn_up",
+            "kind": "deterministic",
+            "overrides": [
+                {"target_ref": target, "operation": "multiply", "value": "1.1"},
+                {"target_ref": target, "operation": "add", "value": "10"},
+            ],
+        }
+    )
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(duplicate, binding=binding())
+    assert error.value.code == "FIN2_SCENARIO_TARGET_DUPLICATE"
+
+
+def test_simulation_contract_does_not_accept_manual_overrides() -> None:
+    document = valid_document()
+    document["scenarios"].append(
+        {
+            "scenario_id": "scn_mc",
+            "kind": "simulation",
+            "overrides": [
+                {
+                    "target_ref": "$.working_capital.dso_days",
+                    "operation": "replace",
+                    "value": "30",
+                }
+            ],
+            "simulation": {
+                "seed": 7,
+                "iterations": 100,
+                "distribution_profile_ref": "dist-reviewed-v1",
+            },
+        }
+    )
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(document, binding=binding())
+    assert error.value.code == "FIN2_SIMULATION_OVERRIDE"
