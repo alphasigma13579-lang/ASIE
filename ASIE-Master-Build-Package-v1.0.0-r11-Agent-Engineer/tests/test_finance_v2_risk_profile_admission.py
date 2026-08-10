@@ -269,14 +269,18 @@ def _binding(
     )
     if document["schema_version"] == "finance-simulation-policy.v1":
         policy_ref = identifier
+        policy_version = document["version"]
+        policy_hash = document["content_hash"]
         manifest_profiles = (current,)
     else:
         policy_ref = "fsp_default"
+        policy_version = "1.0.0"
+        policy_hash = H_POLICY
         policy = ManifestProfileBinding(
             schema_version="finance-simulation-policy.v1",
             profile_id=policy_ref,
-            version="1.0.0",
-            content_hash=H_POLICY,
+            version=policy_version,
+            content_hash=policy_hash,
         )
         manifest_profiles = (current, policy)
     dependencies: tuple[tuple[str, str], ...]
@@ -293,6 +297,12 @@ def _binding(
         )
     else:
         dependencies = ()
+    distribution_variable_ids = (
+        ("var_price", "var_volume")
+        if document["schema_version"]
+        == "finance-simulation-correlation-profile.v1"
+        else ()
+    )
     return ResolvedRiskProfileBinding(
         expected_schema_version=document["schema_version"],
         expected_profile_id=identifier,
@@ -305,10 +315,13 @@ def _binding(
         approved_manifest_id="manifest:approved",
         approved_manifest_hash=H_MANIFEST,
         policy_ref=policy_ref,
+        policy_version=policy_version,
+        policy_hash=policy_hash,
         as_of_date="2026-08-10",
         manifest_profiles=manifest_profiles,
         authorized_reviewers=REVIEWERS,
         evidence_refs=EVIDENCE_REFS,
+        distribution_variable_ids=distribution_variable_ids,
         dependency_hashes=dependencies,
         authoritative=authoritative,
         allow_global=allow_global,
@@ -361,6 +374,8 @@ def test_all_four_authoritative_profiles_admit_but_never_execute(
     assert result.content_hash == document["content_hash"]
     assert result.registry_snapshot_hash == H_REGISTRY
     assert result.approved_manifest_id == "manifest:approved"
+    assert result.policy_version == "1.0.0"
+    assert result.policy_hash in {H_POLICY, document["content_hash"]}
     assert result.scope_kind == "organization"
     assert result.execution_ready is False
     assert result.thaw() == document
@@ -634,6 +649,19 @@ def test_correlation_dependency_hash_is_bound_to_registry_resolution() -> None:
     document["distribution_profile_hash"] = "sha256:" + "f" * 64
 
     _assert_rejected(document, "FIN2_PROFILE_DEPENDENCY_UNBOUND")
+
+
+def test_correlation_variables_match_resolved_distribution_exactly() -> None:
+    document = correlation_profile()
+
+    _assert_rejected(
+        document,
+        "FIN2_PROFILE_DEPENDENCY_VARIABLES",
+        binding_transform=lambda binding: replace(
+            binding,
+            distribution_variable_ids=("var_price", "var_other"),
+        ),
+    )
 
 
 @pytest.mark.parametrize(

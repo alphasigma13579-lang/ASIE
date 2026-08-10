@@ -173,10 +173,13 @@ class ResolvedRiskProfileBinding:
     approved_manifest_id: str
     approved_manifest_hash: str
     policy_ref: str
+    policy_version: str
+    policy_hash: str
     as_of_date: str
     manifest_profiles: tuple[ManifestProfileBinding, ...] = ()
     authorized_reviewers: tuple[tuple[str, str], ...] = ()
     evidence_refs: tuple[str, ...] = ()
+    distribution_variable_ids: tuple[str, ...] = ()
     dependency_hashes: tuple[tuple[str, str], ...] = ()
     authoritative: bool = False
     allow_global: bool = False
@@ -195,6 +198,8 @@ class ValidatedRiskProfile:
     approved_manifest_id: str
     approved_manifest_hash: str
     policy_ref: str
+    policy_version: str
+    policy_hash: str
     canonical_document: str
     execution_ready: bool
 
@@ -349,6 +354,8 @@ def validate_risk_profile(
         approved_manifest_id=binding.approved_manifest_id,
         approved_manifest_hash=binding.approved_manifest_hash,
         policy_ref=binding.policy_ref,
+        policy_version=binding.policy_version,
+        policy_hash=binding.policy_hash,
         canonical_document=canonical,
         execution_ready=False,
     )
@@ -401,6 +408,7 @@ def _validate_binding(binding: ResolvedRiskProfileBinding) -> None:
         ("binding.organization_id", binding.organization_id, 120),
         ("binding.approved_manifest_id", binding.approved_manifest_id, 160),
         ("binding.policy_ref", binding.policy_ref, 160),
+        ("binding.policy_version", binding.policy_version, 40),
         ("binding.as_of_date", binding.as_of_date, 10),
     ):
         _text(value, field_ref, maximum=maximum)
@@ -434,6 +442,13 @@ def _validate_binding(binding: ResolvedRiskProfileBinding) -> None:
             "binding.policy_ref",
             "trusted policy ref must be a governed policy identifier",
         )
+    if _VERSION.fullmatch(binding.policy_version) is None:
+        raise FinanceContractError(
+            "FIN2_PROFILE_POLICY_BINDING",
+            "binding.policy_version",
+            "trusted policy version must be semantic x.y.z",
+        )
+    _hash(binding.policy_hash, "binding.policy_hash")
     _date(binding.as_of_date, "binding.as_of_date")
     if type(binding.authoritative) is not bool:
         raise FinanceContractError(
@@ -457,6 +472,11 @@ def _validate_binding(binding: ResolvedRiskProfileBinding) -> None:
         ("manifest_profiles", binding.manifest_profiles, 100),
         ("authorized_reviewers", binding.authorized_reviewers, 5),
         ("evidence_refs", binding.evidence_refs, 100),
+        (
+            "distribution_variable_ids",
+            binding.distribution_variable_ids,
+            50,
+        ),
         ("dependency_hashes", binding.dependency_hashes, 100),
     ):
         if not isinstance(items, tuple) or len(items) > maximum:
@@ -548,10 +568,14 @@ def _validate_binding(binding: ResolvedRiskProfileBinding) -> None:
             "binding.manifest_profiles",
             "authoritative admission requires approved manifest bindings",
         )
-    if binding.authoritative and not any(
-        schema_version == "finance-simulation-policy.v1"
-        and profile_id == binding.policy_ref
-        for schema_version, profile_id, _, _ in manifest_seen
+    if binding.authoritative and (
+        (
+            "finance-simulation-policy.v1",
+            binding.policy_ref,
+            binding.policy_version,
+            binding.policy_hash,
+        )
+        not in manifest_seen
     ):
         raise FinanceContractError(
             "FIN2_PROFILE_POLICY_UNBOUND",
@@ -601,6 +625,44 @@ def _validate_binding(binding: ResolvedRiskProfileBinding) -> None:
                 "duplicate trusted evidence reference",
             )
         evidence_seen.add(evidence)
+
+    parsed_distribution_variables = tuple(
+        _text(
+            item,
+            f"binding.distribution_variable_ids[{index}]",
+            maximum=84,
+        )
+        for index, item in enumerate(binding.distribution_variable_ids)
+    )
+    if (
+        len(set(parsed_distribution_variables))
+        != len(parsed_distribution_variables)
+        or any(
+            _VARIABLE_ID.fullmatch(item) is None
+            for item in parsed_distribution_variables
+        )
+    ):
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_VARIABLES",
+            "binding.distribution_variable_ids",
+            "distribution variable ids must be unique and governed",
+        )
+    expects_distribution_variables = (
+        binding.expected_schema_version
+        == "finance-simulation-correlation-profile.v1"
+    )
+    if expects_distribution_variables and len(parsed_distribution_variables) < 2:
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_VARIABLES",
+            "binding.distribution_variable_ids",
+            "correlation admission requires resolved distribution variables",
+        )
+    if not expects_distribution_variables and parsed_distribution_variables:
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_VARIABLES",
+            "binding.distribution_variable_ids",
+            "distribution variables are only valid for correlation admission",
+        )
 
     dependency_seen: set[str] = set()
     for index, item in enumerate(binding.dependency_hashes):
@@ -1161,6 +1223,12 @@ def _validate_correlation(
             "FIN2_PROFILE_VARIABLE_ID",
             "$.variable_ids",
             "variable ids must be unique and valid",
+        )
+    if set(variable_ids) != set(binding.distribution_variable_ids):
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_VARIABLES",
+            "$.variable_ids",
+            "correlation variables do not match the resolved distribution",
         )
     policy = _mapping(
         document["validation_policy"],

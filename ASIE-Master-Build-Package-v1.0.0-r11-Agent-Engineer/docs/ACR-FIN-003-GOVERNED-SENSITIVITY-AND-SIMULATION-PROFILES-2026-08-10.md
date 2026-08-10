@@ -145,7 +145,7 @@ Approved Manifest
 
 - يبقى ملف الـprofile ثابتًا؛ لا يُضمّن `registry_snapshot_hash` أو tenant authority أو Approved Manifest داخله، لأن تضمين hash السجل داخل ملف يحسب السجل hash له يخلق اعتمادًا دائريًا ويكسر قابلية إعادة الإنتاج.
 - ينشئ الخادم فقط `ResolvedRiskProfileBinding` بعد حل السجل والـApproved Manifest في سياق المستأجر الموثوق.
-- يثبت العقد الخارجي: schema/id/version/content_hash، registry snapshot، scope/owner، organization، Approved Manifest id/hash، policy ref، exact manifest profile tuples، reviewer identities، evidence refs، dependency hashes، وas-of date.
+- يثبت العقد الخارجي: schema/id/version/content_hash، registry snapshot، scope/owner، organization، Approved Manifest id/hash، policy ref/version/hash، exact manifest profile tuples، resolved distribution variable IDs، reviewer identities، evidence refs، dependency hashes، وas-of date.
 - القبول authoritative يتطلب عضوية tuple الدقيقة للـprofile والـpolicy داخل الـApproved Manifest، وتطابق tenant/global scope، وربط هوية كل مراجع ودليله.
 - `ValidatedRiskProfile` الناتج يحمل `execution_ready=False` دائمًا في C3B؛ طلب الجاهزية التنفيذية يفشل بـ`FIN2_PROFILE_ENGINE_NOT_READY`.
 - `admit_risk_profile` هو مسار القبول authoritative؛ أما التحقق غير authoritative فمسموح فقط لملفات draft/test غير المختومة ولا يعطي جاهزية تنفيذ.

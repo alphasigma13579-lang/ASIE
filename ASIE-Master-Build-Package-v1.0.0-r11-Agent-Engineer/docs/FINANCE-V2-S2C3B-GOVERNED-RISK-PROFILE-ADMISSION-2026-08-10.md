@@ -29,11 +29,11 @@ Registry and authorization facts are deliberately external to the profile body:
 - request organization;
 - registry entry scope and owner;
 - Approved Manifest ID/hash;
-- selected policy ref;
+- selected policy ref, version and content hash;
 - exact manifest profile tuples;
 - authorized reviewer identities;
 - trusted evidence refs;
-- dependency refs/hashes;
+- dependency refs/hashes and resolved distribution variable IDs;
 - trusted as-of date.
 
 These facts are represented by the server-created `ResolvedRiskProfileBinding`. They are not accepted from a client profile body. Keeping `registry_snapshot_hash` outside the profile avoids a circular dependency between the profile hash and the registry snapshot hash.
@@ -68,13 +68,14 @@ Authoritative admission requires all of the following:
 
 - the resolved schema, ID, version and content hash equal the trusted registry tuple;
 - the exact tuple is present in `manifest_profiles`;
-- the selected `policy_ref` is itself pinned in that Approved Manifest;
+- the selected policy ref+version+hash tuple is itself pinned in that Approved Manifest;
 - an organization-scoped registry entry has an owner equal to the trusted request organization;
 - a global entry has no organization owner and requires explicit `allow_global=True`;
 - reviewer roles map to distinct trusted reviewer identities;
 - every approval evidence ref belongs to the trusted evidence set;
 - approval timestamps are not before profile creation or after the trusted as-of date;
-- correlation and archetype dependencies match trusted dependency hashes.
+- correlation and archetype dependencies match trusted dependency hashes;
+- correlation variable IDs equal the resolved distribution variable set.
 
 The binding uses immutable tuples with governed cardinality caps. An authoritative profile must have status `approved`. Draft and intermediate statuses are usable only through the non-admission validation path and remain non-executable.
 
@@ -94,7 +95,7 @@ The binding uses immutable tuples with governed cardinality caps. An authoritati
 
 ### Correlation
 
-- distribution dependency bound by ref+hash;
+- distribution dependency bound by ref+hash and exact resolved variable set;
 - 2..50 unique governed variable IDs;
 - exact square dimensions;
 - coefficient range `[-1,1]`;
@@ -128,14 +129,14 @@ The PSD check is `O(n^3)` time and `O(n^2)` space, with `n <= 50`.
 | Threat/failure | Control | Required evidence |
 |---|---|---|
 | client profile substitution | canonical hash + exact trusted tuple | hash/ref substitution negatives |
-| unapproved manifest selection | exact manifest membership + selected policy membership | missing profile/policy negatives |
+| unapproved manifest selection | exact profile and policy ref+version+hash membership | missing profile/policy negatives |
 | cross-tenant registry entry | server-bound scope/owner comparison | organization/global negatives |
 | forged reviewer or evidence | role→identity and evidence allowlists | forged identity/evidence negatives |
 | future/stale governance record | created/review/as-of and calibration ordering | future review/calibration negatives |
 | unbounded object | pre-hash depth/node/text/cardinality limits | float/depth/malformed-type negatives |
 | overlapping financial target | parsed target overlap rejection | wildcard/month and fixed-target negatives |
 | invalid probability model | bounds/sigma/probability invariants | probability/sigma negatives |
-| invalid correlation | range/symmetry/diagonal/PSD checks | singular-boundary and non-PSD tests |
+| invalid correlation | dependency-variable equality + range/symmetry/diagonal/PSD | mismatch, singular-boundary and non-PSD tests |
 | ineffective convergence policy | batch/tolerance/metric consistency | impossible/zero/missing-output negatives |
 | premature engine use | hard `execution_ready=False` | engine-not-ready test |
 
