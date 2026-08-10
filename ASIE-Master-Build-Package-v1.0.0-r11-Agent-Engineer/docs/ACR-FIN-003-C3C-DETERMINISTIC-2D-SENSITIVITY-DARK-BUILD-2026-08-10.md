@@ -93,15 +93,18 @@ Server-owned ValidatedFinanceInput
 يجب أن تفشل C3C مغلقًا ما لم تتحقق جميع الشروط:
 
 - المدخل `ValidatedFinanceInput` صالح ومربوط بخادم، و`input_hash` مطابق لوثيقته canonical.
-- profile هو `ValidatedRiskProfile` من النوع `sensitivity` وبحالة `approved`.
-- لأن C3B يمنع `approved` في non-authoritative mode، فحالة `approved` تعني اجتياز مسار registry admission.
+- profile هو `ValidatedRiskProfile` من النوع `sensitivity` وبحالة `approved`، لكن الحالة وحدها **ليست** سلطة تنفيذ.
+- يستقبل preparation عقدًا خادميًا جديدًا immutable باسم `SensitivityExecutionBinding` لا يأتي من العميل، ويحمل: `authoritative_admission=true`، `organization_id`، profile schema/id/version/hash، registry snapshot hash، owner/scope، Approved Manifest id/hash، policy ref/version/hash، finance input hash، archetype id/version/hash، currency، و`execution_scope=dark_sensitivity_v1`.
+- يعاد التحقق من أن عقد التنفيذ يطابق `ResolvedRiskProfileBinding` الذي استُخدم في القبول، وأن profile tuple وManifest/policy/registry/organization/owner متطابقة؛ لا يستنتج provenance من `status="approved"` ولا من كائن `ValidatedRiskProfile` قابل للإنشاء مباشرة.
+- يطابق `organization_id` وApproved Manifest id/hash وpolicy ref في عقد التنفيذ مع `ValidatedFinanceInput.thaw()` وmetadata المالية؛ أي profile مقبول لمستأجر أو Manifest آخر يرفض قبل أول build.
+- يطابق profile `currency` مع `ValidatedFinanceInput.currency`، ويطابق `archetype_ref` كاملًا (`archetype_id`, `version`, `registry_hash`) مع archetype المدخل المالي.
 - schema/id/version/hash وregistry/manifest/policy/dependency hashes تبقى في lineage النتيجة.
 - profile document يعاد thaw دون تعديل ويطابق `content_hash`.
 - عدد الخلايا الفعلي يساوي حاصل طولي المحورين، ولا يتجاوز `maximum_cells` أو hard cap `441`.
 - metric IDs كلها موجودة في FinancialModel؛ metric مفقود blocker وليس null/zero.
 - لا يقبل C3C distribution/correlation/policy profile.
 
-`execution_ready=False` في C3B لا يتحول إلى `True`. ينشئ C3C نوعًا داخليًا منفصلًا `PreparedSensitivityRun` يحمل `execution_scope="dark_sensitivity_v1"` و`runtime_eligible=False`.
+`execution_ready=False` في C3B لا يتحول إلى `True`. ينشئ C3C `PreparedSensitivityRun` فقط بعد التحقق من `SensitivityExecutionBinding` الموثوق، ويحمل `execution_scope="dark_sensitivity_v1"` و`runtime_eligible=False`. لا يكفي تمرير profile/result بمفرده.
 
 ---
 
@@ -111,6 +114,8 @@ Server-owned ValidatedFinanceInput
 
 - `schema_version`
 - `sensitivity_engine_version`
+- `finance_engine_version` المطابق لإصدار `build_financial_model`/Finance v2 المستخدم لكل خلية
+- `canonicalization_policy = finance-v2-canonical-json.v1`
 - `status ∈ {dark_ready, not_ready}`
 - `execution_scope = dark_build`
 - `snapshot_eligible = false`
@@ -123,6 +128,8 @@ Server-owned ValidatedFinanceInput
 - row-major cells
 - blockers
 - canonical `result_hash`
+
+يحسب `result_hash` حصريًا كالتالي: يبنى مستند النتيجة المنطقي كاملًا، يُحذف منه حقل `result_hash` نفسه فقط، ثم يمرر إلى `canonical_sha256` بسياسة `finance-v2-canonical-json.v1`. لا يحذف أي حقل آخر، ولا يقبل serializer أو ترتيب بديل. تضمين `finance_engine_version` في preimage إلزامي.
 
 كل خلية ready تحتوي:
 
@@ -196,12 +203,14 @@ Server-owned ValidatedFinanceInput
 
 - الزمن: `O(K × FinanceModel(P))`؛ لا ادعاء `O(1)` غير واقعي.
 - ذاكرة نتيجة C3C: `O(K×M)`، مع نموذج خلية واحد حي في كل لحظة.
-- عدد build calls يجب أن يساوي `K` بالضبط؛ لا إعادة بناء خفية.
+- في التشغيل الناجح بالكامل يجب أن يساوي عدد build calls `K` بالضبط؛ لا إعادة بناء خفية.
+- في مسار الفشل يتوقف التنفيذ عند أول فشل: إذا فشل override/revalidation قبل build فلا يحسب build للخلية الحالية، وإذا عاد model غير ready يحسب build الحالي ثم يتوقف؛ لا يشترط `K` ولا يسمح بمتابعة الخلايا اللاحقة.
 - لا parallelism في C3C؛ الترتيب التسلسلي جزء من الحتمية ومنع resource spikes.
 - لا cache عالمي أو بين tenants.
 - اختبار 21×21 يثبت الحد والذاكرة المنطقية وعدم الاحتفاظ بالنماذج.
-- benchmark منفصل يسجل p50/p95 والبيئة؛ لا توضع عتبة زمنية عمياء قبل أول قياس.
-- لا يدمج PR التنفيذ إذا أظهر القياس تضخمًا غير محدود أو تجاوزًا غير مبرر مقارنة ببناء `K` نماذج منفردة.
+- يبدأ PR التنفيذ كمسودة ويقيس 21×21 على runner مرجعي موثق بعد warm-up، ويسجل p50/p95 وpeak RSS ونسخة Python/OS و`K/P/M`.
+- قبل تحويل PR التنفيذ إلى ready، تنشر وثيقة evidence أرقام baseline وتثبت سقفين رقميين: `runtime_ceiling = min(60s, max(5s, 1.50 × measured_p95))` و`memory_ceiling = min(256 MiB, max(64 MiB, 1.25 × measured_peak_RSS))`.
+- يجب أن تعتمد مراجعة exact-head هذه الأرقام، ثم يشغل gate آلي 21×21 ويفشل إذا تجاوز أي سقف. إذا تجاوز baseline نفسه hard cap (60s أو 256 MiB)، فالقرار Stop-the-Line ولا يخفف السقف لإغلاق الاختبار.
 
 ---
 
@@ -243,18 +252,21 @@ Server-owned ValidatedFinanceInput
 | T-C3C-004 | fixed override parity | يطبق في كل خلية مرة واحدة |
 | T-C3C-005 | input immutability | baseline/profile bytes لا تتغير |
 | T-C3C-006 | repeatability | نفس المدخل/profile يعطي result hash والبايتات نفسها |
-| T-C3C-007 | max 21×21 | 441 build calls، 441 cells، لا model retention |
+| T-C3C-007 | max 21×21 | التشغيل الناجح: 441 build calls و441 cells ولا model retention |
 | T-C3C-008 | atomic invalid cell | not_ready وcells فارغة وblocker محدد |
 | T-C3C-009 | model invariant failure | not_ready بلا partial metrics |
 | T-C3C-010 | unavailable metric | fail closed؛ لا null/zero مخترع |
 | T-C3C-011 | wrong profile kind/status | رفض قبل أول build |
 | T-C3C-012 | tampered profile hash/body | رفض قبل أول build |
+| T-C3C-012A | forged/cross-tenant admission provenance | organization/owner/registry/Manifest/policy mismatch يرفض قبل أول build |
+| T-C3C-012B | currency/archetype mismatch | اختلاف currency أو أي جزء من archetype tuple يرفض قبل أول build |
 | T-C3C-013 | scenario regression | مخرجات deterministic scenarios الحالية لا تتغير |
 | T-C3C-014 | schema closure | additionalProperties=false، required/enum/hash formats |
-| T-C3C-015 | cross-platform canonical result | logical bytes/hash متطابقة |
+| T-C3C-015 | cross-platform canonical result | logical bytes/hash متطابقة، وhash يستبعد `result_hash` فقط ويضم إصداري Finance/sensitivity |
 | T-C3C-016 | protected blobs | hashes مطابقة لـmain قبل وبعد |
 | T-C3C-017 | import boundary | لا Runtime/Snapshot/network/provider imports |
-| T-C3C-018 | benchmark evidence | p50/p95، runner، K/P، peak logical retention مسجلة |
+| T-C3C-018 | benchmark evidence | p50/p95 وpeak RSS والبيئة مسجلة؛ السقفان الرقميان معتمدان والـgate يمر تحتهما |
+| T-C3C-019 | failure call count | توقف أولي صحيح قبل/بعد build ولا متابعة حتى K |
 
 يلزم أيضًا baseline suite كاملة وASIE CI وCross-Platform على exact head.
 
@@ -264,7 +276,8 @@ Server-owned ValidatedFinanceInput
 
 | الخطر | الضبط | الدليل |
 |---|---|---|
-| forged/non-admitted profile | approved lifecycle only via C3B authoritative admission + hash recheck | wrong-mode/tamper negatives |
+| forged/non-admitted/cross-tenant profile | trusted `SensitivityExecutionBinding` + exact organization/owner/registry/Manifest/policy/profile/input equality | wrong-mode/tamper/cross-tenant negatives |
+| currency/archetype semantic mismatch | exact currency and archetype id/version/hash equality before preparation | mismatch negatives |
 | target injection | shared parsed allowlist kernel؛ لا raw expression | malformed target tests |
 | cross-tenant cache leak | لا cache ولا persistence ولا runtime | import/state inspection |
 | partial grid consumed | atomic empty-cells failure | invalid-cell/invariant tests |
@@ -289,7 +302,7 @@ Server-owned ValidatedFinanceInput
 
 - جميع T-C3C تمر.
 - baseline suite وCross-Platform تمر.
-- benchmark evidence منشورة.
+- benchmark evidence منشورة، والسقفان الرقميان معتمدان في exact-head review والـgate الآلي يمر تحتهما.
 - no unresolved review threads.
 - الملفات المحمية مطابقة.
 
