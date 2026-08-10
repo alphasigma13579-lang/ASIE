@@ -592,7 +592,10 @@
         "additionalProperties": false,
         "required": [
           "scenario_id",
+          "kind",
           "status",
+          "input_hash",
+          "override_refs",
           "metrics"
         ],
         "properties": {
@@ -609,7 +612,7 @@
             ]
           },
           "metrics": {
-            "type": "object"
+            "$ref": "#/properties/metrics"
           },
           "simulation_summary": {
             "type": "object",
@@ -631,8 +634,70 @@
                 "type": "object"
               }
             }
+          },
+          "kind": {
+            "enum": [
+              "baseline",
+              "deterministic",
+              "simulation"
+            ]
+          },
+          "input_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "override_refs": {
+            "type": "array",
+            "maxItems": 200,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "simulation"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "simulation_summary"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "baseline",
+                    "deterministic"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "simulation_summary"
+                ]
+              }
+            }
+          }
+        ]
       }
     },
     "lineage": {
