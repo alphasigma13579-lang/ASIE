@@ -32,6 +32,9 @@ _DATE_FORMAT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DATETIME_FORMAT = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
+_DISTRIBUTION_PROFILE_REF = re.compile(
+    r"^distribution:(fdp_[A-Za-z0-9_-]{4,100})@([0-9]+\.[0-9]+\.[0-9]+)$"
+)
 
 _REQUIRED_ROLES = frozenset(
     {
@@ -1195,6 +1198,13 @@ def _validate_correlation(
         document["distribution_profile_hash"],
         "$.distribution_profile_hash",
     )
+    dependency_match = _DISTRIBUTION_PROFILE_REF.fullmatch(dependency_ref)
+    if dependency_match is None:
+        raise FinanceContractError(
+            "FIN2_PROFILE_DEPENDENCY_UNBOUND",
+            "$.distribution_profile_ref",
+            "correlation dependency ref must pin distribution id and version",
+        )
     dependencies = dict(binding.dependency_hashes)
     if dependencies.get(dependency_ref) != dependency_hash:
         raise FinanceContractError(
@@ -1202,6 +1212,28 @@ def _validate_correlation(
             "$.distribution_profile_hash",
             "correlation dependency is not bound to trusted resolution",
         )
+    if binding.authoritative:
+        dependency_manifest_key = (
+            "finance-simulation-distribution-profile.v1",
+            dependency_match.group(1),
+            dependency_match.group(2),
+            dependency_hash,
+        )
+        manifest_keys = {
+            (
+                item.schema_version,
+                item.profile_id,
+                item.version,
+                item.content_hash,
+            )
+            for item in binding.manifest_profiles
+        }
+        if dependency_manifest_key not in manifest_keys:
+            raise FinanceContractError(
+                "FIN2_PROFILE_DEPENDENCY_MANIFEST_UNBOUND",
+                "$.distribution_profile_ref",
+                "correlation distribution is not pinned by the approved manifest",
+            )
     method = _text(document["method"], "$.method", maximum=40)
     if method not in {
         "pearson_gaussian_copula",
