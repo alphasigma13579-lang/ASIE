@@ -404,3 +404,35 @@ def test_simulation_contract_does_not_accept_manual_overrides() -> None:
     with pytest.raises(FinanceContractError) as error:
         validate_finance_input(document, binding=binding())
     assert error.value.code == "FIN2_SIMULATION_OVERRIDE"
+
+
+def test_scenario_wildcard_and_period_targets_must_not_overlap() -> None:
+    document = valid_document()
+    document["scenarios"].append(
+        {
+            "scenario_id": "scn_overlap",
+            "kind": "deterministic",
+            "overrides": [
+                {
+                    "target_ref": (
+                        "$.revenue_streams[rev-primary].price_series[*].value"
+                    ),
+                    "operation": "multiply",
+                    "value": "0.9",
+                },
+                {
+                    "target_ref": (
+                        "$.revenue_streams[rev-primary].price_series"
+                        "[2026-01].value"
+                    ),
+                    "operation": "add",
+                    "value": "1",
+                },
+            ],
+        }
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_input(document, binding=binding())
+
+    assert error.value.code == "FIN2_SCENARIO_TARGET_OVERLAP"
