@@ -168,3 +168,23 @@ def test_acr_keeps_engine_and_professional_claims_blocked() -> None:
         "لا تغيّر الحكم",
     ):
         assert token in text
+
+
+def test_approved_profiles_require_all_roles_and_no_rejection() -> None:
+    for path in (DISTRIBUTION, CORRELATION, POLICY, SENSITIVITY):
+        document = load(path)
+        gate = document["allOf"][0]
+        assert gate["if"]["properties"]["status"]["const"] == "approved"
+        approvals = gate["then"]["properties"]["review"]["properties"][
+            "approvals"
+        ]
+        required_roles = gate["then"]["properties"]["review"]["properties"][
+            "required_roles"
+        ]
+
+        assert approvals["minItems"] == 5
+        assert len(approvals["allOf"]) == 5
+        assert approvals["not"]["contains"]["properties"]["status"] == {
+            "const": "rejected"
+        }
+        assert len(required_roles["allOf"]) == 5
