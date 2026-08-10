@@ -360,5 +360,159 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "review": {
+            "properties": {
+              "required_roles": {
+                "allOf": [
+                  {
+                    "contains": {
+                      "const": "finance_reviewer"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "sector_expert"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "quantitative_reviewer"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "qa"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "security"
+                    }
+                  }
+                ]
+              },
+              "approvals": {
+                "minItems": 5,
+                "not": {
+                  "contains": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "const": "rejected"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  }
+                },
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "finance_reviewer"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "sector_expert"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "quantitative_reviewer"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "qa"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "security"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
