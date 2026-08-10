@@ -200,3 +200,39 @@ def test_scenario_json_schemas_expose_governed_contract() -> None:
         "metrics",
     } <= set(scenario_result["required"])
     assert scenario_result["properties"]["metrics"]["$ref"] == "#/properties/metrics"
+
+
+def test_legacy_projection_with_nonbaseline_scenario_fails_closed() -> None:
+    document = valid_document()
+    document["scenarios"].append(
+        {
+            "scenario_id": "scn_down",
+            "kind": "deterministic",
+            "overrides": [
+                {
+                    "target_ref": TARGET,
+                    "operation": "multiply",
+                    "value": "0.9",
+                }
+            ],
+        }
+    )
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+
+    assert output["status"] == "not_ready"
+    assert output["legacy_projection"] == {
+        "schema_version": "finance.result.v1-compatible",
+        "status": "not_available",
+        "derived_from": "finance-result.v2",
+        "payload": {},
+    }
+    assert output["blockers"][-1]["code"] == (
+        "FIN2_LEGACY_SCENARIO_PROJECTION_NOT_READY"
+    )
