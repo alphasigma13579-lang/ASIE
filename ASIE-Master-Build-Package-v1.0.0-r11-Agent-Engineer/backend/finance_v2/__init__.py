@@ -12,6 +12,14 @@ from .contracts import (
 )
 from .model import FinancialModel, FinancialPeriod, InvariantResult
 from .result import ENGINE_VERSION, serialize_finance_result
+from .risk_profiles import (
+    ManifestProfileBinding,
+    ResolvedRiskProfileBinding,
+    ValidatedRiskProfile,
+    admit_risk_profile,
+    profile_content_hash,
+    validate_risk_profile,
+)
 from .serialization import canonical_json, canonical_sha256
 from .statements import build_financial_model
 from .timeline import add_months, monthly_periods, period_from_index, period_index
@@ -22,9 +30,13 @@ __all__ = [
     "FinancialModel",
     "FinancialPeriod",
     "InvariantResult",
+    "ManifestProfileBinding",
+    "ResolvedRiskProfileBinding",
     "ServerBinding",
     "ValidatedFinanceInput",
+    "ValidatedRiskProfile",
     "add_months",
+    "admit_risk_profile",
     "canonical_json",
     "canonical_sha256",
     "build_financial_model",
@@ -32,6 +44,8 @@ __all__ = [
     "parse_decimal",
     "period_from_index",
     "period_index",
+    "profile_content_hash",
     "serialize_finance_result",
     "validate_finance_input",
+    "validate_risk_profile",
 ]

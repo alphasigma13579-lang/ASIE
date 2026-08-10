@@ -9,6 +9,9 @@ SCHEMA_DIR = ROOT / "schemas" / "finance"
 DOC = ROOT / "docs" / (
     "ACR-FIN-003-GOVERNED-SENSITIVITY-AND-SIMULATION-PROFILES-2026-08-10.md"
 )
+C3B_DOC = ROOT / "docs" / (
+    "FINANCE-V2-S2C3B-GOVERNED-RISK-PROFILE-ADMISSION-2026-08-10.md"
+)
 DISTRIBUTION = SCHEMA_DIR / (
     "finance-simulation-distribution-profile.v1.schema.json"
 )
@@ -166,6 +169,9 @@ def test_acr_keeps_engine_and_professional_claims_blocked() -> None:
         "Quantitative Reviewer",
         "لا محاكاة إنتاجية",
         "لا تغيّر الحكم",
+        "ResolvedRiskProfileBinding",
+        "registry_snapshot_hash",
+        "FIN2_PROFILE_ENGINE_NOT_READY",
     ):
         assert token in text
 
@@ -188,3 +194,19 @@ def test_approved_profiles_require_all_roles_and_no_rejection() -> None:
             "const": "rejected"
         }
         assert len(required_roles["allOf"]) == 5
+
+
+def test_c3b_admission_evidence_keeps_registry_and_execution_boundaries() -> None:
+    text = C3B_DOC.read_text(encoding="utf-8")
+
+    for token in (
+        "ResolvedRiskProfileBinding",
+        "registry_snapshot_hash",
+        "Approved Manifest",
+        "execution_ready=False",
+        "FIN2_PROFILE_ENGINE_NOT_READY",
+        "O(n^3)",
+        "cross-tenant",
+        "IMPLEMENTED_AWAITING_EXACT_HEAD_CI_AND_REVIEW",
+    ):
+        assert token in text
