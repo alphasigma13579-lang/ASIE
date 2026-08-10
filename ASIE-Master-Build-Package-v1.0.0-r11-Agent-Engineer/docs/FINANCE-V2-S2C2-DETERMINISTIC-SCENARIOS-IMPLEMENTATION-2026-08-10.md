@@ -53,7 +53,7 @@ ValidatedFinanceInput (immutable canonical document)
 - exactly one baseline، بلا overrides.
 - deterministic يحتوي override واحدًا على الأقل.
 - simulation لا يقبل overrides يدوية.
-- لا يتكرر target داخل السيناريو؛ منعًا للاعتماد على ترتيب العمليات.
+- لا يتكرر target داخل السيناريو، ولا يتداخل wildcard مع شهر محدد على السلسلة نفسها؛ منعًا للاعتماد على ترتيب العمليات.
 - multiplier غير سالب.
 - الحساب Decimal، ويقرب إلى 8 منازل فقط عند تجاوز عقد الإدخال وبـ`ROUND_HALF_EVEN`.
 - المستند المشتق يعاد التحقق منه كاملًا؛ السالب غير المسموح أو علاقة CAPEX غير الصالحة لا تتحول إلى صفر.
