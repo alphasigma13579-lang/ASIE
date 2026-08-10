@@ -3,7 +3,7 @@
 | الحقل | القيمة |
 |---|---|
 | Document ID | `FIN2-S2C2-SCENARIOS-v1.0.0` |
-| الحالة | `IMPLEMENTED — AWAITING EXACT-HEAD CI AND REVIEW` |
+| الحالة | `IMPLEMENTED — CODE TREE VERIFIED; AWAITING MERGE` |
 | المالك | Principal Architecture + Finance Engineering |
 | آخر مراجعة | 2026-08-10 |
 | خط الأساس | `main@4ede962cfc06d18846b421fabfcf8d2e18e8f1d0` |
@@ -83,7 +83,20 @@ ValidatedFinanceInput (immutable canonical document)
 - عند طلب legacy projection مع أي scenario غير baseline، يكون الإسقاط `not_available` والنتيجة `not_ready` حتى يكتمل إسقاط السيناريو وتطابقه؛ لا يعاد baseline فقط باعتباره توافقًا كاملاً.
 - baseline-only input يظل صالحًا، لكن `finance-result.v2.scenarios[]` أصبح يصرح `kind` و`input_hash` و`override_refs`. هذه إضافة داخل عقد v2 الداكن وترافقها زيادة `engine_version` إلى `2.0.0-dark.2`.
 
-## 7. الفجوات المتبقية المانعة
+## 7. أدلة الشريحة المثبتة
+
+| الدليل | النتيجة |
+|---|---|
+| PR | `#132` |
+| رأس شجرة الكود المراجعة | `805b18fc2a7fd0c5d314440e5b1871a1e632ac64` |
+| ASIE CI | `#307` — `762 passed, 10 warnings` |
+| Cross-Platform Determinism | `#153` — success |
+| Independent Codex review | reviewed `805b18fc2a`؛ لا findings ولا review threads مفتوحة |
+| Freeze boundary | الفرق لا يحتوي Finance v1 أو Runtime أو Snapshot أو Freeze |
+
+أي commit تالٍ لهذه الوثيقة يجب أن يبقى documentation-only أو يعيد دورة exact-head CI والمراجعة للكود.
+
+## 8. الفجوات المتبقية المانعة
 
 - `FR-FIN-012`: توزيعات sector/archetype، correlation، seed، convergence diagnostics، sensitivity matrix وMonte Carlo.
 - golden vectors والحالات الإحدى عشرة ومراجعة sector experts.
