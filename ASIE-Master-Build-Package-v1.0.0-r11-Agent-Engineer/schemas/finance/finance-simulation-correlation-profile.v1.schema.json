@@ -1,0 +1,454 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/finance-simulation-correlation-profile.v1.schema.json",
+  "title": "ASIE Finance Simulation Correlation Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "version",
+    "content_hash",
+    "status",
+    "distribution_profile_ref",
+    "distribution_profile_hash",
+    "method",
+    "variable_ids",
+    "matrix",
+    "validation_policy",
+    "calibration",
+    "review",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "finance-simulation-correlation-profile.v1"
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^fcp_[A-Za-z0-9_-]{4,100}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "calibrated",
+        "finance_reviewed",
+        "sector_reviewed",
+        "approved"
+      ]
+    },
+    "distribution_profile_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "distribution_profile_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "method": {
+      "enum": [
+        "pearson_gaussian_copula",
+        "spearman_gaussian_copula"
+      ]
+    },
+    "variable_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^var_[A-Za-z0-9_-]{1,80}$"
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 50,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 50,
+        "items": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        }
+      }
+    },
+    "validation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symmetry_tolerance",
+        "diagonal_tolerance",
+        "psd_tolerance",
+        "non_psd_behavior"
+      ],
+      "properties": {
+        "symmetry_tolerance": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "diagonal_tolerance": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "psd_tolerance": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+        },
+        "non_psd_behavior": {
+          "const": "reject"
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "sample_size",
+        "period_from",
+        "period_to",
+        "geography",
+        "freshness_as_of",
+        "data_source_refs",
+        "lineage"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "historical_empirical",
+            "benchmark_reviewed",
+            "expert_elicitation_reviewed",
+            "hybrid_reviewed"
+          ]
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "period_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "period_to": {
+          "type": "string",
+          "format": "date"
+        },
+        "geography": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "freshness_as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "data_source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assumption_refs",
+            "evidence_refs"
+          ],
+          "properties": {
+            "assumption_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "evidence_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_roles",
+        "approvals"
+      ],
+      "properties": {
+        "required_roles": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "finance_reviewer",
+              "sector_expert",
+              "quantitative_reviewer",
+              "qa",
+              "security"
+            ]
+          }
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "role",
+              "reviewer_ref",
+              "status",
+              "reviewed_at",
+              "evidence_ref"
+            ],
+            "properties": {
+              "role": {
+                "enum": [
+                  "finance_reviewer",
+                  "sector_expert",
+                  "quantitative_reviewer",
+                  "qa",
+                  "security"
+                ]
+              },
+              "reviewer_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "status": {
+                "enum": [
+                  "approved",
+                  "rejected"
+                ]
+              },
+              "reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "evidence_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_ref",
+        "effective_from",
+        "created_at"
+      ],
+      "properties": {
+        "owner_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date"
+        },
+        "supersedes_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "review": {
+            "properties": {
+              "required_roles": {
+                "allOf": [
+                  {
+                    "contains": {
+                      "const": "finance_reviewer"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "sector_expert"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "quantitative_reviewer"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "qa"
+                    }
+                  },
+                  {
+                    "contains": {
+                      "const": "security"
+                    }
+                  }
+                ]
+              },
+              "approvals": {
+                "minItems": 5,
+                "not": {
+                  "contains": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "const": "rejected"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  }
+                },
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "finance_reviewer"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "sector_expert"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "quantitative_reviewer"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "qa"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "const": "security"
+                        },
+                        "status": {
+                          "const": "approved"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "status"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
