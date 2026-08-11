@@ -115,6 +115,22 @@ def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
     assert first.as_dict() == second.as_dict()
     assert first.as_dict()["execution_scope"] == "dark_build"
     assert first.as_dict()["snapshot_eligible"] is False
+    assert first.as_dict()["profile"]["schema_version"] == "finance-sensitivity-profile.v1"
+    assert first.as_dict()["profile"]["dependency_hashes"]
+    assert first.as_dict()["axes"] == [
+        {
+            "axis_id": "axis_price",
+            "target_ref": _PRICE,
+            "operation": "replace",
+            "values": ["80", "100", "120"],
+        },
+        {
+            "axis_id": "axis_volume",
+            "target_ref": _VOLUME,
+            "operation": "multiply",
+            "values": ["0.8", "1", "1.2"],
+        },
+    ]
 
 
 def test_each_cell_builds_once_and_fixed_overrides_apply(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -231,6 +247,9 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["execution_scope"]["const"] == "dark_build"
     assert schema["properties"]["snapshot_eligible"]["const"] is False
     assert schema["properties"]["cell_count"]["maximum"] == 441
+    assert "axes" in schema["required"]
+    assert schema["properties"]["profile"]["additionalProperties"] is False
+    assert "dependency_hashes" in schema["properties"]["profile"]["required"]
     assert len(schema["allOf"]) == 2
 
 
