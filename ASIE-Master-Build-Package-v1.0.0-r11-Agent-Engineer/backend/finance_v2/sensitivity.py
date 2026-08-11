@@ -1,0 +1,449 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
+
+from .contracts import FinanceContractError, ValidatedFinanceInput
+from .overrides import derive_validated_input
+from .result import ENGINE_VERSION
+from .risk_profiles import ValidatedRiskProfile, profile_content_hash
+from .serialization import canonical_sha256
+from .statements import build_financial_model
+
+
+SENSITIVITY_ENGINE_VERSION = "1.0.0-dark"
+_CANONICALIZATION_POLICY = "finance-v2-canonical-json.v1"
+_PROFILE_SCHEMA = "finance-sensitivity-profile.v1"
+_EXECUTION_SCOPE = "dark_sensitivity_v1"
+_HARD_MAXIMUM_CELLS = 441
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityExecutionBinding:
+    authoritative_admission: bool
+    organization_id: str
+    owner_organization_id: str | None
+    scope_kind: str
+    profile_schema_version: str
+    profile_id: str
+    profile_version: str
+    profile_hash: str
+    registry_snapshot_hash: str
+    approved_manifest_id: str
+    approved_manifest_hash: str
+    policy_ref: str
+    policy_version: str
+    policy_hash: str
+    finance_input_hash: str
+    currency: str
+    archetype_id: str
+    archetype_version: str
+    archetype_registry_hash: str
+    execution_scope: str = _EXECUTION_SCOPE
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedSensitivityRun:
+    validated_input: ValidatedFinanceInput
+    profile: ValidatedRiskProfile
+    binding: SensitivityExecutionBinding
+    profile_document: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityCell:
+    row_index: int
+    column_index: int
+    row_value: str
+    column_value: str
+    derived_input_hash: str
+    metrics: dict[str, str | None]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "row_index": self.row_index,
+            "column_index": self.column_index,
+            "row_value": self.row_value,
+            "column_value": self.column_value,
+            "derived_input_hash": self.derived_input_hash,
+            "metrics": self.metrics,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityEvaluation:
+    status: str
+    finance_input_hash: str
+    profile_id: str
+    profile_version: str
+    profile_hash: str
+    registry_snapshot_hash: str
+    approved_manifest_id: str
+    approved_manifest_hash: str
+    policy_ref: str
+    policy_version: str
+    policy_hash: str
+    finance_engine_version: str
+    sensitivity_engine_version: str
+    canonicalization_policy: str
+    axis_ids: tuple[str, str]
+    metric_ids: tuple[str, ...]
+    cell_count: int
+    cells: tuple[SensitivityCell, ...]
+    blockers: tuple[dict[str, str], ...]
+    result_hash: str
+
+    def as_dict(self, *, include_hash: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": "finance-sensitivity-result.v1",
+            "status": self.status,
+            "execution_scope": "dark_build",
+            "snapshot_eligible": False,
+            "finance_input_hash": self.finance_input_hash,
+            "profile": {
+                "profile_id": self.profile_id,
+                "version": self.profile_version,
+                "content_hash": self.profile_hash,
+                "registry_snapshot_hash": self.registry_snapshot_hash,
+                "approved_manifest_id": self.approved_manifest_id,
+                "approved_manifest_hash": self.approved_manifest_hash,
+                "policy_ref": self.policy_ref,
+                "policy_version": self.policy_version,
+                "policy_hash": self.policy_hash,
+            },
+            "finance_engine_version": self.finance_engine_version,
+            "sensitivity_engine_version": self.sensitivity_engine_version,
+            "canonicalization_policy": self.canonicalization_policy,
+            "axis_ids": list(self.axis_ids),
+            "metric_ids": list(self.metric_ids),
+            "cell_count": self.cell_count,
+            "cells": [cell.as_dict() for cell in self.cells],
+            "blockers": list(self.blockers),
+        }
+        if include_hash:
+            payload["result_hash"] = self.result_hash
+        return payload
+
+
+def prepare_sensitivity_run(
+    validated_input: ValidatedFinanceInput,
+    profile: ValidatedRiskProfile,
+    *,
+    binding: SensitivityExecutionBinding,
+) -> PreparedSensitivityRun:
+    if not isinstance(validated_input, ValidatedFinanceInput):
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_INPUT_TYPE",
+            "validated_input",
+            "sensitivity requires a server-validated finance input",
+        )
+    if not isinstance(profile, ValidatedRiskProfile):
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_PROFILE_TYPE",
+            "profile",
+            "sensitivity requires an admitted risk profile",
+        )
+    if not isinstance(binding, SensitivityExecutionBinding):
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_BINDING_TYPE",
+            "binding",
+            "sensitivity requires a trusted execution binding",
+        )
+    if binding.execution_scope != _EXECUTION_SCOPE or not binding.authoritative_admission:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_ADMISSION",
+            "binding",
+            "dark sensitivity requires authoritative server admission provenance",
+        )
+    if profile.kind != "sensitivity" or profile.status != "approved":
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_PROFILE_KIND",
+            "profile",
+            "only an approved sensitivity profile is accepted",
+        )
+    _require_equal(profile.profile_id, binding.profile_id, "binding.profile_id")
+    _require_equal(profile.version, binding.profile_version, "binding.profile_version")
+    _require_equal(profile.content_hash, binding.profile_hash, "binding.profile_hash")
+    _require_equal(
+        profile.registry_snapshot_hash,
+        binding.registry_snapshot_hash,
+        "binding.registry_snapshot_hash",
+    )
+    _require_equal(
+        profile.approved_manifest_id,
+        binding.approved_manifest_id,
+        "binding.approved_manifest_id",
+    )
+    _require_equal(
+        profile.approved_manifest_hash,
+        binding.approved_manifest_hash,
+        "binding.approved_manifest_hash",
+    )
+    _require_equal(profile.policy_ref, binding.policy_ref, "binding.policy_ref")
+    _require_equal(profile.policy_version, binding.policy_version, "binding.policy_version")
+    _require_equal(profile.policy_hash, binding.policy_hash, "binding.policy_hash")
+    _require_equal(validated_input.input_hash, binding.finance_input_hash, "binding.finance_input_hash")
+    _require_equal(validated_input.organization_id, binding.organization_id, "binding.organization_id")
+    if binding.scope_kind == "organization" and binding.owner_organization_id != binding.organization_id:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_TENANT",
+            "binding.owner_organization_id",
+            "organization scope owner must equal the trusted organization",
+        )
+    if binding.scope_kind == "global" and binding.owner_organization_id is not None:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_TENANT",
+            "binding.owner_organization_id",
+            "global scope must not carry tenant ownership",
+        )
+    if binding.scope_kind not in {"organization", "global"}:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_TENANT",
+            "binding.scope_kind",
+            "unsupported sensitivity profile scope",
+        )
+
+    profile_document = profile.thaw()
+    if profile_document.get("schema_version") != _PROFILE_SCHEMA:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_PROFILE_KIND",
+            "$.schema_version",
+            "profile document is not a sensitivity profile",
+        )
+    if profile_content_hash(profile_document) != profile.content_hash:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_HASH_MISMATCH",
+            "$.content_hash",
+            "profile canonical document no longer matches admitted content hash",
+        )
+    _require_equal(
+        profile_document.get("profile_id"),
+        binding.profile_id,
+        "$.profile_id",
+    )
+    _require_equal(profile_document.get("version"), binding.profile_version, "$.version")
+
+    input_document = validated_input.thaw()
+    metadata = input_document["metadata"]
+    _require_equal(input_document.get("organization_id"), binding.organization_id, "$.organization_id")
+    _require_equal(metadata.get("approved_manifest_id"), binding.approved_manifest_id, "$.metadata.approved_manifest_id")
+    _require_equal(metadata.get("approved_manifest_hash"), binding.approved_manifest_hash, "$.metadata.approved_manifest_hash")
+    _require_equal(metadata.get("policy_ref"), binding.policy_ref, "$.metadata.policy_ref")
+    _require_equal(validated_input.currency, binding.currency, "binding.currency")
+    _require_equal(profile_document.get("currency"), binding.currency, "$.currency")
+    _validate_archetype_match(
+        input_document["archetype_ref"],
+        profile_document["archetype_ref"],
+        binding,
+    )
+    return PreparedSensitivityRun(
+        validated_input=validated_input,
+        profile=profile,
+        binding=binding,
+        profile_document=profile_document,
+    )
+
+
+def evaluate_sensitivity(
+    prepared: PreparedSensitivityRun,
+) -> SensitivityEvaluation:
+    if not isinstance(prepared, PreparedSensitivityRun):
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_PREPARED_TYPE",
+            "prepared",
+            "evaluate_sensitivity requires a prepared server-bound run",
+        )
+    document = prepared.profile_document
+    axes = document["axes"]
+    if len(axes) != 2:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_AXES",
+            "$.axes",
+            "sensitivity profile must contain exactly two axes",
+        )
+    metric_ids = tuple(document["metric_ids"])
+    maximum_cells = int(document["maximum_cells"])
+    cell_count = len(axes[0]["values"]) * len(axes[1]["values"])
+    if cell_count > maximum_cells or cell_count > _HARD_MAXIMUM_CELLS:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_CELL_LIMIT",
+            "$.maximum_cells",
+            "effective cell count exceeds the governed limit",
+        )
+
+    fixed = [
+        {
+            "target_ref": item["target_ref"],
+            "operation": item["operation"],
+            "value": item["value"],
+        }
+        for item in document["fixed_overrides"]
+    ]
+    cells: list[SensitivityCell] = []
+    for row_index, row_value in enumerate(axes[0]["values"]):
+        for column_index, column_value in enumerate(axes[1]["values"]):
+            overrides = [
+                *fixed,
+                {
+                    "target_ref": axes[0]["target_ref"],
+                    "operation": axes[0]["operation"],
+                    "value": row_value,
+                },
+                {
+                    "target_ref": axes[1]["target_ref"],
+                    "operation": axes[1]["operation"],
+                    "value": column_value,
+                },
+            ]
+            try:
+                derived = derive_validated_input(
+                    prepared.validated_input,
+                    overrides,
+                    f"$.sensitivity.cells[{row_index}][{column_index}]",
+                )
+                model = build_financial_model(derived)
+            except FinanceContractError as exc:
+                return _not_ready(
+                    prepared,
+                    axes,
+                    metric_ids,
+                    cell_count,
+                    row_index,
+                    column_index,
+                    exc.code,
+                )
+            if model.status != "ready":
+                code = model.blockers[0]["code"] if model.blockers else "FIN2_SENSITIVITY_MODEL_NOT_READY"
+                return _not_ready(
+                    prepared,
+                    axes,
+                    metric_ids,
+                    cell_count,
+                    row_index,
+                    column_index,
+                    code,
+                )
+            metrics: dict[str, str | None] = {}
+            for metric_id in metric_ids:
+                if metric_id not in model.metrics:
+                    return _not_ready(
+                        prepared,
+                        axes,
+                        metric_ids,
+                        cell_count,
+                        row_index,
+                        column_index,
+                        "FIN2_SENSITIVITY_METRIC_UNAVAILABLE",
+                    )
+                value = model.metrics[metric_id]
+                metrics[metric_id] = None if value is None else _decimal_text(value)
+            cells.append(
+                SensitivityCell(
+                    row_index=row_index,
+                    column_index=column_index,
+                    row_value=row_value,
+                    column_value=column_value,
+                    derived_input_hash=derived.input_hash,
+                    metrics=metrics,
+                )
+            )
+    return _evaluation(
+        prepared,
+        axes,
+        metric_ids,
+        cell_count,
+        tuple(cells),
+        (),
+        "dark_ready",
+    )
+
+
+def _not_ready(
+    prepared: PreparedSensitivityRun,
+    axes: list[dict[str, Any]],
+    metric_ids: tuple[str, ...],
+    cell_count: int,
+    row_index: int,
+    column_index: int,
+    code: str,
+) -> SensitivityEvaluation:
+    blocker = {
+        "code": "FIN2_SENSITIVITY_CELL_NOT_READY",
+        "severity": "high",
+        "field_ref": f"$.cells[{row_index}][{column_index}]",
+        "message_ar": f"فشلت خلية الحساسية الحتمية بسبب {code}.",
+    }
+    return _evaluation(prepared, axes, metric_ids, cell_count, (), (blocker,), "not_ready")
+
+
+def _evaluation(
+    prepared: PreparedSensitivityRun,
+    axes: list[dict[str, Any]],
+    metric_ids: tuple[str, ...],
+    cell_count: int,
+    cells: tuple[SensitivityCell, ...],
+    blockers: tuple[dict[str, str], ...],
+    status: str,
+) -> SensitivityEvaluation:
+    base = dict(
+        status=status,
+        finance_input_hash=prepared.validated_input.input_hash,
+        profile_id=prepared.profile.profile_id,
+        profile_version=prepared.profile.version,
+        profile_hash=prepared.profile.content_hash,
+        registry_snapshot_hash=prepared.profile.registry_snapshot_hash,
+        approved_manifest_id=prepared.profile.approved_manifest_id,
+        approved_manifest_hash=prepared.profile.approved_manifest_hash,
+        policy_ref=prepared.profile.policy_ref,
+        policy_version=prepared.profile.policy_version,
+        policy_hash=prepared.profile.policy_hash,
+        finance_engine_version=ENGINE_VERSION,
+        sensitivity_engine_version=SENSITIVITY_ENGINE_VERSION,
+        canonicalization_policy=_CANONICALIZATION_POLICY,
+        axis_ids=(axes[0]["axis_id"], axes[1]["axis_id"]),
+        metric_ids=metric_ids,
+        cell_count=cell_count,
+        cells=cells,
+        blockers=blockers,
+    )
+    provisional = SensitivityEvaluation(**base, result_hash="")
+    result_hash = canonical_sha256(provisional.as_dict(include_hash=False))
+    return SensitivityEvaluation(**base, result_hash=result_hash)
+
+
+def _validate_archetype_match(
+    input_archetype: dict[str, Any],
+    profile_archetype: dict[str, Any],
+    binding: SensitivityExecutionBinding,
+) -> None:
+    expected = {
+        "archetype_id": binding.archetype_id,
+        "version": binding.archetype_version,
+        "registry_hash": binding.archetype_registry_hash,
+    }
+    for key, value in expected.items():
+        _require_equal(input_archetype.get(key), value, f"$.archetype_ref.{key}")
+        _require_equal(profile_archetype.get(key), value, f"$.archetype_ref.{key}")
+
+
+def _require_equal(actual: Any, expected: Any, field_ref: str) -> None:
+    if actual != expected:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_BINDING_MISMATCH",
+            field_ref,
+            "value does not match trusted sensitivity execution binding",
+        )
+
+
+def _decimal_text(value: Decimal) -> str:
+    if not value.is_finite():
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_METRIC",
+            "$.metrics",
+            "sensitivity metric must remain finite",
+        )
+    if value == 0:
+        return "0"
+    text = format(value, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
