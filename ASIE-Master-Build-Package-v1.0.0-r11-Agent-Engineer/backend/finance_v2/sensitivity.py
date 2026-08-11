@@ -463,7 +463,7 @@ def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> No
             "global sensitivity profiles require explicit trusted global admission",
         )
 
-_validate_archetype_match(
+def _validate_archetype_match(
     input_archetype: dict[str, Any],
     profile_archetype: dict[str, Any],
     binding: SensitivityExecutionBinding,
