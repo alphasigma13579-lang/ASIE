@@ -12,6 +12,9 @@ import sys
 import time
 from pathlib import Path
 
+RUNTIME_CEILING_SECONDS = 5.0
+MEMORY_CEILING_MIB = 64.0
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -73,6 +76,16 @@ def main() -> int:
         "platform": platform.platform(),
     }
     print(json.dumps(output, sort_keys=True))
+    if output["p95_seconds"] > RUNTIME_CEILING_SECONDS:
+        raise SystemExit(
+            f"C3C p95 {output['p95_seconds']:.6f}s exceeds "
+            f"{RUNTIME_CEILING_SECONDS:.3f}s"
+        )
+    if output["peak_rss_mib"] > MEMORY_CEILING_MIB:
+        raise SystemExit(
+            f"C3C peak RSS {output['peak_rss_mib']:.3f}MiB exceeds "
+            f"{MEMORY_CEILING_MIB:.3f}MiB"
+        )
     return 0
 
 
