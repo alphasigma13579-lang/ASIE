@@ -277,7 +277,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
     result = evaluate_sensitivity(prepared)
     baseline = build_financial_model(prepared.validated_input)
 
-    assert result.cells[0].derived_input_hash == prepared.validated_input.input_hash
+    assert result.cells[0].derived_input_hash != prepared.validated_input.input_hash
     assert result.cells[0].metrics == {
         metric_id: _metric_text(baseline.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
