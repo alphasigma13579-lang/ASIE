@@ -59,3 +59,6 @@ jobs:
 
       - name: Run Python tests
         run: python -m pytest -q
+
+      - name: Benchmark C3C full 21x21 sensitivity
+        run: python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3
