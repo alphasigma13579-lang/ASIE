@@ -15,6 +15,7 @@
     "sensitivity_engine_version",
     "canonicalization_policy",
     "axis_ids",
+    "axes",
     "metric_ids",
     "cell_count",
     "cells",
@@ -45,6 +46,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "schema_version",
+        "dependency_hashes",
         "profile_id",
         "version",
         "content_hash",
@@ -86,6 +89,29 @@
         "policy_hash": {
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "schema_version": {
+          "const": "finance-sensitivity-profile.v1"
+        },
+        "dependency_hashes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ref",
+              "content_hash"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "content_hash": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            }
+          }
         }
       }
     },
@@ -193,6 +219,44 @@
     "result_hash": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "axes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "axis_id",
+          "target_ref",
+          "operation",
+          "values"
+        ],
+        "properties": {
+          "axis_id": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "replace",
+              "multiply",
+              "add"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 21,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [
