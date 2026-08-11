@@ -7,7 +7,11 @@ from typing import Any
 from .contracts import FinanceContractError, ValidatedFinanceInput
 from .overrides import derive_validated_input
 from .result import ENGINE_VERSION
-from .risk_profiles import ValidatedRiskProfile, profile_content_hash
+from .risk_profiles import (
+    ResolvedRiskProfileBinding,
+    ValidatedRiskProfile,
+    profile_content_hash,
+)
 from .serialization import canonical_sha256
 from .statements import build_financial_model
 
@@ -21,6 +25,7 @@ _HARD_MAXIMUM_CELLS = 441
 
 @dataclass(frozen=True, slots=True)
 class SensitivityExecutionBinding:
+    risk_profile_binding: ResolvedRiskProfileBinding
     authoritative_admission: bool
     organization_id: str
     owner_organization_id: str | None
@@ -150,11 +155,18 @@ def prepare_sensitivity_run(
             "binding",
             "sensitivity requires a trusted execution binding",
         )
+    _validate_risk_admission_binding(binding)
     if binding.execution_scope != _EXECUTION_SCOPE or not binding.authoritative_admission:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_ADMISSION",
             "binding",
             "dark sensitivity requires authoritative server admission provenance",
+        )
+    if profile.execution_ready:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_EXECUTION_STATE",
+            "profile.execution_ready",
+            "C3C can consume admitted profiles only while their general execution state remains false",
         )
     if profile.kind != "sensitivity" or profile.status != "approved":
         raise FinanceContractError(
@@ -412,7 +424,46 @@ def _evaluation(
     return SensitivityEvaluation(**base, result_hash=result_hash)
 
 
-def _validate_archetype_match(
+
+def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> None:
+    source = binding.risk_profile_binding
+    if not isinstance(source, ResolvedRiskProfileBinding) or not source.authoritative:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_ADMISSION",
+            "binding.risk_profile_binding",
+            "sensitivity execution must retain an authoritative admission binding",
+        )
+    expected = {
+        "expected_schema_version": binding.profile_schema_version,
+        "expected_profile_id": binding.profile_id,
+        "expected_version": binding.profile_version,
+        "expected_content_hash": binding.profile_hash,
+        "registry_snapshot_hash": binding.registry_snapshot_hash,
+        "organization_id": binding.organization_id,
+        "scope_kind": binding.scope_kind,
+        "owner_organization_id": binding.owner_organization_id,
+        "approved_manifest_id": binding.approved_manifest_id,
+        "approved_manifest_hash": binding.approved_manifest_hash,
+        "policy_ref": binding.policy_ref,
+        "policy_version": binding.policy_version,
+        "policy_hash": binding.policy_hash,
+    }
+    for field, value in expected.items():
+        _require_equal(getattr(source, field), value, f"binding.risk_profile_binding.{field}")
+    if binding.profile_schema_version != _PROFILE_SCHEMA:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_ADMISSION",
+            "binding.profile_schema_version",
+            "sensitivity requires the governed sensitivity profile schema",
+        )
+    if binding.scope_kind == "global" and not source.allow_global:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_TENANT",
+            "binding.risk_profile_binding.allow_global",
+            "global sensitivity profiles require explicit trusted global admission",
+        )
+
+_validate_archetype_match(
     input_archetype: dict[str, Any],
     profile_archetype: dict[str, Any],
     binding: SensitivityExecutionBinding,
