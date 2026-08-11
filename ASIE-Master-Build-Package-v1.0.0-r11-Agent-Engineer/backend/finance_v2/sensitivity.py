@@ -266,6 +266,11 @@ def evaluate_sensitivity(
             "prepared",
             "evaluate_sensitivity requires a prepared server-bound run",
         )
+    prepared = prepare_sensitivity_run(
+        prepared.validated_input,
+        prepared.profile,
+        binding=prepared.binding,
+    )
     document = prepared.profile_document
     axes = document["axes"]
     if len(axes) != 2:
@@ -455,6 +460,25 @@ def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> No
             "FIN2_SENSITIVITY_ADMISSION",
             "binding.profile_schema_version",
             "sensitivity requires the governed sensitivity profile schema",
+        )
+    profile_in_manifest = any(
+        item.schema_version == binding.profile_schema_version
+        and item.profile_id == binding.profile_id
+        and item.version == binding.profile_version
+        and item.content_hash == binding.profile_hash
+        for item in source.manifest_profiles
+    )
+    policy_in_manifest = any(
+        item.profile_id == binding.policy_ref
+        and item.version == binding.policy_version
+        and item.content_hash == binding.policy_hash
+        for item in source.manifest_profiles
+    )
+    if not profile_in_manifest or not policy_in_manifest:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_ADMISSION",
+            "binding.risk_profile_binding.manifest_profiles",
+            "trusted manifest must include the exact admitted profile and policy",
         )
     if binding.scope_kind == "global" and not source.allow_global:
         raise FinanceContractError(
