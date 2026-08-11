@@ -3,9 +3,9 @@
 - Status: `RATIFIED_CEILINGS_AWAITING_EXACT_HEAD_CI_AND_REVIEW`
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decision: `ACR-FIN-003-C3C-v1.0.0`
-- Measured source SHA: `798a5a9c73d9184a8a8280df8583060c8655fcc6`
-- ASIE CI run: [#337](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31540579726)
-- Cross-platform run: [#187](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31540579706)
+- Measured source SHA: `6e0dd7c84d2d180e9ca5397ee4a2f9ae7178d058`
+- ASIE CI run: [#343](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31541457602)
+- Cross-platform run: [#193](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31541457609)
 
 ## Method
 
@@ -29,12 +29,12 @@ It uses the production C3C engine with no monkeypatch, no cache, no network, no 
 
 | Measure | Value |
 |---|---:|
-| Trial 1 | 0.772630476 s |
-| Trial 2 | 0.768768271 s |
-| Trial 3 | 0.769524280 s |
-| p50 | 0.769524280 s |
-| p95 | 0.772630476 s |
-| Peak RSS | 31.390625 MiB |
+| Trial 1 | 0.784672001 s |
+| Trial 2 | 0.783921702 s |
+| Trial 3 | 0.781302323 s |
+| p50 | 0.781302323 s |
+| p95 | 0.784672001 s |
+| Peak RSS | 31.47265625 MiB |
 
 ## Ratified automated ceilings
 
