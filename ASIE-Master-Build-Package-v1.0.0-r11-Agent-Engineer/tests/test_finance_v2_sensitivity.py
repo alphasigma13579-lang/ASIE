@@ -12,11 +12,13 @@ from backend.finance_v2 import (
     FinanceContractError,
     SensitivityExecutionBinding,
     admit_risk_profile,
+    build_financial_model,
     canonical_sha256,
     evaluate_sensitivity,
     prepare_sensitivity_run,
     validate_finance_input,
 )
+from backend.finance_v2.overrides import derive_validated_input
 from tests.test_finance_v2_contracts import binding as finance_binding
 from tests.test_finance_v2_contracts import valid_document
 from tests.test_finance_v2_risk_profile_admission import (
@@ -30,12 +32,14 @@ _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
 _VOLUME = "$.revenue_streams[rev-primary].volume_series[*].value"
 
 
-def _prepared():
+def _prepared(*, profile_mutator=None):
     document = valid_document()
     profile_document = sensitivity_profile()
     profile_document["archetype_ref"] = copy.deepcopy(document["archetype_ref"])
     profile_document["axes"][0]["target_ref"] = _PRICE
     profile_document["axes"][1]["target_ref"] = _VOLUME
+    if profile_mutator is not None:
+        profile_mutator(profile_document)
     _finalize(profile_document)
     risk_binding = profile_binding(profile_document)
 
@@ -213,3 +217,158 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["snapshot_eligible"]["const"] is False
     assert schema["properties"]["cell_count"]["maximum"] == 441
     assert len(schema["allOf"]) == 2
+
+
+def test_2_by_3_grid_and_direct_cell_parity() -> None:
+    def mutate(profile_document):
+        profile_document["axes"][0]["values"] = ["20", "25.5"]
+        profile_document["axes"][1]["values"] = ["0.8", "1", "1.2"]
+        profile_document["maximum_cells"] = 6
+
+    prepared = _prepared(profile_mutator=mutate)
+    result = evaluate_sensitivity(prepared)
+
+    assert [(cell.row_index, cell.column_index) for cell in result.cells] == [
+        (row, column) for row in range(2) for column in range(3)
+    ]
+    first = result.cells[0]
+    direct = derive_validated_input(
+        prepared.validated_input,
+        [
+            {"target_ref": "$.working_capital.dso_days", "operation": "replace", "value": "30"},
+            {"target_ref": _PRICE, "operation": "replace", "value": "20"},
+            {"target_ref": _VOLUME, "operation": "multiply", "value": "0.8"},
+        ],
+        "$.test.direct",
+    )
+    model = build_financial_model(direct)
+    assert first.derived_input_hash == direct.input_hash
+    assert first.metrics == {
+        metric_id: None if model.metrics[metric_id] is None else str(model.metrics[metric_id]).rstrip("0").rstrip(".")
+        for metric_id in prepared.profile_document["metric_ids"]
+    }
+
+
+def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
+    def mutate(profile_document):
+        profile_document["axes"][0]["values"] = ["25.50", "20"]
+        profile_document["axes"][1]["values"] = ["1", "1.2"]
+        profile_document["maximum_cells"] = 4
+
+    prepared = _prepared(profile_mutator=mutate)
+    input_before = prepared.validated_input.canonical_document
+    profile_before = prepared.profile.canonical_document
+    result = evaluate_sensitivity(prepared)
+    baseline = build_financial_model(prepared.validated_input)
+
+    assert result.cells[0].derived_input_hash == prepared.validated_input.input_hash
+    assert result.cells[0].metrics == {
+        metric_id: None if baseline.metrics[metric_id] is None else str(baseline.metrics[metric_id]).rstrip("0").rstrip(".")
+        for metric_id in prepared.profile_document["metric_ids"]
+    }
+    assert prepared.validated_input.canonical_document == input_before
+    assert prepared.profile.canonical_document == profile_before
+
+
+def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mutate(profile_document):
+        profile_document["axes"][0]["values"] = [str(value) for value in range(1, 22)]
+        profile_document["axes"][1]["values"] = [str(value) for value in range(1, 22)]
+        profile_document["maximum_cells"] = 441
+
+    prepared = _prepared(profile_mutator=mutate)
+    calls = 0
+    original = sensitivity_module.build_financial_model
+
+    def counted(validated):
+        nonlocal calls
+        calls += 1
+        return original(validated)
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "dark_ready"
+    assert len(result.cells) == 441
+    assert calls == 441
+    assert all(not hasattr(cell, "model") for cell in result.cells)
+
+
+@pytest.mark.parametrize(
+    "profile_transform, binding_transform, expected",
+    [
+        (lambda prepared: replace(prepared.profile, kind="distribution"), lambda binding: binding, "FIN2_SENSITIVITY_PROFILE_KIND"),
+        (lambda prepared: replace(prepared.profile, status="draft"), lambda binding: binding, "FIN2_SENSITIVITY_PROFILE_KIND"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, owner_organization_id="org-other"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, registry_snapshot_hash="sha256:" + "0" * 64), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, currency="USD"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, archetype_version="9.9.9"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+    ],
+)
+def test_profile_and_binding_tampering_fail_before_cell_build(
+    profile_transform,
+    binding_transform,
+    expected,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    with pytest.raises(FinanceContractError) as error:
+        prepare_sensitivity_run(
+            prepared.validated_input,
+            profile_transform(prepared),
+            binding=binding_transform(prepared.binding),
+        )
+
+    assert error.value.code == expected
+    assert calls == 0
+
+
+def test_tampered_profile_body_and_missing_metric_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    tampered = replace(
+        prepared.profile,
+        canonical_document=prepared.profile.canonical_document.replace(
+            '"axis_price"', '"axis_price_tampered"', 1
+        ),
+    )
+    with pytest.raises(FinanceContractError) as error:
+        prepare_sensitivity_run(prepared.validated_input, tampered, binding=prepared.binding)
+    assert error.value.code == "FIN2_SENSITIVITY_HASH_MISMATCH"
+
+    original = sensitivity_module.build_financial_model
+
+    def missing_metric(validated):
+        model = original(validated)
+        return replace(model, metrics={})
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", missing_metric)
+    result = evaluate_sensitivity(prepared)
+    assert result.status == "not_ready"
+    assert result.cells == ()
+    assert result.blockers[0]["code"] == "FIN2_SENSITIVITY_CELL_NOT_READY"
+
+
+def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> None:
+    result = evaluate_sensitivity(_prepared())
+    changed_finance = dict(result.as_dict(include_hash=False))
+    changed_finance["finance_engine_version"] = "tampered"
+    changed_sensitivity = dict(result.as_dict(include_hash=False))
+    changed_sensitivity["sensitivity_engine_version"] = "tampered"
+
+    assert canonical_sha256(changed_finance) != result.result_hash
+    assert canonical_sha256(changed_sensitivity) != result.result_hash
+    source = Path(sensitivity_module.__file__).read_text(encoding="utf-8")
+    forbidden = ("module_runtime", "snapshot_assembly", "requests", "http", "socket", "provider")
+    assert all(token not in source for token in forbidden)
