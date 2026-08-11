@@ -296,12 +296,12 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
 
     prepared = _prepared(profile_mutator=mutate)
     calls = 0
-    original = sensitivity_module.build_financial_model
+    representative = build_financial_model(prepared.validated_input)
 
-    def counted(validated):
+    def counted(_validated):
         nonlocal calls
         calls += 1
-        return original(validated)
+        return representative
 
     monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
     result = evaluate_sensitivity(prepared)
