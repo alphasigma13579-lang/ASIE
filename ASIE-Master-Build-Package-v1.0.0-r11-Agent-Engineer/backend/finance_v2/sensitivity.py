@@ -31,11 +31,9 @@ class SensitivityExecutionBinding:
     owner_organization_id: str | None
     scope_kind: str
     profile_schema_version: str
-    profile_schema_version: str
     profile_id: str
     profile_version: str
     profile_hash: str
-    dependency_hashes: tuple[tuple[str, str], ...]
     registry_snapshot_hash: str
     approved_manifest_id: str
     approved_manifest_hash: str
@@ -48,7 +46,6 @@ class SensitivityExecutionBinding:
     archetype_version: str
     archetype_registry_hash: str
     execution_scope: str = _EXECUTION_SCOPE
-
 
 @dataclass(frozen=True, slots=True)
 class PreparedSensitivityRun:
@@ -82,9 +79,11 @@ class SensitivityCell:
 class SensitivityEvaluation:
     status: str
     finance_input_hash: str
+    profile_schema_version: str
     profile_id: str
     profile_version: str
     profile_hash: str
+    dependency_hashes: tuple[tuple[str, str], ...]
     registry_snapshot_hash: str
     approved_manifest_id: str
     approved_manifest_hash: str
