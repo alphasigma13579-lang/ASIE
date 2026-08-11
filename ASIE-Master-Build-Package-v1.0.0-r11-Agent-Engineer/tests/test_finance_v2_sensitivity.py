@@ -268,6 +268,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
     def mutate(profile_document):
         profile_document["axes"][0]["values"] = ["25.50", "20"]
         profile_document["axes"][1]["values"] = ["1", "1.2"]
+        profile_document["fixed_overrides"][0]["value"] = "15"
         profile_document["maximum_cells"] = 4
 
     prepared = _prepared(profile_mutator=mutate)
