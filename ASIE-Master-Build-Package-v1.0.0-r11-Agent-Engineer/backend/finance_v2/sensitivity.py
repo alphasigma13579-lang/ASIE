@@ -31,9 +31,11 @@ class SensitivityExecutionBinding:
     owner_organization_id: str | None
     scope_kind: str
     profile_schema_version: str
+    profile_schema_version: str
     profile_id: str
     profile_version: str
     profile_hash: str
+    dependency_hashes: tuple[tuple[str, str], ...]
     registry_snapshot_hash: str
     approved_manifest_id: str
     approved_manifest_hash: str
@@ -93,6 +95,7 @@ class SensitivityEvaluation:
     sensitivity_engine_version: str
     canonicalization_policy: str
     axis_ids: tuple[str, str]
+    axes: tuple[dict[str, Any], dict[str, Any]]
     metric_ids: tuple[str, ...]
     cell_count: int
     cells: tuple[SensitivityCell, ...]
@@ -107,9 +110,14 @@ class SensitivityEvaluation:
             "snapshot_eligible": False,
             "finance_input_hash": self.finance_input_hash,
             "profile": {
+                "schema_version": self.profile_schema_version,
                 "profile_id": self.profile_id,
                 "version": self.profile_version,
                 "content_hash": self.profile_hash,
+                "dependency_hashes": [
+                    {"ref": ref, "content_hash": content_hash}
+                    for ref, content_hash in self.dependency_hashes
+                ],
                 "registry_snapshot_hash": self.registry_snapshot_hash,
                 "approved_manifest_id": self.approved_manifest_id,
                 "approved_manifest_hash": self.approved_manifest_hash,
@@ -121,6 +129,15 @@ class SensitivityEvaluation:
             "sensitivity_engine_version": self.sensitivity_engine_version,
             "canonicalization_policy": self.canonicalization_policy,
             "axis_ids": list(self.axis_ids),
+            "axes": [
+                {
+                    "axis_id": axis["axis_id"],
+                    "target_ref": axis["target_ref"],
+                    "operation": axis["operation"],
+                    "values": list(axis["values"]),
+                }
+                for axis in self.axes
+            ],
             "metric_ids": list(self.metric_ids),
             "cell_count": self.cell_count,
             "cells": [cell.as_dict() for cell in self.cells],
@@ -406,9 +423,11 @@ def _evaluation(
     base = dict(
         status=status,
         finance_input_hash=prepared.validated_input.input_hash,
+        profile_schema_version=prepared.profile_document["schema_version"],
         profile_id=prepared.profile.profile_id,
         profile_version=prepared.profile.version,
         profile_hash=prepared.profile.content_hash,
+        dependency_hashes=prepared.profile.dependency_hashes,
         registry_snapshot_hash=prepared.profile.registry_snapshot_hash,
         approved_manifest_id=prepared.profile.approved_manifest_id,
         approved_manifest_hash=prepared.profile.approved_manifest_hash,
@@ -419,6 +438,20 @@ def _evaluation(
         sensitivity_engine_version=SENSITIVITY_ENGINE_VERSION,
         canonicalization_policy=_CANONICALIZATION_POLICY,
         axis_ids=(axes[0]["axis_id"], axes[1]["axis_id"]),
+        axes=(
+            {
+                "axis_id": axes[0]["axis_id"],
+                "target_ref": axes[0]["target_ref"],
+                "operation": axes[0]["operation"],
+                "values": list(axes[0]["values"]),
+            },
+            {
+                "axis_id": axes[1]["axis_id"],
+                "target_ref": axes[1]["target_ref"],
+                "operation": axes[1]["operation"],
+                "values": list(axes[1]["values"]),
+            },
+        ),
         metric_ids=metric_ids,
         cell_count=cell_count,
         cells=cells,
