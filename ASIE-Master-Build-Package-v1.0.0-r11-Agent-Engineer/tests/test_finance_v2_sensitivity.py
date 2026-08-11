@@ -295,20 +295,28 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
         profile_document["maximum_cells"] = 441
 
     prepared = _prepared(profile_mutator=mutate)
-    calls = 0
+    builds = 0
+    derivations = 0
     representative = build_financial_model(prepared.validated_input)
 
+    def derived(_validated, _overrides, _field_ref):
+        nonlocal derivations
+        derivations += 1
+        return prepared.validated_input
+
     def counted(_validated):
-        nonlocal calls
-        calls += 1
+        nonlocal builds
+        builds += 1
         return representative
 
+    monkeypatch.setattr(sensitivity_module, "derive_validated_input", derived)
     monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
     result = evaluate_sensitivity(prepared)
 
     assert result.status == "dark_ready"
     assert len(result.cells) == 441
-    assert calls == 441
+    assert derivations == 441
+    assert builds == 441
     assert all(not hasattr(cell, "model") for cell in result.cells)
 
 
