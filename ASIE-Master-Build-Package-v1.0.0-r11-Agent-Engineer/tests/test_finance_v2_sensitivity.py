@@ -163,6 +163,30 @@ def test_tenant_or_admission_mismatch_fails_before_any_cell_build(
     assert calls == 0
 
 
+def test_evaluation_revalidates_prepared_provenance_before_any_cell_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    forged = replace(
+        prepared,
+        binding=replace(prepared.binding, organization_id="org-other"),
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(forged)
+
+    assert error.value.code == "FIN2_SENSITIVITY_BINDING_MISMATCH"
+    assert calls == 0
+
+
 def test_execution_binding_must_retain_authoritative_admission_source() -> None:
     prepared = _prepared()
     forged = replace(
