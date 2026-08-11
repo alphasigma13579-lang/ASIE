@@ -48,7 +48,15 @@ def _prepared(*, profile_mutator=None):
     if profile_mutator is not None:
         profile_mutator(profile_document)
     _finalize(profile_document)
-    risk_binding = profile_binding(profile_document)
+    risk_binding = replace(
+        profile_binding(profile_document),
+        dependency_hashes=(
+            (
+                f"archetype:{document['archetype_ref']['archetype_id']}@{document['archetype_ref']['version']}",
+                document["archetype_ref"]["registry_hash"],
+            ),
+        ),
+    )
 
     document["metadata"] = {
         "approved_manifest_id": risk_binding.approved_manifest_id,
