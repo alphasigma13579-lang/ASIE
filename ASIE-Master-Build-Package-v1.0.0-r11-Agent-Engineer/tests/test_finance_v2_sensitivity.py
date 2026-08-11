@@ -32,6 +32,13 @@ _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
 _VOLUME = "$.revenue_streams[rev-primary].volume_series[*].value"
 
 
+def _metric_text(value) -> str | None:
+    if value is None:
+        return None
+    text = format(value, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def _prepared(*, profile_mutator=None):
     document = valid_document()
     profile_document = sensitivity_profile()
@@ -244,7 +251,7 @@ def test_2_by_3_grid_and_direct_cell_parity() -> None:
     model = build_financial_model(direct)
     assert first.derived_input_hash == direct.input_hash
     assert first.metrics == {
-        metric_id: None if model.metrics[metric_id] is None else str(model.metrics[metric_id]).rstrip("0").rstrip(".")
+        metric_id: _metric_text(model.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
     }
 
@@ -263,7 +270,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
 
     assert result.cells[0].derived_input_hash == prepared.validated_input.input_hash
     assert result.cells[0].metrics == {
-        metric_id: None if baseline.metrics[metric_id] is None else str(baseline.metrics[metric_id]).rstrip("0").rstrip(".")
+        metric_id: _metric_text(baseline.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
     }
     assert prepared.validated_input.canonical_document == input_before
