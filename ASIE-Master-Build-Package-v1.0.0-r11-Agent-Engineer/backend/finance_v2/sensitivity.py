@@ -342,9 +342,6 @@ def prepare_sensitivity_run(
         validated_input.currency,
         "$.currency",
     )
-    _require_equal(validated_input.organization_id, binding.organization_id, "binding.organization_id")
-    _require_equal(validated_input.project_id, binding.project_id, "binding.project_id")
-    _require_equal(validated_input.run_id, binding.run_id, "binding.run_id")
     _require_equal(metadata.get("approved_manifest_id"), binding.approved_manifest_id, "$.metadata.approved_manifest_id")
     _require_equal(metadata.get("approved_manifest_hash"), binding.approved_manifest_hash, "$.metadata.approved_manifest_hash")
     _require_equal(metadata.get("policy_ref"), binding.policy_ref, "$.metadata.policy_ref")
