@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from .contracts import FinanceContractError, ValidatedFinanceInput
+from .contracts import (
+    FinanceContractError,
+    ValidatedFinanceInput,
+    parse_decimal,
+)
 from .overrides import derive_validated_input
 from .result import ENGINE_VERSION
 from .risk_profiles import (
@@ -381,13 +385,14 @@ def evaluate_sensitivity(
         binding=prepared.binding,
     )
     document = prepared.profile_document
-    axes = document["axes"]
-    if len(axes) != 2:
+    raw_axes = document["axes"]
+    if len(raw_axes) != 2:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_AXES",
             "$.axes",
             "sensitivity profile must contain exactly two axes",
         )
+    axes = _canonical_axes(raw_axes)
     metric_ids = tuple(document["metric_ids"])
     maximum_cells = int(document["maximum_cells"])
     cell_count = len(axes[0]["values"]) * len(axes[1]["values"])
@@ -451,6 +456,17 @@ def evaluate_sensitivity(
                     column_index,
                     "model_build",
                     exc.code,
+                )
+            if model.source_input_hash != derived.input_hash:
+                return _not_ready(
+                    prepared,
+                    axes,
+                    metric_ids,
+                    cell_count,
+                    row_index,
+                    column_index,
+                    "model_invariant",
+                    "FIN2_MODEL_INPUT_MISMATCH",
                 )
             if model.status != "ready":
                 cause_code = (
@@ -516,6 +532,28 @@ def evaluate_sensitivity(
         (),
         "dark_ready",
     )
+
+
+def _canonical_axes(
+    axes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    canonical_axes: list[dict[str, Any]] = []
+    for axis_index, axis in enumerate(axes):
+        canonical_axes.append(
+            {
+                **axis,
+                "values": [
+                    _decimal_text(
+                        parse_decimal(
+                            value,
+                            f"$.axes[{axis_index}].values[{value_index}]",
+                        )
+                    )
+                    for value_index, value in enumerate(axis["values"])
+                ],
+            }
+        )
+    return canonical_axes
 
 
 def _not_ready(
