@@ -527,33 +527,25 @@ def test_2_by_3_grid_and_direct_cell_parity() -> None:
     }
 
 
-def test_axis_values_must_remain_unique_after_canonicalization(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_axis_values_must_remain_unique_after_canonicalization() -> None:
     def mutate(profile_document):
         profile_document["axes"][0]["values"] = ["20", "20.0"]
         profile_document["axes"][1]["values"] = ["1", "1.2"]
         profile_document["maximum_cells"] = 4
 
-    prepared = _prepared(profile_mutator=mutate)
-    calls = 0
+    with pytest.raises(FinanceContractError) as admission_error:
+        _prepared(profile_mutator=mutate)
 
-    def unexpected(_) -> None:
-        nonlocal calls
-        calls += 1
-        raise AssertionError("model must not be called")
+    assert admission_error.value.code == "FIN2_PROFILE_AXIS_VALUES"
+    assert admission_error.value.field_ref == "$.axes[0].values"
 
-    monkeypatch.setattr(
-        sensitivity_module,
-        "build_financial_model",
-        unexpected,
-    )
-    with pytest.raises(FinanceContractError) as error:
-        evaluate_sensitivity(prepared)
+    axes = copy.deepcopy(_prepared().profile_document["axes"])
+    axes[0]["values"] = ["20", "20.0"]
+    with pytest.raises(FinanceContractError) as execution_error:
+        sensitivity_module._canonical_axes(axes)
 
-    assert error.value.code == "FIN2_SENSITIVITY_AXIS_DUPLICATE"
-    assert error.value.field_ref == "$.axes[0].values"
-    assert calls == 0
+    assert execution_error.value.code == "FIN2_SENSITIVITY_AXIS_DUPLICATE"
+    assert execution_error.value.field_ref == "$.axes[0].values"
 
 
 def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
