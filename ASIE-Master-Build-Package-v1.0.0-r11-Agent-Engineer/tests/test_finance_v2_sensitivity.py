@@ -468,9 +468,11 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["cells"]["items"]["properties"][
         "column_value"
     ] == decimal_ref
-    assert schema["properties"]["axes"]["items"]["properties"]["values"][
-        "items"
-    ] == decimal_ref
+    axis_values_schema = schema["properties"]["axes"]["items"][
+        "properties"
+    ]["values"]
+    assert axis_values_schema["items"] == decimal_ref
+    assert axis_values_schema["uniqueItems"] is True
     decimal_pattern = schema["$defs"]["canonical_decimal"]["pattern"]
     for accepted in ("0", "1", "-1", "0.0001", "-0.0001", "100.01"):
         assert re.fullmatch(decimal_pattern, accepted)
@@ -523,6 +525,35 @@ def test_2_by_3_grid_and_direct_cell_parity() -> None:
         metric_id: _metric_text(model.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
     }
+
+
+def test_axis_values_must_remain_unique_after_canonicalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mutate(profile_document):
+        profile_document["axes"][0]["values"] = ["20", "20.0"]
+        profile_document["axes"][1]["values"] = ["1", "1.2"]
+        profile_document["maximum_cells"] = 4
+
+    prepared = _prepared(profile_mutator=mutate)
+    calls = 0
+
+    def unexpected(_) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        unexpected,
+    )
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(prepared)
+
+    assert error.value.code == "FIN2_SENSITIVITY_AXIS_DUPLICATE"
+    assert error.value.field_ref == "$.axes[0].values"
+    assert calls == 0
 
 
 def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
