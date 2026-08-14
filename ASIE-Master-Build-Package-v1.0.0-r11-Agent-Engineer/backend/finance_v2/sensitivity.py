@@ -539,18 +539,25 @@ def _canonical_axes(
 ) -> list[dict[str, Any]]:
     canonical_axes: list[dict[str, Any]] = []
     for axis_index, axis in enumerate(axes):
+        canonical_values = [
+            _decimal_text(
+                parse_decimal(
+                    value,
+                    f"$.axes[{axis_index}].values[{value_index}]",
+                )
+            )
+            for value_index, value in enumerate(axis["values"])
+        ]
+        if len(set(canonical_values)) != len(canonical_values):
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_AXIS_DUPLICATE",
+                f"$.axes[{axis_index}].values",
+                "axis values must remain unique after canonical decimal normalization",
+            )
         canonical_axes.append(
             {
                 **axis,
-                "values": [
-                    _decimal_text(
-                        parse_decimal(
-                            value,
-                            f"$.axes[{axis_index}].values[{value_index}]",
-                        )
-                    )
-                    for value_index, value in enumerate(axis["values"])
-                ],
+                "values": canonical_values,
             }
         )
     return canonical_axes
