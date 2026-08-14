@@ -194,6 +194,11 @@ def prepare_sensitivity_run(
     _require_equal(profile.version, binding.profile_version, "binding.profile_version")
     _require_equal(profile.content_hash, binding.profile_hash, "binding.profile_hash")
     _require_equal(
+        profile.dependency_hashes,
+        binding.risk_profile_binding.dependency_hashes,
+        "binding.risk_profile_binding.dependency_hashes",
+    )
+    _require_equal(
         profile.registry_snapshot_hash,
         binding.registry_snapshot_hash,
         "binding.registry_snapshot_hash",
@@ -253,6 +258,17 @@ def prepare_sensitivity_run(
     _require_equal(profile_document.get("version"), binding.profile_version, "$.version")
 
     input_document = validated_input.thaw()
+    input_document_hash = canonical_sha256(input_document)
+    _require_equal(
+        input_document_hash,
+        validated_input.input_hash,
+        "validated_input.input_hash",
+    )
+    _require_equal(
+        input_document_hash,
+        binding.finance_input_hash,
+        "binding.finance_input_hash",
+    )
     metadata = input_document["metadata"]
     _require_equal(input_document.get("organization_id"), binding.organization_id, "$.organization_id")
     _require_equal(metadata.get("approved_manifest_id"), binding.approved_manifest_id, "$.metadata.approved_manifest_id")
@@ -426,7 +442,7 @@ def _evaluation(
         profile_id=prepared.profile.profile_id,
         profile_version=prepared.profile.version,
         profile_hash=prepared.profile.content_hash,
-        dependency_hashes=prepared.profile.dependency_hashes,
+        dependency_hashes=prepared.binding.risk_profile_binding.dependency_hashes,
         registry_snapshot_hash=prepared.profile.registry_snapshot_hash,
         approved_manifest_id=prepared.profile.approved_manifest_id,
         approved_manifest_hash=prepared.profile.approved_manifest_hash,
