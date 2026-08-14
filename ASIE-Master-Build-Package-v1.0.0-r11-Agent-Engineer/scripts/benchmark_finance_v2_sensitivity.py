@@ -18,13 +18,52 @@ MEMORY_CEILING_MIB = 64.0
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.finance_v2 import evaluate_sensitivity
+from backend.finance_v2 import evaluate_sensitivity, monthly_periods
 from tests.test_finance_v2_sensitivity import _prepared
 
 
-def _max_grid(profile_document: dict) -> None:
+_METRIC_IDS = [
+    "npv_unlevered",
+    "irr_unlevered",
+    "mirr_unlevered",
+    "payback_months",
+    "break_even",
+    "funding_need",
+    "dscr_min",
+    "llcr",
+]
+
+
+def _max_input(document: dict) -> None:
+    start_period = document["forecast"]["start_period"]
+    periods = monthly_periods(start_period, 240)
+    document["forecast"]["monthly_periods"] = 240
+    for stream in document["revenue_streams"]:
+        for series_name in (
+            "volume_series",
+            "price_series",
+            "variable_cost_series",
+            "capacity_series",
+        ):
+            if series_name not in stream:
+                continue
+            seed_value = stream[series_name][0]["value"]
+            stream[series_name] = [
+                {"period": period, "value": seed_value}
+                for period in periods
+            ]
+    for cost in document["operating_costs"]:
+        seed_value = cost["schedule"][0]["value"]
+        cost["schedule"] = [
+            {"period": period, "value": seed_value}
+            for period in periods
+        ]
+
+
+def _max_profile(profile_document: dict) -> None:
     profile_document["axes"][0]["values"] = [str(value) for value in range(1, 22)]
     profile_document["axes"][1]["values"] = [str(value) for value in range(1, 22)]
+    profile_document["metric_ids"] = list(_METRIC_IDS)
     profile_document["maximum_cells"] = 441
 
 
@@ -34,12 +73,25 @@ def _percentile_nearest_rank(values: list[float], percentile: float) -> float:
 
 
 def _one_run() -> float:
-    prepared = _prepared(profile_mutator=_max_grid)
+    prepared = _prepared(
+        input_mutator=_max_input,
+        profile_mutator=_max_profile,
+    )
+    if len(prepared.validated_input.periods) != 240:
+        raise RuntimeError("C3C benchmark input does not contain 240 periods")
     started = time.perf_counter()
     result = evaluate_sensitivity(prepared)
     elapsed = time.perf_counter() - started
-    if result.status != "dark_ready" or len(result.cells) != 441:
-        raise RuntimeError("C3C benchmark did not produce a complete 441-cell dark result")
+    if (
+        result.status != "dark_ready"
+        or len(result.cells) != 441
+        or tuple(result.metric_ids) != tuple(_METRIC_IDS)
+        or any(len(cell.metrics) != 8 for cell in result.cells)
+    ):
+        raise RuntimeError(
+            "C3C benchmark did not produce the complete "
+            "441-cell, 240-period, eight-metric dark result"
+        )
     return elapsed
 
 
