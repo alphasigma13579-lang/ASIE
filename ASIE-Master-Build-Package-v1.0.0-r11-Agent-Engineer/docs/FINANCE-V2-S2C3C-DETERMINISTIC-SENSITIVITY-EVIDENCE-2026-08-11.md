@@ -1,11 +1,11 @@
 # FINANCE-V2-S2C3C — Deterministic Sensitivity Benchmark Evidence
 
-- Status: `CORRECTED_MAX_WORKLOAD_BASELINE_AWAITING_EXACT_HEAD_CI_AND_REVIEW`
+- Status: `IMPLEMENTATION_HEAD_VERIFIED_AWAITING_FINAL_EVIDENCE_HEAD_CI_AND_INDEPENDENT_REVIEW`
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decision: `ACR-FIN-003-C3C-v1.0.0`
-- Measured source SHA: `865112280d64663cfee7686843f8f8b9aa19a7cb`
-- ASIE CI baseline run: [#345](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31801057520)
-- Cross-platform run: [#195](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31801057515)
+- Verified implementation source SHA: `43f9d339c4852121acc565f1084ffdda6ff22375`
+- ASIE CI verification: [#350](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31805353072)
+- Cross-platform verification: [#200](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31805353007)
 
 ## Correction record
 
@@ -16,8 +16,14 @@ constructs and asserts the actual maximum supported workload before timing.
 
 Run #345 intentionally retained the former 5.0-second ceiling for the first
 corrected measurement. All 834 Python tests passed, then the benchmark failed
-only because the corrected p95 exceeded that stale ceiling. That failure is the
-source measurement used below; it is not represented as a passing gate.
+only because the corrected p95 exceeded that stale ceiling. That failure
+provided the corrected baseline used to derive the automated ceilings below; it
+is not represented as a passing gate.
+
+Subsequent review also required the cross-platform workflow to emit and compare
+the actual C3C canonical result, rather than relying only on the pre-existing
+general deterministic vector. Run #200 performs that comparison across Linux
+and Windows under `PYTHONHASHSEED=0` and `PYTHONHASHSEED=7919`.
 
 ## Method
 
@@ -46,9 +52,11 @@ Runtime, Snapshot, or provider call.
 | Python | 3.13.15 |
 | Runner platform | Linux 6.17.0-1022-azure x86_64 |
 
-## Corrected measured baseline
+## Corrected baseline and exact implementation verification
 
-| Measure | Value |
+The corrected #345 baseline remains the source for the governed ceiling:
+
+| Baseline measure | Value |
 |---|---:|
 | Trial 1 | 7.120399158 s |
 | Trial 2 | 7.080133590 s |
@@ -57,7 +65,35 @@ Runtime, Snapshot, or provider call.
 | p95 | 7.120399158 s |
 | Peak RSS | 33.05859375 MiB |
 
-## Proposed automated ceilings
+Run #350 verified the reviewed implementation head against those ceilings:
+
+| Verification measure | Value |
+|---|---:|
+| Python tests | 839 passed |
+| Trial 1 | 9.238056071 s |
+| Trial 2 | 9.205275070 s |
+| Trial 3 | 9.221564850 s |
+| p50 | 9.221564850 s |
+| p95 | 9.238056071 s |
+| Peak RSS | 33.11328125 MiB |
+| Runtime ceiling | 10.7 s — passed |
+| Memory ceiling | 64.0 MiB — passed |
+
+## Cross-platform canonical evidence
+
+Run #200 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
+compared the files byte-for-byte:
+
+| Evidence | Value |
+|---|---|
+| Platforms | Ubuntu, Windows |
+| Hash seeds | 0, 7919 |
+| Canonical files compared | 4 |
+| Comparison status | `byte_identical` |
+| C3C result hash | `sha256:f965dc4e576f1e8c4fb73c9918127c1b77954f5d57cd4048b96373634b0d4746` |
+| Serialized SHA-256 | `sha256:d372ab10379446daf24bcdaaeec17208f845571dfa0862a860ce332babf702ee` |
+
+## Automated ceilings
 
 The governing ACR formula is applied without relaxation:
 
@@ -66,13 +102,17 @@ The governing ACR formula is applied without relaxation:
 - raw memory formula: `1.25 × 33.05859375 = 41.3232421875MiB`;
 - enforced memory ceiling: `64.0MiB`, because the governed floor is 64MiB.
 
-Both remain well below the ACR hard caps of 60 seconds and 256MiB. The corrected
+Both remain below the ACR hard caps of 60 seconds and 256MiB. The corrected
 harness identifier is
 `finance-v2-c3c-deterministic-21x21-max-workload.v2`.
 
-These numbers remain subject to exact-head CI and independent
-architecture/security review. They authorize neither Runtime/Snapshot use nor
-a professional, bank, G1, production, network, or provider claim.
+The evidence-document commit necessarily descends from the measured
+implementation SHA. Its own exact-head CI status must therefore be recorded in
+PR #136 metadata after this document-only update completes. Independent
+architecture/security review remains required.
+
+Nothing here authorizes Runtime/Snapshot use or a professional, bank, G1,
+production, network, or provider claim.
 
 ## Residual boundaries
 
