@@ -147,6 +147,7 @@
     },
     "cells": {
       "type": "array",
+      "maxItems": 441,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -198,6 +199,8 @@
           "code",
           "severity",
           "field_ref",
+          "stage",
+          "cause_code",
           "message_ar"
         ],
         "properties": {
@@ -208,6 +211,17 @@
             "type": "string"
           },
           "field_ref": {
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "input_derivation",
+              "model_build",
+              "model_invariant",
+              "metric_projection"
+            ]
+          },
+          "cause_code": {
             "type": "string"
           },
           "message_ar": {
