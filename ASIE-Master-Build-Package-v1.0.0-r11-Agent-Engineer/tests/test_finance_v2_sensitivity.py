@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -119,6 +121,9 @@ def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
     assert first.as_dict() == second.as_dict()
     assert first.as_dict()["execution_scope"] == "dark_build"
     assert first.as_dict()["snapshot_eligible"] is False
+    assert first.as_dict()["organization_id"] == prepared.validated_input.organization_id
+    assert first.as_dict()["project_id"] == prepared.validated_input.project_id
+    assert first.as_dict()["run_id"] == prepared.validated_input.run_id
     assert first.as_dict()["profile"]["schema_version"] == "finance-sensitivity-profile.v1"
     assert first.as_dict()["profile"]["dependency_hashes"]
     assert first.as_dict()["axes"] == [
@@ -380,6 +385,29 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["snapshot_eligible"]["const"] is False
     assert schema["properties"]["cell_count"]["maximum"] == 441
     assert schema["properties"]["cells"]["maxItems"] == 441
+    assert schema["properties"]["cell_count"]["minimum"] == 4
+    assert {"organization_id", "project_id", "run_id"} <= set(
+        schema["required"]
+    )
+    decimal_schema = schema["properties"]["cells"]["items"]["properties"][
+        "metrics"
+    ]["additionalProperties"]
+    decimal_pattern = decimal_schema["oneOf"][0]["pattern"]
+    assert decimal_schema["oneOf"][1] == {"type": "null"}
+    for accepted in ("0", "1", "-1", "0.0001", "-0.0001", "100.01"):
+        assert re.fullmatch(decimal_pattern, accepted)
+    for rejected in (
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "1e3",
+        "text",
+        "-0",
+        "01",
+        "1.0",
+        "1.",
+    ):
+        assert re.fullmatch(decimal_pattern, rejected) is None
     assert {"stage", "cause_code"} <= set(
         schema["properties"]["blockers"]["items"]["required"]
     )
@@ -544,13 +572,71 @@ def test_tampered_profile_body_and_missing_metric_fail_closed(
     )
 
 
+def test_dark_ready_invariant_rejects_partial_duplicate_or_incomplete_cells() -> None:
+    ready = evaluate_sensitivity(_prepared())
+    partial = replace(ready, cells=ready.cells[:-1])
+    duplicate = replace(
+        ready,
+        cells=ready.cells[:-1] + (ready.cells[0],),
+    )
+    incomplete_metric_cell = replace(
+        ready.cells[0],
+        _metrics=ready.cells[0]._metrics[:-1],
+    )
+    incomplete_metrics = replace(
+        ready,
+        cells=(incomplete_metric_cell,) + ready.cells[1:],
+    )
+
+    for invalid in (partial, duplicate, incomplete_metrics):
+        with pytest.raises(FinanceContractError) as error:
+            sensitivity_module._validate_evaluation_invariants(invalid)
+        assert error.value.code == "FIN2_SENSITIVITY_RESULT_INVARIANT"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("1E-100"), "0." + "0" * 99 + "1"),
+        (Decimal("1E+100"), "1" + "0" * 100),
+        (Decimal("1.23000000000000005"), "1.23000000000000005"),
+        (Decimal("-0"), "0"),
+    ],
+)
+def test_finite_decimal_boundaries_are_canonical_and_hash_stable(
+    value: Decimal,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    original = sensitivity_module.build_financial_model
+    metric_id = prepared.profile_document["metric_ids"][0]
+
+    def bounded(validated) -> Any:
+        model = original(validated)
+        metrics = dict(model.metrics)
+        metrics[metric_id] = value
+        return replace(model, metrics=metrics)
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", bounded)
+    first = evaluate_sensitivity(prepared)
+    second = evaluate_sensitivity(prepared)
+
+    assert first.status == "dark_ready"
+    assert first.cells[0].metrics[metric_id] == expected
+    assert first.as_dict() == second.as_dict()
+    assert first.result_hash == canonical_sha256(
+        first.as_dict(include_hash=False)
+    )
+
+
 def test_non_finite_metric_fails_atomically_with_structured_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prepared = _prepared()
     original = sensitivity_module.build_financial_model
 
-    def non_finite(validated):
+    def non_finite(validated) -> Any:
         model = original(validated)
         metrics = dict(model.metrics)
         metrics[prepared.profile_document["metric_ids"][0]] = Decimal("Infinity")
@@ -571,9 +657,18 @@ def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> No
     changed_finance["finance_engine_version"] = "tampered"
     changed_sensitivity = dict(result.as_dict(include_hash=False))
     changed_sensitivity["sensitivity_engine_version"] = "tampered"
+    changed_organization = dict(result.as_dict(include_hash=False))
+    changed_organization["organization_id"] = "org-forged"
+    changed_project = dict(result.as_dict(include_hash=False))
+    changed_project["project_id"] = "project-forged"
+    changed_run = dict(result.as_dict(include_hash=False))
+    changed_run["run_id"] = "run-forged"
 
     assert canonical_sha256(changed_finance) != result.result_hash
     assert canonical_sha256(changed_sensitivity) != result.result_hash
+    assert canonical_sha256(changed_organization) != result.result_hash
+    assert canonical_sha256(changed_project) != result.result_hash
+    assert canonical_sha256(changed_run) != result.result_hash
     source = Path(sensitivity_module.__file__).read_text(encoding="utf-8")
     forbidden = ("module_runtime", "snapshot_assembly", "requests", "http", "socket", "provider")
     assert all(token not in source for token in forbidden)
