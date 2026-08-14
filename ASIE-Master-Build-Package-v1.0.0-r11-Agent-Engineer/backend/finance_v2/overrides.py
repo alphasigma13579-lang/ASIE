@@ -71,7 +71,7 @@ def apply_override(
                     if operation == "multiply"
                     else current + value
                 )
-        container[key] = _decimal_text(updated, value_ref)
+        container[key] = _decimal_text(updated, field_ref)
 
 
 def _target_locations(
