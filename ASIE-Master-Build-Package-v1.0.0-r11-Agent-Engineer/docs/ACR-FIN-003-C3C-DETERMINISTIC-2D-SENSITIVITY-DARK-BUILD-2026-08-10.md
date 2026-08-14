@@ -222,6 +222,8 @@ Server-owned ValidatedFinanceInput
 - `backend/finance_v2/sensitivity.py`
 - `schemas/finance/finance-sensitivity-result.v1.schema.json`
 - `tests/test_finance_v2_sensitivity.py`
+- `tests/finance_v2_sensitivity_fixture.py` لبناء fixture عام مشترك
+  بين اختبارات C3C وسكربتي الدليل، دون اعتماد السكربتات على مساعد اختبار خاص.
 - وثيقة evidence/benchmark خاصة بـC3C
 
 ### تعديل ضيق
@@ -244,7 +246,9 @@ Server-owned ValidatedFinanceInput
   دليل C3C فقط.
 - `.github/workflows/asie-ci.yml` لإضافة خطوة benchmark C3C فقط.
 - `.github/workflows/test-beta-06-cross-platform-determinism.yml` لإضافة
-  إصدار artifact C3C ومقارنته byte-for-byte فقط.
+  إصدار artifact C3C ومقارنته byte-for-byte فقط، وحذف dependency غير مستخدم،
+  وتثبيت كل `actions/*` الموجودة فيه على commit SHA ثابت ومتحقق من
+  المستودعات الرسمية دون تغيير صلاحيات أو منطق الوظيفة.
 
 أي تعديل آخر في workflows أو scripts يحتاج تحديثاً جديداً لهذا القرار قبل
 التنفيذ. لا تمنح هذه الإضافة سلطة Runtime أو Snapshot أو provider أو network،

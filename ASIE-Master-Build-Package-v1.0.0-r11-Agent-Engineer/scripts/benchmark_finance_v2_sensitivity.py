@@ -7,7 +7,6 @@ import gc
 import json
 import math
 import platform
-import resource
 import sys
 import time
 from pathlib import Path
@@ -19,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.finance_v2 import evaluate_sensitivity, monthly_periods
-from tests.test_finance_v2_sensitivity import _prepared
+from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
 
 
 _METRIC_IDS = [
@@ -72,8 +71,18 @@ def _percentile_nearest_rank(values: list[float], percentile: float) -> float:
     return ordered[math.ceil(percentile * len(ordered)) - 1]
 
 
+def _peak_rss_mib(ru_maxrss: float, platform_name: str = sys.platform) -> float:
+    if platform_name == "darwin":
+        return ru_maxrss / (1024 * 1024)
+    if platform_name.startswith("linux"):
+        return ru_maxrss / 1024
+    raise RuntimeError(
+        f"unsupported ru_maxrss unit on platform {platform_name!r}"
+    )
+
+
 def _one_run() -> float:
-    prepared = _prepared(
+    prepared = controlled_sensitivity_prepared_run(
         input_mutator=_max_input,
         profile_mutator=_max_profile,
     )
@@ -112,7 +121,13 @@ def main() -> int:
         gc.collect()
         durations.append(_one_run())
 
-    peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    try:
+        import resource
+    except ImportError as exc:
+        raise SystemExit(
+            "C3C RSS benchmark supports Linux and macOS only"
+        ) from exc
+    peak_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     output = {
         "benchmark": "finance-v2-c3c-deterministic-21x21-max-workload.v2",
         "k": 441,
@@ -123,7 +138,7 @@ def main() -> int:
         "durations_seconds": durations,
         "p50_seconds": _percentile_nearest_rank(durations, 0.50),
         "p95_seconds": _percentile_nearest_rank(durations, 0.95),
-        "peak_rss_mib": peak_rss_kib / 1024,
+        "peak_rss_mib": _peak_rss_mib(peak_rss),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
     }

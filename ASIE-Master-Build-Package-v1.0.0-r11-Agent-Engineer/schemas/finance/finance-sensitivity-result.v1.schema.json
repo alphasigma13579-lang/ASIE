@@ -93,10 +93,12 @@
       ],
       "properties": {
         "profile_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "version": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "content_hash": {
           "type": "string",
@@ -107,17 +109,20 @@
           "pattern": "^sha256:[a-f0-9]{64}$"
         },
         "approved_manifest_id": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "approved_manifest_hash": {
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
         },
         "policy_ref": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "policy_version": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "policy_hash": {
           "type": "string",
@@ -137,7 +142,8 @@
             ],
             "properties": {
               "ref": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "content_hash": {
                 "type": "string",
@@ -149,10 +155,12 @@
       }
     },
     "finance_engine_version": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "sensitivity_engine_version": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "canonicalization_policy": {
       "const": "finance-v2-canonical-json.v1"
@@ -162,7 +170,8 @@
       "minItems": 2,
       "maxItems": 2,
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "metric_ids": {
@@ -232,7 +241,8 @@
           }
         }
       },
-      "$comment": "Complete ordered Cartesian coordinates, cell_count equality, uniqueness, and metric completeness are enforced by _validate_evaluation_invariants before result hashing."
+      "$comment": "Complete ordered Cartesian coordinates, cell_count equality, uniqueness, and metric completeness are enforced by _validate_evaluation_invariants before result hashing.",
+      "uniqueItems": true
     },
     "blockers": {
       "type": "array",

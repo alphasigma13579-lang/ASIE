@@ -274,6 +274,12 @@ def prepare_sensitivity_run(
     _require_equal(validated_input.organization_id, binding.organization_id, "binding.organization_id")
     _require_equal(validated_input.project_id, binding.project_id, "binding.project_id")
     _require_equal(validated_input.run_id, binding.run_id, "binding.run_id")
+    if binding.scope_kind not in {"organization", "global"}:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_TENANT",
+            "binding.scope_kind",
+            "unsupported sensitivity profile scope",
+        )
     if binding.scope_kind == "organization" and binding.owner_organization_id != binding.organization_id:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_TENANT",
@@ -285,12 +291,6 @@ def prepare_sensitivity_run(
             "FIN2_SENSITIVITY_TENANT",
             "binding.owner_organization_id",
             "global scope must not carry tenant ownership",
-        )
-    if binding.scope_kind not in {"organization", "global"}:
-        raise FinanceContractError(
-            "FIN2_SENSITIVITY_TENANT",
-            "binding.scope_kind",
-            "unsupported sensitivity profile scope",
         )
 
     profile_document = profile.thaw()
@@ -526,6 +526,7 @@ def evaluate_sensitivity(
                     _metrics=tuple(metrics.items()),
                 )
             )
+            del model
     return _evaluation(
         prepared,
         axes,

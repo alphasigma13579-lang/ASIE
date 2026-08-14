@@ -48,7 +48,12 @@ def test_override_serialization_preserves_caller_field_reference(
         field_ref,
     )
 
-    assert observed == [field_ref] * 12
+    revenue = next(
+        stream
+        for stream in document["revenue_streams"]
+        if stream["stream_id"] == "rev-primary"
+    )
+    assert observed == [field_ref] * len(revenue["volume_series"])
 
 
 def test_deterministic_scenario_changes_governed_driver_and_is_reproducible() -> None:

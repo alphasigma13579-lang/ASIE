@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import weakref
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -13,23 +14,15 @@ import pytest
 import backend.finance_v2.sensitivity as sensitivity_module
 from backend.finance_v2 import (
     FinanceContractError,
-    SensitivityExecutionBinding,
-    admit_risk_profile,
     build_financial_model,
     canonical_json,
     canonical_sha256,
     evaluate_sensitivity,
     prepare_sensitivity_run,
-    validate_finance_input,
 )
 from backend.finance_v2.overrides import derive_validated_input
-from tests.test_finance_v2_contracts import binding as finance_binding
-from tests.test_finance_v2_contracts import valid_document
-from tests.test_finance_v2_risk_profile_admission import (
-    _binding as profile_binding,
-    _finalize,
-    sensitivity_profile,
-)
+from scripts.benchmark_finance_v2_sensitivity import _peak_rss_mib
+from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
 
 
 _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
@@ -43,71 +36,15 @@ def _metric_text(value) -> str | None:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def _prepared(*, profile_mutator=None, input_mutator=None):
-    document = valid_document()
-    if input_mutator is not None:
-        input_mutator(document)
-    profile_document = sensitivity_profile()
-    profile_document["archetype_ref"] = copy.deepcopy(document["archetype_ref"])
-    profile_document["axes"][0]["target_ref"] = _PRICE
-    profile_document["axes"][1]["target_ref"] = _VOLUME
-    if profile_mutator is not None:
-        profile_mutator(profile_document)
-    _finalize(profile_document)
-    risk_binding = replace(
-        profile_binding(profile_document),
-        dependency_hashes=(
-            (
-                f"archetype:{document['archetype_ref']['archetype_id']}@{document['archetype_ref']['version']}",
-                document["archetype_ref"]["registry_hash"],
-            ),
-        ),
-    )
-
-    document["metadata"] = {
-        "approved_manifest_id": risk_binding.approved_manifest_id,
-        "approved_manifest_hash": risk_binding.approved_manifest_hash,
-        "policy_ref": risk_binding.policy_ref,
-    }
-    validated = validate_finance_input(
-        document,
-        binding=replace(
-            finance_binding(),
-            approved_manifest_id=risk_binding.approved_manifest_id,
-            approved_manifest_hash=risk_binding.approved_manifest_hash,
-            policy_ref=risk_binding.policy_ref,
-        ),
-    )
-    profile = admit_risk_profile(profile_document, binding=risk_binding)
-    binding = SensitivityExecutionBinding(
-        risk_profile_binding=risk_binding,
-        authoritative_admission=True,
-        organization_id=validated.organization_id,
-        project_id=validated.project_id,
-        run_id=validated.run_id,
-        owner_organization_id=risk_binding.owner_organization_id,
-        scope_kind=risk_binding.scope_kind,
-        profile_schema_version=profile_document["schema_version"],
-        profile_id=profile.profile_id,
-        profile_version=profile.version,
-        profile_hash=profile.content_hash,
-        registry_snapshot_hash=profile.registry_snapshot_hash,
-        approved_manifest_id=profile.approved_manifest_id,
-        approved_manifest_hash=profile.approved_manifest_hash,
-        policy_ref=profile.policy_ref,
-        policy_version=profile.policy_version,
-        policy_hash=profile.policy_hash,
-        finance_input_hash=validated.input_hash,
-        currency=validated.currency,
-        archetype_id=document["archetype_ref"]["archetype_id"],
-        archetype_version=document["archetype_ref"]["version"],
-        archetype_registry_hash=document["archetype_ref"]["registry_hash"],
-    )
-    return prepare_sensitivity_run(validated, profile, binding=binding)
+def test_peak_rss_conversion_uses_platform_specific_units() -> None:
+    assert _peak_rss_mib(1024, "linux") == 1
+    assert _peak_rss_mib(1024 * 1024, "darwin") == 1
+    with pytest.raises(RuntimeError, match="unsupported ru_maxrss unit"):
+        _peak_rss_mib(1024, "win32")
 
 
 def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     first = evaluate_sensitivity(prepared)
     second = evaluate_sensitivity(prepared)
 
@@ -147,7 +84,7 @@ def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
 def test_result_state_is_deeply_immutable_and_serialization_is_defensive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ready = evaluate_sensitivity(_prepared())
+    ready = evaluate_sensitivity(controlled_sensitivity_prepared_run())
     ready_before = ready.as_dict()
     metrics_copy = ready.cells[0].metrics
     metrics_copy["npv_unlevered"] = "forged"
@@ -171,7 +108,7 @@ def test_result_state_is_deeply_immutable_and_serialization_is_defensive(
         "build_financial_model",
         forced_failure,
     )
-    blocked = evaluate_sensitivity(_prepared())
+    blocked = evaluate_sensitivity(controlled_sensitivity_prepared_run())
     blocked_before = blocked.as_dict()
     blocker_copy = blocked.blockers[0]
     blocker_copy["cause_code"] = "forged"
@@ -189,7 +126,7 @@ def test_each_cell_builds_once_and_non_idempotent_fixed_override_applies_once(
         profile_document["fixed_overrides"][0]["operation"] = "add"
         profile_document["fixed_overrides"][0]["value"] = "5"
 
-    prepared = _prepared(profile_mutator=mutate)
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
     baseline_dso = Decimal(
         prepared.validated_input.thaw()["working_capital"]["dso_days"]
     )
@@ -216,7 +153,7 @@ def test_each_cell_builds_once_and_non_idempotent_fixed_override_applies_once(
 def test_first_failed_cell_is_atomic_and_returns_no_partial_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
     original = sensitivity_module.build_financial_model
 
@@ -242,7 +179,7 @@ def test_first_failed_cell_is_atomic_and_returns_no_partial_metrics(
 def test_input_derivation_failure_stops_before_current_and_later_cell_builds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     derivations = 0
     builds = 0
     original_derive = sensitivity_module.derive_validated_input
@@ -291,7 +228,7 @@ def test_input_derivation_failure_stops_before_current_and_later_cell_builds(
 def test_tenant_or_admission_mismatch_fails_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_):
@@ -324,7 +261,7 @@ def test_canonical_document_identity_matches_cached_and_trusted_binding(
     forged_value: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_) -> None:
@@ -356,7 +293,7 @@ def test_canonical_document_identity_matches_cached_and_trusted_binding(
 def test_evaluation_revalidates_prepared_provenance_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_):
@@ -380,7 +317,7 @@ def test_evaluation_revalidates_prepared_provenance_before_any_cell_build(
 def test_tampered_finance_document_with_stale_hash_fails_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_):
@@ -409,7 +346,7 @@ def test_tampered_finance_document_with_stale_hash_fails_before_any_cell_build(
 def test_forged_declared_profile_hash_fails_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_) -> None:
@@ -439,7 +376,7 @@ def test_forged_declared_profile_hash_fails_before_any_cell_build(
 def test_tampered_profile_dependency_lineage_fails_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_):
@@ -477,7 +414,7 @@ def test_prepared_capability_is_explicitly_dark_and_not_runtime_eligible(
     value,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     assert prepared.execution_scope == "dark_sensitivity_v1"
     assert prepared.runtime_eligible is False
     calls = 0
@@ -496,7 +433,7 @@ def test_prepared_capability_is_explicitly_dark_and_not_runtime_eligible(
 
 
 def test_execution_binding_must_retain_authoritative_admission_source() -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     forged = replace(
         prepared.binding,
         authoritative_admission=False,
@@ -521,7 +458,27 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["snapshot_eligible"]["const"] is False
     assert schema["properties"]["cell_count"]["maximum"] == 441
     assert schema["properties"]["cells"]["maxItems"] == 441
+    assert schema["properties"]["cells"]["uniqueItems"] is True
     assert schema["properties"]["cell_count"]["minimum"] == 4
+    non_empty_profile_fields = (
+        "profile_id",
+        "version",
+        "approved_manifest_id",
+        "policy_ref",
+        "policy_version",
+    )
+    for field in non_empty_profile_fields:
+        assert schema["properties"]["profile"]["properties"][field][
+            "minLength"
+        ] == 1
+    assert schema["properties"]["profile"]["properties"][
+        "dependency_hashes"
+    ]["items"]["properties"]["ref"]["minLength"] == 1
+    assert schema["properties"]["finance_engine_version"]["minLength"] == 1
+    assert schema["properties"]["sensitivity_engine_version"][
+        "minLength"
+    ] == 1
+    assert schema["properties"]["axis_ids"]["items"]["minLength"] == 1
     assert {"organization_id", "project_id", "run_id"} <= set(
         schema["required"]
     )
@@ -595,7 +552,7 @@ def test_2_by_3_grid_and_direct_cell_parity() -> None:
         profile_document["axes"][1]["values"] = ["0.8", "1", "1.2"]
         profile_document["maximum_cells"] = 6
 
-    prepared = _prepared(profile_mutator=mutate)
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
     result = evaluate_sensitivity(prepared)
 
     assert [(cell.row_index, cell.column_index) for cell in result.cells] == [
@@ -638,12 +595,12 @@ def test_axis_values_must_remain_unique_after_canonicalization() -> None:
         profile_document["maximum_cells"] = 4
 
     with pytest.raises(FinanceContractError) as admission_error:
-        _prepared(profile_mutator=mutate)
+        controlled_sensitivity_prepared_run(profile_mutator=mutate)
 
     assert admission_error.value.code == "FIN2_PROFILE_AXIS_VALUES"
     assert admission_error.value.field_ref == "$.axes[0].values"
 
-    axes = copy.deepcopy(_prepared().profile_document["axes"])
+    axes = copy.deepcopy(controlled_sensitivity_prepared_run().profile_document["axes"])
     axes[0]["values"] = ["20", "20.0"]
     with pytest.raises(FinanceContractError) as execution_error:
         sensitivity_module._canonical_axes(axes)
@@ -659,7 +616,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
         profile_document["fixed_overrides"][0]["value"] = "15"
         profile_document["maximum_cells"] = 4
 
-    prepared = _prepared(profile_mutator=mutate)
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
     input_before = prepared.validated_input.canonical_document
     profile_before = prepared.profile.canonical_document
     result = evaluate_sensitivity(prepared)
@@ -684,30 +641,81 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
         profile_document["axes"][1]["values"] = [str(value) for value in range(1, 22)]
         profile_document["maximum_cells"] = 441
 
-    prepared = _prepared(profile_mutator=mutate)
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
     builds = 0
     derivations = 0
     representative = build_financial_model(prepared.validated_input)
 
-    def derived(_validated, _overrides, _field_ref):
+    def derived(_validated, overrides, _field_ref):
         nonlocal derivations
         derivations += 1
-        return prepared.validated_input
+        row_value = overrides[-2]["value"]
+        column_value = overrides[-1]["value"]
+        input_hash = canonical_sha256(
+            {"row_value": row_value, "column_value": column_value}
+        )
+        return replace(prepared.validated_input, input_hash=input_hash)
 
-    def counted(_validated):
+    def counted(validated):
         nonlocal builds
         builds += 1
-        return representative
+        return replace(
+            representative,
+            source_input_hash=validated.input_hash,
+        )
 
     monkeypatch.setattr(sensitivity_module, "derive_validated_input", derived)
     monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
     result = evaluate_sensitivity(prepared)
 
+    coordinates = {
+        (
+            cell.row_index,
+            cell.column_index,
+            cell.row_value,
+            cell.column_value,
+            cell.derived_input_hash,
+        )
+        for cell in result.cells
+    }
     assert result.status == "dark_ready"
     assert len(result.cells) == 441
+    assert len(coordinates) == 441
+    assert len({cell.derived_input_hash for cell in result.cells}) == 441
     assert derivations == 441
     assert builds == 441
     assert all(not hasattr(cell, "model") for cell in result.cells)
+
+
+def test_releases_each_model_before_building_the_next_cell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    representative = build_financial_model(prepared.validated_input)
+    previous_model: weakref.ReferenceType[Any] | None = None
+    builds = 0
+
+    def one_live_model(validated):
+        nonlocal previous_model, builds
+        if previous_model is not None:
+            assert previous_model() is None
+        model = replace(
+            representative,
+            source_input_hash=validated.input_hash,
+        )
+        previous_model = weakref.ref(model)
+        builds += 1
+        return model
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        one_live_model,
+    )
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "dark_ready"
+    assert builds == result.cell_count == 9
 
 
 @pytest.mark.parametrize(
@@ -734,7 +742,7 @@ def test_profile_and_binding_tampering_fail_before_cell_build(
     expected,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     calls = 0
 
     def unexpected(_):
@@ -757,7 +765,7 @@ def test_profile_and_binding_tampering_fail_before_cell_build(
 def test_model_input_hash_mismatch_fails_before_metric_projection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     original = sensitivity_module.build_financial_model
 
     def mismatched(validated) -> Any:
@@ -786,7 +794,7 @@ def test_model_input_hash_mismatch_fails_before_metric_projection(
 def test_tampered_profile_body_and_missing_metric_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     tampered = replace(
         prepared.profile,
         canonical_document=prepared.profile.canonical_document.replace(
@@ -816,7 +824,7 @@ def test_tampered_profile_body_and_missing_metric_fail_closed(
 
 
 def test_dark_ready_invariant_rejects_partial_duplicate_or_incomplete_cells() -> None:
-    ready = evaluate_sensitivity(_prepared())
+    ready = evaluate_sensitivity(controlled_sensitivity_prepared_run())
     partial = replace(ready, cells=ready.cells[:-1])
     duplicate = replace(
         ready,
@@ -851,7 +859,7 @@ def test_finite_decimal_boundaries_are_canonical_and_hash_stable(
     expected: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     original = sensitivity_module.build_financial_model
     metric_id = prepared.profile_document["metric_ids"][0]
 
@@ -876,7 +884,7 @@ def test_finite_decimal_boundaries_are_canonical_and_hash_stable(
 def test_non_finite_metric_fails_atomically_with_structured_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = _prepared()
+    prepared = controlled_sensitivity_prepared_run()
     original = sensitivity_module.build_financial_model
 
     def non_finite(validated) -> Any:
@@ -895,16 +903,21 @@ def test_non_finite_metric_fails_atomically_with_structured_provenance(
 
 
 def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> None:
-    result = evaluate_sensitivity(_prepared())
-    changed_finance = dict(result.as_dict(include_hash=False))
+    result = evaluate_sensitivity(controlled_sensitivity_prepared_run())
+    full_result = result.as_dict()
+    hash_preimage = result.as_dict(include_hash=False)
+    assert set(full_result) - set(hash_preimage) == {"result_hash"}
+    assert set(hash_preimage) - set(full_result) == set()
+
+    changed_finance = dict(hash_preimage)
     changed_finance["finance_engine_version"] = "tampered"
-    changed_sensitivity = dict(result.as_dict(include_hash=False))
+    changed_sensitivity = dict(hash_preimage)
     changed_sensitivity["sensitivity_engine_version"] = "tampered"
-    changed_organization = dict(result.as_dict(include_hash=False))
+    changed_organization = dict(hash_preimage)
     changed_organization["organization_id"] = "org-forged"
-    changed_project = dict(result.as_dict(include_hash=False))
+    changed_project = dict(hash_preimage)
     changed_project["project_id"] = "project-forged"
-    changed_run = dict(result.as_dict(include_hash=False))
+    changed_run = dict(hash_preimage)
     changed_run["run_id"] = "run-forged"
 
     assert canonical_sha256(changed_finance) != result.result_hash

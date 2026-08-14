@@ -7,7 +7,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -32,9 +32,9 @@ def _canonical_json(value: object) -> str:
 def emit(output: Path) -> dict[str, object]:
     _ensure_repository_imports()
     from backend.finance_v2 import canonical_sha256, evaluate_sensitivity
-    from tests.test_finance_v2_sensitivity import _prepared
+    from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
 
-    result = evaluate_sensitivity(_prepared())
+    result = evaluate_sensitivity(controlled_sensitivity_prepared_run())
     payload = result.as_dict()
     if result.status != "dark_ready" or len(result.cells) != 9:
         raise RuntimeError("C3C cross-platform vector is not a complete 3x3 result")

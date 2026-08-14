@@ -114,13 +114,26 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
         self.assertIn("core.longpaths true", workflow)
         self.assertIn("core.autocrlf false", workflow)
         self.assertIn("core.eol lf", workflow)
-        self.assertIn(
-            "actions/upload-artifact@"
-            "ea165f8d65b6e75b540449e92b4886f43607fa02",
-            workflow,
-        )
-        self.assertNotIn("actions/upload-artifact@v4", workflow)
-        self.assertIn("actions/download-artifact@v4", workflow)
+        expected_actions = {
+            "actions/checkout":
+                "11d5960a326750d5838078e36cf38b85af677262",
+            "actions/setup-python":
+                "a26af69be951a213d495a4c3e4e4022e16d87065",
+            "actions/download-artifact":
+                "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+            "actions/upload-artifact":
+                "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        }
+        uses = re.findall(r"^\\s*uses:\\s*([^\\s#]+)", workflow, re.MULTILINE)
+        self.assertTrue(uses)
+        for action_ref in uses:
+            action, separator, commit_sha = action_ref.partition("@")
+            self.assertEqual(separator, "@")
+            self.assertIn(action, expected_actions)
+            self.assertEqual(commit_sha, expected_actions[action])
+            self.assertRegex(commit_sha, r"^[0-9a-f]{40}$")
+        self.assertNotIn("Install C3C vector test dependency", workflow)
+        self.assertNotIn("python -m pip install", workflow)
         self.assertIn("compare --directory", workflow)
         self.assertIn("fail-fast: false", workflow)
 
