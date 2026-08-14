@@ -13,6 +13,7 @@ from backend.finance_v2 import (
     SensitivityExecutionBinding,
     admit_risk_profile,
     build_financial_model,
+    canonical_json,
     canonical_sha256,
     evaluate_sensitivity,
     prepare_sensitivity_run,
@@ -39,8 +40,10 @@ def _metric_text(value) -> str | None:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def _prepared(*, profile_mutator=None):
+def _prepared(*, profile_mutator=None, input_mutator=None):
     document = valid_document()
+    if input_mutator is not None:
+        input_mutator(document)
     profile_document = sensitivity_profile()
     profile_document["archetype_ref"] = copy.deepcopy(document["archetype_ref"])
     profile_document["axes"][0]["target_ref"] = _PRICE
@@ -213,6 +216,64 @@ def test_evaluation_revalidates_prepared_provenance_before_any_cell_build(
     forged = replace(
         prepared,
         binding=replace(prepared.binding, organization_id="org-other"),
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(forged)
+
+    assert error.value.code == "FIN2_SENSITIVITY_BINDING_MISMATCH"
+    assert calls == 0
+
+
+def test_tampered_finance_document_with_stale_hash_fails_before_any_cell_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    tampered_document = prepared.validated_input.thaw()
+    tampered_document["working_capital"]["dso_days"] = "999"
+    forged = replace(
+        prepared,
+        validated_input=replace(
+            prepared.validated_input,
+            canonical_document=canonical_json(tampered_document),
+        ),
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(forged)
+
+    assert error.value.code == "FIN2_SENSITIVITY_BINDING_MISMATCH"
+    assert calls == 0
+
+
+def test_tampered_profile_dependency_lineage_fails_before_any_cell_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    forged = replace(
+        prepared,
+        profile=replace(
+            prepared.profile,
+            dependency_hashes=(
+                ("archetype:forged@9.9.9", "sha256:" + "f" * 64),
+            ),
+        ),
     )
 
     with pytest.raises(FinanceContractError) as error:
