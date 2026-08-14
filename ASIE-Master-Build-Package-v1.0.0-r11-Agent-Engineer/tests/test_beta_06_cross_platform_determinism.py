@@ -114,7 +114,12 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
         self.assertIn("core.longpaths true", workflow)
         self.assertIn("core.autocrlf false", workflow)
         self.assertIn("core.eol lf", workflow)
-        self.assertIn("actions/upload-artifact@v4", workflow)
+        self.assertIn(
+            "actions/upload-artifact@"
+            "ea165f8d65b6e75b540449e92b4886f43607fa02",
+            workflow,
+        )
+        self.assertNotIn("actions/upload-artifact@v4", workflow)
         self.assertIn("actions/download-artifact@v4", workflow)
         self.assertIn("compare --directory", workflow)
         self.assertIn("fail-fast: false", workflow)
