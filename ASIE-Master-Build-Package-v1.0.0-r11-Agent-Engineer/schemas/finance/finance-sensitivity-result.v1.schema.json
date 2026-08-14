@@ -311,7 +311,8 @@
             "maxItems": 21,
             "items": {
               "$ref": "#/$defs/canonical_decimal"
-            }
+            },
+            "uniqueItems": true
           }
         }
       }
