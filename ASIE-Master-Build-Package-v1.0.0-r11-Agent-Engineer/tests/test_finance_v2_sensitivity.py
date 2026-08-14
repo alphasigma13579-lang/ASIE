@@ -433,9 +433,31 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert {"organization_id", "project_id", "run_id"} <= set(
         schema["required"]
     )
-    decimal_schema = schema["properties"]["cells"]["items"]["properties"][
+    governed_metrics = {
+        "npv_unlevered",
+        "irr_unlevered",
+        "mirr_unlevered",
+        "payback_months",
+        "break_even",
+        "funding_need",
+        "dscr_min",
+        "llcr",
+    }
+    assert set(schema["$defs"]["governed_metric_id"]["enum"]) == governed_metrics
+    assert schema["properties"]["metric_ids"]["maxItems"] == 8
+    assert schema["properties"]["metric_ids"]["items"] == {
+        "$ref": "#/$defs/governed_metric_id"
+    }
+    metrics_schema = schema["properties"]["cells"]["items"]["properties"][
         "metrics"
-    ]["additionalProperties"]
+    ]
+    assert metrics_schema["minProperties"] == 1
+    assert metrics_schema["maxProperties"] == 8
+    assert metrics_schema["propertyNames"] == {
+        "$ref": "#/$defs/governed_metric_id"
+    }
+    assert "custom_metric" not in governed_metrics
+    decimal_schema = metrics_schema["additionalProperties"]
     decimal_pattern = decimal_schema["oneOf"][0]["pattern"]
     assert decimal_schema["oneOf"][1] == {"type": "null"}
     for accepted in ("0", "1", "-1", "0.0001", "-0.0001", "100.01"):
