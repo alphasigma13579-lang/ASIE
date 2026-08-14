@@ -124,7 +124,7 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
             "actions/upload-artifact":
                 "ea165f8d65b6e75b540449e92b4886f43607fa02",
         }
-        uses = re.findall(r"^\\s*uses:\\s*([^\\s#]+)", workflow, re.MULTILINE)
+        uses = re.findall(r"^\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE)
         self.assertTrue(uses)
         for action_ref in uses:
             action, separator, commit_sha = action_ref.partition("@")
