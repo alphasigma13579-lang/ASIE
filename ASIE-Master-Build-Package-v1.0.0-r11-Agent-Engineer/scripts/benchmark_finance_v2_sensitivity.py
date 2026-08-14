@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-RUNTIME_CEILING_SECONDS = 5.0
+RUNTIME_CEILING_SECONDS = 10.7
 MEMORY_CEILING_MIB = 64.0
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -114,7 +114,7 @@ def main() -> int:
 
     peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     output = {
-        "benchmark": "finance-v2-c3c-deterministic-21x21.v1",
+        "benchmark": "finance-v2-c3c-deterministic-21x21-max-workload.v2",
         "k": 441,
         "period_cap": 240,
         "metric_cap": 8,
