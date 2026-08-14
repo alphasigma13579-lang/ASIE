@@ -83,6 +83,8 @@ def _prepared(*, profile_mutator=None, input_mutator=None):
         risk_profile_binding=risk_binding,
         authoritative_admission=True,
         organization_id=validated.organization_id,
+        project_id=validated.project_id,
+        run_id=validated.run_id,
         owner_organization_id=risk_binding.owner_organization_id,
         scope_kind=risk_binding.scope_kind,
         profile_schema_version=profile_document["schema_version"],
@@ -244,6 +246,48 @@ def test_tenant_or_admission_mismatch_fails_before_any_cell_build(
         prepare_sensitivity_run(prepared.validated_input, prepared.profile, binding=forged)
 
     assert error.value.code == "FIN2_SENSITIVITY_BINDING_MISMATCH"
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "forged_value"),
+    [
+        ("project_id", "project-forged"),
+        ("run_id", "run-forged"),
+        ("currency", "USD"),
+    ],
+)
+def test_canonical_document_identity_matches_cached_and_trusted_binding(
+    field: str,
+    forged_value: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    forged = replace(
+        prepared,
+        validated_input=replace(
+            prepared.validated_input,
+            **{field: forged_value},
+        ),
+        binding=replace(
+            prepared.binding,
+            **{field: forged_value},
+        ),
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(forged)
+
+    assert error.value.code == "FIN2_SENSITIVITY_BINDING_MISMATCH"
+    assert error.value.field_ref == f"$.{field}"
     assert calls == 0
 
 
