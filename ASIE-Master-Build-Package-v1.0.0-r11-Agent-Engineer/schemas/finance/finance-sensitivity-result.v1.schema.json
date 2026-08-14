@@ -9,6 +9,9 @@
     "status",
     "execution_scope",
     "snapshot_eligible",
+    "organization_id",
+    "project_id",
+    "run_id",
     "finance_input_hash",
     "profile",
     "finance_engine_version",
@@ -37,6 +40,18 @@
     },
     "snapshot_eligible": {
       "const": false
+    },
+    "organization_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
     },
     "finance_input_hash": {
       "type": "string",
@@ -142,7 +157,7 @@
     },
     "cell_count": {
       "type": "integer",
-      "minimum": 1,
+      "minimum": 4,
       "maximum": 441
     },
     "cells": {
@@ -181,14 +196,20 @@
           "metrics": {
             "type": "object",
             "additionalProperties": {
-              "type": [
-                "string",
-                "null"
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?:0|-?(?:[1-9][0-9]*(?:\\\\.[0-9]*[1-9])?|0\\\\.[0-9]*[1-9]))$"
+                },
+                {
+                  "type": "null"
+                }
               ]
             }
           }
         }
-      }
+      },
+      "$comment": "Complete ordered Cartesian coordinates, cell_count equality, uniqueness, and metric completeness are enforced by _validate_evaluation_invariants before result hashing."
     },
     "blockers": {
       "type": "array",
@@ -291,7 +312,7 @@
             "maxItems": 0
           },
           "cells": {
-            "minItems": 1
+            "minItems": 4
           }
         }
       }
