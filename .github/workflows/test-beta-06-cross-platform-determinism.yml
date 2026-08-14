@@ -56,12 +56,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install C3C vector test dependency
+        run: python -m pip install "pytest>=8.3,<9.0"
+
       - name: Compile deterministic evidence code
         env:
           PYTHONHASHSEED: ${{ matrix.hashseed }}
           PYTHONUTF8: "1"
           TZ: UTC
-        run: python -m py_compile tools/test_beta_06_determinism.py tests/test_beta_06_cross_platform_determinism.py
+        run: python -m py_compile tools/test_beta_06_determinism.py tests/test_beta_06_cross_platform_determinism.py scripts/finance_v2_sensitivity_cross_platform.py
 
       - name: Run TEST-BETA-06 local guards
         env:
@@ -77,11 +80,18 @@ jobs:
           TZ: UTC
         run: python tools/test_beta_06_determinism.py emit --output artifacts/${{ matrix.label }}/vector.json
 
+      - name: Emit C3C canonical sensitivity result
+        env:
+          PYTHONHASHSEED: ${{ matrix.hashseed }}
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python scripts/finance_v2_sensitivity_cross_platform.py emit --output artifacts/${{ matrix.label }}/c3c-sensitivity.json
+
       - name: Upload deterministic vector
         uses: actions/upload-artifact@v4
         with:
           name: test-beta-06-${{ matrix.label }}
-          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/artifacts/${{ matrix.label }}/vector.json
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/artifacts/${{ matrix.label }}/
           if-no-files-found: error
           retention-days: 30
 
@@ -116,8 +126,17 @@ jobs:
           TZ: UTC
         run: python tools/test_beta_06_determinism.py compare --directory test-beta-06-evidence > test-beta-06-evidence/comparison.json
 
+      - name: Compare C3C canonical results byte-for-byte
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONUTF8: "1"
+          TZ: UTC
+        run: python scripts/finance_v2_sensitivity_cross_platform.py compare --directory test-beta-06-evidence > test-beta-06-evidence/c3c-comparison.json
+
       - name: Show comparison evidence
-        run: cat test-beta-06-evidence/comparison.json
+        run: |
+          cat test-beta-06-evidence/comparison.json
+          cat test-beta-06-evidence/c3c-comparison.json
 
       - name: Upload combined TEST-BETA-06 evidence
         uses: actions/upload-artifact@v4
