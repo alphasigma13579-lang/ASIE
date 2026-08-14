@@ -53,6 +53,44 @@ class PreparedSensitivityRun:
     profile: ValidatedRiskProfile
     binding: SensitivityExecutionBinding
     profile_document: dict[str, Any]
+    execution_scope: str = _EXECUTION_SCOPE
+    runtime_eligible: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityAxis:
+    axis_id: str
+    target_ref: str
+    operation: str
+    values: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "axis_id": self.axis_id,
+            "target_ref": self.target_ref,
+            "operation": self.operation,
+            "values": list(self.values),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityBlocker:
+    code: str
+    severity: str
+    field_ref: str
+    stage: str
+    cause_code: str
+    message_ar: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "code": self.code,
+            "severity": self.severity,
+            "field_ref": self.field_ref,
+            "stage": self.stage,
+            "cause_code": self.cause_code,
+            "message_ar": self.message_ar,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +100,11 @@ class SensitivityCell:
     row_value: str
     column_value: str
     derived_input_hash: str
-    metrics: dict[str, str | None]
+    _metrics: tuple[tuple[str, str | None], ...]
+
+    @property
+    def metrics(self) -> dict[str, str | None]:
+        return dict(self._metrics)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -71,7 +113,7 @@ class SensitivityCell:
             "row_value": self.row_value,
             "column_value": self.column_value,
             "derived_input_hash": self.derived_input_hash,
-            "metrics": self.metrics,
+            "metrics": dict(self._metrics),
         }
 
 
@@ -94,12 +136,20 @@ class SensitivityEvaluation:
     sensitivity_engine_version: str
     canonicalization_policy: str
     axis_ids: tuple[str, str]
-    axes: tuple[dict[str, Any], dict[str, Any]]
+    _axes: tuple[SensitivityAxis, SensitivityAxis]
     metric_ids: tuple[str, ...]
     cell_count: int
     cells: tuple[SensitivityCell, ...]
-    blockers: tuple[dict[str, str], ...]
+    _blockers: tuple[SensitivityBlocker, ...]
     result_hash: str
+
+    @property
+    def axes(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        return tuple(axis.as_dict() for axis in self._axes)  # type: ignore[return-value]
+
+    @property
+    def blockers(self) -> tuple[dict[str, str], ...]:
+        return tuple(blocker.as_dict() for blocker in self._blockers)
 
     def as_dict(self, *, include_hash: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -128,19 +178,11 @@ class SensitivityEvaluation:
             "sensitivity_engine_version": self.sensitivity_engine_version,
             "canonicalization_policy": self.canonicalization_policy,
             "axis_ids": list(self.axis_ids),
-            "axes": [
-                {
-                    "axis_id": axis["axis_id"],
-                    "target_ref": axis["target_ref"],
-                    "operation": axis["operation"],
-                    "values": list(axis["values"]),
-                }
-                for axis in self.axes
-            ],
+            "axes": [axis.as_dict() for axis in self._axes],
             "metric_ids": list(self.metric_ids),
             "cell_count": self.cell_count,
             "cells": [cell.as_dict() for cell in self.cells],
-            "blockers": list(self.blockers),
+            "blockers": [blocker.as_dict() for blocker in self._blockers],
         }
         if include_hash:
             payload["result_hash"] = self.result_hash
@@ -298,6 +340,12 @@ def evaluate_sensitivity(
             "prepared",
             "evaluate_sensitivity requires a prepared server-bound run",
         )
+    if prepared.execution_scope != _EXECUTION_SCOPE or prepared.runtime_eligible:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_PREPARED_SCOPE",
+            "prepared",
+            "prepared sensitivity capability is dark-only and never runtime eligible",
+        )
     prepared = prepare_sensitivity_run(
         prepared.validated_input,
         prepared.profile,
@@ -351,6 +399,18 @@ def evaluate_sensitivity(
                     overrides,
                     f"$.sensitivity.cells[{row_index}][{column_index}]",
                 )
+            except FinanceContractError as exc:
+                return _not_ready(
+                    prepared,
+                    axes,
+                    metric_ids,
+                    cell_count,
+                    row_index,
+                    column_index,
+                    "input_derivation",
+                    exc.code,
+                )
+            try:
                 model = build_financial_model(derived)
             except FinanceContractError as exc:
                 return _not_ready(
@@ -360,10 +420,15 @@ def evaluate_sensitivity(
                     cell_count,
                     row_index,
                     column_index,
+                    "model_build",
                     exc.code,
                 )
             if model.status != "ready":
-                code = model.blockers[0]["code"] if model.blockers else "FIN2_SENSITIVITY_MODEL_NOT_READY"
+                cause_code = (
+                    model.blockers[0]["code"]
+                    if model.blockers
+                    else "FIN2_SENSITIVITY_MODEL_NOT_READY"
+                )
                 return _not_ready(
                     prepared,
                     axes,
@@ -371,7 +436,8 @@ def evaluate_sensitivity(
                     cell_count,
                     row_index,
                     column_index,
-                    code,
+                    "model_invariant",
+                    cause_code,
                 )
             metrics: dict[str, str | None] = {}
             for metric_id in metric_ids:
@@ -383,10 +449,25 @@ def evaluate_sensitivity(
                         cell_count,
                         row_index,
                         column_index,
+                        "metric_projection",
                         "FIN2_SENSITIVITY_METRIC_UNAVAILABLE",
                     )
                 value = model.metrics[metric_id]
-                metrics[metric_id] = None if value is None else _decimal_text(value)
+                try:
+                    metrics[metric_id] = (
+                        None if value is None else _decimal_text(value)
+                    )
+                except FinanceContractError as exc:
+                    return _not_ready(
+                        prepared,
+                        axes,
+                        metric_ids,
+                        cell_count,
+                        row_index,
+                        column_index,
+                        "metric_projection",
+                        exc.code,
+                    )
             cells.append(
                 SensitivityCell(
                     row_index=row_index,
@@ -394,7 +475,7 @@ def evaluate_sensitivity(
                     row_value=row_value,
                     column_value=column_value,
                     derived_input_hash=derived.input_hash,
-                    metrics=metrics,
+                    _metrics=tuple(metrics.items()),
                 )
             )
     return _evaluation(
@@ -415,15 +496,26 @@ def _not_ready(
     cell_count: int,
     row_index: int,
     column_index: int,
-    code: str,
+    stage: str,
+    cause_code: str,
 ) -> SensitivityEvaluation:
-    blocker = {
-        "code": "FIN2_SENSITIVITY_CELL_NOT_READY",
-        "severity": "high",
-        "field_ref": f"$.cells[{row_index}][{column_index}]",
-        "message_ar": f"فشلت خلية الحساسية الحتمية بسبب {code}.",
-    }
-    return _evaluation(prepared, axes, metric_ids, cell_count, (), (blocker,), "not_ready")
+    blocker = SensitivityBlocker(
+        code="FIN2_SENSITIVITY_CELL_NOT_READY",
+        severity="high",
+        field_ref=f"$.cells[{row_index}][{column_index}]",
+        stage=stage,
+        cause_code=cause_code,
+        message_ar=f"فشلت خلية الحساسية الحتمية بسبب {cause_code}.",
+    )
+    return _evaluation(
+        prepared,
+        axes,
+        metric_ids,
+        cell_count,
+        (),
+        (blocker,),
+        "not_ready",
+    )
 
 
 def _evaluation(
@@ -432,7 +524,7 @@ def _evaluation(
     metric_ids: tuple[str, ...],
     cell_count: int,
     cells: tuple[SensitivityCell, ...],
-    blockers: tuple[dict[str, str], ...],
+    blockers: tuple[SensitivityBlocker, ...],
     status: str,
 ) -> SensitivityEvaluation:
     base = dict(
@@ -453,24 +545,24 @@ def _evaluation(
         sensitivity_engine_version=SENSITIVITY_ENGINE_VERSION,
         canonicalization_policy=_CANONICALIZATION_POLICY,
         axis_ids=(axes[0]["axis_id"], axes[1]["axis_id"]),
-        axes=(
-            {
-                "axis_id": axes[0]["axis_id"],
-                "target_ref": axes[0]["target_ref"],
-                "operation": axes[0]["operation"],
-                "values": list(axes[0]["values"]),
-            },
-            {
-                "axis_id": axes[1]["axis_id"],
-                "target_ref": axes[1]["target_ref"],
-                "operation": axes[1]["operation"],
-                "values": list(axes[1]["values"]),
-            },
+        _axes=(
+            SensitivityAxis(
+                axis_id=axes[0]["axis_id"],
+                target_ref=axes[0]["target_ref"],
+                operation=axes[0]["operation"],
+                values=tuple(axes[0]["values"]),
+            ),
+            SensitivityAxis(
+                axis_id=axes[1]["axis_id"],
+                target_ref=axes[1]["target_ref"],
+                operation=axes[1]["operation"],
+                values=tuple(axes[1]["values"]),
+            ),
         ),
         metric_ids=metric_ids,
         cell_count=cell_count,
         cells=cells,
-        blockers=blockers,
+        _blockers=blockers,
     )
     provisional = SensitivityEvaluation(**base, result_hash="")
     result_hash = canonical_sha256(provisional.as_dict(include_hash=False))
