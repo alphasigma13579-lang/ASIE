@@ -120,6 +120,9 @@ class SensitivityCell:
 @dataclass(frozen=True, slots=True)
 class SensitivityEvaluation:
     status: str
+    organization_id: str
+    project_id: str
+    run_id: str
     finance_input_hash: str
     profile_schema_version: str
     profile_id: str
@@ -157,6 +160,9 @@ class SensitivityEvaluation:
             "status": self.status,
             "execution_scope": "dark_build",
             "snapshot_eligible": False,
+            "organization_id": self.organization_id,
+            "project_id": self.project_id,
+            "run_id": self.run_id,
             "finance_input_hash": self.finance_input_hash,
             "profile": {
                 "schema_version": self.profile_schema_version,
@@ -529,6 +535,9 @@ def _evaluation(
 ) -> SensitivityEvaluation:
     base = dict(
         status=status,
+        organization_id=prepared.validated_input.organization_id,
+        project_id=prepared.validated_input.project_id,
+        run_id=prepared.validated_input.run_id,
         finance_input_hash=prepared.validated_input.input_hash,
         profile_schema_version=prepared.profile_document["schema_version"],
         profile_id=prepared.profile.profile_id,
@@ -565,9 +574,81 @@ def _evaluation(
         _blockers=blockers,
     )
     provisional = SensitivityEvaluation(**base, result_hash="")
+    _validate_evaluation_invariants(provisional)
     result_hash = canonical_sha256(provisional.as_dict(include_hash=False))
     return SensitivityEvaluation(**base, result_hash=result_hash)
 
+
+def _validate_evaluation_invariants(
+    evaluation: SensitivityEvaluation,
+) -> None:
+    expected_cell_count = (
+        len(evaluation._axes[0].values) * len(evaluation._axes[1].values)
+    )
+    if evaluation.cell_count != expected_cell_count:
+        raise FinanceContractError(
+            "FIN2_SENSITIVITY_RESULT_INVARIANT",
+            "$.cell_count",
+            "cell_count must equal the complete Cartesian axis size",
+        )
+    if evaluation.status == "dark_ready":
+        expected_grid = tuple(
+            (
+                row_index,
+                column_index,
+                row_value,
+                column_value,
+            )
+            for row_index, row_value in enumerate(evaluation._axes[0].values)
+            for column_index, column_value in enumerate(
+                evaluation._axes[1].values
+            )
+        )
+        actual_grid = tuple(
+            (
+                cell.row_index,
+                cell.column_index,
+                cell.row_value,
+                cell.column_value,
+            )
+            for cell in evaluation.cells
+        )
+        if actual_grid != expected_grid:
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_RESULT_INVARIANT",
+                "$.cells",
+                "dark_ready cells must be the complete ordered Cartesian grid",
+            )
+        if evaluation._blockers:
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_RESULT_INVARIANT",
+                "$.blockers",
+                "dark_ready results cannot contain blockers",
+            )
+        if any(
+            tuple(metric_id for metric_id, _ in cell._metrics)
+            != evaluation.metric_ids
+            for cell in evaluation.cells
+        ):
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_RESULT_INVARIANT",
+                "$.cells[*].metrics",
+                "every dark_ready cell must contain the complete ordered metric set",
+            )
+        return
+    if evaluation.status == "not_ready":
+        if evaluation.cells or len(evaluation._blockers) != 1:
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_RESULT_INVARIANT",
+                "$",
+                "not_ready results must be atomic with one blocker and no cells",
+            )
+        return
+    raise FinanceContractError(
+        "FIN2_SENSITIVITY_RESULT_INVARIANT",
+        "$.status",
+        "unsupported sensitivity result status",
+    )
 
 
 def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> None:
