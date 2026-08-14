@@ -2,6 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://asie.local/schemas/finance/finance-sensitivity-result.v1.schema.json",
   "title": "ASIE Finance Deterministic Sensitivity Result v1",
+  "$defs": {
+    "governed_metric_id": {
+      "enum": [
+        "npv_unlevered",
+        "irr_unlevered",
+        "mirr_unlevered",
+        "payback_months",
+        "break_even",
+        "funding_need",
+        "dscr_min",
+        "llcr"
+      ]
+    }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -152,8 +166,9 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "type": "string"
-      }
+        "$ref": "#/$defs/governed_metric_id"
+      },
+      "maxItems": 8
     },
     "cell_count": {
       "type": "integer",
@@ -205,6 +220,11 @@
                   "type": "null"
                 }
               ]
+            },
+            "minProperties": 1,
+            "maxProperties": 8,
+            "propertyNames": {
+              "$ref": "#/$defs/governed_metric_id"
             }
           }
         }
