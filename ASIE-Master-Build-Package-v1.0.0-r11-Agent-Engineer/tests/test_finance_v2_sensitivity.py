@@ -344,6 +344,36 @@ def test_tampered_finance_document_with_stale_hash_fails_before_any_cell_build(
     assert calls == 0
 
 
+def test_forged_declared_profile_hash_fails_before_any_cell_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    calls = 0
+
+    def unexpected(_) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    forged_document = prepared.profile.thaw()
+    forged_document["content_hash"] = "sha256:" + "f" * 64
+    forged = replace(
+        prepared,
+        profile=replace(
+            prepared.profile,
+            canonical_document=canonical_json(forged_document),
+        ),
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(forged)
+
+    assert error.value.code == "FIN2_SENSITIVITY_HASH_MISMATCH"
+    assert error.value.field_ref == "$.content_hash"
+    assert calls == 0
+
+
 def test_tampered_profile_dependency_lineage_fails_before_any_cell_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
