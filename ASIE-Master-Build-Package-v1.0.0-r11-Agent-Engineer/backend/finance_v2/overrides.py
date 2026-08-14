@@ -71,7 +71,7 @@ def apply_override(
                     if operation == "multiply"
                     else current + value
                 )
-        container[key] = _decimal_text(updated)
+        container[key] = _decimal_text(updated, value_ref)
 
 
 def _target_locations(
@@ -175,11 +175,11 @@ def _find(
     )
 
 
-def _decimal_text(value: Decimal) -> str:
+def _decimal_text(value: Decimal, field_ref: str) -> str:
     if not value.is_finite():
         raise FinanceContractError(
             "FIN2_SCENARIO_VALUE",
-            "$.scenarios",
+            field_ref,
             "scenario arithmetic must remain finite",
         )
     with localcontext() as context:
