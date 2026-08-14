@@ -14,6 +14,10 @@
         "dscr_min",
         "llcr"
       ]
+    },
+    "canonical_decimal": {
+      "type": "string",
+      "pattern": "^(?:0|-?(?:[1-9][0-9]*(?:\\.[0-9]*[1-9])?|0\\.[0-9]*[1-9]))$"
     }
   },
   "type": "object",
@@ -199,10 +203,10 @@
             "minimum": 0
           },
           "row_value": {
-            "type": "string"
+            "$ref": "#/$defs/canonical_decimal"
           },
           "column_value": {
-            "type": "string"
+            "$ref": "#/$defs/canonical_decimal"
           },
           "derived_input_hash": {
             "type": "string",
@@ -213,8 +217,7 @@
             "additionalProperties": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^(?:0|-?(?:[1-9][0-9]*(?:\\.[0-9]*[1-9])?|0\\.[0-9]*[1-9]))$"
+                  "$ref": "#/$defs/canonical_decimal"
                 },
                 {
                   "type": "null"
@@ -307,7 +310,7 @@
             "minItems": 2,
             "maxItems": 21,
             "items": {
-              "type": "string"
+              "$ref": "#/$defs/canonical_decimal"
             }
           }
         }
