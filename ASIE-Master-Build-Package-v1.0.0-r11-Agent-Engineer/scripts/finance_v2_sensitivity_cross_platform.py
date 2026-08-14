@@ -5,8 +5,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Sequence
+
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _ensure_repository_imports() -> None:
+    repository_root = str(_REPOSITORY_ROOT)
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
 
 
 def _canonical_json(value: object) -> str:
@@ -20,6 +30,7 @@ def _canonical_json(value: object) -> str:
 
 
 def emit(output: Path) -> dict[str, object]:
+    _ensure_repository_imports()
     from backend.finance_v2 import canonical_sha256, evaluate_sensitivity
     from tests.test_finance_v2_sensitivity import _prepared
 
