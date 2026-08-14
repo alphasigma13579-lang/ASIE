@@ -182,15 +182,28 @@ def test_result_state_is_deeply_immutable_and_serialization_is_defensive(
     )
 
 
-def test_each_cell_builds_once_and_fixed_overrides_apply(monkeypatch: pytest.MonkeyPatch) -> None:
-    prepared = _prepared()
+def test_each_cell_builds_once_and_non_idempotent_fixed_override_applies_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mutate(profile_document):
+        profile_document["fixed_overrides"][0]["operation"] = "add"
+        profile_document["fixed_overrides"][0]["value"] = "5"
+
+    prepared = _prepared(profile_mutator=mutate)
+    baseline_dso = Decimal(
+        prepared.validated_input.thaw()["working_capital"]["dso_days"]
+    )
+    expected_dso = _metric_text(baseline_dso + Decimal("5"))
     calls = 0
     original = sensitivity_module.build_financial_model
 
     def counted(validated):
         nonlocal calls
         calls += 1
-        assert validated.thaw()["working_capital"]["dso_days"] == "30"
+        assert (
+            validated.thaw()["working_capital"]["dso_days"]
+            == expected_dso
+        )
         return original(validated)
 
     monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
@@ -224,6 +237,55 @@ def test_first_failed_cell_is_atomic_and_returns_no_partial_metrics(
     assert result.blockers[0]["field_ref"] == "$.cells[0][1]"
     assert result.blockers[0]["stage"] == "model_build"
     assert result.blockers[0]["cause_code"] == "FIN2_TEST_STOP"
+
+
+def test_input_derivation_failure_stops_before_current_and_later_cell_builds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    derivations = 0
+    builds = 0
+    original_derive = sensitivity_module.derive_validated_input
+    original_build = sensitivity_module.build_financial_model
+
+    def fail_second_derivation(validated, overrides, field_ref):
+        nonlocal derivations
+        derivations += 1
+        if derivations == 2:
+            raise FinanceContractError(
+                "FIN2_TEST_DERIVATION_STOP",
+                field_ref,
+                "forced derivation stop",
+            )
+        return original_derive(validated, overrides, field_ref)
+
+    def counted_build(validated):
+        nonlocal builds
+        builds += 1
+        return original_build(validated)
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "derive_validated_input",
+        fail_second_derivation,
+    )
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        counted_build,
+    )
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "not_ready"
+    assert result.cells == ()
+    assert derivations == 2
+    assert builds == 1
+    assert result.blockers[0]["field_ref"] == "$.cells[0][1]"
+    assert result.blockers[0]["stage"] == "input_derivation"
+    assert (
+        result.blockers[0]["cause_code"]
+        == "FIN2_TEST_DERIVATION_STOP"
+    )
 
 
 def test_tenant_or_admission_mismatch_fails_before_any_cell_build(
