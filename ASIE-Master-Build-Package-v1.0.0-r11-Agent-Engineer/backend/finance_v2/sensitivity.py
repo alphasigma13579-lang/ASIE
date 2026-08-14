@@ -28,6 +28,8 @@ class SensitivityExecutionBinding:
     risk_profile_binding: ResolvedRiskProfileBinding
     authoritative_admission: bool
     organization_id: str
+    project_id: str
+    run_id: str
     owner_organization_id: str | None
     scope_kind: str
     profile_schema_version: str
@@ -266,6 +268,8 @@ def prepare_sensitivity_run(
     _require_equal(profile.policy_hash, binding.policy_hash, "binding.policy_hash")
     _require_equal(validated_input.input_hash, binding.finance_input_hash, "binding.finance_input_hash")
     _require_equal(validated_input.organization_id, binding.organization_id, "binding.organization_id")
+    _require_equal(validated_input.project_id, binding.project_id, "binding.project_id")
+    _require_equal(validated_input.run_id, binding.run_id, "binding.run_id")
     if binding.scope_kind == "organization" and binding.owner_organization_id != binding.organization_id:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_TENANT",
@@ -318,7 +322,29 @@ def prepare_sensitivity_run(
         "binding.finance_input_hash",
     )
     metadata = input_document["metadata"]
-    _require_equal(input_document.get("organization_id"), binding.organization_id, "$.organization_id")
+    _require_equal(
+        input_document.get("organization_id"),
+        validated_input.organization_id,
+        "$.organization_id",
+    )
+    _require_equal(
+        input_document.get("project_id"),
+        validated_input.project_id,
+        "$.project_id",
+    )
+    _require_equal(
+        input_document.get("run_id"),
+        validated_input.run_id,
+        "$.run_id",
+    )
+    _require_equal(
+        input_document.get("currency"),
+        validated_input.currency,
+        "$.currency",
+    )
+    _require_equal(validated_input.organization_id, binding.organization_id, "binding.organization_id")
+    _require_equal(validated_input.project_id, binding.project_id, "binding.project_id")
+    _require_equal(validated_input.run_id, binding.run_id, "binding.run_id")
     _require_equal(metadata.get("approved_manifest_id"), binding.approved_manifest_id, "$.metadata.approved_manifest_id")
     _require_equal(metadata.get("approved_manifest_hash"), binding.approved_manifest_hash, "$.metadata.approved_manifest_hash")
     _require_equal(metadata.get("policy_ref"), binding.policy_ref, "$.metadata.policy_ref")
