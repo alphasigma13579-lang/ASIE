@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,44 @@ def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
     ]
 
 
+def test_result_state_is_deeply_immutable_and_serialization_is_defensive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready = evaluate_sensitivity(_prepared())
+    ready_before = ready.as_dict()
+    metrics_copy = ready.cells[0].metrics
+    metrics_copy["npv_unlevered"] = "forged"
+    axes_copy = ready.axes
+    axes_copy[0]["values"][0] = "forged"
+
+    assert ready.as_dict() == ready_before
+    assert ready.result_hash == canonical_sha256(
+        ready.as_dict(include_hash=False)
+    )
+
+    def forced_failure(_validated):
+        raise FinanceContractError(
+            "FIN2_TEST_IMMUTABLE_BLOCKER",
+            "$.test",
+            "forced blocker",
+        )
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        forced_failure,
+    )
+    blocked = evaluate_sensitivity(_prepared())
+    blocked_before = blocked.as_dict()
+    blocker_copy = blocked.blockers[0]
+    blocker_copy["cause_code"] = "forged"
+
+    assert blocked.as_dict() == blocked_before
+    assert blocked.result_hash == canonical_sha256(
+        blocked.as_dict(include_hash=False)
+    )
+
+
 def test_each_cell_builds_once_and_fixed_overrides_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     prepared = _prepared()
     calls = 0
@@ -176,6 +215,8 @@ def test_first_failed_cell_is_atomic_and_returns_no_partial_metrics(
     assert calls == 2
     assert result.blockers[0]["code"] == "FIN2_SENSITIVITY_CELL_NOT_READY"
     assert result.blockers[0]["field_ref"] == "$.cells[0][1]"
+    assert result.blockers[0]["stage"] == "model_build"
+    assert result.blockers[0]["cause_code"] == "FIN2_TEST_STOP"
 
 
 def test_tenant_or_admission_mismatch_fails_before_any_cell_build(
@@ -283,6 +324,36 @@ def test_tampered_profile_dependency_lineage_fails_before_any_cell_build(
     assert calls == 0
 
 
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("execution_scope", "runtime"),
+        ("runtime_eligible", True),
+    ],
+)
+def test_prepared_capability_is_explicitly_dark_and_not_runtime_eligible(
+    field,
+    value,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    assert prepared.execution_scope == "dark_sensitivity_v1"
+    assert prepared.runtime_eligible is False
+    calls = 0
+
+    def unexpected(_):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", unexpected)
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(replace(prepared, **{field: value}))
+
+    assert error.value.code == "FIN2_SENSITIVITY_PREPARED_SCOPE"
+    assert calls == 0
+
+
 def test_execution_binding_must_retain_authoritative_admission_source() -> None:
     prepared = _prepared()
     forged = replace(
@@ -308,6 +379,10 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     assert schema["properties"]["execution_scope"]["const"] == "dark_build"
     assert schema["properties"]["snapshot_eligible"]["const"] is False
     assert schema["properties"]["cell_count"]["maximum"] == 441
+    assert schema["properties"]["cells"]["maxItems"] == 441
+    assert {"stage", "cause_code"} <= set(
+        schema["properties"]["blockers"]["items"]["required"]
+    )
     assert "axes" in schema["required"]
     assert schema["properties"]["profile"]["additionalProperties"] is False
     assert "dependency_hashes" in schema["properties"]["profile"]["required"]
@@ -462,6 +537,32 @@ def test_tampered_profile_body_and_missing_metric_fail_closed(
     assert result.status == "not_ready"
     assert result.cells == ()
     assert result.blockers[0]["code"] == "FIN2_SENSITIVITY_CELL_NOT_READY"
+    assert result.blockers[0]["stage"] == "metric_projection"
+    assert (
+        result.blockers[0]["cause_code"]
+        == "FIN2_SENSITIVITY_METRIC_UNAVAILABLE"
+    )
+
+
+def test_non_finite_metric_fails_atomically_with_structured_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    original = sensitivity_module.build_financial_model
+
+    def non_finite(validated):
+        model = original(validated)
+        metrics = dict(model.metrics)
+        metrics[prepared.profile_document["metric_ids"][0]] = Decimal("Infinity")
+        return replace(model, metrics=metrics)
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", non_finite)
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "not_ready"
+    assert result.cells == ()
+    assert result.blockers[0]["stage"] == "metric_projection"
+    assert result.blockers[0]["cause_code"] == "FIN2_SENSITIVITY_METRIC"
 
 
 def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> None:
