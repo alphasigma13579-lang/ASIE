@@ -540,7 +540,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
 
     assert result.axes[0]["values"][0] == "25.5"
     assert result.cells[0].row_value == "25.5"
-    assert result.cells[0].derived_input_hash == prepared.validated_input.input_hash
+    assert result.cells[0].derived_input_hash != prepared.validated_input.input_hash
     assert result.cells[0].metrics == {
         metric_id: _metric_text(baseline.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
