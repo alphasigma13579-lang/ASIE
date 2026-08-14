@@ -300,7 +300,10 @@ def prepare_sensitivity_run(
             "$.schema_version",
             "profile document is not a sensitivity profile",
         )
-    if profile_content_hash(profile_document) != profile.content_hash:
+    if (
+        profile_document.get("content_hash") != profile.content_hash
+        or profile_content_hash(profile_document) != profile.content_hash
+    ):
         raise FinanceContractError(
             "FIN2_SENSITIVITY_HASH_MISMATCH",
             "$.content_hash",
