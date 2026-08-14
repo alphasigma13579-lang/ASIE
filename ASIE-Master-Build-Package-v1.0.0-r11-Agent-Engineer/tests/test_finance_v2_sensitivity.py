@@ -457,9 +457,21 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
         "$ref": "#/$defs/governed_metric_id"
     }
     assert "custom_metric" not in governed_metrics
-    decimal_schema = metrics_schema["additionalProperties"]
-    decimal_pattern = decimal_schema["oneOf"][0]["pattern"]
-    assert decimal_schema["oneOf"][1] == {"type": "null"}
+    decimal_ref = {"$ref": "#/$defs/canonical_decimal"}
+    assert metrics_schema["additionalProperties"]["oneOf"][0] == decimal_ref
+    assert metrics_schema["additionalProperties"]["oneOf"][1] == {
+        "type": "null"
+    }
+    assert schema["properties"]["cells"]["items"]["properties"][
+        "row_value"
+    ] == decimal_ref
+    assert schema["properties"]["cells"]["items"]["properties"][
+        "column_value"
+    ] == decimal_ref
+    assert schema["properties"]["axes"]["items"]["properties"]["values"][
+        "items"
+    ] == decimal_ref
+    decimal_pattern = schema["$defs"]["canonical_decimal"]["pattern"]
     for accepted in ("0", "1", "-1", "0.0001", "-0.0001", "100.01"):
         assert re.fullmatch(decimal_pattern, accepted)
     for rejected in (
@@ -526,7 +538,9 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
     result = evaluate_sensitivity(prepared)
     baseline = build_financial_model(prepared.validated_input)
 
-    assert result.cells[0].derived_input_hash != prepared.validated_input.input_hash
+    assert result.axes[0]["values"][0] == "25.5"
+    assert result.cells[0].row_value == "25.5"
+    assert result.cells[0].derived_input_hash == prepared.validated_input.input_hash
     assert result.cells[0].metrics == {
         metric_id: _metric_text(baseline.metrics[metric_id])
         for metric_id in prepared.profile_document["metric_ids"]
@@ -604,6 +618,35 @@ def test_profile_and_binding_tampering_fail_before_cell_build(
 
     assert error.value.code == expected
     assert calls == 0
+
+
+def test_model_input_hash_mismatch_fails_before_metric_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepared()
+    original = sensitivity_module.build_financial_model
+
+    def mismatched(validated) -> Any:
+        model = original(validated)
+        return replace(
+            model,
+            source_input_hash="sha256:" + "f" * 64,
+        )
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        mismatched,
+    )
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "not_ready"
+    assert result.cells == ()
+    assert result.blockers[0]["stage"] == "model_invariant"
+    assert (
+        result.blockers[0]["cause_code"]
+        == "FIN2_MODEL_INPUT_MISMATCH"
+    )
 
 
 def test_tampered_profile_body_and_missing_metric_fail_closed(
