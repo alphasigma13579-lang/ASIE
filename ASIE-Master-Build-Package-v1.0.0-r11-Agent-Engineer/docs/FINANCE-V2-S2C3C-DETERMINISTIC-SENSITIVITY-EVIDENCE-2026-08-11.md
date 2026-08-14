@@ -3,9 +3,9 @@
 - Status: `IMPLEMENTATION_HEAD_VERIFIED_AWAITING_FINAL_EVIDENCE_HEAD_CI_AND_INDEPENDENT_REVIEW`
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decision: `ACR-FIN-003-C3C-v1.0.0`
-- Verified implementation source SHA: `40f31e5f0e5171329da9c666c3f189e874a23ade`
-- ASIE CI verification: [#376](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31812942736)
-- Cross-platform verification: [#226](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31812942490)
+- Verified implementation source SHA: `1d1900d4a754e46f58f3c623736ba95405c57286`
+- ASIE CI verification: [#378](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31814917171)
+- Cross-platform verification: [#228](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31814917133)
 
 ## Correction record
 
@@ -22,7 +22,7 @@ is not represented as a passing gate.
 
 Subsequent review also required the cross-platform workflow to emit and compare
 the actual C3C canonical result, rather than relying only on the pre-existing
-general deterministic vector. Run #226 performs that comparison across Linux
+general deterministic vector. Run #228 performs that comparison across Linux
 and Windows under `PYTHONHASHSEED=0` and `PYTHONHASHSEED=7919`. The verified
 result hash includes organization, project, and run provenance.
 
@@ -66,23 +66,23 @@ The corrected #345 baseline remains the source for the governed ceiling:
 | p95 | 7.120399158 s |
 | Peak RSS | 33.05859375 MiB |
 
-Run #376 verified the reviewed implementation head against those ceilings:
+Run #378 verified the reviewed implementation head against those ceilings:
 
 | Verification measure | Value |
 |---|---:|
-| Python tests | 850 passed |
-| Trial 1 | 9.384815535 s |
-| Trial 2 | 9.421479387 s |
-| Trial 3 | 9.434013217 s |
-| p50 | 9.421479387 s |
-| p95 | 9.434013217 s |
-| Peak RSS | 33.15625 MiB |
+| Python tests | 857 passed |
+| Trial 1 | 9.463214653 s |
+| Trial 2 | 9.437458657 s |
+| Trial 3 | 9.406576036 s |
+| p50 | 9.437458657 s |
+| p95 | 9.463214653 s |
+| Peak RSS | 32.9921875 MiB |
 | Runtime ceiling | 10.7 s — passed |
 | Memory ceiling | 64.0 MiB — passed |
 
 ## Cross-platform canonical evidence
 
-Run #226 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
+Run #228 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
 compared the files byte-for-byte:
 
 | Evidence | Value |
