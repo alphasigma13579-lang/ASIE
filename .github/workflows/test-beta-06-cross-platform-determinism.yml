@@ -88,7 +88,7 @@ jobs:
         run: python scripts/finance_v2_sensitivity_cross_platform.py emit --output artifacts/${{ matrix.label }}/c3c-sensitivity.json
 
       - name: Upload deterministic vector
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-beta-06-${{ matrix.label }}
           path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/artifacts/${{ matrix.label }}/
@@ -139,7 +139,7 @@ jobs:
           cat test-beta-06-evidence/c3c-comparison.json
 
       - name: Upload combined TEST-BETA-06 evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-beta-06-combined-evidence
           path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/test-beta-06-evidence
