@@ -539,22 +539,34 @@ def test_2_by_3_grid_and_direct_cell_parity() -> None:
     assert [(cell.row_index, cell.column_index) for cell in result.cells] == [
         (row, column) for row in range(2) for column in range(3)
     ]
-    first = result.cells[0]
-    direct = derive_validated_input(
-        prepared.validated_input,
-        [
-            {"target_ref": "$.working_capital.dso_days", "operation": "replace", "value": "30"},
-            {"target_ref": _PRICE, "operation": "replace", "value": "20"},
-            {"target_ref": _VOLUME, "operation": "multiply", "value": "0.8"},
-        ],
-        "$.test.direct",
-    )
-    model = build_financial_model(direct)
-    assert first.derived_input_hash == direct.input_hash
-    assert first.metrics == {
-        metric_id: _metric_text(model.metrics[metric_id])
-        for metric_id in prepared.profile_document["metric_ids"]
-    }
+    for cell in result.cells:
+        direct = derive_validated_input(
+            prepared.validated_input,
+            [
+                {
+                    "target_ref": "$.working_capital.dso_days",
+                    "operation": "replace",
+                    "value": "30",
+                },
+                {
+                    "target_ref": _PRICE,
+                    "operation": "replace",
+                    "value": cell.row_value,
+                },
+                {
+                    "target_ref": _VOLUME,
+                    "operation": "multiply",
+                    "value": cell.column_value,
+                },
+            ],
+            f"$.test.direct[{cell.row_index}][{cell.column_index}]",
+        )
+        model = build_financial_model(direct)
+        assert cell.derived_input_hash == direct.input_hash
+        assert cell.metrics == {
+            metric_id: _metric_text(model.metrics[metric_id])
+            for metric_id in prepared.profile_document["metric_ids"]
+        }
 
 
 def test_axis_values_must_remain_unique_after_canonicalization() -> None:
@@ -643,8 +655,15 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
         (lambda prepared: replace(prepared.profile, status="draft"), lambda binding: binding, "FIN2_SENSITIVITY_PROFILE_KIND"),
         (lambda prepared: prepared.profile, lambda binding: replace(binding, owner_organization_id="org-other"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
         (lambda prepared: prepared.profile, lambda binding: replace(binding, registry_snapshot_hash="sha256:" + "0" * 64), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, approved_manifest_id="manifest-forged"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, approved_manifest_hash="sha256:" + "1" * 64), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, policy_ref="policy-forged"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, policy_version="9.9.9"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, policy_hash="sha256:" + "2" * 64), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
         (lambda prepared: prepared.profile, lambda binding: replace(binding, currency="USD"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, archetype_id="archetype-forged"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
         (lambda prepared: prepared.profile, lambda binding: replace(binding, archetype_version="9.9.9"), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
+        (lambda prepared: prepared.profile, lambda binding: replace(binding, archetype_registry_hash="sha256:" + "3" * 64), "FIN2_SENSITIVITY_BINDING_MISMATCH"),
     ],
 )
 def test_profile_and_binding_tampering_fail_before_cell_build(
