@@ -231,6 +231,25 @@ Server-owned ValidatedFinanceInput
 - `tests/test_finance_v2_scenarios.py` لإثبات عدم الانحدار
 - هذا ACR إذا كشفت المراجعة تناقضًا
 
+### أدلة CI المسموح بها فقط
+
+كشفت مراجعة exact-head أن إثبات G-C3C-1 للأداء والحتمية العابرة للمنصات
+يحتاج مسارات لا يذكرها allowlist الأصلي. لذلك يسمح القرار حصراً بالآتي:
+
+- `scripts/benchmark_finance_v2_sensitivity.py` لقياس workload الفعلي
+  21×21×240×8 وفرض السقفين المعتمدين.
+- `scripts/finance_v2_sensitivity_cross_platform.py` لإصدار نتيجة C3C
+  القانونية القابلة للمقارنة.
+- `tests/test_beta_06_cross_platform_determinism.py` لاختبارات حارس إصدار
+  دليل C3C فقط.
+- `.github/workflows/asie-ci.yml` لإضافة خطوة benchmark C3C فقط.
+- `.github/workflows/test-beta-06-cross-platform-determinism.yml` لإضافة
+  إصدار artifact C3C ومقارنته byte-for-byte فقط.
+
+أي تعديل آخر في workflows أو scripts يحتاج تحديثاً جديداً لهذا القرار قبل
+التنفيذ. لا تمنح هذه الإضافة سلطة Runtime أو Snapshot أو provider أو network،
+ولا تسمح بتغيير الملفات المحمية أو توسيع ادعاء C3C.
+
 ### ممنوع
 
 - `backend/finance_engine.py`
