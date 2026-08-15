@@ -695,14 +695,26 @@ def test_releases_each_model_before_building_the_next_cell(
     previous_model: weakref.ReferenceType[Any] | None = None
     builds = 0
 
+    class ModelProbe:
+        __slots__ = (
+            "source_input_hash",
+            "status",
+            "blockers",
+            "metrics",
+            "__weakref__",
+        )
+
+        def __init__(self, source_input_hash: str) -> None:
+            self.source_input_hash = source_input_hash
+            self.status = representative.status
+            self.blockers = representative.blockers
+            self.metrics = representative.metrics
+
     def one_live_model(validated):
         nonlocal previous_model, builds
         if previous_model is not None:
             assert previous_model() is None
-        model = replace(
-            representative,
-            source_input_hash=validated.input_hash,
-        )
+        model = ModelProbe(validated.input_hash)
         previous_model = weakref.ref(model)
         builds += 1
         return model
@@ -716,6 +728,8 @@ def test_releases_each_model_before_building_the_next_cell(
 
     assert result.status == "dark_ready"
     assert builds == result.cell_count == 9
+    assert previous_model is not None
+    assert previous_model() is None
 
 
 @pytest.mark.parametrize(
