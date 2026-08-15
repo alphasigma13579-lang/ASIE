@@ -34,8 +34,15 @@ _ROLES = (
 )
 
 
-def _lineage() -> dict:
+def _finance_lineage() -> dict:
     return {"assumption_refs": ["asm-1"], "evidence_refs": ["ev-1"]}
+
+
+def _profile_lineage() -> dict:
+    return {
+        "assumption_refs": ["assumption:sector-demand"],
+        "evidence_refs": ["evidence:calibration-source"],
+    }
 
 
 def _finance_binding() -> ServerBinding:
@@ -51,7 +58,7 @@ def _finance_binding() -> ServerBinding:
 
 def _valid_document() -> dict:
     periods = monthly_periods("2026-01", 12)
-    lineage = _lineage
+    lineage = _finance_lineage
     return {
         "schema_version": "finance-model-input.v2",
         "document_id": "fmi_example01",
@@ -164,14 +171,14 @@ def _sensitivity_profile() -> dict:
                 "target_ref": _PRICE,
                 "operation": "replace",
                 "values": ["80", "100", "120"],
-                "lineage": _lineage(),
+                "lineage": _profile_lineage(),
             },
             {
                 "axis_id": "axis_volume",
                 "target_ref": _VOLUME,
                 "operation": "multiply",
                 "values": ["0.8", "1", "1.2"],
-                "lineage": _lineage(),
+                "lineage": _profile_lineage(),
             },
         ],
         "fixed_overrides": [
@@ -179,7 +186,7 @@ def _sensitivity_profile() -> dict:
                 "target_ref": "$.working_capital.dso_days",
                 "operation": "replace",
                 "value": "30",
-                "lineage": _lineage(),
+                "lineage": _profile_lineage(),
             }
         ],
         "metric_ids": ["npv_unlevered", "irr_unlevered"],
