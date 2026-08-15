@@ -549,9 +549,21 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
         "minLength"
     ] == 1
     assert schema["properties"]["axis_ids"]["items"]["minLength"] == 1
-    assert {"organization_id", "project_id", "run_id"} <= set(
-        schema["required"]
-    )
+    assert {
+        "organization_id",
+        "project_id",
+        "run_id",
+        "currency",
+        "archetype_ref",
+    } <= set(schema["required"])
+    assert schema["properties"]["currency"]["pattern"] == "^[A-Z]{3}$"
+    archetype_schema = schema["properties"]["archetype_ref"]
+    assert archetype_schema["additionalProperties"] is False
+    assert set(archetype_schema["required"]) == {
+        "archetype_id",
+        "version",
+        "registry_hash",
+    }
     governed_metrics = {
         "npv_unlevered",
         "irr_unlevered",
@@ -577,10 +589,7 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
     }
     assert "custom_metric" not in governed_metrics
     decimal_ref = {"$ref": "#/$defs/canonical_decimal"}
-    assert metrics_schema["additionalProperties"]["oneOf"][0] == decimal_ref
-    assert metrics_schema["additionalProperties"]["oneOf"][1] == {
-        "type": "null"
-    }
+    assert metrics_schema["additionalProperties"] == decimal_ref
     assert schema["properties"]["cells"]["items"]["properties"][
         "row_value"
     ] == decimal_ref
@@ -965,6 +974,35 @@ def test_finite_decimal_boundaries_are_canonical_and_hash_stable(
     )
 
 
+def test_unavailable_metric_fails_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    original = sensitivity_module.build_financial_model
+    metric_id = prepared.profile_document["metric_ids"][0]
+
+    def unavailable(validated) -> Any:
+        model = original(validated)
+        metrics = dict(model.metrics)
+        metrics[metric_id] = None
+        return replace(model, metrics=metrics)
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        unavailable,
+    )
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "not_ready"
+    assert result.cells == ()
+    assert result.blockers[0]["stage"] == "metric_projection"
+    assert (
+        result.blockers[0]["cause_code"]
+        == "FIN2_SENSITIVITY_METRIC_UNAVAILABLE"
+    )
+
+
 def test_non_finite_metric_fails_atomically_with_structured_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -991,7 +1029,34 @@ def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> No
     full_result = result.as_dict()
     hash_preimage = result.as_dict(include_hash=False)
     assert set(full_result) - set(hash_preimage) == {"result_hash"}
-    assert set(hash_preimage) - set(full_result) == set()
+    assert set(hash_preimage) == {
+        "schema_version",
+        "status",
+        "execution_scope",
+        "snapshot_eligible",
+        "organization_id",
+        "project_id",
+        "run_id",
+        "finance_input_hash",
+        "currency",
+        "archetype_ref",
+        "profile",
+        "finance_engine_version",
+        "sensitivity_engine_version",
+        "canonicalization_policy",
+        "axis_ids",
+        "axes",
+        "metric_ids",
+        "cell_count",
+        "cells",
+        "blockers",
+    }
+    assert hash_preimage["currency"] == "SAR"
+    assert hash_preimage["archetype_ref"] == {
+        "archetype_id": "arc_retail",
+        "version": "1.0.0",
+        "registry_hash": "sha256:" + "b" * 64,
+    }
 
     changed_finance = dict(hash_preimage)
     changed_finance["finance_engine_version"] = "tampered"
@@ -1003,12 +1068,18 @@ def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> No
     changed_project["project_id"] = "project-forged"
     changed_run = dict(hash_preimage)
     changed_run["run_id"] = "run-forged"
+    changed_currency = dict(hash_preimage)
+    changed_currency["currency"] = "USD"
+    changed_archetype = copy.deepcopy(hash_preimage)
+    changed_archetype["archetype_ref"]["archetype_id"] = "arc-forged"
 
     assert canonical_sha256(changed_finance) != result.result_hash
     assert canonical_sha256(changed_sensitivity) != result.result_hash
     assert canonical_sha256(changed_organization) != result.result_hash
     assert canonical_sha256(changed_project) != result.result_hash
     assert canonical_sha256(changed_run) != result.result_hash
+    assert canonical_sha256(changed_currency) != result.result_hash
+    assert canonical_sha256(changed_archetype) != result.result_hash
     source = Path(sensitivity_module.__file__).read_text(encoding="utf-8")
     forbidden = ("module_runtime", "snapshot_assembly", "requests", "http", "socket", "provider")
     assert all(token not in source for token in forbidden)

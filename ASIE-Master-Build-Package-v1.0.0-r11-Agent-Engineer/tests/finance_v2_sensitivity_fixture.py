@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import replace
-from typing import Callable
+from collections.abc import Callable
 
 from backend.finance_v2 import (
     SensitivityExecutionBinding,

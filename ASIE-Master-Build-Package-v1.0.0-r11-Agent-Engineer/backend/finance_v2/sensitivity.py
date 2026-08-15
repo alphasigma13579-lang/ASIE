@@ -106,10 +106,10 @@ class SensitivityCell:
     row_value: str
     column_value: str
     derived_input_hash: str
-    _metrics: tuple[tuple[str, str | None], ...]
+    _metrics: tuple[tuple[str, str], ...]
 
     @property
-    def metrics(self) -> dict[str, str | None]:
+    def metrics(self) -> dict[str, str]:
         return dict(self._metrics)
 
     def as_dict(self) -> dict[str, Any]:
@@ -130,6 +130,10 @@ class SensitivityEvaluation:
     project_id: str
     run_id: str
     finance_input_hash: str
+    currency: str
+    archetype_id: str
+    archetype_version: str
+    archetype_registry_hash: str
     profile_schema_version: str
     profile_id: str
     profile_version: str
@@ -170,6 +174,12 @@ class SensitivityEvaluation:
             "project_id": self.project_id,
             "run_id": self.run_id,
             "finance_input_hash": self.finance_input_hash,
+            "currency": self.currency,
+            "archetype_ref": {
+                "archetype_id": self.archetype_id,
+                "version": self.archetype_version,
+                "registry_hash": self.archetype_registry_hash,
+            },
             "profile": {
                 "schema_version": self.profile_schema_version,
                 "profile_id": self.profile_id,
@@ -487,7 +497,7 @@ def evaluate_sensitivity(
                     "model_invariant",
                     cause_code,
                 )
-            metrics: dict[str, str | None] = {}
+            metrics: dict[str, str] = {}
             for metric_id in metric_ids:
                 if metric_id not in model.metrics:
                     return _not_ready(
@@ -501,10 +511,19 @@ def evaluate_sensitivity(
                         "FIN2_SENSITIVITY_METRIC_UNAVAILABLE",
                     )
                 value = model.metrics[metric_id]
-                try:
-                    metrics[metric_id] = (
-                        None if value is None else _decimal_text(value)
+                if value is None:
+                    return _not_ready(
+                        prepared,
+                        axes,
+                        metric_ids,
+                        cell_count,
+                        row_index,
+                        column_index,
+                        "metric_projection",
+                        "FIN2_SENSITIVITY_METRIC_UNAVAILABLE",
                     )
+                try:
+                    metrics[metric_id] = _decimal_text(value)
                 except FinanceContractError as exc:
                     return _not_ready(
                         prepared,
@@ -611,6 +630,10 @@ def _evaluation(
         project_id=prepared.validated_input.project_id,
         run_id=prepared.validated_input.run_id,
         finance_input_hash=prepared.validated_input.input_hash,
+        currency=prepared.binding.currency,
+        archetype_id=prepared.binding.archetype_id,
+        archetype_version=prepared.binding.archetype_version,
+        archetype_registry_hash=prepared.binding.archetype_registry_hash,
         profile_schema_version=prepared.profile_document["schema_version"],
         profile_id=prepared.profile.profile_id,
         profile_version=prepared.profile.version,
@@ -706,6 +729,16 @@ def _validate_evaluation_invariants(
                 "FIN2_SENSITIVITY_RESULT_INVARIANT",
                 "$.cells[*].metrics",
                 "every dark_ready cell must contain the complete ordered metric set",
+            )
+        if any(
+            value is None
+            for cell in evaluation.cells
+            for _, value in cell._metrics
+        ):
+            raise FinanceContractError(
+                "FIN2_SENSITIVITY_RESULT_INVARIANT",
+                "$.cells[*].metrics",
+                "dark_ready metrics must all be available",
             )
         return
     if evaluation.status == "not_ready":

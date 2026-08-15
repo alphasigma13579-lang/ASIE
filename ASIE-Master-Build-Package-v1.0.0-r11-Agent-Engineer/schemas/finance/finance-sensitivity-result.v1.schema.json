@@ -31,6 +31,8 @@
     "project_id",
     "run_id",
     "finance_input_hash",
+    "currency",
+    "archetype_ref",
     "profile",
     "finance_engine_version",
     "sensitivity_engine_version",
@@ -74,6 +76,33 @@
     "finance_input_hash": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "archetype_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype_id",
+        "version",
+        "registry_hash"
+      ],
+      "properties": {
+        "archetype_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "registry_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
     },
     "profile": {
       "type": "object",
@@ -224,14 +253,7 @@
           "metrics": {
             "type": "object",
             "additionalProperties": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/canonical_decimal"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/canonical_decimal"
             },
             "minProperties": 1,
             "maxProperties": 8,
