@@ -407,6 +407,9 @@ def test_tampered_profile_dependency_lineage_fails_before_any_cell_build(
     [
         ("execution_scope", "runtime"),
         ("runtime_eligible", True),
+        ("runtime_eligible", None),
+        ("runtime_eligible", 0),
+        ("runtime_eligible", ""),
     ],
 )
 def test_prepared_capability_is_explicitly_dark_and_not_runtime_eligible(
@@ -432,17 +435,84 @@ def test_prepared_capability_is_explicitly_dark_and_not_runtime_eligible(
     assert calls == 0
 
 
-def test_execution_binding_must_retain_authoritative_admission_source() -> None:
+@pytest.mark.parametrize("value", [False, None, 0, 1, "yes"])
+def test_execution_binding_must_retain_authoritative_admission_source(
+    value,
+) -> None:
     prepared = controlled_sensitivity_prepared_run()
     forged = replace(
         prepared.binding,
-        authoritative_admission=False,
+        authoritative_admission=value,
     )
 
     with pytest.raises(FinanceContractError) as error:
-        prepare_sensitivity_run(prepared.validated_input, prepared.profile, binding=forged)
+        prepare_sensitivity_run(
+            prepared.validated_input,
+            prepared.profile,
+            binding=forged,
+        )
 
     assert error.value.code == "FIN2_SENSITIVITY_ADMISSION"
+
+
+@pytest.mark.parametrize("value", [True, None, 0, 1, "yes"])
+def test_profile_execution_ready_requires_exact_false(value) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    forged_profile = replace(prepared.profile, execution_ready=value)
+
+    with pytest.raises(FinanceContractError) as error:
+        prepare_sensitivity_run(
+            prepared.validated_input,
+            forged_profile,
+            binding=prepared.binding,
+        )
+
+    assert error.value.code == "FIN2_SENSITIVITY_EXECUTION_STATE"
+
+
+@pytest.mark.parametrize("value", [False, None, 0, 1, "yes"])
+def test_retained_admission_authority_requires_exact_true(value) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    source = replace(
+        prepared.binding.risk_profile_binding,
+        authoritative=value,
+    )
+    forged = replace(prepared.binding, risk_profile_binding=source)
+
+    with pytest.raises(FinanceContractError) as error:
+        prepare_sensitivity_run(
+            prepared.validated_input,
+            prepared.profile,
+            binding=forged,
+        )
+
+    assert error.value.code == "FIN2_SENSITIVITY_ADMISSION"
+
+
+@pytest.mark.parametrize("value", [False, None, 0, 1, "yes"])
+def test_global_admission_requires_exact_true_permission(value) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    source = replace(
+        prepared.binding.risk_profile_binding,
+        scope_kind="global",
+        owner_organization_id=None,
+        allow_global=value,
+    )
+    forged = replace(
+        prepared.binding,
+        scope_kind="global",
+        owner_organization_id=None,
+        risk_profile_binding=source,
+    )
+
+    with pytest.raises(FinanceContractError) as error:
+        prepare_sensitivity_run(
+            prepared.validated_input,
+            prepared.profile,
+            binding=forged,
+        )
+
+    assert error.value.code == "FIN2_SENSITIVITY_TENANT"
 
 
 def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:

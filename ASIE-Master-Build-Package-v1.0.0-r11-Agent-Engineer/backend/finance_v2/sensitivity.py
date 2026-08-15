@@ -226,13 +226,13 @@ def prepare_sensitivity_run(
             "sensitivity requires a trusted execution binding",
         )
     _validate_risk_admission_binding(binding)
-    if binding.execution_scope != _EXECUTION_SCOPE or not binding.authoritative_admission:
+    if binding.execution_scope != _EXECUTION_SCOPE or binding.authoritative_admission is not True:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_ADMISSION",
             "binding",
             "dark sensitivity requires authoritative server admission provenance",
         )
-    if profile.execution_ready:
+    if profile.execution_ready is not False:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_EXECUTION_STATE",
             "profile.execution_ready",
@@ -376,7 +376,7 @@ def evaluate_sensitivity(
             "prepared",
             "evaluate_sensitivity requires a prepared server-bound run",
         )
-    if prepared.execution_scope != _EXECUTION_SCOPE or prepared.runtime_eligible:
+    if prepared.execution_scope != _EXECUTION_SCOPE or prepared.runtime_eligible is not False:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_PREPARED_SCOPE",
             "prepared",
@@ -725,7 +725,7 @@ def _validate_evaluation_invariants(
 
 def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> None:
     source = binding.risk_profile_binding
-    if not isinstance(source, ResolvedRiskProfileBinding) or not source.authoritative:
+    if not isinstance(source, ResolvedRiskProfileBinding) or source.authoritative is not True:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_ADMISSION",
             "binding.risk_profile_binding",
@@ -773,7 +773,7 @@ def _validate_risk_admission_binding(binding: SensitivityExecutionBinding) -> No
             "binding.risk_profile_binding.manifest_profiles",
             "trusted manifest must include the exact admitted profile and policy",
         )
-    if binding.scope_kind == "global" and not source.allow_global:
+    if binding.scope_kind == "global" and source.allow_global is not True:
         raise FinanceContractError(
             "FIN2_SENSITIVITY_TENANT",
             "binding.risk_profile_binding.allow_global",
