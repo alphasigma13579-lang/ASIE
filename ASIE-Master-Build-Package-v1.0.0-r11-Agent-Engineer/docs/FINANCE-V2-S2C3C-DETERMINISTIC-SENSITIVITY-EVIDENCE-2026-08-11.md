@@ -3,9 +3,9 @@
 - Status: `FINAL_IMPLEMENTATION_VERIFIED_AWAITING_EVIDENCE_HEAD_CI_AND_INDEPENDENT_REVIEW`
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decision: `ACR-FIN-003-C3C-v1.0.0`
-- Verified implementation source SHA: `20c6c40d4c27a0a2d266e4a5a326db8a81df441b`
-- ASIE CI verification: [#387](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31892477679)
-- Cross-platform verification: [#237](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31892477684)
+- Verified implementation source SHA: `6e08d76a831f45f3958a7c97bb50a930bf4a7948`
+- ASIE CI verification: [#389](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31894041767)
+- Cross-platform verification: [#239](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31894041773)
 
 ## Correction record
 
@@ -22,7 +22,7 @@ is not represented as a passing gate.
 
 Subsequent review also required the cross-platform workflow to emit and compare
 the actual C3C canonical result, rather than relying only on the pre-existing
-general deterministic vector. Run #237 performs that comparison across Linux
+general deterministic vector. Run #239 performs that comparison across Linux
 and Windows under `PYTHONHASHSEED=0` and `PYTHONHASHSEED=7919`. The verified
 result hash includes organization, project, and run provenance.
 
@@ -66,19 +66,21 @@ The corrected #345 baseline remains the source for the governed ceiling:
 | p95 | 7.120399158 s |
 | Peak RSS | 33.05859375 MiB |
 
-Run #387 verified the final repaired implementation head against those ceilings:
+Run #389 verified the final repaired implementation head against those ceilings:
 
 | Verification measure | Value |
 |---|---:|
-| Python tests | 860 passed |
-| Trial 1 | 8.968867557 s |
-| Trial 2 | 8.969626745 s |
-| Trial 3 | 8.889428703 s |
-| p50 | 8.968867557 s |
-| p95 | 8.969626745 s |
-| Peak RSS | 22.640625 MiB |
+| Python tests | 882 passed |
+| Trial 1 | 8.966687895 s |
+| Trial 2 | 8.924399990 s |
+| Trial 3 | 8.885724415 s |
+| p50 | 8.924399990 s |
+| p95 | 8.966687895 s |
+| Peak RSS | 22.65625 MiB |
 | Runtime ceiling | 10.7 s — passed |
 | Memory ceiling | 64.0 MiB — passed |
+
+The final implementation additionally requires exact boolean values at every C3C authority, admission, dark-readiness, runtime-eligibility, and global-permission gate; malformed truthy/falsy substitutes fail closed before any cell build.
 
 The final review-repair head also makes the shared governed fixture independent
 of every `test_*.py` module and of `pytest`, so the unittest-only
@@ -88,7 +90,7 @@ therefore the canonical C3C result and serialized hashes remain unchanged.
 
 ## Cross-platform canonical evidence
 
-Run #237 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
+Run #239 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
 compared the files byte-for-byte:
 
 | Evidence | Value |
