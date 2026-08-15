@@ -8,7 +8,9 @@ from typing import Callable
 
 from backend.finance_v2 import (
     SensitivityExecutionBinding,
+    ServerBinding,
     admit_risk_profile,
+    monthly_periods,
     prepare_sensitivity_run,
     profile_content_hash,
     validate_finance_input,
@@ -17,10 +19,6 @@ from backend.finance_v2.risk_profiles import (
     ManifestProfileBinding,
     ResolvedRiskProfileBinding,
 )
-from tests.test_finance_v2_contracts import binding as finance_binding
-from tests.test_finance_v2_contracts import valid_document
-from tests.test_finance_v2_risk_profile_admission import sensitivity_profile
-
 
 _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
 _VOLUME = "$.revenue_streams[rev-primary].volume_series[*].value"
@@ -34,6 +32,167 @@ _ROLES = (
     "qa",
     "security",
 )
+
+
+def _lineage() -> dict:
+    return {"assumption_refs": ["asm-1"], "evidence_refs": ["ev-1"]}
+
+
+def _finance_binding() -> ServerBinding:
+    return ServerBinding(
+        organization_id="org-1",
+        project_id="project-1",
+        run_id="run-1",
+        approved_manifest_id="manifest-1",
+        approved_manifest_hash="sha256:" + "a" * 64,
+        policy_ref="finance-policy-v2-dark",
+    )
+
+
+def _valid_document() -> dict:
+    periods = monthly_periods("2026-01", 12)
+    lineage = _lineage
+    return {
+        "schema_version": "finance-model-input.v2",
+        "document_id": "fmi_example01",
+        "organization_id": "org-1",
+        "project_id": "project-1",
+        "run_id": "run-1",
+        "currency": "SAR",
+        "forecast": {
+            "start_period": "2026-01",
+            "monthly_periods": 12,
+            "construction_periods": 0,
+        },
+        "archetype_ref": {
+            "archetype_id": "arc_retail",
+            "version": "1.0.0",
+            "registry_hash": "sha256:" + "b" * 64,
+        },
+        "rounding_policy": {
+            "money_scale": 2,
+            "ratio_scale": 6,
+            "mode": "ROUND_HALF_EVEN",
+        },
+        "revenue_streams": [
+            {
+                "stream_id": "rev-primary",
+                "model_kind": "product_unit",
+                "unit": "unit",
+                "volume_series": [
+                    {"period": period, "value": "100"} for period in periods
+                ],
+                "price_series": [
+                    {"period": period, "value": "25.50"} for period in periods
+                ],
+                "variable_cost_series": [
+                    {"period": period, "value": "10"} for period in periods
+                ],
+                "lineage": lineage(),
+            }
+        ],
+        "operating_costs": [],
+        "capex_assets": [],
+        "working_capital": {
+            "mode": "days",
+            "dso_days": "15",
+            "dio_days": "20",
+            "dpo_days": "10",
+            "lineage": lineage(),
+        },
+        "financing": {
+            "equity_contributions": [
+                {"period": periods[0], "amount": "100000", "lineage": lineage()}
+            ],
+            "debt_tranches": [],
+        },
+        "fiscal_policy": {
+            "policy_id": "fiscal-none",
+            "effective_from": "2026-01-01",
+            "modules": [],
+            "lineage": lineage(),
+        },
+        "valuation_policy": {
+            "discount_rate_annual": "0.12",
+            "finance_rate_annual": "0.08",
+            "reinvestment_rate_annual": "0.10",
+            "lineage": lineage(),
+        },
+        "scenarios": [
+            {"scenario_id": "scn_baseline", "kind": "baseline", "overrides": []}
+        ],
+        "metadata": {
+            "approved_manifest_id": "manifest-1",
+            "approved_manifest_hash": "sha256:" + "a" * 64,
+            "policy_ref": "finance-policy-v2-dark",
+        },
+    }
+
+
+def _review() -> dict:
+    return {
+        "required_roles": list(_ROLES),
+        "approvals": [
+            {
+                "role": role,
+                "reviewer_ref": f"reviewer:{role}",
+                "status": "approved",
+                "reviewed_at": "2026-08-01T10:00:00+03:00",
+                "evidence_ref": f"evidence:{role}",
+            }
+            for role in _ROLES
+        ],
+    }
+
+
+def _sensitivity_profile() -> dict:
+    document = {
+        "schema_version": "finance-sensitivity-profile.v1",
+        "profile_id": "fsn_default",
+        "version": "1.0.0",
+        "content_hash": "",
+        "status": "approved",
+        "currency": "SAR",
+        "archetype_ref": {
+            "archetype_id": "retail_small",
+            "version": "1.0.0",
+            "registry_hash": "sha256:" + "b" * 64,
+        },
+        "axes": [
+            {
+                "axis_id": "axis_price",
+                "target_ref": _PRICE,
+                "operation": "replace",
+                "values": ["80", "100", "120"],
+                "lineage": _lineage(),
+            },
+            {
+                "axis_id": "axis_volume",
+                "target_ref": _VOLUME,
+                "operation": "multiply",
+                "values": ["0.8", "1", "1.2"],
+                "lineage": _lineage(),
+            },
+        ],
+        "fixed_overrides": [
+            {
+                "target_ref": "$.working_capital.dso_days",
+                "operation": "replace",
+                "value": "30",
+                "lineage": _lineage(),
+            }
+        ],
+        "metric_ids": ["npv_unlevered", "irr_unlevered"],
+        "maximum_cells": 9,
+        "review": _review(),
+        "metadata": {
+            "owner_ref": "finance-governance",
+            "effective_from": "2026-08-01",
+            "created_at": "2026-07-31T12:00:00+03:00",
+        },
+    }
+    document["content_hash"] = profile_content_hash(document)
+    return document
 
 
 def _resolved_binding(
@@ -92,11 +251,11 @@ def controlled_sensitivity_prepared_run(
     input_mutator: Callable[[dict], None] | None = None,
 ):
     """Build the server-bound deterministic C3C fixture used by tests and CI."""
-    document = valid_document()
+    document = _valid_document()
     if input_mutator is not None:
         input_mutator(document)
 
-    profile_document = sensitivity_profile()
+    profile_document = _sensitivity_profile()
     profile_document["archetype_ref"] = copy.deepcopy(
         document["archetype_ref"]
     )
@@ -115,7 +274,7 @@ def controlled_sensitivity_prepared_run(
     validated = validate_finance_input(
         document,
         binding=replace(
-            finance_binding(),
+            _finance_binding(),
             approved_manifest_id=risk_binding.approved_manifest_id,
             approved_manifest_hash=risk_binding.approved_manifest_hash,
             policy_ref=risk_binding.policy_ref,
