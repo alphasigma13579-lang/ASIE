@@ -1120,6 +1120,13 @@ def test_missing_ready_metric_value_blocks_the_top_level_result() -> None:
     assert [row["code"] for row in output["blockers"]] == [
         "FIN2_LLCR_VALUE_MISSING"
     ]
+    baseline = next(
+        scenario
+        for scenario in output["scenarios"]
+        if scenario["kind"] == "baseline"
+    )
+    assert baseline["status"] == "not_ready"
+    assert baseline["metrics"]["llcr"] is None
 
 def _result_schema_validator() -> Draft202012Validator:
     schema_path = (
@@ -1348,4 +1355,77 @@ def test_semantic_validator_compares_canonical_decimal_values(
     output["metrics"][metric_id] = envelope_value + "0"
 
     validate_finance_result_projection(output)
+
+@pytest.mark.parametrize(
+    "applicability_status",
+    ["NOT_READY", "BLOCKED"],
+)
+def test_schema_rejects_ready_result_with_unready_coverage(
+    applicability_status: str,
+) -> None:
+    validator = _result_schema_validator()
+    invalid = copy.deepcopy(result())
+    metric = invalid["debt_coverage_metrics"]["dscr_min"]
+    metric["applicability_status"] = applicability_status
+    metric["reason_code"] = (
+        "CFADS_NOT_READY"
+        if applicability_status == "NOT_READY"
+        else "FIN2_DSCR_MIN_VALUE_MISSING"
+    )
+    metric["blocker_codes"] = (
+        []
+        if applicability_status == "NOT_READY"
+        else ["FIN2_DSCR_MIN_VALUE_MISSING"]
+    )
+
+    with pytest.raises(ValidationError):
+        validator.validate(invalid)
+
+
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+def test_semantic_validator_rejects_baseline_metric_mismatch(
+    metric_id: str,
+) -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    baseline = next(
+        scenario
+        for scenario in output["scenarios"]
+        if scenario["kind"] == "baseline"
+    )
+    baseline["metrics"][metric_id] = "999.000000"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == (
+        f"$.scenarios.baseline.metrics.{metric_id}"
+    )
+
+
+def test_semantic_and_schema_validation_reject_ready_baseline_when_blocked() -> None:
+    document = _annuity_debt_document()
+    document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    invalid = copy.deepcopy(output)
+    baseline = next(
+        scenario
+        for scenario in invalid["scenarios"]
+        if scenario["kind"] == "baseline"
+    )
+    baseline["status"] = "ready"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    with pytest.raises(ValidationError):
+        _result_schema_validator().validate(invalid)
 
