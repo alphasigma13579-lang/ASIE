@@ -361,12 +361,12 @@ def validate_finance_result_projection(
 def _canonical_projection_value(
     value: Any,
     ratio_scale: int,
-) -> str | None:
+) -> Decimal | None:
     if value is None:
         return None
     if not isinstance(value, str):
         raise TypeError("projected metric value must be a decimal string")
-    return _decimal(Decimal(value), ratio_scale)
+    return Decimal(_decimal(Decimal(value), ratio_scale))
 
 
 _DEBT_COVERAGE_FORMULAS = {
