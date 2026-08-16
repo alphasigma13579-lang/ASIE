@@ -1463,8 +1463,6 @@
           "uniqueItems": true,
           "items": {
             "enum": [
-              "FIN2_DEBT_PROFILE_UNSUPPORTED",
-              "FIN2_VAT_LEDGER_NOT_READY",
               "FIN2_INVARIANT_BALANCE_EQUATION",
               "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET",
               "FIN2_INVARIANT_CASH_ROLLFORWARD",
@@ -1653,38 +1651,6 @@
               }
             },
             "oneOf": [
-              {
-                "properties": {
-                  "reason_code": {
-                    "const": "FIN2_DEBT_PROFILE_UNSUPPORTED"
-                  },
-                  "blocker_codes": {
-                    "prefixItems": [
-                      {
-                        "const": "FIN2_DEBT_PROFILE_UNSUPPORTED"
-                      }
-                    ],
-                    "minItems": 1,
-                    "maxItems": 1
-                  }
-                }
-              },
-              {
-                "properties": {
-                  "reason_code": {
-                    "const": "FIN2_VAT_LEDGER_NOT_READY"
-                  },
-                  "blocker_codes": {
-                    "prefixItems": [
-                      {
-                        "const": "FIN2_VAT_LEDGER_NOT_READY"
-                      }
-                    ],
-                    "minItems": 1,
-                    "maxItems": 1
-                  }
-                }
-              },
               {
                 "properties": {
                   "reason_code": {
