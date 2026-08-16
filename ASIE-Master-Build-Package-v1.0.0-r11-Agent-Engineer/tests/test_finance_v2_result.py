@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 from dataclasses import replace
 from decimal import Decimal
 
 import pytest
+from jsonschema import Draft202012Validator, ValidationError
 
 from backend.finance_v2 import (
     FinanceContractError,
@@ -16,6 +18,7 @@ from backend.finance_v2 import (
     validate_finance_input,
 )
 from backend.finance_v2.result import (
+    _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES,
     _apply_legacy_parity,
     _debt_coverage_state,
 )
@@ -1116,4 +1119,141 @@ def test_missing_ready_metric_value_blocks_the_top_level_result() -> None:
     assert [row["code"] for row in output["blockers"]] == [
         "FIN2_LLCR_VALUE_MISSING"
     ]
+
+def _result_schema_validator() -> Draft202012Validator:
+    schema_path = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "schemas"
+        / "finance"
+        / "finance-result.v2.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def test_result_schema_accepts_applicability_projections() -> None:
+    validator = _result_schema_validator()
+    validator.validate(result())
+
+    single = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_VAT_LEDGER_NOT_READY",
+                "$.fiscal_policy.modules",
+            ),
+        ),
+    )
+    validator.validate(single)
+
+    multiple = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_VAT_LEDGER_NOT_READY",
+                "$.fiscal_policy.modules",
+            ),
+            _coverage_blocker(
+                "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                "$.financing",
+            ),
+        ),
+    )
+    validator.validate(multiple)
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "blocker_codes"),
+    [
+        (
+            "MULTIPLE_DEBT_COVERAGE_BLOCKERS",
+            ["FIN2_VAT_LEDGER_NOT_READY"],
+        ),
+        (
+            "FIN2_VAT_LEDGER_NOT_READY",
+            [
+                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_DEBT_PROFILE_UNSUPPORTED",
+            ],
+        ),
+        (
+            "FIN2_DEBT_PROFILE_UNSUPPORTED",
+            ["FIN2_VAT_LEDGER_NOT_READY"],
+        ),
+        (
+            "FIN2_UNKNOWN_FINANCING_BLOCKER",
+            ["FIN2_UNKNOWN_FINANCING_BLOCKER"],
+        ),
+    ],
+)
+def test_result_schema_rejects_inconsistent_blocked_projection(
+    reason_code: str,
+    blocker_codes: list[str],
+) -> None:
+    validator = _result_schema_validator()
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_VAT_LEDGER_NOT_READY",
+                "$.fiscal_policy.modules",
+            ),
+        ),
+    )
+    invalid = copy.deepcopy(output)
+    metric = invalid["debt_coverage_metrics"]["dscr_min"]
+    metric["reason_code"] = reason_code
+    metric["blocker_codes"] = blocker_codes
+
+    with pytest.raises(ValidationError):
+        validator.validate(invalid)
+
+
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+def test_result_schema_rejects_non_null_legacy_value_for_absent_envelope(
+    metric_id: str,
+) -> None:
+    validator = _result_schema_validator()
+    invalid = copy.deepcopy(result())
+    invalid["metrics"][metric_id] = "1.000000"
+
+    with pytest.raises(ValidationError):
+        validator.validate(invalid)
+
+
+def test_unknown_relevant_blocker_fails_closed_with_governed_fallback() -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_UNKNOWN_FINANCING_BLOCKER",
+                "$.financing",
+            ),
+        ),
+    )
+
+    for metric in output["debt_coverage_metrics"].values():
+        assert metric["applicability_status"] == "BLOCKED"
+        assert metric["reason_code"] == (
+            "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+        )
+        assert metric["blocker_codes"] == [
+            "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+        ]
+    _result_schema_validator().validate(output)
+
+
+def test_schema_blocker_enum_matches_serializer_allowlist() -> None:
+    validator = _result_schema_validator()
+    schema_codes = set(
+        validator.schema["$defs"]["debtCoverageMetric"]["properties"][
+            "blocker_codes"
+        ]["items"]["enum"]
+    )
+    assert schema_codes == set(_DEBT_COVERAGE_ALLOWED_BLOCKER_CODES)
 
