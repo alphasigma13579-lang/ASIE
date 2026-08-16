@@ -14,7 +14,10 @@ from backend.finance_v2 import (
     serialize_finance_result,
     validate_finance_input,
 )
-from backend.finance_v2.result import _apply_legacy_parity
+from backend.finance_v2.result import (
+    _apply_legacy_parity,
+    _debt_coverage_state,
+)
 from tests.test_finance_v2_contracts import binding, valid_document
 
 
@@ -735,4 +738,161 @@ def test_legacy_bullet_payment_includes_zero_service_tenor_months() -> None:
 
     assert profile["monthly_payment"] == 1000.0
     assert profile["annual_debt_service"] == 12000.0
+
+def _annuity_debt_document() -> dict:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-applicability",
+            "drawdowns": [{"period": "2026-01", "amount": "12000"}],
+            "annual_rate": "0.05",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "annuity",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+    return document
+
+
+def test_no_debt_projects_dscr_and_llcr_as_not_applicable() -> None:
+    output = result()
+
+    for metric_id in ("dscr_min", "llcr"):
+        metric = output["debt_coverage_metrics"][metric_id]
+        assert metric["metric_id"] == metric_id
+        assert metric["value"] is None
+        assert metric["value_status"] == "VALUE_ABSENT"
+        assert metric["applicability_status"] == "NOT_APPLICABLE"
+        assert metric["reason_code"] == "NO_DEBT_SERVICE"
+        assert metric["blocker_codes"] == []
+        assert metric["currency"] is None
+        assert metric["currency_reason"] == "NOT_MONETARY_METRIC"
+        assert output["metrics"][metric_id] is metric["value"]
+
+
+def test_ready_debt_coverage_objects_are_the_compatibility_value_source() -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+
+    for metric_id in ("dscr_min", "llcr"):
+        metric = output["debt_coverage_metrics"][metric_id]
+        assert metric["applicability_status"] == "APPLICABLE"
+        assert metric["reason_code"] == "READY"
+        assert metric["value_status"] == "VALUE_PRESENT"
+        assert metric["value"] is not None
+        assert output["metrics"][metric_id] == metric["value"]
+        assert metric["source_artifact_id"] == output["run_id"]
+        assert metric["period_range"] == {
+            "start_period": output["periods"][0],
+            "end_period": output["periods"][-1],
+        }
+
+
+@pytest.mark.parametrize(
+    ("cfads_ready", "debt_schedule_ready", "reason_code"),
+    [
+        (False, True, "CFADS_NOT_READY"),
+        (True, False, "DEBT_SCHEDULE_NOT_READY"),
+        (False, False, "CFADS_AND_DEBT_SCHEDULE_NOT_READY"),
+    ],
+)
+def test_debt_coverage_not_ready_reasons_are_deterministic(
+    cfads_ready: bool,
+    debt_schedule_ready: bool,
+    reason_code: str,
+) -> None:
+    state = _debt_coverage_state(
+        declared_debt=True,
+        cfads_ready=cfads_ready,
+        debt_schedule_ready=debt_schedule_ready,
+        has_eligible_debt_service=True,
+    )
+    assert state == ("NOT_READY", reason_code, ())
+
+
+def test_debt_coverage_blockers_are_sorted_and_do_not_collapse_to_not_ready() -> None:
+    state = _debt_coverage_state(
+        declared_debt=True,
+        cfads_ready=False,
+        debt_schedule_ready=False,
+        has_eligible_debt_service=False,
+        blocker_codes=("FIN2_Z_BLOCKER", "FIN2_A_BLOCKER", "FIN2_Z_BLOCKER"),
+    )
+    assert state == (
+        "BLOCKED",
+        "MULTIPLE_DEBT_COVERAGE_BLOCKERS",
+        ("FIN2_A_BLOCKER", "FIN2_Z_BLOCKER"),
+    )
+
+
+def test_unsupported_declared_debt_projects_blocked_metric_objects() -> None:
+    document = valid_document()
+    document["financing"]["debt_tranches"] = [
+        {
+            "tranche_id": "debt-custom-applicability",
+            "drawdowns": [{"period": "2026-01", "amount": "1000"}],
+            "annual_rate": "0.05",
+            "tenor_months": 12,
+            "principal_grace_months": 0,
+            "interest_grace_policy": "paid",
+            "repayment_profile": "custom_reviewed",
+            "fee_treatment": "expense_upfront",
+            "fees": [],
+            "lineage": {
+                "assumption_refs": ["asm-1"],
+                "evidence_refs": ["ev-1"],
+            },
+        }
+    ]
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+
+    for metric_id in ("dscr_min", "llcr"):
+        metric = output["debt_coverage_metrics"][metric_id]
+        assert metric["value"] is None
+        assert metric["value_status"] == "VALUE_ABSENT"
+        assert metric["applicability_status"] == "BLOCKED"
+        assert metric["reason_code"] == "FIN2_DEBT_PROFILE_UNSUPPORTED"
+        assert metric["blocker_codes"] == [
+            "FIN2_DEBT_PROFILE_UNSUPPORTED"
+        ]
+
+
+def test_debt_coverage_schema_is_closed_and_required() -> None:
+    schema_path = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "schemas"
+        / "finance"
+        / "finance-result.v2.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    coverage = schema["properties"]["debt_coverage_metrics"]
+    metric = schema["$defs"]["debtCoverageMetric"]
+
+    assert "debt_coverage_metrics" in schema["required"]
+    assert coverage["additionalProperties"] is False
+    assert coverage["required"] == ["dscr_min", "llcr"]
+    assert metric["additionalProperties"] is False
+    assert {
+        "value_status",
+        "applicability_status",
+        "reason_code",
+        "period_range",
+        "unit",
+        "currency",
+        "grain",
+        "source_artifact_id",
+        "formula_version",
+        "lineage_refs",
+    } <= set(metric["required"])
 
