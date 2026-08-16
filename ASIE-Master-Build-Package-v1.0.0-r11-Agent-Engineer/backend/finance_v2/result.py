@@ -308,6 +308,14 @@ _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES = frozenset(
         "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
     }
 )
+_DEBT_COVERAGE_MODEL_BLOCKER_CODES = (
+    _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES
+    - {
+        "FIN2_DSCR_MIN_VALUE_MISSING",
+        "FIN2_LLCR_VALUE_MISSING",
+        "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
+    }
+)
 _DEBT_COVERAGE_DIRECT_BLOCKER_CODES = frozenset(
     {
         "FIN2_DEBT_PROFILE_UNSUPPORTED",
@@ -457,7 +465,7 @@ def _debt_coverage_blocker_codes(
         if is_relevant:
             relevant.append(
                 code
-                if code in _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES
+                if code in _DEBT_COVERAGE_MODEL_BLOCKER_CODES
                 else "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
             )
     return tuple(sorted(set(relevant)))
