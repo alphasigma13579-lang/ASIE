@@ -71,8 +71,13 @@ def serialize_finance_result(
         )
         else []
     )
+    coverage_projection_blockers = _debt_coverage_projection_blockers(
+        debt_coverage_metrics,
+        model.blockers,
+    )
     result_blockers = [
         *model.blockers,
+        *coverage_projection_blockers,
         *scenario_blockers,
         *legacy_scenario_blockers,
     ]
@@ -173,18 +178,26 @@ def serialize_finance_result(
                 }
                 for row in model.periods
             ],
-            "debt": [
-                {
-                    "period": period_row.period,
-                    **{
-                        field: _decimal(getattr(debt_row, field), money_scale)
-                        for field in debt_row.__dataclass_fields__
-                    },
-                }
-                for period_row, debt_row in zip(
-                    model.periods, model.debt_schedule, strict=True
-                )
-            ],
+            "debt": (
+                [
+                    {
+                        "period": period,
+                        **{
+                            field: _decimal(
+                                getattr(debt_row, field), money_scale
+                            )
+                            for field in debt_row.__dataclass_fields__
+                        },
+                    }
+                    for period, debt_row in zip(
+                        validated.periods,
+                        model.debt_schedule,
+                        strict=True,
+                    )
+                ]
+                if len(model.debt_schedule) == len(validated.periods)
+                else []
+            ),
             "fiscal": [
                 {
                     "period": row.period,
@@ -410,6 +423,48 @@ def _debt_coverage_blocker_codes(
         ):
             relevant.append(code)
     return tuple(sorted(set(relevant)))
+
+
+def _debt_coverage_projection_blockers(
+    metrics: dict[str, dict[str, Any]],
+    model_blockers: tuple[dict[str, str], ...],
+) -> list[dict[str, str]]:
+    existing_codes = {
+        blocker["code"]
+        for blocker in model_blockers
+        if blocker.get("code")
+    }
+    projected: dict[str, str] = {}
+    for metric_id, metric in metrics.items():
+        applicability = metric["applicability_status"]
+        if applicability == "NOT_READY":
+            code = f"FIN2_DEBT_COVERAGE_{metric['reason_code']}"
+            projected.setdefault(
+                code,
+                (
+                    "Debt coverage metric inputs are not ready: "
+                    f"{metric['reason_code']}."
+                ),
+            )
+        elif applicability == "BLOCKED":
+            for code in metric["blocker_codes"]:
+                if code not in existing_codes:
+                    projected.setdefault(
+                        code,
+                        (
+                            "Debt coverage projection is blocked for "
+                            f"{metric_id}: {code}."
+                        ),
+                    )
+    return [
+        {
+            "code": code,
+            "severity": "high",
+            "field_ref": "$.debt_coverage_metrics",
+            "message_ar": message,
+        }
+        for code, message in sorted(projected.items())
+    ]
 
 
 def _apply_legacy_parity(
