@@ -1766,3 +1766,102 @@ def test_semantic_validator_rejects_ready_legacy_debt_profile(
         "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
     )
     assert error.value.field_ref == field_ref
+
+
+def test_unavailable_coverage_is_suppressed_in_deterministic_scenario() -> None:
+    document = _annuity_debt_document()
+    document["fiscal_policy"]["modules"] = ["vat"]
+    document["fiscal_policy"]["vat_rate"] = "0.15"
+    document["scenarios"].append(
+        {
+            "scenario_id": "scn_down",
+            "kind": "deterministic",
+            "overrides": [
+                {
+                    "target_ref": (
+                        "$.revenue_streams[rev-primary]."
+                        "volume_series[*].value"
+                    ),
+                    "operation": "multiply",
+                    "value": "0.9",
+                }
+            ],
+        }
+    )
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    deterministic = next(
+        scenario
+        for scenario in output["scenarios"]
+        if scenario["kind"] == "deterministic"
+    )
+
+    assert deterministic["status"] == "not_ready"
+    assert deterministic["metrics"]["dscr_min"] is None
+    assert deterministic["metrics"]["llcr"] is None
+
+    invalid = copy.deepcopy(output)
+    invalid_scenario = next(
+        scenario
+        for scenario in invalid["scenarios"]
+        if scenario["kind"] == "deterministic"
+    )
+    invalid_scenario["metrics"]["dscr_min"] = "1.000000"
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.field_ref == (
+        "$.scenarios[scn_down].metrics.dscr_min"
+    )
+
+
+def test_unknown_coverage_marks_legacy_profiles_unavailable() -> None:
+    output = result(legacy=True)
+    for envelope in output["debt_coverage_metrics"].values():
+        envelope["applicability_status"] = "UNKNOWN"
+        envelope["reason_code"] = "DATA_AVAILABILITY_UNKNOWN"
+    output["status"] = "not_ready"
+    for scenario in output["scenarios"]:
+        scenario["status"] = "not_ready"
+    payload = output["legacy_projection"]["payload"]
+    payload["status"] = "not_ready"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.field_ref == (
+        "$.legacy_projection.payload.baseline."
+        "debt_service_profile.status"
+    )
+
+
+def test_not_ready_reason_requires_matching_result_blocker() -> None:
+    document = _annuity_debt_document()
+    document["fiscal_policy"]["modules"] = ["vat"]
+    document["fiscal_policy"]["vat_rate"] = "0.15"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    for envelope in output["debt_coverage_metrics"].values():
+        envelope["reason_code"] = "DEBT_SCHEDULE_NOT_READY"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.field_ref == "$.blockers"
+
+
+def test_blocked_details_require_matching_result_blockers() -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+                "$.financing",
+            ),
+        ),
+    )
+    output["blockers"] = []
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.field_ref == "$.blockers"
