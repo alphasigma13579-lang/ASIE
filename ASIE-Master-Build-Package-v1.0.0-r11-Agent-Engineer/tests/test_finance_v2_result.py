@@ -1082,3 +1082,38 @@ def test_blocked_schema_binds_single_reasons_and_multiple_marker() -> None:
         for branch in single
     } == set(metric["properties"]["blocker_codes"]["items"]["enum"])
 
+def test_long_admitted_evidence_ref_survives_metric_projection() -> None:
+    document = valid_document()
+    evidence_ref = "e" * 200
+    document["revenue_streams"][0]["lineage"]["evidence_refs"] = [
+        evidence_ref
+    ]
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+
+    for metric in output["debt_coverage_metrics"].values():
+        assert evidence_ref in metric["lineage_refs"]["evidence_refs"]
+
+
+def test_missing_ready_metric_value_blocks_the_top_level_result() -> None:
+    document = _annuity_debt_document()
+    tranche = document["financing"]["debt_tranches"][0]
+    tranche["tenor_months"] = 1
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+
+    assert model.status == "ready"
+    assert model.metrics["llcr"] is None
+    output = serialize_finance_result(validated, model)
+
+    llcr = output["debt_coverage_metrics"]["llcr"]
+    assert llcr["applicability_status"] == "BLOCKED"
+    assert llcr["reason_code"] == "FIN2_LLCR_VALUE_MISSING"
+    assert llcr["blocker_codes"] == ["FIN2_LLCR_VALUE_MISSING"]
+    assert output["metrics"]["llcr"] is None
+    assert output["status"] == "not_ready"
+    assert [row["code"] for row in output["blockers"]] == [
+        "FIN2_LLCR_VALUE_MISSING"
+    ]
+
