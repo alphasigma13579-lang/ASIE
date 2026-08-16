@@ -536,6 +536,9 @@
                 "metric_id": {
                   "const": "dscr_min"
                 },
+                "formula_version": {
+                  "const": "fin2.metric.dscr_min.rolling_12m.v1"
+                },
                 "grain": {
                   "properties": {
                     "aggregation": {
@@ -584,6 +587,9 @@
               "properties": {
                 "metric_id": {
                   "const": "llcr"
+                },
+                "formula_version": {
+                  "const": "fin2.metric.llcr.minimum_loan_life.v1"
                 },
                 "grain": {
                   "properties": {
