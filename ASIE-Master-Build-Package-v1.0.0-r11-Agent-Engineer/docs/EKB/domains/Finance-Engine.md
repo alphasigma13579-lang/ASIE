@@ -7,7 +7,7 @@
 | المالك | Finance + Principal Architecture |
 | آخر مراجعة | 2026-08-16 |
 | المصدر الحاكم | `ACR-FIN-002-v1.0.0` |
-| ملحق متطلبات دورة الحياة | `ACR-FIN-004-v0.1.0 — OWNER-APPROVED REQUIREMENTS / IMPLEMENTATION BLOCKED` |
+| ملحق متطلبات دورة الحياة | [`ACR-FIN-004-v0.1.0 — OWNER-APPROVED REQUIREMENTS / IMPLEMENTATION BLOCKED`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md) |
 | خط الأساس | `main@50e7328bc07c828240947536d99d47250f10383b` |
 | المراجعة التالية | عند G1 أو عند إغلاق G-FLC-1 أو بعد 90 يوماً |
 
@@ -22,7 +22,7 @@ Finance Engine هو المحرك الحتمي الوحيد للحقيقة الم
 - النتيجة تُختم ثم تدخل Snapshot immutable، وتقرأ التقارير والإسقاطات منها فقط.
 - القوائم المالية الحالية جزئية؛ لا يجوز وصفها كنموذج مالي مهني مكتمل.
 - Finance Model v2 مصرح ببنائه داخلياً فقط وفق `docs/ACR-FIN-002-FINANCE-MODEL-V2-AND-PROJECT-ARCHETYPE-CONTRACT-2026-08-09.md`.
-- متطلبات `Baseline / Actual / Reforecast` ودلالة التمويل وKPI drill-down مثبتة في `docs/ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md`.
+- متطلبات `Baseline / Actual / Reforecast` ودلالة التمويل وKPI drill-down مثبتة في [`ACR-FIN-004-v0.1.0`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md).
 - وجود ACR-FIN-004 لا يثبت التنفيذ: Actual وReforecast وend-to-end KPI drill-down تظل `BLOCKED/MISSING` حتى العقود والاختبارات والأدلة.
 
 ## مصدر الحقيقة
@@ -104,10 +104,13 @@ Approved inputs
 دورة المنتج المستهدفة داخل هذه البوابات:
 
 ```text
-Approved BASELINE
+Approved BASELINE inputs
+→ server-owned Approved Input Manifest
+→ BASELINE Run
 → immutable BASELINE Snapshot
 → ACTUAL submissions/revisions
 → REFORECAST Draft
+→ new server-owned Approved Input Manifest
 → approved REFORECAST Run
 → immutable REFORECAST Snapshot
 → comparison / drill-down / report projections
