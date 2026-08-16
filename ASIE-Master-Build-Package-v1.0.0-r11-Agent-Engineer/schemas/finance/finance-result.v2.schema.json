@@ -544,6 +544,34 @@
                   }
                 }
               }
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "reason_code": {
+                        "const": "FIN2_LLCR_VALUE_MISSING"
+                      }
+                    },
+                    "required": [
+                      "reason_code"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "blocker_codes": {
+                        "contains": {
+                          "const": "FIN2_LLCR_VALUE_MISSING"
+                        }
+                      }
+                    },
+                    "required": [
+                      "blocker_codes"
+                    ]
+                  }
+                ]
+              }
             }
           ]
         },
@@ -564,6 +592,34 @@
                     }
                   }
                 }
+              }
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "reason_code": {
+                        "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                      }
+                    },
+                    "required": [
+                      "reason_code"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "blocker_codes": {
+                        "contains": {
+                          "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                        }
+                      }
+                    },
+                    "required": [
+                      "blocker_codes"
+                    ]
+                  }
+                ]
               }
             }
           ]
