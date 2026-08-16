@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -895,4 +896,189 @@ def test_debt_coverage_schema_is_closed_and_required() -> None:
         "formula_version",
         "lineage_refs",
     } <= set(metric["required"])
+
+def _serialize_debt_coverage_model_state(
+    *,
+    cfads_ready: bool,
+    debt_schedule_ready: bool,
+    blockers: tuple[dict[str, str], ...] = (),
+) -> dict:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    built = build_financial_model(validated)
+    metrics = dict(built.metrics)
+    if not cfads_ready or not debt_schedule_ready:
+        metrics["dscr_min"] = None
+        metrics["llcr"] = None
+    partial = replace(
+        built,
+        periods=built.periods if cfads_ready else (),
+        debt_schedule=(
+            built.debt_schedule if debt_schedule_ready else ()
+        ),
+        invariants=(
+            built.invariants
+            if cfads_ready and debt_schedule_ready
+            else ()
+        ),
+        metrics=metrics,
+        status="not_ready",
+        blockers=blockers,
+    )
+    return serialize_finance_result(validated, partial)
+
+
+@pytest.mark.parametrize(
+    (
+        "cfads_ready",
+        "debt_schedule_ready",
+        "reason_code",
+        "expected_debt_rows",
+    ),
+    [
+        (False, True, "CFADS_NOT_READY", 12),
+        (True, False, "DEBT_SCHEDULE_NOT_READY", 0),
+        (
+            False,
+            False,
+            "CFADS_AND_DEBT_SCHEDULE_NOT_READY",
+            0,
+        ),
+    ],
+)
+def test_serializer_projects_complete_not_ready_envelopes(
+    cfads_ready: bool,
+    debt_schedule_ready: bool,
+    reason_code: str,
+    expected_debt_rows: int,
+) -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=cfads_ready,
+        debt_schedule_ready=debt_schedule_ready,
+    )
+
+    assert output["status"] == "not_ready"
+    assert len(output["subledgers"]["debt"]) == expected_debt_rows
+    assert [row["code"] for row in output["blockers"]] == [
+        f"FIN2_DEBT_COVERAGE_{reason_code}"
+    ]
+    for metric_id in ("dscr_min", "llcr"):
+        metric = output["debt_coverage_metrics"][metric_id]
+        assert metric["applicability_status"] == "NOT_READY"
+        assert metric["reason_code"] == reason_code
+        assert metric["blocker_codes"] == []
+        assert metric["value"] is None
+        assert output["metrics"][metric_id] is None
+
+
+def _coverage_blocker(
+    code: str,
+    field_ref: str,
+) -> dict[str, str]:
+    return {
+        "code": code,
+        "severity": "high",
+        "field_ref": field_ref,
+        "message_ar": code,
+    }
+
+
+@pytest.mark.parametrize(
+    ("blockers", "reason_code", "detail_codes"),
+    [
+        (
+            (
+                _coverage_blocker(
+                    "FIN2_VAT_LEDGER_NOT_READY",
+                    "$.fiscal_policy.modules",
+                ),
+            ),
+            "FIN2_VAT_LEDGER_NOT_READY",
+            ["FIN2_VAT_LEDGER_NOT_READY"],
+        ),
+        (
+            (
+                _coverage_blocker(
+                    "FIN2_VAT_LEDGER_NOT_READY",
+                    "$.fiscal_policy.modules",
+                ),
+                _coverage_blocker(
+                    "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                    "$.financing",
+                ),
+            ),
+            "MULTIPLE_DEBT_COVERAGE_BLOCKERS",
+            [
+                "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                "FIN2_VAT_LEDGER_NOT_READY",
+            ],
+        ),
+    ],
+)
+def test_serializer_projects_single_and_multiple_coverage_blockers(
+    blockers: tuple[dict[str, str], ...],
+    reason_code: str,
+    detail_codes: list[str],
+) -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=blockers,
+    )
+
+    assert output["status"] == "not_ready"
+    for metric_id in ("dscr_min", "llcr"):
+        metric = output["debt_coverage_metrics"][metric_id]
+        assert metric["applicability_status"] == "BLOCKED"
+        assert metric["reason_code"] == reason_code
+        assert metric["blocker_codes"] == detail_codes
+        assert metric["value"] is None
+        assert output["metrics"][metric_id] is None
+
+
+def test_blocked_schema_binds_single_reasons_and_multiple_marker() -> None:
+    schema_path = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "schemas"
+        / "finance"
+        / "finance-result.v2.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    metric = schema["$defs"]["debtCoverageMetric"]
+    blocked = next(
+        rule
+        for rule in metric["allOf"]
+        if rule.get("if", {})
+        .get("properties", {})
+        .get("applicability_status", {})
+        .get("const")
+        == "BLOCKED"
+    )
+    branches = blocked["then"]["oneOf"]
+    single = [
+        branch
+        for branch in branches
+        if branch["properties"]["blocker_codes"].get("maxItems") == 1
+    ]
+    multiple = [
+        branch
+        for branch in branches
+        if branch["properties"]["blocker_codes"].get("minItems") == 2
+    ]
+
+    assert len(multiple) == 1
+    assert multiple[0]["properties"]["reason_code"]["const"] == (
+        "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+    )
+    assert single
+    for branch in single:
+        properties = branch["properties"]
+        reason = properties["reason_code"]["const"]
+        blocker = properties["blocker_codes"]["prefixItems"][0]["const"]
+        assert reason == blocker
+        assert reason != "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+    assert {
+        branch["properties"]["reason_code"]["const"]
+        for branch in single
+    } == set(metric["properties"]["blocker_codes"]["items"]["enum"])
 
