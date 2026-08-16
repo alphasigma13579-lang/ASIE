@@ -21,6 +21,7 @@
     "cash_flows",
     "subledgers",
     "metrics",
+    "debt_coverage_metrics",
     "invariants",
     "scenarios",
     "lineage",
@@ -512,6 +513,58 @@
             },
             {
               "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "debt_coverage_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dscr_min",
+        "llcr"
+      ],
+      "properties": {
+        "dscr_min": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/debtCoverageMetric"
+            },
+            {
+              "properties": {
+                "metric_id": {
+                  "const": "dscr_min"
+                },
+                "grain": {
+                  "properties": {
+                    "aggregation": {
+                      "const": "minimum_rolling_12_month"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "llcr": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/debtCoverageMetric"
+            },
+            {
+              "properties": {
+                "metric_id": {
+                  "const": "llcr"
+                },
+                "grain": {
+                  "properties": {
+                    "aggregation": {
+                      "const": "minimum_loan_life"
+                    }
+                  }
+                }
+              }
             }
           ]
         }
@@ -1030,6 +1083,258 @@
     }
   ],
   "$defs": {
+    "debtCoverageMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "value",
+        "value_status",
+        "applicability_status",
+        "reason_code",
+        "blocker_codes",
+        "period_range",
+        "unit",
+        "currency",
+        "currency_reason",
+        "grain",
+        "source_artifact_id",
+        "formula_version",
+        "lineage_refs"
+      ],
+      "properties": {
+        "metric_id": {
+          "enum": [
+            "dscr_min",
+            "llcr"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/nullableDecimal"
+        },
+        "value_status": {
+          "enum": [
+            "VALUE_PRESENT",
+            "ZERO_VERIFIED",
+            "VALUE_ABSENT"
+          ]
+        },
+        "applicability_status": {
+          "enum": [
+            "APPLICABLE",
+            "NOT_APPLICABLE",
+            "UNKNOWN",
+            "NOT_READY",
+            "BLOCKED"
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{2,120}$"
+        },
+        "blocker_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]{2,120}$"
+          }
+        },
+        "period_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start_period",
+            "end_period"
+          ],
+          "properties": {
+            "start_period": {
+              "$ref": "#/$defs/period"
+            },
+            "end_period": {
+              "$ref": "#/$defs/period"
+            }
+          }
+        },
+        "unit": {
+          "const": "ratio"
+        },
+        "currency": {
+          "type": "null"
+        },
+        "currency_reason": {
+          "const": "NOT_MONETARY_METRIC"
+        },
+        "grain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "frequency",
+            "aggregation",
+            "dimensions"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": "finance-metric-grain.v1"
+            },
+            "frequency": {
+              "const": "monthly"
+            },
+            "aggregation": {
+              "enum": [
+                "minimum_rolling_12_month",
+                "minimum_loan_life"
+              ]
+            },
+            "dimensions": {
+              "type": "array",
+              "maxItems": 0
+            }
+          }
+        },
+        "source_artifact_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "formula_version": {
+          "type": "string",
+          "pattern": "^fin2\\.metric\\.[a-z0-9_.]+\\.v[0-9]+$"
+        },
+        "lineage_refs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assumption_refs",
+            "evidence_refs"
+          ],
+          "properties": {
+            "assumption_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "evidence_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "APPLICABLE"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "$ref": "#/$defs/decimal"
+              },
+              "value_status": {
+                "enum": [
+                  "VALUE_PRESENT",
+                  "ZERO_VERIFIED"
+                ]
+              },
+              "blocker_codes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "enum": [
+                  "NOT_APPLICABLE",
+                  "UNKNOWN",
+                  "NOT_READY",
+                  "BLOCKED"
+                ]
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "value_status": {
+                "const": "VALUE_ABSENT"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "BLOCKED"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "blocker_codes": {
+                "minItems": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "blocker_codes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value_status": {
+                "const": "ZERO_VERIFIED"
+              }
+            },
+            "required": [
+              "value_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "pattern": "^0(?:\\.0{1,8})?$"
+              }
+            }
+          }
+        }
+      ]
+    },
     "decimal": {
       "type": "string",
       "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
