@@ -342,7 +342,8 @@ def test_not_ready_custom_reviewed_debt_serializes_blocker_without_exception() -
     }
     assert set(output["metrics"].values()) == {None}
     assert [row["code"] for row in output["blockers"]] == [
-        "FIN2_DEBT_PROFILE_UNSUPPORTED"
+        "FIN2_DEBT_PROFILE_UNSUPPORTED",
+        "FIN2_DEBT_COVERAGE_DEBT_SCHEDULE_NOT_READY",
     ]
 
 
@@ -839,7 +840,7 @@ def test_debt_coverage_blockers_are_sorted_and_do_not_collapse_to_not_ready() ->
     )
 
 
-def test_unsupported_declared_debt_projects_blocked_metric_objects() -> None:
+def test_custom_reviewed_debt_projects_schedule_not_ready() -> None:
     document = valid_document()
     document["financing"]["debt_tranches"] = [
         {
@@ -866,11 +867,10 @@ def test_unsupported_declared_debt_projects_blocked_metric_objects() -> None:
         metric = output["debt_coverage_metrics"][metric_id]
         assert metric["value"] is None
         assert metric["value_status"] == "VALUE_ABSENT"
-        assert metric["applicability_status"] == "BLOCKED"
-        assert metric["reason_code"] == "FIN2_DEBT_PROFILE_UNSUPPORTED"
-        assert metric["blocker_codes"] == [
-            "FIN2_DEBT_PROFILE_UNSUPPORTED"
-        ]
+        assert metric["applicability_status"] == "NOT_READY"
+        assert metric["reason_code"] == "DEBT_SCHEDULE_NOT_READY"
+        assert metric["blocker_codes"] == []
+    _result_schema_validator().validate(output)
 
 
 def test_debt_coverage_schema_is_closed_and_required() -> None:
@@ -993,28 +993,28 @@ def _coverage_blocker(
         (
             (
                 _coverage_blocker(
-                    "FIN2_VAT_LEDGER_NOT_READY",
+                    "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                     "$.fiscal_policy.modules",
                 ),
             ),
-            "FIN2_VAT_LEDGER_NOT_READY",
-            ["FIN2_VAT_LEDGER_NOT_READY"],
+            "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+            ["FIN2_INVARIANT_DEBT_ROLLFORWARD"],
         ),
         (
             (
                 _coverage_blocker(
-                    "FIN2_VAT_LEDGER_NOT_READY",
+                    "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                     "$.fiscal_policy.modules",
                 ),
                 _coverage_blocker(
-                    "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                    "FIN2_INVARIANT_CASH_FLOW_EQUATION",
                     "$.financing",
                 ),
             ),
             "MULTIPLE_DEBT_COVERAGE_BLOCKERS",
             [
-                "FIN2_DEBT_PROFILE_UNSUPPORTED",
-                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
             ],
         ),
     ],
@@ -1149,7 +1149,7 @@ def test_result_schema_accepts_applicability_projections() -> None:
         debt_schedule_ready=True,
         blockers=(
             _coverage_blocker(
-                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                 "$.fiscal_policy.modules",
             ),
         ),
@@ -1161,11 +1161,11 @@ def test_result_schema_accepts_applicability_projections() -> None:
         debt_schedule_ready=True,
         blockers=(
             _coverage_blocker(
-                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                 "$.fiscal_policy.modules",
             ),
             _coverage_blocker(
-                "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                "FIN2_INVARIANT_CASH_FLOW_EQUATION",
                 "$.financing",
             ),
         ),
@@ -1178,18 +1178,18 @@ def test_result_schema_accepts_applicability_projections() -> None:
     [
         (
             "MULTIPLE_DEBT_COVERAGE_BLOCKERS",
-            ["FIN2_VAT_LEDGER_NOT_READY"],
+            ["FIN2_INVARIANT_DEBT_ROLLFORWARD"],
         ),
         (
-            "FIN2_VAT_LEDGER_NOT_READY",
+            "FIN2_INVARIANT_DEBT_ROLLFORWARD",
             [
-                "FIN2_VAT_LEDGER_NOT_READY",
-                "FIN2_DEBT_PROFILE_UNSUPPORTED",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+                "FIN2_INVARIANT_CASH_FLOW_EQUATION",
             ],
         ),
         (
-            "FIN2_DEBT_PROFILE_UNSUPPORTED",
-            ["FIN2_VAT_LEDGER_NOT_READY"],
+            "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+            ["FIN2_INVARIANT_DEBT_ROLLFORWARD"],
         ),
         (
             "FIN2_UNKNOWN_FINANCING_BLOCKER",
@@ -1207,7 +1207,7 @@ def test_result_schema_rejects_inconsistent_blocked_projection(
         debt_schedule_ready=True,
         blockers=(
             _coverage_blocker(
-                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                 "$.fiscal_policy.modules",
             ),
         ),
@@ -1284,7 +1284,7 @@ def test_result_schema_rejects_other_metrics_missing_value_code(
         debt_schedule_ready=True,
         blockers=(
             _coverage_blocker(
-                "FIN2_VAT_LEDGER_NOT_READY",
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
                 "$.fiscal_policy.modules",
             ),
         ),
@@ -1297,7 +1297,7 @@ def test_result_schema_rejects_other_metrics_missing_value_code(
         else wrong_code
     )
     metric["blocker_codes"] = (
-        ["FIN2_VAT_LEDGER_NOT_READY", wrong_code]
+        ["FIN2_INVARIANT_DEBT_ROLLFORWARD", wrong_code]
         if multiple
         else [wrong_code]
     )
@@ -1447,4 +1447,28 @@ def test_semantic_validator_normalizes_signed_zero(
     baseline["metrics"][metric_id] = "0.00"
 
     validate_finance_result_projection(output)
+
+def test_vat_without_ledger_projects_cfads_not_ready() -> None:
+    document = _annuity_debt_document()
+    document["fiscal_policy"]["modules"] = ["vat"]
+    document["fiscal_policy"]["vat_rate"] = "0.15"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+
+    assert [row["code"] for row in model.blockers] == [
+        "FIN2_VAT_LEDGER_NOT_READY"
+    ]
+    output = serialize_finance_result(validated, model)
+
+    assert output["status"] == "not_ready"
+    assert [row["code"] for row in output["blockers"]] == [
+        "FIN2_VAT_LEDGER_NOT_READY",
+        "FIN2_DEBT_COVERAGE_CFADS_NOT_READY",
+    ]
+    for metric in output["debt_coverage_metrics"].values():
+        assert metric["applicability_status"] == "NOT_READY"
+        assert metric["reason_code"] == "CFADS_NOT_READY"
+        assert metric["blocker_codes"] == []
+        assert metric["value"] is None
+    _result_schema_validator().validate(output)
 
