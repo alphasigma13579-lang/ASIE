@@ -383,7 +383,7 @@ Saved artifacts
 | FLC-F10 | Profile حاضنة/ممول | Profile محدد الإصدار والمصدر ويستخدم قاموس حالات FEASIBILITY-COMPLETE-01 نفسه؛ `institutionally_accepted` يحتاج Evidence ID صالحًا ولا ينشأ ادعاء قبول أو اعتماد بلا دليل |
 | FLC-F11 | tenant isolation | artifact/comparison و`ORGANIZATION_OWNED` Profile يربطان خادميًا بنفس `organization_id`؛ cross-tenant وscope/owner/access-policy mismatch ترفض قبل القراءة أو الحساب؛ `PUBLIC_REFERENCE` يسمح به فقط وفق registry/status/freshness/policy الصريحة أعلاه |
 | FLC-F12 | revision/tamper mismatch | hash أو manifest/parent/evidence/revision mismatch يفشل مغلقًا ولا ينتج Snapshot جزئيًا |
-| FLC-F12A | metadata missing/null | غياب أو null لأي metadata إلزامية **لنمط lifecycle المحدد**، ومنها manifest/gate/revision/organization/policy IDs أو hashes، يفشل قبل Finance ولا ينتج Snapshot جزئيًا؛ Baseline الجذري يسمح فقط بالـparent null المصرح به |
+| FLC-F12A | metadata missing/null | غياب أو null لأي metadata إلزامية **لنمط lifecycle والمرحلة المحددين**، ومنها manifest/gate/revision/organization/policy IDs أو hashes، يفشل قبل Finance ولا ينتج Snapshot جزئيًا؛ الاستثناءات الوحيدة المصرح بها: parent للـBaseline الجذري، و`parent_revision_id/supersedes_revision_id` لأول Actual، و`predecessor_reforecast_snapshot_id` لأول Reforecast |
 | FLC-F12B | metadata unresolvable | ID أو parent أو evidence أو policy لا يمكن حله من المصدر الخادمي يفشل مغلقًا |
 | FLC-F12C | metadata stale/expired | manifest/evidence/Profile/policy منتهي أو خارج freshness/effective window يفشل مغلقًا |
 | FLC-F12D | manifest/gate/input binding | manifest ID/hash أو gate ID/hash أو رابط gate→manifest أو `finance_input_hash/admission_input_hash` غير متسق مع preimage الحاكمة يرفض قبل Finance |
