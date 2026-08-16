@@ -7,7 +7,7 @@
 | المالك | Finance + Principal Architecture |
 | آخر مراجعة | 2026-08-16 |
 | المصدر الحاكم | `ACR-FIN-002-v1.0.0` |
-| ملحق متطلبات دورة الحياة | [`ACR-FIN-004-v0.1.0 — OWNER-APPROVED REQUIREMENTS / IMPLEMENTATION BLOCKED`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md) |
+| ملحق متطلبات دورة الحياة | [`ACR-FIN-004-v0.2.0 — OWNER-APPROVED REQUIREMENTS / IMPLEMENTATION BLOCKED`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md) |
 | خط الأساس | `main@50e7328bc07c828240947536d99d47250f10383b` |
 | المراجعة التالية | عند G1 أو عند إغلاق G-FLC-1 أو بعد 90 يوماً |
 
@@ -22,13 +22,14 @@ Finance Engine هو المحرك الحتمي الوحيد للحقيقة الم
 - النتيجة تُختم ثم تدخل Snapshot immutable، وتقرأ التقارير والإسقاطات منها فقط.
 - القوائم المالية الحالية جزئية؛ لا يجوز وصفها كنموذج مالي مهني مكتمل.
 - Finance Model v2 مصرح ببنائه داخلياً فقط وفق `docs/ACR-FIN-002-FINANCE-MODEL-V2-AND-PROJECT-ARCHETYPE-CONTRACT-2026-08-09.md`.
-- متطلبات `Baseline / Actual / Reforecast` ودلالة التمويل وKPI drill-down مثبتة في [`ACR-FIN-004-v0.1.0`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md).
+- متطلبات `Baseline / Actual / Reforecast` ودلالة التمويل وKPI drill-down مثبتة في [`ACR-FIN-004-v0.2.0`](../../ACR-FIN-004-BASELINE-ACTUAL-REFORECAST-FINANCING-AND-DECISION-PROJECTION-LIFECYCLE-2026-08-16.md).
 - وجود ACR-FIN-004 لا يثبت التنفيذ: Actual وReforecast وend-to-end KPI drill-down تظل `BLOCKED/MISSING` حتى العقود والاختبارات والأدلة.
 
 ## مصدر الحقيقة
 
 ```text
-Approved inputs
+server-owned Approved Input Manifest
+→ passed server-owned Manifest Validation Gate bound by ID/hash
 → ProjectRunWorkflow
 → Bus / Socket / Module Runtime
 → Finance
@@ -68,6 +69,9 @@ Approved inputs
 - التمويلات المتعددة لا تنشأ إلا من تصريح معتمد، وتبقى كل شريحة قابلة للتتبع والـdrill-down.
 - drawdown مؤرخ ومعلوم عند Baseline جزء منه؛ التمويل الجديد بعد اعتماد Baseline يدخل عبر Reforecast جديد.
 - Baseline وActual وReforecast artifacts مستقلة؛ لا overwrite أو إعادة حساب تاريخي.
+- كل Baseline/Reforecast يمر عبر Manifest جديد وManifest Validation Gate ناجحة مرتبطة به ID/hash قبل Finance.
+- Actual فريد على logical target خادمي عبر tenant/project/Baseline/target/grain/period، لا عبر `actual_id` وحده.
+- Reforecast يثبت `period_calendar_id/as_of_period`، ويميز `finance_input_hash` عن `admission_input_hash` ويربط Baseline الأب وReforecast السابق.
 - KPI يتبع `Summary → Drill-down → Comparison → Snapshot-backed Report` من الحقيقة المختومة نفسها.
 - دراسة الجدوى والجاهزية التمويلية وجاهزية ملفات الحاضنات/المسرعات مسارات منتج أساسية، والمتابعة امتداد قرار.
 - ASIE ليست ERP ولا تصبح مصدر حقيقة للـGL أو payroll أو inventory أو procurement أو المعاملات اليومية.
@@ -79,7 +83,8 @@ Approved inputs
 - لا AI داخل الحساب أو اختيار السياسة.
 - لا network/provider/key.
 - لا تغيير ملفات Freeze في S2.
-- لا claim L1 قبل G1 ومراجعة Finance Reviewer/CPA.
+- بوابة المتطلبات/dark build تراجعها أربع طبقات: GitHub Codex وCodeRabbit وGitHub Copilot وPrincipal Independent Audit.
+- لا claim L1 قبل G1 ومراجعة Finance Reviewer/CPA بشرية وفق ACR-FIN-002؛ مراجعات AI ليست اعتمادًا مهنيًا.
 - لا claim قبول مصرفي أو حاضنة/مسرعة قبل بوابات الجهة والبرنامج والـPilot.
 - لا تحويل نطاق المتابعة إلى ERP.
 - لا claim Actual/Reforecast/drill-down قبل evidence exact-commit.
@@ -105,21 +110,23 @@ Approved inputs
 
 ```text
 server-owned Approved Input Manifest
+→ passed server-owned Manifest Validation Gate (manifest/gate IDs+hashes bound)
 → BASELINE Run
 → immutable BASELINE Snapshot
    ├─→ SCENARIO artifacts
-   ├─→ ACTUAL submissions/revisions
+   ├─→ ACTUAL submissions/revisions (one chain per logical target)
    └─→ REFORECAST Draft
         → new server-owned Approved Input Manifest
+        → new passed server-owned Manifest Validation Gate
         → approved REFORECAST Run
         → immutable REFORECAST Snapshot
              ├─→ SCENARIO artifacts
-             └─→ later REFORECAST revisions
+             └─→ later REFORECAST Drafts through the same manifest/gate path
 
 saved artifacts
-→ comparison
 → KPI summary
 → KPI drill-down
+→ comparison
 → Snapshot-backed report
 ```
 
@@ -127,7 +134,7 @@ saved artifacts
 
 - البرنامج: `ASIE-FEASIBILITY-COMPLETE-01-v1.0.0`.
 - قرار Finance v2: `ACR-FIN-002-v1.0.0`.
-- عقد دورة الحياة: `ACR-FIN-004-v0.1.0`.
+- عقد دورة الحياة: `ACR-FIN-004-v0.2.0`.
 - المتطلبات القائمة: `FR-FIN-001..013` و`FR-ARC-001/002`.
 - متطلبات دورة الحياة: أقسام 3–10 من ACR-FIN-004.
 - الاختبارات القائمة: `T-FIN` و`T-PROP`.
