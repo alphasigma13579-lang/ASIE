@@ -1508,3 +1508,45 @@ def test_vat_without_ledger_projects_cfads_not_ready() -> None:
         assert metric["value"] is None
     _result_schema_validator().validate(output)
 
+
+
+def test_legacy_projection_uses_governed_unavailable_dscr() -> None:
+    document = _annuity_debt_document()
+    document["fiscal_policy"]["modules"] = ["vat"]
+    document["fiscal_policy"]["vat_rate"] = "0.15"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+
+    assert output["debt_coverage_metrics"]["dscr_min"]["value"] is None
+    payload = output["legacy_projection"]["payload"]
+    assert payload["baseline"]["dscr"] is None
+    assert payload["debt_service_profile"]["dscr"] is None
+    assert payload["scenarios"][0]["dscr"] is None
+    assert "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY" not in {
+        blocker["code"] for blocker in output["blockers"]
+    }
+
+
+@pytest.mark.parametrize(
+    ("metric_id", "wrong_formula"),
+    [
+        ("dscr_min", "fin2.metric.llcr.minimum_loan_life.v1"),
+        ("llcr", "fin2.metric.dscr_min.rolling_12m.v1"),
+    ],
+)
+def test_result_schema_rejects_formula_bound_to_wrong_metric(
+    metric_id: str,
+    wrong_formula: str,
+) -> None:
+    invalid = copy.deepcopy(result())
+    invalid["debt_coverage_metrics"][metric_id][
+        "formula_version"
+    ] = wrong_formula
+
+    with pytest.raises(_jsonschema().ValidationError):
+        _result_schema_validator().validate(invalid)
