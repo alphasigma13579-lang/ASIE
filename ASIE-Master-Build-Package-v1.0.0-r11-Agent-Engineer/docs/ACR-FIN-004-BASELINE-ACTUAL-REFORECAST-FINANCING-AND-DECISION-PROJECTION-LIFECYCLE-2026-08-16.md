@@ -56,7 +56,8 @@
 - **MUST NOT / يحظر:** سلوك مرفوض.
 - **SHOULD / ينبغي:** مطلوب ما لم يوجد استثناء موثق ومراجع.
 - **MAY / يجوز:** خيار لا يغير مصدر الحقيقة.
-- `UNKNOWN` و`NOT_APPLICABLE` و`NOT_READY` و`ZERO_VERIFIED` حالات مختلفة، ولا يجوز تحويل أي منها إلى أخرى.
+- `UNKNOWN` و`NOT_APPLICABLE` و`NOT_READY` و`BLOCKED` حالات applicability/readiness مختلفة، ولا يجوز تحويل أي منها إلى أخرى.
+- `ZERO_VERIFIED` ليست `applicability_status`؛ هي `value_status` مستقلة لا تصح إلا مع `APPLICABLE` و`value=0` ودليل يثبت أن الصفر مقصود، وليست قيمة مفقودة أو غير منطبقة.
 
 ---
 
@@ -122,7 +123,9 @@ Saved artifacts
 → Snapshot-backed REPORT
 ```
 
-### 4.3 الثوابت
+### 4.3 الثوابت المطلوبة عند التنفيذ
+
+هذه ثوابت مستهدفة ومحجوبة حتى G-FLC-1 وما بعده؛ لا تصف Snapshot الحالي بأنها مطبقة لمجرد وجود العقد.
 
 1. اعتماد Baseline يختم artifact وSnapshot لا يجوز تعديلهما أو إعادة حسابهما تاريخيًا.
 2. Scenario ليس Actual وليس Reforecast، ولا يجوز ترقيته ضمنيًا إلى أي منهما.
@@ -185,11 +188,18 @@ Saved artifacts
 
 - `metric_id`;
 - `value` أو null؛
+- `value_status ∈ {VALUE_PRESENT, ZERO_VERIFIED, VALUE_ABSENT}`؛
 - `applicability_status`;
 - `reason_code`;
+- `period` أو `period_range`؛
+- `unit`؛
+- `currency` عندما تكون القيمة مالية، وإلا null مفسرة؛
+- `grain` versioned يحدد frequency ونطاق التجميع والأبعاد؛
 - `source_artifact_id`;
 - `formula_version`;
 - `lineage_refs` اللازمة للتفسير.
+
+يجب أن تستخدم Summary وDrill-down وComparison وReport هذا الـmetric object نفسه أو projection envelope صادرًا منه دون إعادة تعريف period/unit/currency/grain.
 
 القيم المسموحة لـ`applicability_status`:
 
@@ -206,11 +216,20 @@ Saved artifacts
 - `DSCR.applicability_status = NOT_APPLICABLE`;
 - `LLCR.applicability_status = NOT_APPLICABLE`;
 - `value = null`;
+- `value_status = VALUE_ABSENT`;
 - `reason_code = NO_DEBT_SERVICE`;
 - لا يفشل النموذج بسبب المؤشرين؛
 - لا تعرض الواجهة صفرًا أو `ready` أو لون نجاح يوحي بقوة تغطية الدين.
 
-إذا وجد دين لكن CFADS أو الجدول المطلوب ناقص، تكون الحالة `NOT_READY` أو `BLOCKED` وليست `NOT_APPLICABLE`.
+إذا وجد دين، يكون القرار حتميًا وفق الآتي:
+
+| الشرط | `applicability_status` | `reason_code` |
+|---|---|---|
+| CFADS أو جدول الدين غير مكتمل/غير معتمد بعد، دون خرق سلامة أو تفويض | `NOT_READY` | `CFADS_NOT_READY` أو `DEBT_SCHEDULE_NOT_READY` |
+| CFADS أو جدول الدين موجود لكنه يفشل schema/hash/tenant/authorization أو invariant مطلوب | `BLOCKED` | `CFADS_VALIDATION_FAILED` أو `DEBT_SCHEDULE_INVARIANT_FAILED` |
+| CFADS وجدول الدين صالحان وخدمة الدين موجودة | `APPLICABLE` | `READY` |
+
+الأولوية عند اجتماع الشروط: `BLOCKED` ثم `NOT_READY` ثم `APPLICABLE`. لا يجوز أن تختار Finance وAPI وUI حالات مختلفة لنفس metric object.
 
 ---
 
@@ -220,6 +239,10 @@ Saved artifacts
 
 يجب أن يحدد كل Actual:
 
+- `actual_id` ثابتًا للسجل المنطقي عبر revisions؛
+- `revision_id` فريدًا لكل نسخة؛
+- `parent_revision_id`، ويكون null للنسخة الأولى؛
+- `supersedes_revision_id` عند التصحيح، ويطابق revision السابقة التي يحل محلها للاستخدام المستقبلي دون حذفها؛
 - `financial_item_id` كانونيًا ثابتًا ومصدره سجل versioned؛
 - `governed_target_ref` يشير إلى بند/مسار مالي allowlisted يمكن ربطه حتميًا بالـBaseline وReforecast؛
 - `grain` صريحًا يحدد frequency والفترة ونطاق التجميع والأبعاد اللازمة، ولا تُقارن قيم ذات grain مختلف ضمنيًا؛
@@ -236,7 +259,10 @@ Saved artifacts
 - تحويل غياب Actual إلى صفر؛
 - استبدال forecast بقيمة Actual دون أثر revision؛
 - تعديل Actual معتمد في مكانه؛
-- خلط actual-to-date مع full-year actual دون دلالة.
+- خلط actual-to-date مع full-year actual دون دلالة؛
+- دمج revisions متعارضة أو اختيار «الأحدث زمنيًا» وحده دون تحقق سلسلة الاعتماد.
+
+قاعدة الاختيار الحتمية: لكل `(actual_id, financial_item_id, grain, period)` يجب أن يوجد leaf واحد معتمد فقط في سلسلة parent/supersedes الصحيحة. يعتمد downstream ذلك الـleaf. إذا وجد أكثر من leaf معتمد أو parent مفقود/غير مطابق، تكون الحالة `BLOCKED/ACTUAL_REVISION_CONFLICT` ولا تُدمج القيم. تبقى كل revision سابقة immutable وقابلة للقراءة التاريخية.
 
 ### 7.2 Reforecast
 
@@ -276,7 +302,7 @@ Saved artifacts
 - الضغط على KPI لا يغير run أو Snapshot.
 - التجميع لا يلغي إمكانية تتبع البند أو الشريحة.
 - اختلاف العملة أو الفترة أو grain يمنع delta مضللًا.
-- `UNKNOWN/NOT_APPLICABLE/NOT_READY` تظهر نصيًا بالعربية ولا تعتمد على اللون وحده.
+- تظهر الحالات نصيًا بالعربية ولا تعتمد على اللون وحده: `UNKNOWN = غير معروف`، و`NOT_APPLICABLE = غير منطبق`، و`NOT_READY = غير جاهز`، و`BLOCKED = محجوب`.
 - Snapshot ID وrun ID وas-of period وحالة المراجعة ظاهرة في drill-down/report metadata.
 
 ---
@@ -308,12 +334,14 @@ Saved artifacts
 
 | ID | الحالة | معيار القبول |
 |---|---|---|
-| FLC-F1 | مشروع بلا دين | النموذج ready إذا اكتملت بقية المدخلات؛ DSCR/LLCR = `NOT_APPLICABLE/NO_DEBT_SERVICE`؛ لا صفر ولا فشل |
+| FLC-F1 | مشروع بلا دين | النموذج ready إذا اكتملت بقية المدخلات؛ DSCR/LLCR = `NOT_APPLICABLE/NO_DEBT_SERVICE` و`VALUE_ABSENT`؛ لا صفر ولا فشل |
+| FLC-F1A | دين وبيانات تغطية غير مكتملة دون خرق | DSCR/LLCR = `NOT_READY` مع `CFADS_NOT_READY` أو `DEBT_SCHEDULE_NOT_READY` نفسه عبر Finance/API/UI |
+| FLC-F1B | دين وفشل validation/invariant/authorization | DSCR/LLCR = `BLOCKED` مع reason code المحدد نفسه عبر Finance/API/UI، ولا نتيجة جزئية |
 | FLC-F2 | تمويل واحد مصرح به | شريحة واحدة فقط، نفس الشروط والlineage، لا ممول أو provenance مستنتج |
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
 | FLC-F4 | سحب متأخر معروف في Baseline | يبدأ في الفترة المعلنة وتنعكس الفائدة/السداد دون نقله إلى البداية |
 | FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs |
-| FLC-F6 | Actual مقابل Baseline | `financial_item_id` و`governed_target_ref` والفترات والعملة والgrain متوافقة؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
+| FLC-F6 | Actual مقابل Baseline | `actual_id/revision_id` وسلسلة parent/supersedes صالحة، و`financial_item_id` و`governed_target_ref` والفترات والعملة والgrain متوافقة؛ leaf معتمد واحد؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
 | FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بالأصل والسابق؛ المقارنة تعيد نفس النتيجة حتميًا |
 | FLC-F8 | KPI chain | Summary وDrill-down وComparison وReport تعرض القيمة والحالة وSnapshot نفسها |
 | FLC-F9 | حدود ERP | يقبل Actual summary ولا ينشئ GL/payroll/inventory/procurement transactions |
@@ -326,7 +354,7 @@ Saved artifacts
 - contract/schema tests؛
 - unit/property tests لحالات F1–F7؛
 - integration tests لمسار Approved Manifest/Run/Snapshot؛
-- API/projection tests لـF8؛
+- API/projection tests لـF1A/F1B وF8 تثبت تطابق الحالة وreason code والأبعاد؛
 - negative scope tests لـF9–F12؛
 - fixtures مستقلة قابلة لإعادة الاستخدام؛
 - exact-head CI وCross-Platform؛
@@ -343,7 +371,7 @@ Saved artifacts
 | دين اختياري صحيح | §5.1 + §6 | Finance contracts/results | FLC-F1 | Finance review |
 | تمويل واحد/متعدد بلا استنتاج | §5.2–5.3 | input/result/subledger contracts | FLC-F2/F3 | G1 |
 | تمويل منتصف العمر | §5.4 + §7 | revision/reforecast admission | FLC-F4/F5 | ACR/architecture |
-| Baseline/Actual/Reforecast | §4 + §7 | versioned artifacts and snapshots | FLC-F5–F7 | Snapshot/freeze gate if touched |
+| Baseline/Actual/Reforecast | §4 + §7 | versioned artifacts and snapshots | FLC-F5–F7 | Snapshot/freeze gate مستقل إذا لزم لمس مسار Snapshot المجمد؛ هذا PR لا ينفذه |
 | KPI drill-down/comparison/report | §8 | API/projections/UI | FLC-F8 | FC20-13/14 |
 | عدم التحول إلى ERP | §3 | scope guards/admission | FLC-F9 | Product/architecture |
 | تمويل/حاضنات/مسرعات | §3.1 + §9 | institution profiles | FLC-F10 | FEASIBILITY-COMPLETE-01 |
