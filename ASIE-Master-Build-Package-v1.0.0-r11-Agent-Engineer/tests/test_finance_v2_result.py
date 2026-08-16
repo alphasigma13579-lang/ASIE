@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import json
 import re
+from functools import lru_cache
+from typing import Any
 from dataclasses import replace
 from decimal import Decimal
 
@@ -1134,7 +1136,8 @@ def _jsonschema():
     )
 
 
-def _result_schema_validator():
+@lru_cache(maxsize=1)
+def _result_schema_validator() -> Any:
     schema_path = (
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "schemas"
