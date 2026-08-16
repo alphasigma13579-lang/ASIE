@@ -76,6 +76,10 @@ def serialize_finance_result(
         debt_coverage_metrics,
         model.blockers,
     )
+    coverage_requires_not_ready = any(
+        metric["applicability_status"] in {"NOT_READY", "BLOCKED"}
+        for metric in debt_coverage_metrics.values()
+    )
     result_blockers = [
         *model.blockers,
         *coverage_projection_blockers,
@@ -233,15 +237,25 @@ def serialize_finance_result(
             {
                 "scenario_id": evaluation.scenario_id,
                 "kind": evaluation.kind,
-                "status": evaluation.status,
+                "status": (
+                    "not_ready"
+                    if evaluation.kind == "baseline"
+                    and coverage_requires_not_ready
+                    else evaluation.status
+                ),
                 "input_hash": evaluation.input_hash,
                 "override_refs": list(evaluation.override_refs),
                 "metrics": {
-                    key: _metric_decimal(
-                        key,
-                        evaluation.metrics.get(key),
-                        money_scale,
-                        ratio_scale,
+                    key: (
+                        debt_coverage_metrics[key]["value"]
+                        if evaluation.kind == "baseline"
+                        and key in debt_coverage_metrics
+                        else _metric_decimal(
+                            key,
+                            evaluation.metrics.get(key),
+                            money_scale,
+                            ratio_scale,
+                        )
                     )
                     for key in _METRIC_KEYS
                 },
@@ -286,24 +300,54 @@ def validate_finance_result_projection(
         ratio_scale = result["rounding_policy"]["ratio_scale"]
         metrics = result["metrics"]
         envelopes = result["debt_coverage_metrics"]
-        for metric_id in ("dscr_min", "llcr"):
-            legacy_value = _canonical_projection_value(
-                metrics[metric_id],
-                ratio_scale,
+        baseline_scenarios = [
+            scenario
+            for scenario in result["scenarios"]
+            if scenario["kind"] == "baseline"
+        ]
+        if len(baseline_scenarios) != 1:
+            raise ValueError("exactly one baseline scenario is required")
+        baseline = baseline_scenarios[0]
+        coverage_requires_not_ready = any(
+            envelope["applicability_status"]
+            in {"NOT_READY", "BLOCKED"}
+            for envelope in envelopes.values()
+        )
+        if coverage_requires_not_ready and baseline["status"] == "ready":
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                "$.scenarios",
+                (
+                    "baseline scenario cannot remain ready when debt "
+                    "coverage is not ready or blocked"
+                ),
             )
+        for metric_id in ("dscr_min", "llcr"):
             envelope_value = _canonical_projection_value(
                 envelopes[metric_id]["value"],
                 ratio_scale,
             )
-            if legacy_value != envelope_value:
-                raise FinanceContractError(
-                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
-                    f"$.metrics.{metric_id}",
-                    (
-                        "compatibility metric diverges from the governed "
-                        "debt-coverage envelope"
-                    ),
+            consumers = (
+                (f"$.metrics.{metric_id}", metrics[metric_id]),
+                (
+                    f"$.scenarios.baseline.metrics.{metric_id}",
+                    baseline["metrics"][metric_id],
+                ),
+            )
+            for field_ref, consumer_value in consumers:
+                projected_value = _canonical_projection_value(
+                    consumer_value,
+                    ratio_scale,
                 )
+                if projected_value != envelope_value:
+                    raise FinanceContractError(
+                        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                        field_ref,
+                        (
+                            "projected metric diverges from the governed "
+                            "debt-coverage envelope"
+                        ),
+                    )
     except FinanceContractError:
         raise
     except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
