@@ -225,11 +225,13 @@ Saved artifacts
 
 | الشرط | `applicability_status` | `reason_code` |
 |---|---|---|
-| CFADS أو جدول الدين غير مكتمل/غير معتمد بعد، دون خرق سلامة أو تفويض | `NOT_READY` | `CFADS_NOT_READY` أو `DEBT_SCHEDULE_NOT_READY` |
-| CFADS أو جدول الدين موجود لكنه يفشل schema/hash/tenant/authorization أو invariant مطلوب | `BLOCKED` | `CFADS_VALIDATION_FAILED` أو `DEBT_SCHEDULE_INVARIANT_FAILED` |
+| CFADS وحده غير مكتمل/غير معتمد بعد، دون خرق سلامة أو تفويض | `NOT_READY` | `CFADS_NOT_READY` |
+| جدول الدين وحده غير مكتمل/غير معتمد بعد، دون خرق سلامة أو تفويض | `NOT_READY` | `DEBT_SCHEDULE_NOT_READY` |
+| CFADS وجدول الدين كلاهما غير مكتملين/غير معتمدين، دون خرق سلامة أو تفويض | `NOT_READY` | `CFADS_AND_DEBT_SCHEDULE_NOT_READY` |
+| CFADS أو جدول الدين موجود لكنه يفشل schema/hash/tenant/authorization أو invariant مطلوب | `BLOCKED` | رمز blocker المحدد؛ وإذا وجد أكثر من blocker يستخدم `MULTIPLE_DEBT_COVERAGE_BLOCKERS` وتُحفظ detail codes مرتبة كانونيًا |
 | CFADS وجدول الدين صالحان وخدمة الدين موجودة | `APPLICABLE` | `READY` |
 
-الأولوية عند اجتماع الشروط: `BLOCKED` ثم `NOT_READY` ثم `APPLICABLE`. لا يجوز أن تختار Finance وAPI وUI حالات مختلفة لنفس metric object.
+الأولوية عند اجتماع الشروط: `BLOCKED` ثم `NOT_READY` ثم `APPLICABLE`. داخل `NOT_READY` يحدد الجدول أعلاه رمز الحالة المفردة أو المركبة. داخل `BLOCKED` يستخدم الرمز المفرد عند علة واحدة و`MULTIPLE_DEBT_COVERAGE_BLOCKERS` عند تعددها. لا يجوز أن تختار Finance وAPI وUI حالات أو reason codes مختلفة لنفس metric object.
 
 ---
 
@@ -343,7 +345,7 @@ Saved artifacts
 | ID | الحالة | معيار القبول |
 |---|---|---|
 | FLC-F1 | مشروع بلا دين | النموذج ready إذا اكتملت بقية المدخلات؛ DSCR/LLCR = `NOT_APPLICABLE/NO_DEBT_SERVICE` و`VALUE_ABSENT`؛ لا صفر ولا فشل |
-| FLC-F1A | دين وبيانات تغطية غير مكتملة دون خرق | DSCR/LLCR = `NOT_READY` مع `CFADS_NOT_READY` أو `DEBT_SCHEDULE_NOT_READY` نفسه عبر Finance/API/UI |
+| FLC-F1A | دين وبيانات تغطية غير مكتملة دون خرق | DSCR/LLCR = `NOT_READY`؛ يستخدم `CFADS_NOT_READY` أو `DEBT_SCHEDULE_NOT_READY` عند نقص واحد، و`CFADS_AND_DEBT_SCHEDULE_NOT_READY` عند نقصهما معًا، بنفس النتيجة عبر Finance/API/UI |
 | FLC-F1B | دين وفشل validation/invariant/authorization | DSCR/LLCR = `BLOCKED` مع reason code المحدد نفسه عبر Finance/API/UI، ولا نتيجة جزئية |
 | FLC-F2 | تمويل واحد مصرح به | شريحة واحدة فقط، نفس الشروط والlineage، لا ممول أو provenance مستنتج |
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
