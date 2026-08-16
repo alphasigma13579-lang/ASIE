@@ -379,8 +379,6 @@ _DEBT_COVERAGE_AGGREGATIONS = {
 }
 _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES = frozenset(
     {
-        "FIN2_DEBT_PROFILE_UNSUPPORTED",
-        "FIN2_VAT_LEDGER_NOT_READY",
         "FIN2_INVARIANT_BALANCE_EQUATION",
         "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET",
         "FIN2_INVARIANT_CASH_ROLLFORWARD",
@@ -408,7 +406,7 @@ _DEBT_COVERAGE_MODEL_BLOCKER_CODES = (
         "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
     }
 )
-_DEBT_COVERAGE_DIRECT_BLOCKER_CODES = frozenset(
+_DEBT_COVERAGE_READINESS_CODES = frozenset(
     {
         "FIN2_DEBT_PROFILE_UNSUPPORTED",
         "FIN2_VAT_LEDGER_NOT_READY",
@@ -433,6 +431,10 @@ def _debt_coverage_metric_objects(
     ratio_scale: int,
 ) -> dict[str, dict[str, Any]]:
     declared_debt = bool(document["financing"]["debt_tranches"])
+    model_blocker_codes = {
+        blocker.get("code", "")
+        for blocker in model.blockers
+    }
     cfads_ready = (
         len(model.periods) == len(validated.periods)
         and bool(model.periods)
@@ -441,6 +443,13 @@ def _debt_coverage_metric_objects(
         len(model.debt_schedule) == len(validated.periods)
         and bool(model.debt_schedule)
     )
+    if "FIN2_DEBT_PROFILE_UNSUPPORTED" in model_blocker_codes:
+        debt_schedule_ready = False
+        # The engine returns before building periods, but the root readiness
+        # cause is the absent reviewed debt schedule, not absent CFADS.
+        cfads_ready = True
+    if "FIN2_VAT_LEDGER_NOT_READY" in model_blocker_codes:
+        cfads_ready = False
     has_eligible_debt_service = debt_schedule_ready and any(
         row.interest_paid + row.principal_paid + row.fees_paid > ZERO
         for row in model.debt_schedule
@@ -549,9 +558,10 @@ def _debt_coverage_blocker_codes(
     for blocker in blockers:
         code = blocker.get("code", "")
         field_ref = blocker.get("field_ref", "")
+        if code in _DEBT_COVERAGE_READINESS_CODES:
+            continue
         is_relevant = (
-            code in _DEBT_COVERAGE_DIRECT_BLOCKER_CODES
-            or code.startswith("FIN2_INVARIANT_")
+            code.startswith("FIN2_INVARIANT_")
             or field_ref.startswith(_DEBT_COVERAGE_FIELD_PREFIXES)
         )
         if is_relevant:
