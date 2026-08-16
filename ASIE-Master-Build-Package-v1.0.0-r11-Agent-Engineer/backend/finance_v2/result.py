@@ -9,7 +9,7 @@ from .model import FinancialModel, FinancialPeriod, ZERO
 from .scenarios import evaluate_scenarios
 
 
-ENGINE_VERSION = "2.0.0-dark.2"
+ENGINE_VERSION = "2.0.0-dark.3"
 _METRIC_KEYS = (
     "npv_unlevered",
     "irr_unlevered",
