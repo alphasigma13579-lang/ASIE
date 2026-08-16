@@ -278,6 +278,7 @@ def serialize_finance_result(
                 document,
                 lineage,
                 debt_coverage_metrics,
+                coverage_projection_blockers,
                 money_scale,
                 ratio_scale,
             )
@@ -366,6 +367,11 @@ def validate_finance_result_projection(
                             "debt-coverage envelope"
                         ),
                     )
+        _validate_legacy_debt_coverage_projection(
+            result,
+            envelopes,
+            ratio_scale,
+        )
     except FinanceContractError:
         raise
     except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
@@ -374,6 +380,115 @@ def validate_finance_result_projection(
             "$.debt_coverage_metrics",
             "debt-coverage projection shape or decimal value is invalid",
         ) from exc
+
+
+def _validate_legacy_debt_coverage_projection(
+    result: dict[str, Any],
+    envelopes: dict[str, dict[str, Any]],
+    ratio_scale: int,
+) -> None:
+    legacy = result["legacy_projection"]
+    if legacy["status"] != "derived":
+        return
+    payload = legacy["payload"]
+    coverage_requires_not_ready = any(
+        envelope["applicability_status"] in {"NOT_READY", "BLOCKED"}
+        for envelope in envelopes.values()
+    )
+    required_blockers: set[str] = set()
+    for envelope in envelopes.values():
+        if envelope["applicability_status"] == "NOT_READY":
+            required_blockers.add(
+                f"FIN2_DEBT_COVERAGE_{envelope['reason_code']}"
+            )
+        elif envelope["applicability_status"] == "BLOCKED":
+            required_blockers.update(envelope["blocker_codes"])
+    if coverage_requires_not_ready:
+        if payload["status"] == "ready":
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                "$.legacy_projection.payload.status",
+                (
+                    "legacy projection cannot remain ready when governed "
+                    "debt coverage is not ready or blocked"
+                ),
+            )
+        payload_blockers = {
+            blocker["code"] for blocker in payload["blockers"]
+        }
+        if not required_blockers.issubset(payload_blockers):
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                "$.legacy_projection.payload.blockers",
+                (
+                    "legacy projection omits governed debt-coverage "
+                    "blockers"
+                ),
+            )
+
+    baseline = payload.get("baseline")
+    if baseline is None:
+        return
+    governed_dscr = _canonical_projection_value(
+        envelopes["dscr_min"]["value"],
+        ratio_scale,
+    )
+    consumers = [
+        (
+            "$.legacy_projection.payload.baseline.dscr",
+            baseline["dscr"],
+        ),
+        (
+            "$.legacy_projection.payload.baseline."
+            "debt_service_profile.dscr",
+            baseline["debt_service_profile"]["dscr"],
+        ),
+        (
+            "$.legacy_projection.payload.debt_service_profile.dscr",
+            payload["debt_service_profile"]["dscr"],
+        ),
+    ]
+    for index, scenario in enumerate(payload["scenarios"]):
+        consumers.extend(
+            [
+                (
+                    "$.legacy_projection.payload.scenarios"
+                    f"[{index}].dscr",
+                    scenario["dscr"],
+                ),
+                (
+                    "$.legacy_projection.payload.scenarios"
+                    f"[{index}].debt_service_profile.dscr",
+                    scenario["debt_service_profile"]["dscr"],
+                ),
+            ]
+        )
+    for field_ref, value in consumers:
+        if _canonical_legacy_projection_value(
+            value,
+            ratio_scale,
+        ) != governed_dscr:
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                field_ref,
+                (
+                    "legacy DSCR diverges from the governed "
+                    "debt-coverage envelope"
+                ),
+            )
+
+
+def _canonical_legacy_projection_value(
+    value: Any,
+    ratio_scale: int,
+) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("legacy projected metric must be numeric")
+    if not isfinite(float(value)):
+        raise ValueError("legacy projected metric must be finite")
+    return Decimal(_decimal(Decimal(str(value)), ratio_scale))
 
 
 def _canonical_projection_value(
@@ -731,6 +846,7 @@ def _legacy_projection(
     document: dict[str, Any],
     lineage: dict[str, list[str]],
     debt_coverage_metrics: dict[str, dict[str, Any]],
+    coverage_projection_blockers: list[dict[str, str]],
     money_scale: int,
     ratio_scale: int,
 ) -> dict[str, Any]:
@@ -973,6 +1089,12 @@ def _legacy_projection(
             "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
+    if any(
+        metric["applicability_status"] in {"NOT_READY", "BLOCKED"}
+        for metric in debt_coverage_metrics.values()
+    ):
+        payload["status"] = "not_ready"
+        payload["blockers"].extend(coverage_projection_blockers)
     return {
         "schema_version": "finance.result.v1-compatible",
         "status": "derived",
