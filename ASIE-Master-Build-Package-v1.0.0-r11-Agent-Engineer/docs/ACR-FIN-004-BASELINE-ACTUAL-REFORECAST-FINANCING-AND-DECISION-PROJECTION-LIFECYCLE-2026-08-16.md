@@ -20,7 +20,7 @@
 1. **GitHub Codex:** مراجعة findings على exact head.
 2. **CodeRabbit:** مراجعة عقدية/أمنية آلية مستقلة.
 3. **GitHub Copilot:** مراجعة exact-head إضافية مستقلة.
-4. **Principal Independent Audit:** مراجعة بشرية التوجيه ينفذها المستشار التقني فوق مخرجات النماذج، ويتحقق من الأدلة والسلطات والكود بدل اعتماد خلاصاتها تلقائيًا.
+4. **Principal Independent Audit:** مراجعة مستقلة يقودها المستشار التقني فوق مخرجات النماذج، ويتحقق فيها من الأدلة والسلطات والكود بدل اعتماد خلاصاتها تلقائيًا.
 
 هذه الطبقات الأربع تكفي لبوابة المتطلبات والتنفيذ التقني المظلم داخل التفويض الحالي. لا تمثل أي منها اعتماد CPA بشريًا أو اعتمادًا مصرفيًا/مهنيًا، ولا تلغي شرط `ACR-FIN-002` لمراجعة Finance Reviewer/CPA قبل G1 أو أي claim مهني.
 
@@ -51,7 +51,7 @@
 1. AAS Runtime Freeze وAIA Constitution.
 2. `PROGRAM-CLOSE-10` و`FOUNDATION-COMPLETE-20`.
 3. السجلات الكانونية والعقود المجمدة.
-4. `ACR-FIN-002`.
+4. `ACR-DIB-001` وتصحيحاته في نطاق admission/manifest/gate، و`ACR-FIN-002` في نطاق Finance v2؛ لا يلغي أحدهما الآخر.
 5. هذا العقد في نطاق lifecycle/applicability/product boundary فقط.
 6. وثائق التنفيذ والأدلة المشتقة.
 
@@ -263,8 +263,8 @@ Saved artifacts
 - `supersedes_revision_id` عند التصحيح، ويطابق revision السابقة التي يحل محلها للاستخدام المستقبلي دون حذفها؛
 - `financial_item_id` كانونيًا ثابتًا ومصدره سجل versioned؛
 - `governed_target_ref` يشير إلى بند/مسار مالي allowlisted يمكن ربطه حتميًا بالـBaseline وReforecast؛
-- `grain` صريحًا يحدد frequency والفترة ونطاق التجميع والأبعاد اللازمة، ولا تُقارن قيم ذات grain مختلف ضمنيًا؛
-- الفترة أو النطاق الزمني؛
+- `grain` صريحًا يحدد frequency ونطاق التجميع والأبعاد اللازمة، ولا تُقارن قيم ذات grain مختلف ضمنيًا؛
+- `coverage_period_keys` مرتبة وكانونية؛ إذا أُدخل نطاق زمني يوسعه الخادم إلى مفاتيح الفترات الذرية وفق `period_calendar_id` وfrequency المعلنين قبل بناء الهوية؛
 - القيمة والوحدة والعملة؛
 - المصدر وevidence refs؛
 - حالة `submitted/reviewed/approved/rejected`;
@@ -280,9 +280,9 @@ Saved artifacts
 - خلط actual-to-date مع full-year actual دون دلالة؛
 - دمج revisions متعارضة أو اختيار «الأحدث زمنيًا» وحده دون تحقق سلسلة الاعتماد.
 
-قاعدة الهوية المنطقية: يبني الخادم `actual_logical_target_key` حتميًا من `(organization_id, project_id, parent_baseline_snapshot_id, financial_item_id, governed_target_ref, canonical_grain_hash, period_or_period_range)`. لا تدخل `actual_id` أو العملة أو الوحدة في المفتاح كي لا يسمح تغييرها بإنشاء سلسلة ثانية لنفس خانة النموذج؛ بل تتحقق العملة والوحدة مقابل تعريف target الحاكم.
+قاعدة الهوية المنطقية: يبني الخادم `actual_logical_target_key` لكل فترة ذرية حتميًا من `(organization_id, project_id, parent_baseline_snapshot_id, financial_item_id, governed_target_ref, canonical_grain_hash, coverage_period_key)`. لا تدخل `actual_id` أو العملة أو الوحدة في المفتاح كي لا يسمح تغييرها بإنشاء سلسلة ثانية لنفس خانة النموذج؛ بل تتحقق العملة والوحدة مقابل تعريف target الحاكم. النطاقات تُوسع أولًا إلى `coverage_period_keys`، وأي تقاطع في مفتاح ذري يعد تعارضًا حتى إن اختلف نص النطاق الأصلي.
 
-يجب أن توجد سلسلة Actual واحدة فقط لكل `actual_logical_target_key`. محاولة إنشاء `actual_id` ثانٍ للمفتاح نفسه ترفض `BLOCKED/ACTUAL_LOGICAL_TARGET_CONFLICT` أو تعاد idempotently إلى السلسلة الموجودة وفق command خادمي صريح. داخل السلسلة يجب أن يوجد leaf واحد معتمد فقط في parent/supersedes chain الصحيحة، ويعتمد downstream ذلك الـleaf. إذا وجد أكثر من leaf معتمد أو parent مفقود/غير مطابق، تكون الحالة `BLOCKED/ACTUAL_REVISION_CONFLICT` ولا تُدمج القيم. تبقى كل revision سابقة immutable وقابلة للقراءة التاريخية.
+يجب أن توجد سلسلة Actual واحدة فقط لكل `actual_logical_target_key` ذري. محاولة إنشاء `actual_id` ثانٍ لأي مفتاح متطابق أو متداخل ترفض `BLOCKED/ACTUAL_LOGICAL_TARGET_CONFLICT` أو تعاد idempotently إلى السلسلة الموجودة وفق command خادمي صريح. داخل السلسلة يجب أن يوجد leaf واحد معتمد فقط في parent/supersedes chain الصحيحة، ويعتمد downstream ذلك الـleaf. إذا وجد أكثر من leaf معتمد أو parent مفقود/غير مطابق، تكون الحالة `BLOCKED/ACTUAL_REVISION_CONFLICT` ولا تُدمج القيم. تبقى كل revision سابقة immutable وقابلة للقراءة التاريخية.
 
 ### 7.2 Reforecast
 
@@ -374,8 +374,8 @@ Saved artifacts
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
 | FLC-F4 | سحب متأخر معروف في Baseline | يبدأ في الفترة المعلنة وتنعكس الفائدة/السداد دون نقله إلى البداية |
 | FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs وmanifest/gate IDs+hashes؛ gate ناجحة ومربوطة بالmanifest؛ `finance_input_hash` و`admission_input_hash` يطابقان preimages المحددة قبل Finance |
-| FLC-F6 | Actual مقابل Baseline | `actual_logical_target_key` خادمي صحيح؛ سلسلة واحدة فقط للمفتاح عبر tenant/project/Baseline/target/grain/period؛ `actual_id/revision_id` وparent/supersedes صالحة؛ leaf معتمد واحد؛ العملة والوحدة متوافقتان مع target؛ delta من نتائج محفوظة بلا إعادة حساب Snapshot |
-| FLC-F6A | Actual duplicate logical target | إنشاء `actual_id` ثانٍ لنفس `actual_logical_target_key` يرفض حتميًا أو يعاد idempotently إلى السلسلة القائمة؛ لا double-count ولا اختيار بالأحدث زمنيًا |
+| FLC-F6 | Actual مقابل Baseline | `coverage_period_keys` و`actual_logical_target_key` الذرية صحيحة؛ سلسلة واحدة فقط لكل مفتاح عبر tenant/project/Baseline/target/grain/period؛ `actual_id/revision_id` وparent/supersedes صالحة؛ leaf معتمد واحد؛ العملة والوحدة متوافقتان مع target؛ delta من نتائج محفوظة بلا إعادة حساب Snapshot |
+| FLC-F6A | Actual duplicate/overlapping logical target | إنشاء `actual_id` ثانٍ لنفس المفتاح الذري أو نطاق تتقاطع `coverage_period_keys` له يرفض حتميًا أو يعاد idempotently إلى السلسلة القائمة؛ لا double-count ولا اختيار بالأحدث زمنيًا |
 | FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بـ`parent_baseline_snapshot_id` وبـ`predecessor_reforecast_snapshot_id` عند الانطباق، وبـmanifest/gate جديدين صالحين؛ hashا Finance/admission مطابقان؛ المقارنة حتمية |
 | FLC-F7A | temporal splice | `period_calendar_id/as_of_period` ثابتان؛ كل target مطلوب للفترات المغلقة يأتي من Actual approved leaf، والمفتوحة من forecast؛ أي overlap أو gap أو calendar mismatch = `BLOCKED` قبل Finance |
 | FLC-F8 | KPI chain | السلسلة `Summary → Drill-down → Comparison → Report` تستخدم metric object/projection envelope نفسه، وتعرض القيمة والحالة والأبعاد ومراجع artifacts/Snapshots نفسها دون إعادة حساب |
