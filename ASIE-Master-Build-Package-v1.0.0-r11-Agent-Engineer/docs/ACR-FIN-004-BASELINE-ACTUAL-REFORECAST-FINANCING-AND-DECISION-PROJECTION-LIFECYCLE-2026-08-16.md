@@ -271,6 +271,9 @@ Saved artifacts
 - Baseline الأب؛
 - آخر Snapshot مرجعي؛
 - `as_of_period`;
+- `approved_manifest_id` خادميًا؛
+- `manifest_payload_hash` للحمولة normalized المعتمدة؛
+- `input_hash` مرتبطًا حتميًا بـ`approved_manifest_id + manifest_payload_hash + normalized_inputs`، مع رفض أي عدم تطابق قبل Finance؛
 - actual periods المستخدمة؛
 - change set مع reason/evidence/approval؛
 - التمويلات الجديدة أو المعدلة؛
@@ -313,6 +316,9 @@ Saved artifacts
 
 - `institution_kind ∈ {LENDER, INCUBATOR, ACCELERATOR, GRANT_PROGRAM, OTHER_REVIEWED}`;
 - اسم الجهة والبرنامج والإصدار وتاريخ السريان؛
+- `scope ∈ {PUBLIC_REFERENCE, ORGANIZATION_OWNED}`؛
+- `organization_id` إلزامي ومربوط خادميًا عندما يكون `scope=ORGANIZATION_OWNED`، ويكون null فقط للـ`PUBLIC_REFERENCE`؛
+- `access_policy_id` وpolicy hash؛
 - المصدر الرسمي وحالة freshness؛
 - eligibility rules وdocument checklist؛
 - متطلبات العرض والمؤشرات؛
@@ -320,6 +326,8 @@ Saved artifacts
 - حدود الادعاء.
 
 لا ينشئ هذا العقد قاموسًا موازيًا. تنطبق الحالات نفسها على `LENDER` و`INCUBATOR` و`ACCELERATOR` و`GRANT_PROGRAM`، وتبقى `institutionally_accepted` محجوبة حتى وجود Evidence ID صالح يحدد الجهة والبرنامج/المنتج والإصدار والنطاق وتاريخ السريان.
+
+قاعدة الوصول: Profile مملوك لا يقرأه إلا principal من `organization_id` نفسه بعد تحقق خادمي من `access_policy_id/hash`. Profile عام يكون read-only ولا يقبل private tenant evidence، ولا يصبح قابلًا للوصول إلا إذا كان registry-admitted و`source_verified` أو أعلى وغير `expired` وسياسة الوصول العامة صالحة. أي cross-tenant أو scope/owner/policy mismatch يفشل قبل القراءة أو المقارنة.
 
 يحظر:
 
@@ -340,14 +348,18 @@ Saved artifacts
 | FLC-F2 | تمويل واحد مصرح به | شريحة واحدة فقط، نفس الشروط والlineage، لا ممول أو provenance مستنتج |
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
 | FLC-F4 | سحب متأخر معروف في Baseline | يبدأ في الفترة المعلنة وتنعكس الفائدة/السداد دون نقله إلى البداية |
-| FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs |
+| FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs و`approved_manifest_id/manifest_payload_hash`؛ input hash يطابق الحمولة المعتمدة قبل Finance |
 | FLC-F6 | Actual مقابل Baseline | `actual_id/revision_id` وسلسلة parent/supersedes صالحة، و`financial_item_id` و`governed_target_ref` والفترات والعملة والgrain متوافقة؛ leaf معتمد واحد؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
-| FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بالأصل والسابق؛ المقارنة تعيد نفس النتيجة حتميًا |
+| FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بالأصل والسابق وبـApproved Input Manifest جديد صالح؛ `input_hash` مطابق؛ المقارنة تعيد نفس النتيجة حتميًا |
 | FLC-F8 | KPI chain | Summary وDrill-down وComparison وReport تعرض القيمة والحالة وSnapshot نفسها |
 | FLC-F9 | حدود ERP | يقبل Actual summary ولا ينشئ GL/payroll/inventory/procurement transactions |
 | FLC-F10 | Profile حاضنة/ممول | Profile محدد الإصدار والمصدر ويستخدم قاموس حالات FEASIBILITY-COMPLETE-01 نفسه؛ `institutionally_accepted` يحتاج Evidence ID صالحًا ولا ينشأ ادعاء قبول أو اعتماد بلا دليل |
-| FLC-F11 | tenant isolation | cross-tenant artifact/profile/comparison يرفض قبل القراءة أو الحساب |
-| FLC-F12 | revision/tamper | hash أو parent أو evidence mismatch يفشل مغلقًا ولا ينتج Snapshot جزئيًا |
+| FLC-F11 | tenant isolation | artifact/comparison و`ORGANIZATION_OWNED` Profile يربطان خادميًا بنفس `organization_id`؛ cross-tenant وscope/owner/access-policy mismatch ترفض قبل القراءة أو الحساب؛ `PUBLIC_REFERENCE` يسمح به فقط وفق registry/status/freshness/policy الصريحة أعلاه |
+| FLC-F12 | revision/tamper mismatch | hash أو manifest/parent/evidence/revision mismatch يفشل مغلقًا ولا ينتج Snapshot جزئيًا |
+| FLC-F12A | metadata missing/null | غياب أو null لأي metadata إلزامية، ومنها manifest/revision/parent/organization/policy IDs أو hashes، يفشل قبل Finance ولا ينتج Snapshot جزئيًا |
+| FLC-F12B | metadata unresolvable | ID أو parent أو evidence أو policy لا يمكن حله من المصدر الخادمي يفشل مغلقًا |
+| FLC-F12C | metadata stale/expired | manifest/evidence/Profile/policy منتهي أو خارج freshness/effective window يفشل مغلقًا |
+| FLC-F12D | manifest/input binding | `approved_manifest_id` أو `manifest_payload_hash` أو `input_hash` غير متسقة مع normalized inputs ترفض قبل Finance |
 
 الحد الأدنى للأدلة قبل أي claim:
 
@@ -355,7 +367,7 @@ Saved artifacts
 - unit/property tests لحالات F1–F7؛
 - integration tests لمسار Approved Manifest/Run/Snapshot؛
 - API/projection tests لـF1A/F1B وF8 تثبت تطابق الحالة وreason code والأبعاد؛
-- negative scope tests لـF9–F12؛
+- negative scope tests لـF9–F12D تشمل mismatch/missing/null/unresolvable/stale/expired؛
 - fixtures مستقلة قابلة لإعادة الاستخدام؛
 - exact-head CI وCross-Platform؛
 - مراجعة Finance Reviewer/CPA لدلالات التمويل والمؤشرات؛
