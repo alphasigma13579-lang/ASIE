@@ -3,10 +3,10 @@ from __future__ import annotations
 import copy
 import json
 import re
-from functools import lru_cache
-from typing import Any
 from dataclasses import replace
 from decimal import Decimal
+from functools import lru_cache
+from typing import Any
 
 import pytest
 
