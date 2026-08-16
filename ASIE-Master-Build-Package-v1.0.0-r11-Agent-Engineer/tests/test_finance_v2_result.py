@@ -1429,3 +1429,22 @@ def test_semantic_and_schema_validation_reject_ready_baseline_when_blocked() -> 
     with pytest.raises(ValidationError):
         _result_schema_validator().validate(invalid)
 
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+def test_semantic_validator_normalizes_signed_zero(
+    metric_id: str,
+) -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    baseline = next(
+        scenario
+        for scenario in output["scenarios"]
+        if scenario["kind"] == "baseline"
+    )
+    output["debt_coverage_metrics"][metric_id]["value"] = "0.000000"
+    output["metrics"][metric_id] = "-0.0"
+    baseline["metrics"][metric_id] = "0.00"
+
+    validate_finance_result_projection(output)
+
