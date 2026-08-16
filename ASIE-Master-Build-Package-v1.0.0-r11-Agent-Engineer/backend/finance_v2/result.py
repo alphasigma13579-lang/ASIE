@@ -44,6 +44,7 @@ def serialize_finance_result(
         model,
         document,
         lineage,
+        money_scale,
         ratio_scale,
     )
     scenario_evaluations = evaluate_scenarios(validated, model)
@@ -284,6 +285,43 @@ _DEBT_COVERAGE_AGGREGATIONS = {
     "dscr_min": "minimum_rolling_12_month",
     "llcr": "minimum_loan_life",
 }
+_DEBT_COVERAGE_ALLOWED_BLOCKER_CODES = frozenset(
+    {
+        "FIN2_DEBT_PROFILE_UNSUPPORTED",
+        "FIN2_VAT_LEDGER_NOT_READY",
+        "FIN2_INVARIANT_BALANCE_EQUATION",
+        "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET",
+        "FIN2_INVARIANT_CASH_ROLLFORWARD",
+        "FIN2_INVARIANT_RETAINED_EARNINGS_ROLLFORWARD",
+        "FIN2_INVARIANT_PPE_ROLLFORWARD",
+        "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+        "FIN2_INVARIANT_SOURCES_USES_BALANCE",
+        "FIN2_INVARIANT_GROSS_PROFIT_EQUATION",
+        "FIN2_INVARIANT_EBIT_EQUATION",
+        "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+        "FIN2_INVARIANT_FINITE_NUMBERS",
+        "FIN2_INVARIANT_PERIOD_ORDER",
+        "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY",
+        "FIN2_INVARIANT_DETERMINISTIC_REPLAY",
+        "FIN2_DSCR_MIN_VALUE_MISSING",
+        "FIN2_LLCR_VALUE_MISSING",
+        "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
+    }
+)
+_DEBT_COVERAGE_DIRECT_BLOCKER_CODES = frozenset(
+    {
+        "FIN2_DEBT_PROFILE_UNSUPPORTED",
+        "FIN2_VAT_LEDGER_NOT_READY",
+    }
+)
+_DEBT_COVERAGE_FIELD_PREFIXES = (
+    "$.financing",
+    "$.fiscal_policy",
+    "$.statements",
+    "$.cash_flows",
+    "$.metrics.dscr",
+    "$.metrics.llcr",
+)
 
 
 def _debt_coverage_metric_objects(
@@ -291,6 +329,7 @@ def _debt_coverage_metric_objects(
     model: FinancialModel,
     document: dict[str, Any],
     lineage: dict[str, list[str]],
+    money_scale: int,
     ratio_scale: int,
 ) -> dict[str, dict[str, Any]]:
     declared_debt = bool(document["financing"]["debt_tranches"])
@@ -324,7 +363,7 @@ def _debt_coverage_metric_objects(
             _metric_decimal(
                 metric_id,
                 model.metrics.get(metric_id),
-                0,
+                money_scale,
                 ratio_scale,
             )
             if metric_applicability == "APPLICABLE"
@@ -410,18 +449,17 @@ def _debt_coverage_blocker_codes(
     for blocker in blockers:
         code = blocker.get("code", "")
         field_ref = blocker.get("field_ref", "")
-        if (
-            code == "FIN2_DEBT_PROFILE_UNSUPPORTED"
-            or code == "FIN2_VAT_LEDGER_NOT_READY"
+        is_relevant = (
+            code in _DEBT_COVERAGE_DIRECT_BLOCKER_CODES
             or code.startswith("FIN2_INVARIANT_")
-            or field_ref.startswith("$.financing")
-            or field_ref.startswith("$.fiscal_policy")
-            or field_ref.startswith("$.statements")
-            or field_ref.startswith("$.cash_flows")
-            or field_ref.startswith("$.metrics.dscr")
-            or field_ref.startswith("$.metrics.llcr")
-        ):
-            relevant.append(code)
+            or field_ref.startswith(_DEBT_COVERAGE_FIELD_PREFIXES)
+        )
+        if is_relevant:
+            relevant.append(
+                code
+                if code in _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES
+                else "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+            )
     return tuple(sorted(set(relevant)))
 
 
@@ -442,7 +480,7 @@ def _debt_coverage_projection_blockers(
             projected.setdefault(
                 code,
                 (
-                    "Debt coverage metric inputs are not ready: "
+                    "مدخلات مقياس تغطية الدين غير جاهزة: "
                     f"{metric['reason_code']}."
                 ),
             )
@@ -452,7 +490,7 @@ def _debt_coverage_projection_blockers(
                     projected.setdefault(
                         code,
                         (
-                            "Debt coverage projection is blocked for "
+                            "إسقاط تغطية الدين محجوب للمقياس "
                             f"{metric_id}: {code}."
                         ),
                     )
