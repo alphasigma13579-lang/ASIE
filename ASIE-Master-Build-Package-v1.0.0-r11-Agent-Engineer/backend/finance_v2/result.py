@@ -39,6 +39,13 @@ def serialize_finance_result(
     money_scale = rounding["money_scale"]
     ratio_scale = rounding["ratio_scale"]
     lineage = _collect_lineage(document)
+    debt_coverage_metrics = _debt_coverage_metric_objects(
+        validated,
+        model,
+        document,
+        lineage,
+        ratio_scale,
+    )
     scenario_evaluations = evaluate_scenarios(validated, model)
     scenario_blockers = [
         blocker
@@ -187,11 +194,16 @@ def serialize_finance_result(
             ],
         },
         "metrics": {
-            key: _metric_decimal(
-                key, model.metrics.get(key), money_scale, ratio_scale
+            key: (
+                debt_coverage_metrics[key]["value"]
+                if key in debt_coverage_metrics
+                else _metric_decimal(
+                    key, model.metrics.get(key), money_scale, ratio_scale
+                )
             )
             for key in _METRIC_KEYS
         },
+        "debt_coverage_metrics": debt_coverage_metrics,
         "invariants": [
             {
                 "invariant_id": item.invariant_id,
@@ -249,6 +261,155 @@ def serialize_finance_result(
     if include_legacy_projection:
         _apply_legacy_parity(result, money_scale, ratio_scale)
     return result
+
+
+_DEBT_COVERAGE_FORMULAS = {
+    "dscr_min": "fin2.metric.dscr_min.rolling_12m.v1",
+    "llcr": "fin2.metric.llcr.minimum_loan_life.v1",
+}
+_DEBT_COVERAGE_AGGREGATIONS = {
+    "dscr_min": "minimum_rolling_12_month",
+    "llcr": "minimum_loan_life",
+}
+
+
+def _debt_coverage_metric_objects(
+    validated: ValidatedFinanceInput,
+    model: FinancialModel,
+    document: dict[str, Any],
+    lineage: dict[str, list[str]],
+    ratio_scale: int,
+) -> dict[str, dict[str, Any]]:
+    declared_debt = bool(document["financing"]["debt_tranches"])
+    cfads_ready = (
+        len(model.periods) == len(validated.periods)
+        and bool(model.periods)
+    )
+    debt_schedule_ready = (
+        len(model.debt_schedule) == len(validated.periods)
+        and bool(model.debt_schedule)
+    )
+    has_eligible_debt_service = debt_schedule_ready and any(
+        row.interest_paid + row.principal_paid + row.fees_paid > ZERO
+        for row in model.debt_schedule
+    )
+    blocker_codes = _debt_coverage_blocker_codes(model.blockers)
+    applicability, reason_code, detail_codes = _debt_coverage_state(
+        declared_debt=declared_debt,
+        cfads_ready=cfads_ready,
+        debt_schedule_ready=debt_schedule_ready,
+        has_eligible_debt_service=has_eligible_debt_service,
+        blocker_codes=blocker_codes,
+    )
+
+    output: dict[str, dict[str, Any]] = {}
+    for metric_id in ("dscr_min", "llcr"):
+        metric_applicability = applicability
+        metric_reason = reason_code
+        metric_detail_codes = detail_codes
+        value = (
+            _metric_decimal(
+                metric_id,
+                model.metrics.get(metric_id),
+                0,
+                ratio_scale,
+            )
+            if metric_applicability == "APPLICABLE"
+            else None
+        )
+        if metric_applicability == "APPLICABLE" and value is None:
+            missing_code = (
+                f"FIN2_{metric_id.upper()}_VALUE_MISSING"
+            )
+            metric_applicability = "BLOCKED"
+            metric_reason = missing_code
+            metric_detail_codes = (missing_code,)
+
+        output[metric_id] = {
+            "metric_id": metric_id,
+            "value": value,
+            "value_status": (
+                "VALUE_PRESENT" if value is not None else "VALUE_ABSENT"
+            ),
+            "applicability_status": metric_applicability,
+            "reason_code": metric_reason,
+            "blocker_codes": list(metric_detail_codes),
+            "period_range": {
+                "start_period": validated.periods[0],
+                "end_period": validated.periods[-1],
+            },
+            "unit": "ratio",
+            "currency": None,
+            "currency_reason": "NOT_MONETARY_METRIC",
+            "grain": {
+                "schema_version": "finance-metric-grain.v1",
+                "frequency": "monthly",
+                "aggregation": _DEBT_COVERAGE_AGGREGATIONS[metric_id],
+                "dimensions": [],
+            },
+            "source_artifact_id": validated.run_id,
+            "formula_version": _DEBT_COVERAGE_FORMULAS[metric_id],
+            "lineage_refs": {
+                "assumption_refs": list(lineage["assumption_refs"]),
+                "evidence_refs": list(lineage["evidence_refs"]),
+            },
+        }
+    return output
+
+
+def _debt_coverage_state(
+    *,
+    declared_debt: bool,
+    cfads_ready: bool,
+    debt_schedule_ready: bool,
+    has_eligible_debt_service: bool,
+    blocker_codes: tuple[str, ...] = (),
+) -> tuple[str, str, tuple[str, ...]]:
+    canonical_blockers = tuple(sorted(set(blocker_codes)))
+    if not declared_debt:
+        return "NOT_APPLICABLE", "NO_DEBT_SERVICE", ()
+    if canonical_blockers:
+        reason = (
+            canonical_blockers[0]
+            if len(canonical_blockers) == 1
+            else "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+        )
+        return "BLOCKED", reason, canonical_blockers
+    if not cfads_ready and not debt_schedule_ready:
+        return (
+            "NOT_READY",
+            "CFADS_AND_DEBT_SCHEDULE_NOT_READY",
+            (),
+        )
+    if not cfads_ready:
+        return "NOT_READY", "CFADS_NOT_READY", ()
+    if not debt_schedule_ready:
+        return "NOT_READY", "DEBT_SCHEDULE_NOT_READY", ()
+    if not has_eligible_debt_service:
+        return "NOT_APPLICABLE", "NO_DEBT_SERVICE", ()
+    return "APPLICABLE", "READY", ()
+
+
+def _debt_coverage_blocker_codes(
+    blockers: tuple[dict[str, str], ...],
+) -> tuple[str, ...]:
+    relevant = []
+    for blocker in blockers:
+        code = blocker.get("code", "")
+        field_ref = blocker.get("field_ref", "")
+        if (
+            code == "FIN2_DEBT_PROFILE_UNSUPPORTED"
+            or code == "FIN2_VAT_LEDGER_NOT_READY"
+            or code.startswith("FIN2_INVARIANT_")
+            or field_ref.startswith("$.financing")
+            or field_ref.startswith("$.fiscal_policy")
+            or field_ref.startswith("$.statements")
+            or field_ref.startswith("$.cash_flows")
+            or field_ref.startswith("$.metrics.dscr")
+            or field_ref.startswith("$.metrics.llcr")
+        ):
+            relevant.append(code)
+    return tuple(sorted(set(relevant)))
 
 
 def _apply_legacy_parity(
