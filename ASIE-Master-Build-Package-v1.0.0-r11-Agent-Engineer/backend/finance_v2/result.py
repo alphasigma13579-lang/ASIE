@@ -76,8 +76,8 @@ def serialize_finance_result(
         debt_coverage_metrics,
         model.blockers,
     )
-    coverage_requires_not_ready = any(
-        metric["applicability_status"] in {"NOT_READY", "BLOCKED"}
+    coverage_is_unavailable = any(
+        metric["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
         for metric in debt_coverage_metrics.values()
     )
     result_blockers = [
@@ -239,8 +239,7 @@ def serialize_finance_result(
                 "kind": evaluation.kind,
                 "status": (
                     "not_ready"
-                    if evaluation.kind == "baseline"
-                    and coverage_requires_not_ready
+                    if coverage_is_unavailable
                     else evaluation.status
                 ),
                 "input_hash": evaluation.input_hash,
@@ -248,8 +247,11 @@ def serialize_finance_result(
                 "metrics": {
                     key: (
                         debt_coverage_metrics[key]["value"]
-                        if evaluation.kind == "baseline"
-                        and key in debt_coverage_metrics
+                        if key in debt_coverage_metrics
+                        and (
+                            evaluation.kind == "baseline"
+                            or coverage_is_unavailable
+                        )
                         else _metric_decimal(
                             key,
                             evaluation.metrics.get(key),
@@ -314,20 +316,22 @@ def validate_finance_result_projection(
         if len(baseline_scenarios) != 1:
             raise ValueError("exactly one baseline scenario is required")
         baseline = baseline_scenarios[0]
-        coverage_requires_not_ready = any(
+        coverage_is_unavailable = any(
             envelope["applicability_status"]
-            in {"NOT_READY", "BLOCKED"}
+            in {"UNKNOWN", "NOT_READY", "BLOCKED"}
             for envelope in envelopes.values()
         )
-        if coverage_requires_not_ready and baseline["status"] == "ready":
-            raise FinanceContractError(
-                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
-                "$.scenarios",
-                (
-                    "baseline scenario cannot remain ready when debt "
-                    "coverage is not ready or blocked"
-                ),
-            )
+        if coverage_is_unavailable:
+            for scenario in result["scenarios"]:
+                if scenario["status"] == "ready":
+                    raise FinanceContractError(
+                        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                        "$.scenarios",
+                        (
+                            "scenario cannot remain ready when debt "
+                            "coverage is unavailable"
+                        ),
+                    )
         expected_period_range = {
             "start_period": result["periods"][0],
             "end_period": result["periods"][-1],
@@ -368,6 +372,27 @@ def validate_finance_result_projection(
                             "the parent result"
                         ),
                     )
+            required_result_blockers: set[str] = set()
+            if envelope["applicability_status"] == "NOT_READY":
+                required_result_blockers.add(
+                    f"FIN2_DEBT_COVERAGE_{envelope['reason_code']}"
+                )
+            elif envelope["applicability_status"] == "BLOCKED":
+                required_result_blockers.update(envelope["blocker_codes"])
+            result_blocker_codes = {
+                blocker["code"] for blocker in result["blockers"]
+            }
+            if not required_result_blockers.issubset(
+                result_blocker_codes
+            ):
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    "$.blockers",
+                    (
+                        "result omits blockers required by governed "
+                        "debt-coverage envelopes"
+                    ),
+                )
             blocker_codes = envelope["blocker_codes"]
             if blocker_codes != sorted(set(blocker_codes)):
                 raise FinanceContractError(
@@ -385,13 +410,27 @@ def validate_finance_result_projection(
                 envelopes[metric_id]["value"],
                 ratio_scale,
             )
-            consumers = (
+            consumers = [
                 (f"$.metrics.{metric_id}", metrics[metric_id]),
                 (
                     f"$.scenarios.baseline.metrics.{metric_id}",
                     baseline["metrics"][metric_id],
                 ),
-            )
+            ]
+            if envelope["applicability_status"] in {
+                "UNKNOWN",
+                "NOT_READY",
+                "BLOCKED",
+            }:
+                consumers.extend(
+                    (
+                        "$.scenarios"
+                        f"[{scenario['scenario_id']}].metrics.{metric_id}",
+                        scenario["metrics"][metric_id],
+                    )
+                    for scenario in result["scenarios"]
+                    if scenario["kind"] != "baseline"
+                )
             for field_ref, consumer_value in consumers:
                 projected_value = _canonical_projection_value(
                     consumer_value,
@@ -430,8 +469,8 @@ def _validate_legacy_debt_coverage_projection(
     if legacy["status"] != "derived":
         return
     payload = legacy["payload"]
-    coverage_requires_not_ready = any(
-        envelope["applicability_status"] in {"NOT_READY", "BLOCKED"}
+    coverage_is_unavailable = any(
+        envelope["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
         for envelope in envelopes.values()
     )
     required_blockers: set[str] = set()
@@ -442,7 +481,7 @@ def _validate_legacy_debt_coverage_projection(
             )
         elif envelope["applicability_status"] == "BLOCKED":
             required_blockers.update(envelope["blocker_codes"])
-    if coverage_requires_not_ready:
+    if coverage_is_unavailable:
         if payload["status"] == "ready":
             raise FinanceContractError(
                 "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
@@ -466,7 +505,7 @@ def _validate_legacy_debt_coverage_projection(
             )
 
     baseline = payload.get("baseline")
-    if baseline is not None and coverage_requires_not_ready:
+    if baseline is not None and coverage_is_unavailable:
         profile_statuses = [
             (
                 "$.legacy_projection.payload.baseline."
@@ -920,8 +959,8 @@ def _legacy_projection(
     money_scale: int,
     ratio_scale: int,
 ) -> dict[str, Any]:
-    coverage_requires_not_ready = any(
-        metric["applicability_status"] in {"NOT_READY", "BLOCKED"}
+    coverage_is_unavailable = any(
+        metric["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
         for metric in debt_coverage_metrics.values()
     )
     monte_carlo = _legacy_not_ready_monte_carlo()
@@ -1058,7 +1097,7 @@ def _legacy_projection(
         )
         debt_service_profile = {
             "status": (
-                "not_ready" if coverage_requires_not_ready else "ready"
+                "not_ready" if coverage_is_unavailable else "ready"
             ),
             "debt_amount": float(_decimal(debt_amount, money_scale)),
             "monthly_payment": (
@@ -1165,7 +1204,7 @@ def _legacy_projection(
             "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
-    if coverage_requires_not_ready:
+    if coverage_is_unavailable:
         payload["status"] = "not_ready"
         payload["blockers"].extend(coverage_projection_blockers)
     return {
