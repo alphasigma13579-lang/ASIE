@@ -1550,3 +1550,123 @@ def test_result_schema_rejects_formula_bound_to_wrong_metric(
 
     with pytest.raises(_jsonschema().ValidationError):
         _result_schema_validator().validate(invalid)
+
+
+def test_legacy_projection_inherits_coverage_only_blocker() -> None:
+    document = _annuity_debt_document()
+    document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    assert model.status == "ready"
+
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    payload = output["legacy_projection"]["payload"]
+
+    assert output["status"] == "not_ready"
+    assert payload["status"] == "not_ready"
+    assert "FIN2_LLCR_VALUE_MISSING" in {
+        blocker["code"] for blocker in payload["blockers"]
+    }
+    validate_finance_result_projection(output)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "field_ref"),
+    [
+        (
+            "baseline",
+            "$.legacy_projection.payload.baseline.dscr",
+        ),
+        (
+            "baseline_profile",
+            "$.legacy_projection.payload.baseline."
+            "debt_service_profile.dscr",
+        ),
+        (
+            "profile",
+            "$.legacy_projection.payload.debt_service_profile.dscr",
+        ),
+        (
+            "scenario",
+            "$.legacy_projection.payload.scenarios[0].dscr",
+        ),
+        (
+            "scenario_profile",
+            "$.legacy_projection.payload.scenarios[0]."
+            "debt_service_profile.dscr",
+        ),
+    ],
+)
+def test_semantic_validator_rejects_mutated_legacy_dscr_copy(
+    consumer: str,
+    field_ref: str,
+) -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    invalid = json.loads(json.dumps(output))
+    payload = invalid["legacy_projection"]["payload"]
+    if consumer == "baseline":
+        payload["baseline"]["dscr"] = 999.0
+    elif consumer == "baseline_profile":
+        payload["baseline"]["debt_service_profile"]["dscr"] = 999.0
+    elif consumer == "profile":
+        payload["debt_service_profile"]["dscr"] = 999.0
+    elif consumer == "scenario":
+        payload["scenarios"][0]["dscr"] = 999.0
+    else:
+        payload["scenarios"][0]["debt_service_profile"]["dscr"] = 999.0
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == field_ref
+
+
+def test_semantic_validator_rejects_ready_legacy_coverage_state() -> None:
+    document = _annuity_debt_document()
+    document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    invalid = copy.deepcopy(output)
+    invalid["legacy_projection"]["payload"]["status"] = "ready"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.field_ref == "$.legacy_projection.payload.status"
+
+
+def test_semantic_validator_rejects_missing_legacy_coverage_blocker() -> None:
+    document = _annuity_debt_document()
+    document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    invalid = copy.deepcopy(output)
+    invalid["legacy_projection"]["payload"]["blockers"] = []
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.field_ref == (
+        "$.legacy_projection.payload.blockers"
+    )
