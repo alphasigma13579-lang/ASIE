@@ -1530,6 +1530,15 @@ def test_legacy_projection_uses_governed_unavailable_dscr() -> None:
     assert payload["baseline"]["dscr"] is None
     assert payload["debt_service_profile"]["dscr"] is None
     assert payload["scenarios"][0]["dscr"] is None
+    assert payload["debt_service_profile"]["status"] == "not_ready"
+    assert (
+        payload["baseline"]["debt_service_profile"]["status"]
+        == "not_ready"
+    )
+    assert (
+        payload["scenarios"][0]["debt_service_profile"]["status"]
+        == "not_ready"
+    )
     assert "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY" not in {
         blocker["code"] for blocker in output["blockers"]
     }
@@ -1673,3 +1682,87 @@ def test_semantic_validator_rejects_missing_legacy_coverage_blocker() -> None:
     assert error.value.field_ref == (
         "$.legacy_projection.payload.blockers"
     )
+
+
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+@pytest.mark.parametrize(
+    "field_name",
+    ["source_artifact_id", "period_range", "lineage_refs"],
+)
+def test_semantic_validator_rejects_detached_metric_traceability(
+    metric_id: str,
+    field_name: str,
+) -> None:
+    invalid = copy.deepcopy(result())
+    metric = invalid["debt_coverage_metrics"][metric_id]
+    if field_name == "source_artifact_id":
+        metric[field_name] = "run-from-another-artifact"
+    elif field_name == "period_range":
+        metric[field_name] = {
+            "start_period": "2026-02",
+            "end_period": "2026-12",
+        }
+    else:
+        metric[field_name] = {
+            "assumption_refs": ["asm-from-another-run"],
+            "evidence_refs": ["ev-from-another-run"],
+        }
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == (
+        f"$.debt_coverage_metrics.{metric_id}.{field_name}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("consumer", "field_ref"),
+    [
+        (
+            "baseline_profile",
+            "$.legacy_projection.payload.baseline."
+            "debt_service_profile.status",
+        ),
+        (
+            "profile",
+            "$.legacy_projection.payload.debt_service_profile.status",
+        ),
+        (
+            "scenario_profile",
+            "$.legacy_projection.payload.scenarios[0]."
+            "debt_service_profile.status",
+        ),
+    ],
+)
+def test_semantic_validator_rejects_ready_legacy_debt_profile(
+    consumer: str,
+    field_ref: str,
+) -> None:
+    document = _annuity_debt_document()
+    document["fiscal_policy"]["modules"] = ["vat"]
+    document["fiscal_policy"]["vat_rate"] = "0.15"
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(
+        validated,
+        model,
+        include_legacy_projection=True,
+    )
+    invalid = json.loads(json.dumps(output))
+    payload = invalid["legacy_projection"]["payload"]
+    if consumer == "baseline_profile":
+        payload["baseline"]["debt_service_profile"]["status"] = "ready"
+    elif consumer == "profile":
+        payload["debt_service_profile"]["status"] = "ready"
+    else:
+        payload["scenarios"][0]["debt_service_profile"]["status"] = "ready"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == field_ref
