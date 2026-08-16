@@ -274,7 +274,55 @@ def serialize_finance_result(
     }
     if include_legacy_projection:
         _apply_legacy_parity(result, money_scale, ratio_scale)
+    validate_finance_result_projection(result)
     return result
+
+
+def validate_finance_result_projection(
+    result: dict[str, Any],
+) -> None:
+    """Fail closed when compatibility metric values diverge from envelopes."""
+    try:
+        ratio_scale = result["rounding_policy"]["ratio_scale"]
+        metrics = result["metrics"]
+        envelopes = result["debt_coverage_metrics"]
+        for metric_id in ("dscr_min", "llcr"):
+            legacy_value = _canonical_projection_value(
+                metrics[metric_id],
+                ratio_scale,
+            )
+            envelope_value = _canonical_projection_value(
+                envelopes[metric_id]["value"],
+                ratio_scale,
+            )
+            if legacy_value != envelope_value:
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    f"$.metrics.{metric_id}",
+                    (
+                        "compatibility metric diverges from the governed "
+                        "debt-coverage envelope"
+                    ),
+                )
+    except FinanceContractError:
+        raise
+    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+        raise FinanceContractError(
+            "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+            "$.debt_coverage_metrics",
+            "debt-coverage projection shape or decimal value is invalid",
+        ) from exc
+
+
+def _canonical_projection_value(
+    value: Any,
+    ratio_scale: int,
+) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("projected metric value must be a decimal string")
+    return _decimal(Decimal(value), ratio_scale)
 
 
 _DEBT_COVERAGE_FORMULAS = {
