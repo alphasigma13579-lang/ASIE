@@ -1257,3 +1257,62 @@ def test_schema_blocker_enum_matches_serializer_allowlist() -> None:
     )
     assert schema_codes == set(_DEBT_COVERAGE_ALLOWED_BLOCKER_CODES)
 
+@pytest.mark.parametrize(
+    ("metric_id", "wrong_code"),
+    [
+        ("dscr_min", "FIN2_LLCR_VALUE_MISSING"),
+        ("llcr", "FIN2_DSCR_MIN_VALUE_MISSING"),
+    ],
+)
+@pytest.mark.parametrize("multiple", [False, True])
+def test_result_schema_rejects_other_metrics_missing_value_code(
+    metric_id: str,
+    wrong_code: str,
+    multiple: bool,
+) -> None:
+    validator = _result_schema_validator()
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_VAT_LEDGER_NOT_READY",
+                "$.fiscal_policy.modules",
+            ),
+        ),
+    )
+    invalid = copy.deepcopy(output)
+    metric = invalid["debt_coverage_metrics"][metric_id]
+    metric["reason_code"] = (
+        "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+        if multiple
+        else wrong_code
+    )
+    metric["blocker_codes"] = (
+        ["FIN2_VAT_LEDGER_NOT_READY", wrong_code]
+        if multiple
+        else [wrong_code]
+    )
+
+    with pytest.raises(ValidationError):
+        validator.validate(invalid)
+
+
+def test_model_cannot_inject_projection_only_missing_value_code() -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_LLCR_VALUE_MISSING",
+                "$.metrics.dscr_min",
+            ),
+        ),
+    )
+
+    for metric in output["debt_coverage_metrics"].values():
+        assert metric["reason_code"] == (
+            "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+        )
+    _result_schema_validator().validate(output)
+
