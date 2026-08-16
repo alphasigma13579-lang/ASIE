@@ -1080,6 +1080,166 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "value": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "dscr_min": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/decimal"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "dscr_min": {
+                "$ref": "#/$defs/decimal"
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "llcr": {
+                "properties": {
+                  "value": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "llcr": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "llcr": {
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/decimal"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "llcr": {
+                "$ref": "#/$defs/decimal"
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -1154,7 +1314,8 @@
               "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY",
               "FIN2_INVARIANT_DETERMINISTIC_REPLAY",
               "FIN2_DSCR_MIN_VALUE_MISSING",
-              "FIN2_LLCR_VALUE_MISSING"
+              "FIN2_LLCR_VALUE_MISSING",
+              "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
             ]
           }
         },
@@ -1607,6 +1768,22 @@
                     "prefixItems": [
                       {
                         "const": "FIN2_LLCR_VALUE_MISSING"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
                       }
                     ],
                     "minItems": 1,
