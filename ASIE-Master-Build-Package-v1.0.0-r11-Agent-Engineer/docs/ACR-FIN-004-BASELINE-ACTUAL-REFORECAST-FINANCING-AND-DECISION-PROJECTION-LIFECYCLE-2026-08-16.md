@@ -2,10 +2,10 @@
 
 | الحقل | القيمة |
 |---|---|
-| Document ID | `ACR-FIN-004-v0.1.0` |
+| Document ID | `ACR-FIN-004-v0.2.0` |
 | الحالة | `OWNER-APPROVED REQUIREMENTS / IMPLEMENTATION AND G1 BLOCKED` |
 | المالك | Product Owner |
-| المراجعون المطلوبون | Principal Architecture + Finance Reviewer/CPA + QA + Security + Product Experience |
+| طبقات المراجعة الفنية | GitHub Codex + CodeRabbit + GitHub Copilot + Principal Independent Audit |
 | تاريخ القرار | 2026-08-16 |
 | خط الأساس المراجع | `main@50e7328bc07c828240947536d99d47250f10383b` |
 | البرنامج الأب | `ASIE-FEASIBILITY-COMPLETE-01-v1.0.0` داخل `FOUNDATION-COMPLETE-20` |
@@ -14,6 +14,15 @@
 | وضع التنفيذ الحالي | بعض الأسس موجودة؛ دورة Actual/Reforecast وKPI drill-down غير مثبتة كمسار مكتمل |
 
 > **قرار ملزم للمتطلبات:** هذا العقد يثبت دلالة التمويل ودورة `Baseline → Actual → Reforecast` وإسقاطات القرار في مصدر واحد. وجود هذا العقد لا يعني أن القدرات مطبقة أو جاهزة أو معتمدة مهنيًا. لا تُرفع أي حالة تنفيذ إلا بكود وعقود واختبارات وأدلة exact-commit ومراجعات البوابة ذات الصلة.
+
+### طبقات المراجعة الفنية الأربع
+
+1. **GitHub Codex:** مراجعة findings على exact head.
+2. **CodeRabbit:** مراجعة عقدية/أمنية آلية مستقلة.
+3. **GitHub Copilot:** مراجعة exact-head إضافية مستقلة.
+4. **Principal Independent Audit:** مراجعة بشرية التوجيه ينفذها المستشار التقني فوق مخرجات النماذج، ويتحقق من الأدلة والسلطات والكود بدل اعتماد خلاصاتها تلقائيًا.
+
+هذه الطبقات الأربع تكفي لبوابة المتطلبات والتنفيذ التقني المظلم داخل التفويض الحالي. لا تمثل أي منها اعتماد CPA بشريًا أو اعتمادًا مصرفيًا/مهنيًا، ولا تلغي شرط `ACR-FIN-002` لمراجعة Finance Reviewer/CPA قبل G1 أو أي claim مهني.
 
 ---
 
@@ -104,22 +113,24 @@
 ### 4.2 الرسم المسموح
 
 ```text
-Approved Input Manifest
+server-owned Approved Input Manifest
+→ server-owned Manifest Validation Gate (passed; manifest/gate IDs and hashes bound)
 → BASELINE Run
 → immutable BASELINE Snapshot
    ├─→ SCENARIO artifacts
    ├─→ ACTUAL period submissions/revisions
    └─→ REFORECAST Draft
-        → server-owned Approved Input Manifest
+        → new server-owned Approved Input Manifest
+        → new server-owned Manifest Validation Gate (passed; manifest/gate IDs and hashes bound)
         → approved REFORECAST Run
         → immutable REFORECAST Snapshot
              ├─→ SCENARIO artifacts
-             └─→ later REFORECAST revisions
+             └─→ later REFORECAST Drafts through the same new-manifest/new-gate path
 
 Saved artifacts
-→ COMPARISON
 → KPI Summary
 → KPI Drill-down
+→ COMPARISON
 → Snapshot-backed REPORT
 ```
 
@@ -130,14 +141,17 @@ Saved artifacts
 1. اعتماد Baseline يختم artifact وSnapshot لا يجوز تعديلهما أو إعادة حسابهما تاريخيًا.
 2. Scenario ليس Actual وليس Reforecast، ولا يجوز ترقيته ضمنيًا إلى أي منهما.
 3. Actual لا يستبدل Baseline؛ يرتبط به وبالفترات التي يغطيها.
-4. Reforecast لا يعدل Baseline؛ ينشئ run وSnapshot جديدين مع `parent_baseline_snapshot_id`.
-5. كل Reforecast يعلن `as_of_period`، والفترات المغلقة تأتي من Actual المعتمد، والفترات المفتوحة تأتي من forecast الجديد.
-6. كل Reforecast، سواء سببه Actual أو shock أو تمويلًا جديدًا، يجب أن ينتج ويرتبط بـApproved Input Manifest جديد يبنيه الخادم من المدخلات normalized والمراجع المعتمدة قبل استدعاء Finance؛ لا مسار مباشر من Draft أو change set إلى Run.
-7. التصحيح بعد الختم ينشئ revision جديدًا ويحافظ على السابق.
-8. كل artifact يحمل `organization_id` وIDs خادمية وschema/engine versions وinput/content hashes وlineage.
-9. لا يختار العميل tenant أو manifest أو gate أو authoritative model.
-10. Comparison وReport يقرآن artifacts/فوائد محفوظة فقط، ولا يستدعيان Finance لإعادة حساب تاريخي.
-11. لا يجوز دمج قيم من Snapshots مختلفة دون تصريح comparison واضح ومراجع IDs.
+4. Reforecast لا يعدل Baseline؛ ينشئ run وSnapshot جديدين مع `parent_baseline_snapshot_id`، ويحمل `predecessor_reforecast_snapshot_id` للنسخ اللاحقة فقط.
+5. `as_of_period` هو period key كانوني وفق `period_calendar_id` وليس timestamp حرًا. الفترات `<= as_of_period` مغلقة وتأتي من Actual معتمد، والفترات `> as_of_period` مفتوحة وتأتي من forecast الجديد؛ يمنع overlap أو gap أو خلط calendars.
+6. كل Baseline وكل Reforecast يجب أن يرتبطا بـApproved Input Manifest خادمي جديد وبـManifest Validation Gate خادمية ناجحة مرتبطة به ID/hash قبل استدعاء Finance؛ لا مسار مباشر من Manifest أو Draft أو change set إلى Run.
+7. كل Reforecast، سواء سببه Actual أو shock أو تمويلًا جديدًا، يمر بمسار manifest/gate الجديد كاملًا؛ لا يعيد استخدام gate لmanifest سابق.
+8. التصحيح بعد الختم ينشئ revision جديدًا ويحافظ على السابق.
+9. كل artifact يحمل `organization_id` وIDs خادمية وschema/engine versions وcontent hashes وlineage، ويحفظ manifest/gate IDs وhashes عند انطباق مسار التنفيذ.
+10. يميز العقد بين `finance_input_hash` لوثيقة `finance-model-input.v2` و`admission_input_hash` لسلسلة القبول الخادمية؛ لا يجوز استخدام اسم `input_hash` الغامض للجمع بين preimages مختلفين.
+11. لا يختار العميل tenant أو manifest أو gate أو authoritative model.
+12. Comparison وReport يقرآن artifacts/نتائج محفوظة فقط، ولا يستدعيان Finance لإعادة حساب تاريخي.
+13. لا يجوز دمج قيم من Snapshots مختلفة دون تصريح comparison واضح ومراجع IDs.
+14. metadata المطلوبة تُحدد حسب lifecycle type: Baseline الجذري لا يحتاج parent، بينما Reforecast وActual يحتاجان روابط الأب المحددة في هذا العقد؛ null مسموح فقط حيث يصرح العقد بذلك.
 
 ---
 
@@ -241,7 +255,9 @@ Saved artifacts
 
 يجب أن يحدد كل Actual:
 
-- `actual_id` ثابتًا للسجل المنطقي عبر revisions؛
+- `organization_id` و`project_id` مربوطين خادميًا؛
+- `parent_baseline_snapshot_id` الذي يحدد Baseline المرجعي؛
+- `actual_id` ثابتًا للسجل المنطقي عبر revisions ولا يتغير لتجاوز تعارض target؛
 - `revision_id` فريدًا لكل نسخة؛
 - `parent_revision_id`، ويكون null للنسخة الأولى؛
 - `supersedes_revision_id` عند التصحيح، ويطابق revision السابقة التي يحل محلها للاستخدام المستقبلي دون حذفها؛
@@ -264,23 +280,30 @@ Saved artifacts
 - خلط actual-to-date مع full-year actual دون دلالة؛
 - دمج revisions متعارضة أو اختيار «الأحدث زمنيًا» وحده دون تحقق سلسلة الاعتماد.
 
-قاعدة الاختيار الحتمية: لكل `(actual_id, financial_item_id, grain, period)` يجب أن يوجد leaf واحد معتمد فقط في سلسلة parent/supersedes الصحيحة. يعتمد downstream ذلك الـleaf. إذا وجد أكثر من leaf معتمد أو parent مفقود/غير مطابق، تكون الحالة `BLOCKED/ACTUAL_REVISION_CONFLICT` ولا تُدمج القيم. تبقى كل revision سابقة immutable وقابلة للقراءة التاريخية.
+قاعدة الهوية المنطقية: يبني الخادم `actual_logical_target_key` حتميًا من `(organization_id, project_id, parent_baseline_snapshot_id, financial_item_id, governed_target_ref, canonical_grain_hash, period_or_period_range)`. لا تدخل `actual_id` أو العملة أو الوحدة في المفتاح كي لا يسمح تغييرها بإنشاء سلسلة ثانية لنفس خانة النموذج؛ بل تتحقق العملة والوحدة مقابل تعريف target الحاكم.
+
+يجب أن توجد سلسلة Actual واحدة فقط لكل `actual_logical_target_key`. محاولة إنشاء `actual_id` ثانٍ للمفتاح نفسه ترفض `BLOCKED/ACTUAL_LOGICAL_TARGET_CONFLICT` أو تعاد idempotently إلى السلسلة الموجودة وفق command خادمي صريح. داخل السلسلة يجب أن يوجد leaf واحد معتمد فقط في parent/supersedes chain الصحيحة، ويعتمد downstream ذلك الـleaf. إذا وجد أكثر من leaf معتمد أو parent مفقود/غير مطابق، تكون الحالة `BLOCKED/ACTUAL_REVISION_CONFLICT` ولا تُدمج القيم. تبقى كل revision سابقة immutable وقابلة للقراءة التاريخية.
 
 ### 7.2 Reforecast
 
 يجب أن يعلن Reforecast:
 
-- Baseline الأب؛
-- آخر Snapshot مرجعي؛
-- `as_of_period`;
+- `parent_baseline_snapshot_id` إلزاميًا؛
+- `predecessor_reforecast_snapshot_id`: null للنسخة الأولى فقط، وإلزامي لكل نسخة لاحقة؛
+- `period_calendar_id` و`as_of_period` كانونيين، مع Actual معتمد لكل target مطلوب في الفترات `<= as_of_period` وforecast للفترات `> as_of_period` دون overlap/gap؛
 - `approved_manifest_id` خادميًا؛
 - `manifest_payload_hash` للحمولة normalized المعتمدة؛
-- `input_hash` مرتبطًا حتميًا بـ`approved_manifest_id + manifest_payload_hash + normalized_inputs`، مع رفض أي عدم تطابق قبل Finance؛
-- actual periods المستخدمة؛
+- `manifest_validation_gate_id` خادميًا؛
+- `manifest_validation_gate_payload_hash` لحالة gate ناجحة ومربوطة بنفس manifest ID/hash؛
+- `finance_input_hash` كـcanonical hash لوثيقة `finance-model-input.v2` المغلقة؛
+- `admission_input_hash` كـcanonical hash لسلسلة القبول الخادمية، وتشمل على الأقل organization/project، blueprint ID/hash، manifest ID/hash، gate ID/hash، normalized inputs، lifecycle type، parent IDs، `period_calendar_id/as_of_period`، scenario/policy/engine versions؛ ويبقى حقل `input_hash` في الغلاف الحالي مرادفًا موثقًا لـ`admission_input_hash` فقط؛
+- actual revision IDs وlogical-target keys المستخدمة؛
 - change set مع reason/evidence/approval؛
 - التمويلات الجديدة أو المعدلة؛
 - السياسات والإصدارات؛
-- resulting input hash وrun/snapshot IDs.
+- run/snapshot IDs الناتجة.
+
+أي غياب أو mismatch أو عدم قابلية حل أو stale/expired في manifest/gate/parents/Actual bindings يرفض قبل Finance. إذا احتاج حمل حقول lifecycle الجديدة داخل الغلاف المجمد أو Snapshot Assembly إلى تغييرهما، فالقرار `STOP-THE-LINE` وبوابة مستقلة؛ لا يبرر العقد تجاوز المسار الحالي.
 
 يجب أن تكون المقارنات التالية ممكنة دون إعادة حساب الأصل:
 
@@ -350,29 +373,31 @@ Saved artifacts
 | FLC-F2 | تمويل واحد مصرح به | شريحة واحدة فقط، نفس الشروط والlineage، لا ممول أو provenance مستنتج |
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
 | FLC-F4 | سحب متأخر معروف في Baseline | يبدأ في الفترة المعلنة وتنعكس الفائدة/السداد دون نقله إلى البداية |
-| FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs و`approved_manifest_id/manifest_payload_hash`؛ input hash يطابق الحمولة المعتمدة قبل Finance |
-| FLC-F6 | Actual مقابل Baseline | `actual_id/revision_id` وسلسلة parent/supersedes صالحة، و`financial_item_id` و`governed_target_ref` والفترات والعملة والgrain متوافقة؛ leaf معتمد واحد؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
-| FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بالأصل والسابق وبـApproved Input Manifest جديد صالح؛ `input_hash` مطابق؛ المقارنة تعيد نفس النتيجة حتميًا |
-| FLC-F8 | KPI chain | Summary وDrill-down وComparison وReport تعرض القيمة والحالة وSnapshot نفسها |
+| FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs وmanifest/gate IDs+hashes؛ gate ناجحة ومربوطة بالmanifest؛ `finance_input_hash` و`admission_input_hash` يطابقان preimages المحددة قبل Finance |
+| FLC-F6 | Actual مقابل Baseline | `actual_logical_target_key` خادمي صحيح؛ سلسلة واحدة فقط للمفتاح عبر tenant/project/Baseline/target/grain/period؛ `actual_id/revision_id` وparent/supersedes صالحة؛ leaf معتمد واحد؛ العملة والوحدة متوافقتان مع target؛ delta من نتائج محفوظة بلا إعادة حساب Snapshot |
+| FLC-F6A | Actual duplicate logical target | إنشاء `actual_id` ثانٍ لنفس `actual_logical_target_key` يرفض حتميًا أو يعاد idempotently إلى السلسلة القائمة؛ لا double-count ولا اختيار بالأحدث زمنيًا |
+| FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بـ`parent_baseline_snapshot_id` وبـ`predecessor_reforecast_snapshot_id` عند الانطباق، وبـmanifest/gate جديدين صالحين؛ hashا Finance/admission مطابقان؛ المقارنة حتمية |
+| FLC-F7A | temporal splice | `period_calendar_id/as_of_period` ثابتان؛ كل target مطلوب للفترات المغلقة يأتي من Actual approved leaf، والمفتوحة من forecast؛ أي overlap أو gap أو calendar mismatch = `BLOCKED` قبل Finance |
+| FLC-F8 | KPI chain | السلسلة `Summary → Drill-down → Comparison → Report` تستخدم metric object/projection envelope نفسه، وتعرض القيمة والحالة والأبعاد ومراجع artifacts/Snapshots نفسها دون إعادة حساب |
 | FLC-F9 | حدود ERP | يقبل Actual summary ولا ينشئ GL/payroll/inventory/procurement transactions |
 | FLC-F10 | Profile حاضنة/ممول | Profile محدد الإصدار والمصدر ويستخدم قاموس حالات FEASIBILITY-COMPLETE-01 نفسه؛ `institutionally_accepted` يحتاج Evidence ID صالحًا ولا ينشأ ادعاء قبول أو اعتماد بلا دليل |
 | FLC-F11 | tenant isolation | artifact/comparison و`ORGANIZATION_OWNED` Profile يربطان خادميًا بنفس `organization_id`؛ cross-tenant وscope/owner/access-policy mismatch ترفض قبل القراءة أو الحساب؛ `PUBLIC_REFERENCE` يسمح به فقط وفق registry/status/freshness/policy الصريحة أعلاه |
 | FLC-F12 | revision/tamper mismatch | hash أو manifest/parent/evidence/revision mismatch يفشل مغلقًا ولا ينتج Snapshot جزئيًا |
-| FLC-F12A | metadata missing/null | غياب أو null لأي metadata إلزامية، ومنها manifest/revision/parent/organization/policy IDs أو hashes، يفشل قبل Finance ولا ينتج Snapshot جزئيًا |
+| FLC-F12A | metadata missing/null | غياب أو null لأي metadata إلزامية **لنمط lifecycle المحدد**، ومنها manifest/gate/revision/organization/policy IDs أو hashes، يفشل قبل Finance ولا ينتج Snapshot جزئيًا؛ Baseline الجذري يسمح فقط بالـparent null المصرح به |
 | FLC-F12B | metadata unresolvable | ID أو parent أو evidence أو policy لا يمكن حله من المصدر الخادمي يفشل مغلقًا |
 | FLC-F12C | metadata stale/expired | manifest/evidence/Profile/policy منتهي أو خارج freshness/effective window يفشل مغلقًا |
-| FLC-F12D | manifest/input binding | `approved_manifest_id` أو `manifest_payload_hash` أو `input_hash` غير متسقة مع normalized inputs ترفض قبل Finance |
+| FLC-F12D | manifest/gate/input binding | manifest ID/hash أو gate ID/hash أو رابط gate→manifest أو `finance_input_hash/admission_input_hash` غير متسق مع preimage الحاكمة يرفض قبل Finance |
 
 الحد الأدنى للأدلة قبل أي claim:
 
 - contract/schema tests؛
 - unit/property tests لحالات F1–F7؛
-- integration tests لمسار Approved Manifest/Run/Snapshot؛
+- integration tests لمسار Approved Manifest → passed Manifest Validation Gate → Run → Snapshot، مع ID/hash binding؛
 - API/projection tests لـF1A/F1B وF8 تثبت تطابق الحالة وreason code والأبعاد؛
 - negative scope tests لـF9–F12D تشمل mismatch/missing/null/unresolvable/stale/expired؛
 - fixtures مستقلة قابلة لإعادة الاستخدام؛
 - exact-head CI وCross-Platform؛
-- مراجعة Finance Reviewer/CPA لدلالات التمويل والمؤشرات؛
+- نجاح طبقات GitHub Codex وCodeRabbit وGitHub Copilot وPrincipal Independent Audit على exact head؛ وتبقى مراجعة Finance Reviewer/CPA البشرية مطلوبة قبل G1/claim المهني وفق ACR-FIN-002؛
 - مراجعة Product Experience لعرض الحالات بالعربية وRTL؛
 - rollback وعدم تغيير historical snapshots.
 
@@ -421,7 +446,7 @@ Saved artifacts
 ### G-FLC-0 — Requirements adopted
 
 - موافقة مالك المنتج؛
-- مراجعة عدم التعارض مع ACR-FIN-002 وFreeze والبرامج الأب؛
+- مراجعة عدم التعارض مع ACR-FIN-002 وACR-DIB-001 وFreeze والبرامج الأب عبر طبقات المراجعة الفنية الأربع؛
 - دمج هذا الملف من exact head؛
 - لا claim تنفيذ.
 
@@ -429,7 +454,7 @@ Saved artifacts
 
 - schemas/versioning/applicability/lineage مغلقة؛
 - fixtures F1–F12 موجودة؛
-- architecture, finance, security وQA approvals؛
+- نجاح GitHub Codex وCodeRabbit وGitHub Copilot وPrincipal Independent Audit على exact head لدخول dark implementation؛ ولا يحول ذلك إلى اعتماد CPA/G1؛
 - لا تغيير frozen path دون ACR مستقل.
 
 ### G-FLC-2 — Dark implementation verified
