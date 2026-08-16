@@ -1115,6 +1115,40 @@
                 "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
               }
             }
+          },
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "applicability_status": {
+                    "enum": [
+                      "APPLICABLE",
+                      "NOT_APPLICABLE"
+                    ]
+                  }
+                },
+                "required": [
+                  "applicability_status"
+                ]
+              },
+              "llcr": {
+                "properties": {
+                  "applicability_status": {
+                    "enum": [
+                      "APPLICABLE",
+                      "NOT_APPLICABLE"
+                    ]
+                  }
+                },
+                "required": [
+                  "applicability_status"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min",
+              "llcr"
+            ]
           }
         }
       }
@@ -1294,6 +1328,81 @@
             "required": [
               "llcr"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "anyOf": [
+              {
+                "properties": {
+                  "dscr_min": {
+                    "properties": {
+                      "applicability_status": {
+                        "enum": [
+                          "NOT_READY",
+                          "BLOCKED"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "applicability_status"
+                    ]
+                  }
+                },
+                "required": [
+                  "dscr_min"
+                ]
+              },
+              {
+                "properties": {
+                  "llcr": {
+                    "properties": {
+                      "applicability_status": {
+                        "enum": [
+                          "NOT_READY",
+                          "BLOCKED"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "applicability_status"
+                    ]
+                  }
+                },
+                "required": [
+                  "llcr"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scenarios": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "kind": {
+                    "const": "baseline"
+                  },
+                  "status": {
+                    "const": "ready"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "status"
+                ]
+              }
+            }
           }
         }
       }
