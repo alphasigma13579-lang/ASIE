@@ -109,6 +109,7 @@ Approved Input Manifest
    ├─→ SCENARIO artifacts
    ├─→ ACTUAL period submissions/revisions
    └─→ REFORECAST Draft
+        → server-owned Approved Input Manifest
         → approved REFORECAST Run
         → immutable REFORECAST Snapshot
              ├─→ SCENARIO artifacts
@@ -128,11 +129,12 @@ Saved artifacts
 3. Actual لا يستبدل Baseline؛ يرتبط به وبالفترات التي يغطيها.
 4. Reforecast لا يعدل Baseline؛ ينشئ run وSnapshot جديدين مع `parent_baseline_snapshot_id`.
 5. كل Reforecast يعلن `as_of_period`، والفترات المغلقة تأتي من Actual المعتمد، والفترات المفتوحة تأتي من forecast الجديد.
-6. التصحيح بعد الختم ينشئ revision جديدًا ويحافظ على السابق.
-7. كل artifact يحمل `organization_id` وIDs خادمية وschema/engine versions وinput/content hashes وlineage.
-8. لا يختار العميل tenant أو manifest أو gate أو authoritative model.
-9. Comparison وReport يقرآن artifacts/فوائد محفوظة فقط، ولا يستدعيان Finance لإعادة حساب تاريخي.
-10. لا يجوز دمج قيم من Snapshots مختلفة دون تصريح comparison واضح ومراجع IDs.
+6. كل Reforecast، سواء سببه Actual أو shock أو تمويلًا جديدًا، يجب أن ينتج ويرتبط بـApproved Input Manifest جديد يبنيه الخادم من المدخلات normalized والمراجع المعتمدة قبل استدعاء Finance؛ لا مسار مباشر من Draft أو change set إلى Run.
+7. التصحيح بعد الختم ينشئ revision جديدًا ويحافظ على السابق.
+8. كل artifact يحمل `organization_id` وIDs خادمية وschema/engine versions وinput/content hashes وlineage.
+9. لا يختار العميل tenant أو manifest أو gate أو authoritative model.
+10. Comparison وReport يقرآن artifacts/فوائد محفوظة فقط، ولا يستدعيان Finance لإعادة حساب تاريخي.
+11. لا يجوز دمج قيم من Snapshots مختلفة دون تصريح comparison واضح ومراجع IDs.
 
 ---
 
@@ -218,6 +220,9 @@ Saved artifacts
 
 يجب أن يحدد كل Actual:
 
+- `financial_item_id` كانونيًا ثابتًا ومصدره سجل versioned؛
+- `governed_target_ref` يشير إلى بند/مسار مالي allowlisted يمكن ربطه حتميًا بالـBaseline وReforecast؛
+- `grain` صريحًا يحدد frequency والفترة ونطاق التجميع والأبعاد اللازمة، ولا تُقارن قيم ذات grain مختلف ضمنيًا؛
 - الفترة أو النطاق الزمني؛
 - القيمة والوحدة والعملة؛
 - المصدر وevidence refs؛
@@ -285,8 +290,10 @@ Saved artifacts
 - المصدر الرسمي وحالة freshness؛
 - eligibility rules وdocument checklist؛
 - متطلبات العرض والمؤشرات؛
-- حالة `REFERENCE_ONLY/REVIEWED/VALIDATED/EXPIRED`;
+- حالة من القاموس الحاكم نفسه في `FEASIBILITY-COMPLETE-01`: `reference_only` أو `source_verified` أو `professionally_validated` أو `institutionally_accepted` أو `expired`;
 - حدود الادعاء.
+
+لا ينشئ هذا العقد قاموسًا موازيًا. تنطبق الحالات نفسها على `LENDER` و`INCUBATOR` و`ACCELERATOR` و`GRANT_PROGRAM`، وتبقى `institutionally_accepted` محجوبة حتى وجود Evidence ID صالح يحدد الجهة والبرنامج/المنتج والإصدار والنطاق وتاريخ السريان.
 
 يحظر:
 
@@ -306,11 +313,11 @@ Saved artifacts
 | FLC-F3 | عدة تمويلات مصرح بها | كل شريحة وسحب محفوظان وقابلان للـdrill-down؛ الإجمالي يطابق مجموع الجداول |
 | FLC-F4 | سحب متأخر معروف في Baseline | يبدأ في الفترة المعلنة وتنعكس الفائدة/السداد دون نقله إلى البداية |
 | FLC-F5 | تمويل جديد بعد Baseline | Baseline bytes/hash ثابتان؛ Reforecast جديد يحمل الشريحة والتغيير والparent IDs |
-| FLC-F6 | Actual مقابل Baseline | الفترات والعملة والgrain متوافقة؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
+| FLC-F6 | Actual مقابل Baseline | `financial_item_id` و`governed_target_ref` والفترات والعملة والgrain متوافقة؛ delta من نتائج محفوظة؛ لا إعادة حساب Snapshot |
 | FLC-F7 | Reforecast متكرر | كل نسخة immutable ومرتبطة بالأصل والسابق؛ المقارنة تعيد نفس النتيجة حتميًا |
 | FLC-F8 | KPI chain | Summary وDrill-down وComparison وReport تعرض القيمة والحالة وSnapshot نفسها |
 | FLC-F9 | حدود ERP | يقبل Actual summary ولا ينشئ GL/payroll/inventory/procurement transactions |
-| FLC-F10 | Profile حاضنة/ممول | Profile محدد الإصدار والمصدر والحالة، ولا ينتج ادعاء قبول أو اعتماد |
+| FLC-F10 | Profile حاضنة/ممول | Profile محدد الإصدار والمصدر ويستخدم قاموس حالات FEASIBILITY-COMPLETE-01 نفسه؛ `institutionally_accepted` يحتاج Evidence ID صالحًا ولا ينشأ ادعاء قبول أو اعتماد بلا دليل |
 | FLC-F11 | tenant isolation | cross-tenant artifact/profile/comparison يرفض قبل القراءة أو الحساب |
 | FLC-F12 | revision/tamper | hash أو parent أو evidence mismatch يفشل مغلقًا ولا ينتج Snapshot جزئيًا |
 
