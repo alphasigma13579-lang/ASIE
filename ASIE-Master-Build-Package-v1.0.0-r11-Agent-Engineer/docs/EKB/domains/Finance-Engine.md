@@ -101,19 +101,26 @@ Approved inputs
 5. M4 v2 default بعد G1.
 6. M5 ترقية الغلاف عبر ACR مستقل.
 
-دورة المنتج المستهدفة داخل هذه البوابات:
+دورة المنتج المستهدفة داخل هذه البوابات، كإسقاط مطابق للرسم الكانوني في ACR-FIN-004:
 
 ```text
-Approved BASELINE inputs
-→ server-owned Approved Input Manifest
+server-owned Approved Input Manifest
 → BASELINE Run
 → immutable BASELINE Snapshot
-→ ACTUAL submissions/revisions
-→ REFORECAST Draft
-→ new server-owned Approved Input Manifest
-→ approved REFORECAST Run
-→ immutable REFORECAST Snapshot
-→ comparison / drill-down / report projections
+   ├─→ SCENARIO artifacts
+   ├─→ ACTUAL submissions/revisions
+   └─→ REFORECAST Draft
+        → new server-owned Approved Input Manifest
+        → approved REFORECAST Run
+        → immutable REFORECAST Snapshot
+             ├─→ SCENARIO artifacts
+             └─→ later REFORECAST revisions
+
+saved artifacts
+→ comparison
+→ KPI summary
+→ KPI drill-down
+→ Snapshot-backed report
 ```
 
 ## روابط التتبع
