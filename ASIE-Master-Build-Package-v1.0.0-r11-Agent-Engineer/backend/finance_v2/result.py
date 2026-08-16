@@ -274,7 +274,12 @@ def serialize_finance_result(
         "blockers": result_blockers,
         "legacy_projection": (
             _legacy_projection(
-                model, document, lineage, money_scale, ratio_scale
+                model,
+                document,
+                lineage,
+                debt_coverage_metrics,
+                money_scale,
+                ratio_scale,
             )
             if include_legacy_projection
             and not legacy_scenario_blockers
@@ -725,6 +730,7 @@ def _legacy_projection(
     model: FinancialModel,
     document: dict[str, Any],
     lineage: dict[str, list[str]],
+    debt_coverage_metrics: dict[str, dict[str, Any]],
     money_scale: int,
     ratio_scale: int,
 ) -> dict[str, Any]:
@@ -853,7 +859,13 @@ def _legacy_projection(
                 _decimal(average("operating_expenses"), money_scale)
             ),
         }
-        dscr = _legacy_float(model.metrics.get("dscr_min"), ratio_scale)
+        governed_dscr = debt_coverage_metrics["dscr_min"]["value"]
+        dscr = _legacy_float(
+            Decimal(governed_dscr)
+            if governed_dscr is not None
+            else None,
+            ratio_scale,
+        )
         debt_service_profile = {
             "status": "ready",
             "debt_amount": float(_decimal(debt_amount, money_scale)),
