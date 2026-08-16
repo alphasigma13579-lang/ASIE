@@ -16,6 +16,7 @@ from backend.finance_v2 import (
     monthly_periods,
     serialize_finance_result,
     validate_finance_input,
+    validate_finance_result_projection,
 )
 from backend.finance_v2.result import (
     _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES,
@@ -1315,4 +1316,36 @@ def test_model_cannot_inject_projection_only_missing_value_code() -> None:
             "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
         )
     _result_schema_validator().validate(output)
+
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+def test_semantic_validator_rejects_legacy_envelope_value_mismatch(
+    metric_id: str,
+) -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    output["metrics"][metric_id] = "999.000000"
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == f"$.metrics.{metric_id}"
+
+
+@pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
+def test_semantic_validator_compares_canonical_decimal_values(
+    metric_id: str,
+) -> None:
+    document = _annuity_debt_document()
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    envelope_value = output["debt_coverage_metrics"][metric_id]["value"]
+    assert envelope_value is not None
+    output["metrics"][metric_id] = envelope_value + "0"
+
+    validate_finance_result_projection(output)
 
