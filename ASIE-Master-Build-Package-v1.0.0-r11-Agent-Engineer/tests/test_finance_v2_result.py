@@ -7,7 +7,6 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-from jsonschema import Draft202012Validator, ValidationError
 
 from backend.finance_v2 import (
     FinanceContractError,
@@ -1128,7 +1127,14 @@ def test_missing_ready_metric_value_blocks_the_top_level_result() -> None:
     assert baseline["status"] == "not_ready"
     assert baseline["metrics"]["llcr"] is None
 
-def _result_schema_validator() -> Draft202012Validator:
+def _jsonschema():
+    return pytest.importorskip(
+        "jsonschema",
+        reason="install requirements-dev.txt to run JSON Schema tests",
+    )
+
+
+def _result_schema_validator():
     schema_path = (
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "schemas"
@@ -1136,8 +1142,9 @@ def _result_schema_validator() -> Draft202012Validator:
         / "finance-result.v2.schema.json"
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
+    jsonschema = _jsonschema()
+    jsonschema.Draft202012Validator.check_schema(schema)
+    return jsonschema.Draft202012Validator(schema)
 
 
 def test_result_schema_accepts_applicability_projections() -> None:
@@ -1217,7 +1224,7 @@ def test_result_schema_rejects_inconsistent_blocked_projection(
     metric["reason_code"] = reason_code
     metric["blocker_codes"] = blocker_codes
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(_jsonschema().ValidationError):
         validator.validate(invalid)
 
 
@@ -1229,7 +1236,7 @@ def test_result_schema_rejects_non_null_legacy_value_for_absent_envelope(
     invalid = copy.deepcopy(result())
     invalid["metrics"][metric_id] = "1.000000"
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(_jsonschema().ValidationError):
         validator.validate(invalid)
 
 
@@ -1302,7 +1309,7 @@ def test_result_schema_rejects_other_metrics_missing_value_code(
         else [wrong_code]
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(_jsonschema().ValidationError):
         validator.validate(invalid)
 
 
@@ -1407,7 +1414,7 @@ def test_schema_rejects_ready_result_with_unready_coverage(
         else ["FIN2_DSCR_MIN_VALUE_MISSING"]
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(_jsonschema().ValidationError):
         validator.validate(invalid)
 
 
@@ -1455,7 +1462,7 @@ def test_semantic_and_schema_validation_reject_ready_baseline_when_blocked() -> 
     assert error.value.code == (
         "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
     )
-    with pytest.raises(ValidationError):
+    with pytest.raises(_jsonschema().ValidationError):
         _result_schema_validator().validate(invalid)
 
 @pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
