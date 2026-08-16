@@ -1256,6 +1256,9 @@
               },
               "blocker_codes": {
                 "maxItems": 0
+              },
+              "reason_code": {
+                "const": "READY"
               }
             }
           }
@@ -1329,6 +1332,55 @@
               "value": {
                 "type": "string",
                 "pattern": "^0(?:\\.0{1,8})?$"
+              },
+              "lineage_refs": {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "NOT_APPLICABLE"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "const": "NO_DEBT_SERVICE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "NOT_READY"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "enum": [
+                  "CFADS_NOT_READY",
+                  "DEBT_SCHEDULE_NOT_READY",
+                  "CFADS_AND_DEBT_SCHEDULE_NOT_READY"
+                ]
               }
             }
           }
