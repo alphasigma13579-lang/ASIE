@@ -323,6 +323,19 @@ def validate_finance_result_projection(
                 ),
             )
         for metric_id in ("dscr_min", "llcr"):
+            blocker_codes = envelopes[metric_id]["blocker_codes"]
+            if blocker_codes != sorted(set(blocker_codes)):
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    (
+                        "$.debt_coverage_metrics."
+                        f"{metric_id}.blocker_codes"
+                    ),
+                    (
+                        "debt-coverage blocker codes must be unique and "
+                        "canonically sorted"
+                    ),
+                )
             envelope_value = _canonical_projection_value(
                 envelopes[metric_id]["value"],
                 ratio_scale,
