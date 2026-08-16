@@ -1324,6 +1324,35 @@ def test_model_cannot_inject_projection_only_missing_value_code() -> None:
         )
     _result_schema_validator().validate(output)
 
+
+def test_semantic_validator_rejects_noncanonical_blocker_order() -> None:
+    output = _serialize_debt_coverage_model_state(
+        cfads_ready=True,
+        debt_schedule_ready=True,
+        blockers=(
+            _coverage_blocker(
+                "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+                "$.financing",
+            ),
+            _coverage_blocker(
+                "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+                "$.cash_flows",
+            ),
+        ),
+    )
+    metric = output["debt_coverage_metrics"]["dscr_min"]
+    metric["blocker_codes"] = list(reversed(metric["blocker_codes"]))
+
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(output)
+    assert error.value.code == (
+        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH"
+    )
+    assert error.value.field_ref == (
+        "$.debt_coverage_metrics.dscr_min.blocker_codes"
+    )
+
+
 @pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
 def test_semantic_validator_rejects_legacy_envelope_value_mismatch(
     metric_id: str,
