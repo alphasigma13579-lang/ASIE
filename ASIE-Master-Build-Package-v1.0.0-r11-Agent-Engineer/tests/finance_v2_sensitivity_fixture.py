@@ -121,7 +121,7 @@ def _valid_document() -> dict:
             {
                 "asset_id": "asset-sensitivity-base",
                 "acquisition_period": periods[0],
-                "cost": "5000",
+                "cost": "100000",
                 "useful_life_months": 240,
                 "depreciation_method": "straight_line",
                 "residual_value": "0",

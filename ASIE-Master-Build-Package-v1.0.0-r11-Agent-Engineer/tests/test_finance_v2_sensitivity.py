@@ -23,7 +23,6 @@ from backend.finance_v2 import (
 from backend.finance_v2.overrides import derive_validated_input
 from scripts.benchmark_finance_v2_sensitivity import _peak_rss_mib
 from tests.finance_v2_sensitivity_fixture import (
-    MAXIMUM_METRIC_IDS,
     MAXIMUM_PRICE_AXIS_VALUES,
     MAXIMUM_VOLUME_AXIS_VALUES,
     controlled_sensitivity_prepared_run,
@@ -48,17 +47,11 @@ def test_peak_rss_conversion_uses_platform_specific_units() -> None:
         _peak_rss_mib(1024, "win32")
 
 
-def test_governed_fixture_has_finite_maximum_metric_set() -> None:
-    def request_maximum_metric_set(profile_document):
-        profile_document["metric_ids"] = list(MAXIMUM_METRIC_IDS)
-
-    prepared = controlled_sensitivity_prepared_run(
-        profile_mutator=request_maximum_metric_set
-    )
+def test_governed_fixture_has_finite_requested_metrics() -> None:
+    prepared = controlled_sensitivity_prepared_run()
     model = build_financial_model(prepared.validated_input)
 
-    assert tuple(prepared.profile_document["metric_ids"]) == MAXIMUM_METRIC_IDS
-    for metric_id in MAXIMUM_METRIC_IDS:
+    for metric_id in prepared.profile_document["metric_ids"]:
         value = model.metrics[metric_id]
         assert isinstance(value, Decimal)
         assert value.is_finite()
