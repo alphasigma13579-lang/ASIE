@@ -1488,37 +1488,37 @@ def test_semantic_and_schema_validation_reject_ready_baseline_when_blocked() -> 
         _result_schema_validator().validate(invalid)
 
 @pytest.mark.parametrize(
-    ("applicability_status", "reason_code", "blocker_codes"),
-    [
-        ("UNKNOWN", "DATA_AVAILABILITY_UNKNOWN", []),
-        ("NOT_READY", "CFADS_NOT_READY", []),
-        (
-            "BLOCKED",
-            "FIN2_DSCR_MIN_VALUE_MISSING",
-            ["FIN2_DSCR_MIN_VALUE_MISSING"],
-        ),
-    ],
+    "coverage_state",
+    ["UNKNOWN", "NOT_READY", "BLOCKED"],
 )
 @pytest.mark.parametrize("scenario_kind", ["baseline", "deterministic"])
 def test_schema_rejects_ready_scenario_for_every_unavailable_state(
-    applicability_status: str,
-    reason_code: str,
-    blocker_codes: list[str],
+    coverage_state: str,
     scenario_kind: str,
 ) -> None:
-    document = valid_document()
+    document = _annuity_debt_document()
     _add_deterministic_downside_scenario(document)
+    if coverage_state == "BLOCKED":
+        document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    else:
+        document["fiscal_policy"]["modules"] = ["vat"]
+        document["fiscal_policy"]["vat_rate"] = "0.15"
+
     validated = validate_finance_input(document, binding=binding())
     model = build_financial_model(validated)
     output = serialize_finance_result(validated, model)
-    metric = output["debt_coverage_metrics"]["dscr_min"]
-    metric["applicability_status"] = applicability_status
-    metric["reason_code"] = reason_code
-    metric["blocker_codes"] = blocker_codes
-    output["status"] = "not_ready"
-    for scenario in output["scenarios"]:
-        scenario["status"] = "not_ready"
+    if coverage_state == "UNKNOWN":
+        for metric in output["debt_coverage_metrics"].values():
+            metric["applicability_status"] = "UNKNOWN"
+            metric["reason_code"] = "DATA_AVAILABILITY_UNKNOWN"
+            metric["blocker_codes"] = []
 
+    assert output["status"] == "not_ready"
+    assert output["blockers"]
+    assert all(
+        scenario["status"] == "not_ready"
+        for scenario in output["scenarios"]
+    )
     validator = _result_schema_validator()
     validator.validate(output)
 
