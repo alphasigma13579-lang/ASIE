@@ -1349,6 +1349,7 @@
                     "properties": {
                       "applicability_status": {
                         "enum": [
+                          "UNKNOWN",
                           "NOT_READY",
                           "BLOCKED"
                         ]
@@ -1369,6 +1370,7 @@
                     "properties": {
                       "applicability_status": {
                         "enum": [
+                          "UNKNOWN",
                           "NOT_READY",
                           "BLOCKED"
                         ]
@@ -1396,15 +1398,11 @@
             "not": {
               "contains": {
                 "properties": {
-                  "kind": {
-                    "const": "baseline"
-                  },
                   "status": {
                     "const": "ready"
                   }
                 },
                 "required": [
-                  "kind",
                   "status"
                 ]
               }

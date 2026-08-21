@@ -417,11 +417,7 @@ def validate_finance_result_projection(
                     baseline["metrics"][metric_id],
                 ),
             ]
-            if envelope["applicability_status"] in {
-                "UNKNOWN",
-                "NOT_READY",
-                "BLOCKED",
-            }:
+            if coverage_is_unavailable:
                 consumers.extend(
                     (
                         "$.scenarios"
@@ -527,12 +523,12 @@ def _validate_legacy_debt_coverage_projection(
                 )
             )
         for field_ref, status in profile_statuses:
-            if status == "ready":
+            if status != "not_ready":
                 raise FinanceContractError(
                     "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
                     field_ref,
                     (
-                        "legacy debt-service profile cannot remain ready "
+                        "legacy debt-service profile must be not_ready "
                         "when governed debt coverage is unavailable"
                     ),
                 )

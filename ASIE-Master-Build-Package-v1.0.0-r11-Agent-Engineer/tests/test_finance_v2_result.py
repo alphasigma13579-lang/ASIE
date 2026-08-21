@@ -768,6 +768,25 @@ def _annuity_debt_document() -> dict:
     return document
 
 
+def _add_deterministic_downside_scenario(document: dict) -> None:
+    document["scenarios"].append(
+        {
+            "scenario_id": "scn_down",
+            "kind": "deterministic",
+            "overrides": [
+                {
+                    "target_ref": (
+                        "$.revenue_streams[rev-primary]."
+                        "volume_series[*].value"
+                    ),
+                    "operation": "multiply",
+                    "value": "0.9",
+                }
+            ],
+        }
+    )
+
+
 def test_no_debt_projects_dscr_and_llcr_as_not_applicable() -> None:
     output = result()
 
@@ -1468,6 +1487,53 @@ def test_semantic_and_schema_validation_reject_ready_baseline_when_blocked() -> 
     with pytest.raises(_jsonschema().ValidationError):
         _result_schema_validator().validate(invalid)
 
+@pytest.mark.parametrize(
+    ("applicability_status", "reason_code", "blocker_codes"),
+    [
+        ("UNKNOWN", "DATA_AVAILABILITY_UNKNOWN", []),
+        ("NOT_READY", "CFADS_NOT_READY", []),
+        (
+            "BLOCKED",
+            "FIN2_DSCR_MIN_VALUE_MISSING",
+            ["FIN2_DSCR_MIN_VALUE_MISSING"],
+        ),
+    ],
+)
+@pytest.mark.parametrize("scenario_kind", ["baseline", "deterministic"])
+def test_schema_rejects_ready_scenario_for_every_unavailable_state(
+    applicability_status: str,
+    reason_code: str,
+    blocker_codes: list[str],
+    scenario_kind: str,
+) -> None:
+    document = valid_document()
+    _add_deterministic_downside_scenario(document)
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    metric = output["debt_coverage_metrics"]["dscr_min"]
+    metric["applicability_status"] = applicability_status
+    metric["reason_code"] = reason_code
+    metric["blocker_codes"] = blocker_codes
+    output["status"] = "not_ready"
+    for scenario in output["scenarios"]:
+        scenario["status"] = "not_ready"
+
+    validator = _result_schema_validator()
+    validator.validate(output)
+
+    invalid = copy.deepcopy(output)
+    target = next(
+        scenario
+        for scenario in invalid["scenarios"]
+        if scenario["kind"] == scenario_kind
+    )
+    target["status"] = "ready"
+
+    with pytest.raises(_jsonschema().ValidationError):
+        validator.validate(invalid)
+
+
 @pytest.mark.parametrize("metric_id", ["dscr_min", "llcr"])
 def test_semantic_validator_normalizes_signed_zero(
     metric_id: str,
@@ -1737,9 +1803,11 @@ def test_semantic_validator_rejects_detached_metric_traceability(
         ),
     ],
 )
-def test_semantic_validator_rejects_ready_legacy_debt_profile(
+@pytest.mark.parametrize("invalid_status", ["ready", "unknown"])
+def test_semantic_validator_requires_not_ready_legacy_debt_profile(
     consumer: str,
     field_ref: str,
+    invalid_status: str,
 ) -> None:
     document = _annuity_debt_document()
     document["fiscal_policy"]["modules"] = ["vat"]
@@ -1754,11 +1822,11 @@ def test_semantic_validator_rejects_ready_legacy_debt_profile(
     invalid = json.loads(json.dumps(output))
     payload = invalid["legacy_projection"]["payload"]
     if consumer == "baseline_profile":
-        payload["baseline"]["debt_service_profile"]["status"] = "ready"
+        payload["baseline"]["debt_service_profile"]["status"] = invalid_status
     elif consumer == "profile":
-        payload["debt_service_profile"]["status"] = "ready"
+        payload["debt_service_profile"]["status"] = invalid_status
     else:
-        payload["scenarios"][0]["debt_service_profile"]["status"] = "ready"
+        payload["scenarios"][0]["debt_service_profile"]["status"] = invalid_status
 
     with pytest.raises(FinanceContractError) as error:
         validate_finance_result_projection(invalid)
@@ -1772,22 +1840,7 @@ def test_unavailable_coverage_is_suppressed_in_deterministic_scenario() -> None:
     document = _annuity_debt_document()
     document["fiscal_policy"]["modules"] = ["vat"]
     document["fiscal_policy"]["vat_rate"] = "0.15"
-    document["scenarios"].append(
-        {
-            "scenario_id": "scn_down",
-            "kind": "deterministic",
-            "overrides": [
-                {
-                    "target_ref": (
-                        "$.revenue_streams[rev-primary]."
-                        "volume_series[*].value"
-                    ),
-                    "operation": "multiply",
-                    "value": "0.9",
-                }
-            ],
-        }
-    )
+    _add_deterministic_downside_scenario(document)
     validated = validate_finance_input(document, binding=binding())
     model = build_financial_model(validated)
     output = serialize_finance_result(validated, model)
@@ -1808,6 +1861,50 @@ def test_unavailable_coverage_is_suppressed_in_deterministic_scenario() -> None:
         if scenario["kind"] == "deterministic"
     )
     invalid_scenario["metrics"]["dscr_min"] = "1.000000"
+    with pytest.raises(FinanceContractError) as error:
+        validate_finance_result_projection(invalid)
+    assert error.value.field_ref == (
+        "$.scenarios[scn_down].metrics.dscr_min"
+    )
+
+
+def test_mixed_coverage_state_validates_every_deterministic_metric() -> None:
+    document = _annuity_debt_document()
+    document["financing"]["debt_tranches"][0]["tenor_months"] = 1
+    _add_deterministic_downside_scenario(document)
+    validated = validate_finance_input(document, binding=binding())
+    model = build_financial_model(validated)
+    output = serialize_finance_result(validated, model)
+    deterministic = next(
+        scenario
+        for scenario in output["scenarios"]
+        if scenario["kind"] == "deterministic"
+    )
+
+    assert (
+        output["debt_coverage_metrics"]["dscr_min"][
+            "applicability_status"
+        ]
+        == "APPLICABLE"
+    )
+    assert (
+        output["debt_coverage_metrics"]["llcr"]["applicability_status"]
+        == "BLOCKED"
+    )
+    assert deterministic["status"] == "not_ready"
+    assert deterministic["metrics"]["dscr_min"] == (
+        output["debt_coverage_metrics"]["dscr_min"]["value"]
+    )
+    assert deterministic["metrics"]["llcr"] is None
+
+    invalid = copy.deepcopy(output)
+    invalid_scenario = next(
+        scenario
+        for scenario in invalid["scenarios"]
+        if scenario["kind"] == "deterministic"
+    )
+    invalid_scenario["metrics"]["dscr_min"] = "999.000000"
+
     with pytest.raises(FinanceContractError) as error:
         validate_finance_result_projection(invalid)
     assert error.value.field_ref == (
