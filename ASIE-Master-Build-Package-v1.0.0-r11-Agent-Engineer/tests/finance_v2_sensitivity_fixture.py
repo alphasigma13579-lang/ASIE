@@ -285,8 +285,10 @@ def _resolved_binding(
         distribution_variable_ids=(),
         dependency_hashes=(
             (
-                f"archetype:{archetype_ref['archetype_id']}@"
-                f"{archetype_ref['version']}",
+                (
+                    f"archetype:{archetype_ref['archetype_id']}@"
+                    f"{archetype_ref['version']}"
+                ),
                 archetype_ref["registry_hash"],
             ),
         ),

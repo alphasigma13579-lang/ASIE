@@ -31,7 +31,11 @@ def _canonical_json(value: object) -> str:
 
 def emit(output: Path) -> dict[str, object]:
     _ensure_repository_imports()
-    from backend.finance_v2 import canonical_sha256, evaluate_sensitivity
+    from backend.finance_v2 import (
+        canonical_json,
+        canonical_sha256,
+        evaluate_sensitivity,
+    )
     from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
 
     result = evaluate_sensitivity(controlled_sensitivity_prepared_run())
@@ -43,7 +47,7 @@ def emit(output: Path) -> dict[str, object]:
     ):
         raise RuntimeError("C3C result hash does not match its canonical preimage")
 
-    encoded = _canonical_json(payload).encode("utf-8")
+    encoded = canonical_json(payload).encode("utf-8")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(encoded)
     return {

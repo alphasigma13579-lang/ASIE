@@ -22,6 +22,9 @@ from backend.finance_v2 import (
 )
 from backend.finance_v2.overrides import derive_validated_input
 from scripts.benchmark_finance_v2_sensitivity import _peak_rss_mib
+from scripts.finance_v2_sensitivity_cross_platform import (
+    emit as emit_c3c_cross_platform,
+)
 from tests.finance_v2_sensitivity_fixture import (
     MAXIMUM_PRICE_AXIS_VALUES,
     MAXIMUM_VOLUME_AXIS_VALUES,
@@ -45,6 +48,19 @@ def test_peak_rss_conversion_uses_platform_specific_units() -> None:
     assert _peak_rss_mib(1024 * 1024, "darwin") == 1
     with pytest.raises(RuntimeError, match="unsupported ru_maxrss unit"):
         _peak_rss_mib(1024, "win32")
+
+
+def test_cross_platform_emitter_uses_finance_canonical_bytes(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "c3c-sensitivity.json"
+    summary = emit_c3c_cross_platform(output)
+    encoded = output.read_bytes()
+    payload = json.loads(encoded.decode("utf-8"))
+
+    assert encoded == canonical_json(payload).encode("utf-8")
+    assert summary["bytes"] == len(encoded)
+    assert summary["result_hash"] == payload["result_hash"]
 
 
 def test_governed_fixture_has_finite_requested_metrics() -> None:
@@ -563,6 +579,9 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
         "minLength"
     ] == 1
     assert schema["properties"]["axis_ids"]["items"]["minLength"] == 1
+    axis_properties = schema["properties"]["axes"]["items"]["properties"]
+    assert axis_properties["axis_id"]["minLength"] == 1
+    assert axis_properties["target_ref"]["minLength"] == 1
     assert {
         "organization_id",
         "project_id",
@@ -729,7 +748,7 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
 def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def mutate(profile_document):
+    def mutate(profile_document: dict[str, Any]) -> None:
         profile_document["axes"][0]["values"] = list(
             MAXIMUM_PRICE_AXIS_VALUES
         )
@@ -743,7 +762,11 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
     derivations = 0
     representative = build_financial_model(prepared.validated_input)
 
-    def derived(_validated, overrides, _field_ref):
+    def derived(
+        _validated: Any,
+        overrides: list[dict[str, Any]],
+        _field_ref: str,
+    ) -> Any:
         nonlocal derivations
         derivations += 1
         row_value = overrides[-2]["value"]
@@ -753,7 +776,7 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
         )
         return replace(prepared.validated_input, input_hash=input_hash)
 
-    def counted(validated):
+    def counted(validated: Any) -> Any:
         nonlocal builds
         builds += 1
         return replace(
@@ -782,6 +805,41 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
     assert derivations == 441
     assert builds == 441
     assert all(not hasattr(cell, "model") for cell in result.cells)
+
+
+def test_cell_count_above_hard_maximum_is_rejected_before_any_cell_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mutate(profile_document: dict[str, Any]) -> None:
+        profile_document["axes"][0]["values"] = list(
+            MAXIMUM_PRICE_AXIS_VALUES
+        )
+        profile_document["axes"][1]["values"] = list(
+            MAXIMUM_VOLUME_AXIS_VALUES
+        )
+        profile_document["maximum_cells"] = 441
+
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
+    build_calls = 0
+
+    def unexpected_build(_validated: Any) -> Any:
+        nonlocal build_calls
+        build_calls += 1
+        raise AssertionError("model must not be built above the hard cell cap")
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "build_financial_model",
+        unexpected_build,
+    )
+    monkeypatch.setattr(sensitivity_module, "_HARD_MAXIMUM_CELLS", 440)
+
+    with pytest.raises(FinanceContractError) as error:
+        evaluate_sensitivity(prepared)
+
+    assert error.value.code == "FIN2_SENSITIVITY_CELL_LIMIT"
+    assert error.value.field_ref == "$.maximum_cells"
+    assert build_calls == 0
 
 
 def test_releases_each_model_before_building_the_next_cell(
@@ -1019,6 +1077,30 @@ def test_unavailable_metric_fails_atomically(
         result.blockers[0]["cause_code"]
         == "FIN2_SENSITIVITY_METRIC_UNAVAILABLE"
     )
+
+
+def test_metric_projection_preserves_full_finite_decimal_precision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = controlled_sensitivity_prepared_run()
+    original = sensitivity_module.build_financial_model
+    metric_id = prepared.profile_document["metric_ids"][0]
+    expected = Decimal("0.123456789123456789")
+
+    def precise(validated: Any) -> Any:
+        model = original(validated)
+        metrics = dict(model.metrics)
+        metrics[metric_id] = expected
+        return replace(model, metrics=metrics)
+
+    monkeypatch.setattr(sensitivity_module, "build_financial_model", precise)
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "dark_ready"
+    assert result.cells
+    assert {cell.metrics[metric_id] for cell in result.cells} == {
+        "0.123456789123456789"
+    }
 
 
 def test_non_finite_metric_fails_atomically_with_structured_provenance(
