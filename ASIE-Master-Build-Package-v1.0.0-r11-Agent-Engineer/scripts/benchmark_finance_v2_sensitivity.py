@@ -9,6 +9,7 @@ import math
 import platform
 import sys
 import time
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 RUNTIME_CEILING_SECONDS = 10.7
@@ -18,19 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.finance_v2 import evaluate_sensitivity, monthly_periods
-from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
-
-
-_METRIC_IDS = [
-    "npv_unlevered",
-    "irr_unlevered",
-    "mirr_unlevered",
-    "payback_months",
-    "break_even",
-    "funding_need",
-    "dscr_min",
-    "llcr",
-]
+from tests.finance_v2_sensitivity_fixture import (
+    MAXIMUM_METRIC_IDS,
+    MAXIMUM_PRICE_AXIS_VALUES,
+    MAXIMUM_VOLUME_AXIS_VALUES,
+    controlled_sensitivity_prepared_run,
+)
 
 
 def _max_input(document: dict) -> None:
@@ -60,9 +54,13 @@ def _max_input(document: dict) -> None:
 
 
 def _max_profile(profile_document: dict) -> None:
-    profile_document["axes"][0]["values"] = [str(value) for value in range(1, 22)]
-    profile_document["axes"][1]["values"] = [str(value) for value in range(1, 22)]
-    profile_document["metric_ids"] = list(_METRIC_IDS)
+    profile_document["axes"][0]["values"] = list(
+        MAXIMUM_PRICE_AXIS_VALUES
+    )
+    profile_document["axes"][1]["values"] = list(
+        MAXIMUM_VOLUME_AXIS_VALUES
+    )
+    profile_document["metric_ids"] = list(MAXIMUM_METRIC_IDS)
     profile_document["maximum_cells"] = 441
 
 
@@ -81,6 +79,39 @@ def _peak_rss_mib(ru_maxrss: float, platform_name: str = sys.platform) -> float:
     )
 
 
+def _assert_complete_maximum_result(result) -> None:
+    if (
+        result.status != "dark_ready"
+        or result.cell_count != 441
+        or len(result.cells) != 441
+        or tuple(result.metric_ids) != MAXIMUM_METRIC_IDS
+    ):
+        raise RuntimeError(
+            "C3C benchmark did not produce the complete "
+            "441-cell, 240-period, eight-metric dark result"
+        )
+    for cell in result.cells:
+        cell_metrics = cell.metrics
+        if tuple(cell_metrics) != MAXIMUM_METRIC_IDS:
+            raise RuntimeError(
+                "C3C benchmark cell metrics do not match the governed "
+                "eight-metric order"
+            )
+        try:
+            values = tuple(
+                Decimal(cell_metrics[metric_id])
+                for metric_id in MAXIMUM_METRIC_IDS
+            )
+        except (InvalidOperation, KeyError, TypeError) as exc:
+            raise RuntimeError(
+                "C3C benchmark cell contains a missing or invalid metric"
+            ) from exc
+        if not all(value.is_finite() for value in values):
+            raise RuntimeError(
+                "C3C benchmark cell contains a non-finite metric"
+            )
+
+
 def _one_run() -> float:
     prepared = controlled_sensitivity_prepared_run(
         input_mutator=_max_input,
@@ -91,16 +122,7 @@ def _one_run() -> float:
     started = time.perf_counter()
     result = evaluate_sensitivity(prepared)
     elapsed = time.perf_counter() - started
-    if (
-        result.status != "dark_ready"
-        or len(result.cells) != 441
-        or tuple(result.metric_ids) != tuple(_METRIC_IDS)
-        or any(len(cell.metrics) != 8 for cell in result.cells)
-    ):
-        raise RuntimeError(
-            "C3C benchmark did not produce the complete "
-            "441-cell, 240-period, eight-metric dark result"
-        )
+    _assert_complete_maximum_result(result)
     return elapsed
 
 

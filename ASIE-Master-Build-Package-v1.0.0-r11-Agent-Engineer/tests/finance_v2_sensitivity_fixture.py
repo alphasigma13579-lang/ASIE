@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
 from collections.abc import Callable
+from dataclasses import replace
+from decimal import Decimal
 
 from backend.finance_v2 import (
     SensitivityExecutionBinding,
@@ -22,6 +23,23 @@ from backend.finance_v2.risk_profiles import (
 
 _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
 _VOLUME = "$.revenue_streams[rev-primary].volume_series[*].value"
+
+MAXIMUM_METRIC_IDS = (
+    "npv_unlevered",
+    "irr_unlevered",
+    "mirr_unlevered",
+    "payback_months",
+    "break_even",
+    "funding_need",
+    "dscr_min",
+    "llcr",
+)
+MAXIMUM_PRICE_AXIS_VALUES = tuple(str(20 + index) for index in range(21))
+MAXIMUM_VOLUME_AXIS_VALUES = tuple(
+    format(Decimal("0.80") + Decimal(index) * Decimal("0.02"), "f")
+    for index in range(21)
+)
+
 _POLICY_HASH = "sha256:" + "c" * 64
 _REGISTRY_HASH = "sha256:" + "d" * 64
 _MANIFEST_HASH = "sha256:" + "e" * 64
@@ -99,7 +117,17 @@ def _valid_document() -> dict:
             }
         ],
         "operating_costs": [],
-        "capex_assets": [],
+        "capex_assets": [
+            {
+                "asset_id": "asset-sensitivity-base",
+                "acquisition_period": periods[0],
+                "cost": "100000",
+                "useful_life_months": 240,
+                "depreciation_method": "straight_line",
+                "residual_value": "0",
+                "lineage": lineage(),
+            }
+        ],
         "working_capital": {
             "mode": "days",
             "dso_days": "15",
@@ -111,7 +139,22 @@ def _valid_document() -> dict:
             "equity_contributions": [
                 {"period": periods[0], "amount": "100000", "lineage": lineage()}
             ],
-            "debt_tranches": [],
+            "debt_tranches": [
+                {
+                    "tranche_id": "debt-sensitivity-base",
+                    "drawdowns": [
+                        {"period": periods[0], "amount": "1200"}
+                    ],
+                    "annual_rate": "0",
+                    "tenor_months": 12,
+                    "principal_grace_months": 0,
+                    "interest_grace_policy": "paid",
+                    "repayment_profile": "equal_principal",
+                    "fee_treatment": "expense_upfront",
+                    "fees": [],
+                    "lineage": lineage(),
+                }
+            ],
         },
         "fiscal_policy": {
             "policy_id": "fiscal-none",

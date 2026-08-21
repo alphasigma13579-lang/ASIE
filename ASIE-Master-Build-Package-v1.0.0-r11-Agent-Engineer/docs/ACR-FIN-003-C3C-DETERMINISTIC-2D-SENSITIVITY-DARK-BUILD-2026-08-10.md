@@ -136,8 +136,16 @@ Server-owned ValidatedFinanceInput
 - `row_index`, `column_index`
 - قيمة المحور الأول والثاني كسلاسل Decimal canonical
 - `derived_input_hash`
-- metrics المطلوبة فقط كسلاسل Decimal canonical أو null حقيقي إذا كان metric نفسه غير قابل للتعريف وفق Finance؛ لا missing→zero
+- metrics المطلوبة فقط كسلاسل Decimal canonical؛ إذا كان أي metric غير قابل
+  للتعريف أو غير متاح وفق Finance، تفشل المصفوفة ذريًا وفق `T-C3C-010`
+  وتكون `cells=[]`؛ لا null ولا missing→zero ولا grid جزئية
 - لا periods، debt schedule أو raw input document.
+
+يتوافق ذلك مع حالات applicability في `ACR-FIN-004`: عقد
+`finance-sensitivity-result.v1` لا يحمل metric envelopes، لذلك لا يجوز إسقاط
+`NOT_APPLICABLE` أو `UNKNOWN` أو `NOT_READY` أو `BLOCKED` كقيمة خلية. إذا اختار
+الـprofile metric لا يملك قيمة `APPLICABLE` منتهية في أي خلية، تكون النتيجة
+`not_ready` ذريًا بلا خلايا.
 
 الترتيب canonical:
 

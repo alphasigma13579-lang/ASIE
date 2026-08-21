@@ -22,7 +22,12 @@ from backend.finance_v2 import (
 )
 from backend.finance_v2.overrides import derive_validated_input
 from scripts.benchmark_finance_v2_sensitivity import _peak_rss_mib
-from tests.finance_v2_sensitivity_fixture import controlled_sensitivity_prepared_run
+from tests.finance_v2_sensitivity_fixture import (
+    MAXIMUM_METRIC_IDS,
+    MAXIMUM_PRICE_AXIS_VALUES,
+    MAXIMUM_VOLUME_AXIS_VALUES,
+    controlled_sensitivity_prepared_run,
+)
 
 
 _PRICE = "$.revenue_streams[rev-primary].price_series[*].value"
@@ -41,6 +46,22 @@ def test_peak_rss_conversion_uses_platform_specific_units() -> None:
     assert _peak_rss_mib(1024 * 1024, "darwin") == 1
     with pytest.raises(RuntimeError, match="unsupported ru_maxrss unit"):
         _peak_rss_mib(1024, "win32")
+
+
+def test_governed_fixture_has_finite_maximum_metric_set() -> None:
+    def request_maximum_metric_set(profile_document):
+        profile_document["metric_ids"] = list(MAXIMUM_METRIC_IDS)
+
+    prepared = controlled_sensitivity_prepared_run(
+        profile_mutator=request_maximum_metric_set
+    )
+    model = build_financial_model(prepared.validated_input)
+
+    assert tuple(prepared.profile_document["metric_ids"]) == MAXIMUM_METRIC_IDS
+    for metric_id in MAXIMUM_METRIC_IDS:
+        value = model.metrics[metric_id]
+        assert isinstance(value, Decimal)
+        assert value.is_finite()
 
 
 def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
@@ -716,8 +737,12 @@ def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def mutate(profile_document):
-        profile_document["axes"][0]["values"] = [str(value) for value in range(1, 22)]
-        profile_document["axes"][1]["values"] = [str(value) for value in range(1, 22)]
+        profile_document["axes"][0]["values"] = list(
+            MAXIMUM_PRICE_AXIS_VALUES
+        )
+        profile_document["axes"][1]["values"] = list(
+            MAXIMUM_VOLUME_AXIS_VALUES
+        )
         profile_document["maximum_cells"] = 441
 
     prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
