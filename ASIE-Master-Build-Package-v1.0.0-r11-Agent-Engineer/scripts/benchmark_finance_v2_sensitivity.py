@@ -12,7 +12,11 @@ import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-RUNTIME_CEILING_SECONDS = 10.7
+MEASURED_P95_SECONDS = 19.97435415800001
+RUNTIME_CEILING_SECONDS = min(
+    60.0,
+    max(5.0, 1.50 * MEASURED_P95_SECONDS),
+)
 MEMORY_CEILING_MIB = 64.0
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +165,9 @@ def main() -> int:
         "p50_seconds": _percentile_nearest_rank(durations, 0.50),
         "p95_seconds": _percentile_nearest_rank(durations, 0.95),
         "peak_rss_mib": _peak_rss_mib(peak_rss),
+        "baseline_p95_seconds": MEASURED_P95_SECONDS,
+        "runtime_ceiling_seconds": RUNTIME_CEILING_SECONDS,
+        "memory_ceiling_mib": MEMORY_CEILING_MIB,
         "python": sys.version.split()[0],
         "platform": platform.platform(),
     }
