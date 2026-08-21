@@ -1,30 +1,50 @@
 # FINANCE-V2-S2C3C — Deterministic Sensitivity Benchmark Evidence
 
-- Status: `FINAL_IMPLEMENTATION_VERIFIED_AWAITING_EVIDENCE_HEAD_CI_AND_INDEPENDENT_REVIEW`
+- Evidence version: `v2.0.0`
+- Status: `IMPLEMENTATION_SOURCE_VERIFIED_AWAITING_EVIDENCE_COMMIT_GATES`
+- Owner: Finance Engineering + Principal Architecture
+- Last verified: 2026-08-21
 - Scope: C3C deterministic 2D sensitivity dark build only
-- Governing decision: `ACR-FIN-003-C3C-v1.0.0`
-- Verified implementation source SHA: `6e08d76a831f45f3958a7c97bb50a930bf4a7948`
-- ASIE CI verification: [#389](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31894041767)
-- Cross-platform verification: [#239](https://github.com/alphasigma13579-lang/ASIE/actions/runs/31894041773)
+- Governing decisions: `ACR-FIN-003-C3C-v1.0.0` and `ACR-FIN-004-v0.2.0`
+- Verified implementation source SHA: `c110006713765b7070d37851632ceab6db82a63b`
+- ASIE CI verification: [#446](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32515874702)
+- Cross-platform verification: [#297](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32515874825)
+
+## Decision and claim boundary
+
+The verified source implements deterministic C3C only. It proves bounded,
+repeatable execution of an approved two-axis profile. It does not authorize
+Runtime, Snapshot, provider, network, professional, bank, G1, or production
+use. It does not establish calibration quality, financing readiness, or the
+later C3D-C3F gates.
 
 ## Correction record
 
-The earlier #343 measurement is superseded. Its fixture executed 12 periods and
-two metrics while its output labels stated the governed caps of 240 periods and
-eight metrics. PR #136 review identified that mismatch. The corrected harness
-constructs and asserts the actual maximum supported workload before timing.
+Earlier benchmark records are superseded because their fixture executed 12
+periods and two metrics while labeling the workload as 240 periods and eight
+metrics. The current harness constructs the actual maximum workload and rejects
+a sample unless the complete result is present.
 
-Run #345 intentionally retained the former 5.0-second ceiling for the first
-corrected measurement. All 834 Python tests passed, then the benchmark failed
-only because the corrected p95 exceeded that stale ceiling. That failure
-provided the corrected baseline used to derive the automated ceilings below; it
-is not represented as a passing gate.
+The repair deliberately kept the fail-closed contract. A selected metric that
+is absent, non-finite, or not applicable to a result contract without
+applicability envelopes makes the whole sensitivity result `not_ready` with
+`cells=[]`; it is never replaced by null or zero.
 
-Subsequent review also required the cross-platform workflow to emit and compare
-the actual C3C canonical result, rather than relying only on the pre-existing
-general deterministic vector. Run #239 performs that comparison across Linux
-and Windows under `PYTHONHASHSEED=0` and `PYTHONHASHSEED=7919`. The verified
-result hash includes organization, project, and run provenance.
+Two intermediate failures prevented false closure:
+
+- [ASIE CI #443](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32513123742) rejected a test that incorrectly demanded all eight metrics from
+  the 12-period default fixture.
+- [Cross-Platform #295](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32513914559) rejected a fixture-value change that pushed default-grid
+  IRR outside the supported solver range and therefore produced an atomic
+  `not_ready` result.
+- [ASIE CI #445](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32515050281) then passed all 884 Python tests and completed the true maximum
+  workload, but correctly failed the stale 10.7-second gate. That run became
+  the governed full-workload baseline.
+- The final source #446 preserved the workload, applied the ACR ceiling formula,
+  and passed the complete test and benchmark gates.
+
+No engine behavior, IRR solver range, metric availability rule, or hard cap was
+weakened to obtain a green result.
 
 ## Method
 
@@ -33,65 +53,85 @@ warm-up followed by three full-path executions of an admitted 21×21 profile:
 
 `prepare → 441 × (derive validated input → full Finance v2 model over 240 periods → project 8 metrics) → atomic result`
 
-Before accepting a timing sample, the harness asserts:
+Before accepting any timing sample, the harness asserts:
 
 - exactly 240 validated monthly periods;
-- exactly 441 ordered cells;
-- exactly the eight governed sensitivity metrics in every cell;
-- `dark_ready` status.
+- `status="dark_ready"`;
+- `cell_count=441` and exactly 441 ordered cells;
+- the exact eight governed metric IDs in their governed order;
+- the exact eight keys in every cell;
+- successful Decimal parsing and `is_finite()` for every one of the
+  `441×8=3,528` projected values.
 
-It uses the production C3C engine with no monkeypatch, cache, network,
-Runtime, Snapshot, or provider call.
+It uses the production C3C engine with no monkeypatch, cache, network, Runtime,
+Snapshot, or provider call.
 
 | Parameter | Value |
 |---|---:|
 | K | 441 |
 | Periods | 240 |
-| Metrics | 8 |
+| Metrics per cell | 8 |
+| Finite metric values asserted per trial | 3,528 |
 | Warm-ups | 1 |
 | Measured trials | 3 |
 | Python | 3.13.15 |
 | Runner platform | Linux 6.17.0-1022-azure x86_64 |
 
-## Corrected baseline and exact implementation verification
+## Full-workload baseline
 
-The corrected #345 baseline remains the source for the governed ceiling:
+[ASIE CI #445](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32515050281) measured the corrected maximum workload at source
+`38952be0c713bc42ae14f039e14784cd426c09c2`. The workload and finite-value
+assertions completed successfully; only the superseded 10.7-second gate failed.
 
 | Baseline measure | Value |
 |---|---:|
-| Trial 1 | 7.120399158 s |
-| Trial 2 | 7.080133590 s |
-| Trial 3 | 7.081234730 s |
-| p50 | 7.081234730 s |
-| p95 | 7.120399158 s |
-| Peak RSS | 33.05859375 MiB |
+| Trial 1 | 19.97435415800001 s |
+| Trial 2 | 19.925822582999984 s |
+| Trial 3 | 19.916704827000018 s |
+| p50 | 19.925822582999984 s |
+| p95 | 19.97435415800001 s |
+| Peak RSS | 22.85546875 MiB |
 
-Run #389 verified the final repaired implementation head against those ceilings:
+## Automated ceilings
+
+The governing ACR formula is applied directly:
+
+- runtime:
+  `min(60, max(5, 1.50 × 19.97435415800001)) = 29.961531237000017s`;
+- memory baseline calculation:
+  `1.25 × 22.85546875 = 28.5693359375MiB`;
+- enforced memory ceiling: `64.0MiB`, because the governed floor is 64MiB.
+
+The runtime ceiling remains below the 60-second hard cap. The memory ceiling
+remains below the 256MiB hard cap. The workload is not reduced and the hard
+caps are unchanged.
+
+The harness emits the baseline p95, runtime ceiling, and memory ceiling in its
+JSON evidence so the gate cannot be separated from its provenance.
+
+## Exact implementation verification
+
+ASIE CI #446 verified
+`c110006713765b7070d37851632ceab6db82a63b`:
 
 | Verification measure | Value |
 |---|---:|
-| Python tests | 882 passed |
-| Trial 1 | 8.966687895 s |
-| Trial 2 | 8.924399990 s |
-| Trial 3 | 8.885724415 s |
-| p50 | 8.924399990 s |
-| p95 | 8.966687895 s |
-| Peak RSS | 22.65625 MiB |
-| Runtime ceiling | 10.7 s — passed |
+| Python tests | 884 passed |
+| Warnings | 10 |
+| Test duration | 78.84 s |
+| Trial 1 | 19.342305273999983 s |
+| Trial 2 | 19.408510444 s |
+| Trial 3 | 19.459285378000004 s |
+| p50 | 19.408510444 s |
+| p95 | 19.459285378000004 s |
+| Peak RSS | 23.66796875 MiB |
+| Runtime ceiling | 29.961531237000017 s — passed |
 | Memory ceiling | 64.0 MiB — passed |
-
-The final implementation additionally requires exact boolean values at every C3C authority, admission, dark-readiness, runtime-eligibility, and global-permission gate; malformed truthy/falsy substitutes fail closed before any cell build.
-
-The final review-repair head also makes the shared governed fixture independent
-of every `test_*.py` module and of `pytest`, so the unittest-only
-cross-platform emitter runs with the standard library plus production package
-only. The fixture retains its original finance-input and risk-profile lineage;
-therefore the canonical C3C result and serialized hashes remain unchanged.
 
 ## Cross-platform canonical evidence
 
-Run #239 emitted the actual C3C 3×3 canonical result in all four matrix jobs and
-compared the files byte-for-byte:
+Cross-Platform #297 emitted the actual C3C 3×3 canonical result in all four
+matrix jobs and compared the files byte-for-byte:
 
 | Evidence | Value |
 |---|---|
@@ -99,32 +139,29 @@ compared the files byte-for-byte:
 | Hash seeds | 0, 7919 |
 | Canonical files compared | 4 |
 | Comparison status | `byte_identical` |
-| C3C result hash | `sha256:2cba97ca5e388d9826928b7064b76d6d328c3472332fdc43849e2e5d9f3f9280` |
-| Serialized SHA-256 | `sha256:b007c120134ae0c55ec98087fc73385f8a7a0709e97587dbf1e5d0066d675f3a` |
+| C3C result hash | `sha256:118149783a246f1697287f4c23598e7da09367fdcbd12ab7c67b588706aaa48e` |
+| Serialized SHA-256 | `sha256:162486eed3d5d157791b9d4cb6e211dae15cfbf7287cd685e4375ad80136cc4b` |
 
-## Automated ceilings
+## Traceability
 
-The governing ACR formula is applied without relaxation:
+| Requirement | Implementation/evidence |
+|---|---|
+| T-C3C-007 maximum grid | benchmark asserts 441 ordered cells |
+| T-C3C-010 unavailable metric | atomic `not_ready`, empty cells, no null/zero |
+| T-C3C-015 cross-platform result | Cross-Platform #297, four byte-identical files |
+| T-C3C-016 protected paths | no Runtime, Snapshot, Decision Council, or AAS freeze file changed |
+| T-C3C-017 dark import boundary | existing import-boundary tests, 884-test suite |
+| T-C3C-018 performance evidence | ASIE CI #445 baseline and #446 passing gate |
 
-- raw runtime formula: `1.50 × 7.120399158 = 10.680598737s`;
-- enforced runtime ceiling: `10.7s`, rounded upward to one decimal place;
-- raw memory formula: `1.25 × 33.05859375 = 41.3232421875MiB`;
-- enforced memory ceiling: `64.0MiB`, because the governed floor is 64MiB.
-
-Both remain below the ACR hard caps of 60 seconds and 256MiB. The corrected
-harness identifier is
-`finance-v2-c3c-deterministic-21x21-max-workload.v2`.
-
-The evidence-document commit necessarily descends from the measured
-implementation SHA. Its own exact-head CI status must therefore be recorded in
-PR #136 metadata after this document-only update completes. Independent
-architecture/security review remains required.
-
-Nothing here authorizes Runtime/Snapshot use or a professional, bank, G1,
-production, network, or provider claim.
+The evidence-document commit necessarily descends from the verified
+implementation source. It cannot embed its own SHA without changing that SHA.
+Its exact-head CI and reviewer status must therefore be verified from PR #136
+after this document update. The source SHA and measured runs above remain the
+immutable implementation evidence.
 
 ## Residual boundaries
 
-This evidence validates deterministic C3C performance only. It does not
-validate calibration quality, RNG, distributions, correlation, convergence,
-financing readiness, external data, or any later C3D–C3F/G1 gate.
+This evidence validates deterministic C3C correctness, bounded maximum-workload
+execution, and cross-platform canonical equality only. It does not validate
+calibration quality, RNG, distributions, correlation, convergence, professional
+finance approval, external data, or any later C3D-C3F/G1 gate.
