@@ -8,6 +8,7 @@ import pytest
 
 import backend.finance_v2.overrides as overrides_module
 from backend.finance_v2 import (
+    FinanceContractError,
     build_financial_model,
     canonical_json,
     serialize_finance_result,
