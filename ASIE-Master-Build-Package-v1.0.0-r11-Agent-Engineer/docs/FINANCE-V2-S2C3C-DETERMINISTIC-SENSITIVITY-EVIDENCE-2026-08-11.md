@@ -1,14 +1,14 @@
 # FINANCE-V2-S2C3C — Deterministic Sensitivity Benchmark Evidence
 
-- Evidence version: `v2.3.0`
-- Status: `FINAL_REVIEW_REGRESSION_SOURCE_VERIFIED_AWAITING_EVIDENCE_HEAD_GATES`
+- Evidence version: `v2.4.0`
+- Status: `FINAL_REVIEW_GAP_REPAIR_SOURCE_VERIFIED_AWAITING_EVIDENCE_HEAD_GATES`
 - Owner: Finance Engineering + Principal Architecture
 - Last verified: 2026-08-22
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decisions: `ACR-FIN-003-C3C-v1.0.0` and `ACR-FIN-004-v0.2.0`
-- Verified implementation source SHA: `4ffed9002ddc31d8c92c1516c7cb21cc90a4d49d`
-- ASIE CI verification: [#452](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32541476256)
-- Cross-platform verification: [#303](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32541476246)
+- Verified implementation source SHA: `271606804293f6f831fb47e3b14a04843ccb924d`
+- ASIE CI verification: [#455](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32542989778)
+- Cross-platform verification: [#306](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32542989781)
 
 ## Decision and claim boundary
 
@@ -20,8 +20,8 @@ later C3D-C3F gates.
 
 ## Final review-repair scope
 
-The verified source incorporates independent audits of eleven findings across
-the three exact-head CodeRabbit reviews without treating their suggestions as
+The verified source incorporates independent audits of the actionable findings
+across four exact-head CodeRabbit reviews without treating their suggestions as
 authority:
 
 - it keeps Finance-model metric Decimals at full finite precision and documents
@@ -43,7 +43,13 @@ authority:
   equivalent input baseline for identical cell input hashes and metrics, and
   pins the fixed-override failure as an atomic `not_ready` result;
 - it states that the mocked 441-cell test proves grid structure and invocation
-  counts while the CI benchmark exercises the real 441×240×8 path; and
+  counts while the CI benchmark exercises the real 441×240×8 path;
+- it rejects unsupported shared-kernel operations instead of falling through
+  to addition, with a direct regression test;
+- it requires unique top-level result `axis_ids`; admitted profiles already
+  reject duplicate axis IDs and require at least two values per axis;
+- it guards the exact C3C emit/compare workflow commands, retains diagnostic
+  evidence on comparison failure, and bounds CI execution time; and
 - it leaves engine calculations, the 441-cell hard cap, fail-closed behavior,
   and all protected paths unchanged.
 
@@ -59,13 +65,16 @@ is absent, non-finite, or not applicable to a result contract without
 applicability envelopes makes the whole sensitivity result `not_ready` with
 `cells=[]`; it is never replaced by null or zero.
 
-Two intermediate failures prevented false closure:
+Three intermediate failures prevented false closure:
 
 - [ASIE CI #443](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32513123742) rejected a test that incorrectly demanded all eight metrics from
   the 12-period default fixture.
 - [Cross-Platform #295](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32513914559) rejected a fixture-value change that pushed default-grid
   IRR outside the supported solver range and therefore produced an atomic
   `not_ready` result.
+- [ASIE CI #454](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32542837786) rejected the final-gap test because its
+  `FinanceContractError` import was missing; the one-line test import was
+  corrected before rerunning every gate.
 
 The corrected baseline and subsequent verified sources were separate events:
 
@@ -77,7 +86,9 @@ The corrected baseline and subsequent verified sources were separate events:
 - ASIE CI #448 and Cross-Platform #299 verified the first review-repair source.
 - ASIE CI #450 and Cross-Platform #301 verified the schema and integrity
   review-repair source.
-- ASIE CI #452 and Cross-Platform #303 verified the final regression source
+- ASIE CI #452 and Cross-Platform #303 verified the fixed-override regression
+  source.
+- ASIE CI #455 and Cross-Platform #306 verified the final gap-repair source
   without changing the workload, hard caps, financial calculations, or
   canonical C3C result.
 
@@ -149,26 +160,26 @@ JSON evidence so the gate cannot be separated from its provenance.
 
 ## Exact implementation verification
 
-ASIE CI #452 verified
-`4ffed9002ddc31d8c92c1516c7cb21cc90a4d49d`:
+ASIE CI #455 verified
+`271606804293f6f831fb47e3b14a04843ccb924d`:
 
 | Verification measure | Value |
 |---|---:|
-| Python tests | 889 passed |
+| Python tests | 890 passed |
 | Warnings | 10 |
-| Test duration | 79.21 s |
-| Trial 1 | 19.684637107000015 s |
-| Trial 2 | 19.718075580000004 s |
-| Trial 3 | 19.682315998000007 s |
-| p50 | 19.684637107000015 s |
-| p95 | 19.718075580000004 s |
-| Peak RSS | 22.82421875 MiB |
+| Test duration | 78.43 s |
+| Trial 1 | 19.403038527999996 s |
+| Trial 2 | 19.558964340000017 s |
+| Trial 3 | 19.546192899999966 s |
+| p50 | 19.546192899999966 s |
+| p95 | 19.558964340000017 s |
+| Peak RSS | 22.93359375 MiB |
 | Runtime ceiling | 29.961531237000017 s — passed |
 | Memory ceiling | 64.0 MiB — passed |
 
 ## Cross-platform canonical evidence
 
-Cross-Platform #303 emitted the actual C3C 3×3 canonical result in all four
+Cross-Platform #306 emitted the actual C3C 3×3 canonical result in all four
 matrix jobs and compared the files byte-for-byte:
 
 | Evidence | Value |
@@ -186,10 +197,10 @@ matrix jobs and compared the files byte-for-byte:
 |---|---|
 | T-C3C-007 maximum grid | benchmark asserts 441 ordered cells |
 | T-C3C-010 unavailable metric | atomic `not_ready`, empty cells, no null/zero |
-| T-C3C-015 cross-platform result | Cross-Platform #303, four byte-identical files |
+| T-C3C-015 cross-platform result | Cross-Platform #306, four byte-identical files |
 | T-C3C-016 protected paths | no Runtime, Snapshot, Decision Council, or AAS freeze file changed |
-| T-C3C-017 dark import boundary | existing import-boundary tests, 889-test suite |
-| T-C3C-018 performance evidence | ASIE CI #445 baseline and #452 passing gate |
+| T-C3C-017 dark import boundary | existing import-boundary tests, 890-test suite |
+| T-C3C-018 performance evidence | ASIE CI #445 baseline and #455 passing gate |
 
 The evidence-document commit necessarily descends from the verified
 implementation source. It cannot embed its own SHA without changing that SHA.
