@@ -4,7 +4,11 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
+import backend.finance_v2.overrides as overrides_module
 from backend.finance_v2 import (
+    FinanceContractError,
     build_financial_model,
     canonical_json,
     serialize_finance_result,
@@ -20,6 +24,53 @@ def _serialize(document):
     validated = validate_finance_input(document, binding=binding())
     model = build_financial_model(validated)
     return validated, serialize_finance_result(validated, model)
+
+
+def test_override_serialization_preserves_caller_field_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = valid_document()
+    field_ref = "$.sensitivity.cells[2][3]"
+    observed: list[str] = []
+    original = overrides_module._decimal_text
+
+    def capture(value: Decimal, caller_field_ref: str) -> str:
+        observed.append(caller_field_ref)
+        return original(value, caller_field_ref)
+
+    monkeypatch.setattr(overrides_module, "_decimal_text", capture)
+    overrides_module.apply_override(
+        document,
+        {
+            "target_ref": TARGET,
+            "operation": "multiply",
+            "value": "0.5",
+        },
+        field_ref,
+    )
+
+    revenue = next(
+        stream
+        for stream in document["revenue_streams"]
+        if stream["stream_id"] == "rev-primary"
+    )
+    assert observed == [field_ref] * len(revenue["volume_series"])
+
+
+def test_override_kernel_rejects_unsupported_operation() -> None:
+    with pytest.raises(FinanceContractError) as error:
+        overrides_module.apply_override(
+            valid_document(),
+            {
+                "target_ref": TARGET,
+                "operation": "divide",
+                "value": "2",
+            },
+            "$.test_override",
+        )
+
+    assert error.value.code == "FIN2_SCENARIO_OPERATION"
+    assert error.value.field_ref == "$.test_override.operation"
 
 
 def test_deterministic_scenario_changes_governed_driver_and_is_reproducible() -> None:

@@ -136,8 +136,16 @@ Server-owned ValidatedFinanceInput
 - `row_index`, `column_index`
 - قيمة المحور الأول والثاني كسلاسل Decimal canonical
 - `derived_input_hash`
-- metrics المطلوبة فقط كسلاسل Decimal canonical أو null حقيقي إذا كان metric نفسه غير قابل للتعريف وفق Finance؛ لا missing→zero
+- metrics المطلوبة فقط كسلاسل Decimal canonical؛ إذا كان أي metric غير قابل
+  للتعريف أو غير متاح وفق Finance، تفشل المصفوفة ذريًا وفق `T-C3C-010`
+  وتكون `cells=[]`؛ لا null ولا missing→zero ولا grid جزئية
 - لا periods، debt schedule أو raw input document.
+
+يتوافق ذلك مع حالات applicability في `ACR-FIN-004`: عقد
+`finance-sensitivity-result.v1` لا يحمل metric envelopes، لذلك لا يجوز إسقاط
+`NOT_APPLICABLE` أو `UNKNOWN` أو `NOT_READY` أو `BLOCKED` كقيمة خلية. إذا اختار
+الـprofile metric لا يملك قيمة `APPLICABLE` منتهية في أي خلية، تكون النتيجة
+`not_ready` ذريًا بلا خلايا.
 
 الترتيب canonical:
 
@@ -146,6 +154,20 @@ Server-owned ValidatedFinanceInput
 - ترتيب metric IDs كما ورد في profile.
 - fixed overrides تطبق أولًا، ثم axis 0، ثم axis 1.
 - كل خلية تبدأ من thaw جديد للمدخل الأساسي؛ لا mutation مشتركة.
+
+### سياسة Decimal المقصودة
+
+- قيم المحاور والـfixed overrides هي **مدخلات مشتقة** يقبلها profile بحد أقصى
+  ثماني خانات عشرية. يحافظ override kernel المشترك على سياسة C3B/C3C الحالية:
+  إذا أنتجت عملية الضرب أو الجمع أكثر من ثماني خانات، يطبّق
+  `ROUND_HALF_EVEN` إلى ثماني خانات قبل إعادة قبول المدخل المالي.
+- قيم المقاييس في خلايا C3C هي **مخرجات محسوبة** من Finance v2. يجب أن تبقى
+  قيمة `Decimal` المنتهية كاملة كما أعادها النموذج، مع إزالة الأصفار العشرية
+  الزائدة فقط. يمنع quantize هذه المقاييس إلى ثماني خانات لأنه يغيّر الناتج
+  المالي وpreimage الخاص بـ`result_hash`.
+- اختلاف السياستين مقصود ومحكوم: الأولى تطبّع مدخلًا وفق عقد profile، والثانية
+  تسلسل مخرجًا ماليًا دون تغيير قيمته. تمر القيمتان بعد ذلك عبر
+  `finance-v2-canonical-json.v1` بتمثيلهما المحكوم.
 
 ---
 
@@ -222,6 +244,8 @@ Server-owned ValidatedFinanceInput
 - `backend/finance_v2/sensitivity.py`
 - `schemas/finance/finance-sensitivity-result.v1.schema.json`
 - `tests/test_finance_v2_sensitivity.py`
+- `tests/finance_v2_sensitivity_fixture.py` لبناء fixture عام مشترك
+  بين اختبارات C3C وسكربتي الدليل، دون اعتماد السكربتات على مساعد اختبار خاص.
 - وثيقة evidence/benchmark خاصة بـC3C
 
 ### تعديل ضيق
@@ -230,6 +254,30 @@ Server-owned ValidatedFinanceInput
 - `backend/finance_v2/__init__.py` لصادرات C3C الداخلية
 - `tests/test_finance_v2_scenarios.py` لإثبات عدم الانحدار
 - هذا ACR إذا كشفت المراجعة تناقضًا
+
+### أدلة CI المسموح بها فقط
+
+كشفت مراجعة exact-head أن إثبات G-C3C-1 للأداء والحتمية العابرة للمنصات
+يحتاج مسارات لا يذكرها allowlist الأصلي. لذلك يسمح القرار حصراً بالآتي:
+
+- `scripts/benchmark_finance_v2_sensitivity.py` لقياس workload الفعلي
+  21×21×240×8 وفرض السقفين المعتمدين.
+- `scripts/finance_v2_sensitivity_cross_platform.py` لإصدار نتيجة C3C
+  القانونية القابلة للمقارنة.
+- `tests/test_beta_06_cross_platform_determinism.py` لحراسة وجود خطوتي إصدار
+  ومقارنة دليل C3C، وتثبيت كل `actions/*` على SHA، وغياب dependency التثبيت
+  غير المستخدم.
+- `.github/workflows/asie-ci.yml` لإضافة خطوة benchmark C3C فقط، مع سقف
+  10 دقائق للخطوة و20 دقيقة للوظيفة الحاوية لمنع التشغيل المعلق.
+- `.github/workflows/test-beta-06-cross-platform-determinism.yml` لإضافة
+  إصدار artifact C3C ومقارنته byte-for-byte فقط، وحذف dependency غير مستخدم،
+  وتثبيت كل `actions/*` الموجودة فيه على commit SHA ثابت ومتحقق من
+  المستودعات الرسمية دون تغيير الصلاحيات، مع استمرار عرض ورفع أدلة التشخيص
+  عند فشل المقارنة دون تحويل الفشل إلى نجاح.
+
+أي تعديل آخر في workflows أو scripts يحتاج تحديثاً جديداً لهذا القرار قبل
+التنفيذ. لا تمنح هذه الإضافة سلطة Runtime أو Snapshot أو provider أو network،
+ولا تسمح بتغيير الملفات المحمية أو توسيع ادعاء C3C.
 
 ### ممنوع
 

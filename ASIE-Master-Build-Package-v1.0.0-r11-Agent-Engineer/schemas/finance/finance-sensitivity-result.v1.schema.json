@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://asie.local/schemas/finance/finance-sensitivity-result.v1.schema.json",
+  "title": "ASIE Finance Deterministic Sensitivity Result v1",
+  "$defs": {
+    "governed_metric_id": {
+      "enum": [
+        "npv_unlevered",
+        "irr_unlevered",
+        "mirr_unlevered",
+        "payback_months",
+        "break_even",
+        "funding_need",
+        "dscr_min",
+        "llcr"
+      ]
+    },
+    "canonical_decimal": {
+      "type": "string",
+      "pattern": "^(?:0|-?(?:[1-9][0-9]*(?:\\.[0-9]*[1-9])?|0\\.[0-9]*[1-9]))$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "execution_scope",
+    "snapshot_eligible",
+    "organization_id",
+    "project_id",
+    "run_id",
+    "finance_input_hash",
+    "currency",
+    "archetype_ref",
+    "profile",
+    "finance_engine_version",
+    "sensitivity_engine_version",
+    "canonicalization_policy",
+    "axis_ids",
+    "axes",
+    "metric_ids",
+    "cell_count",
+    "cells",
+    "blockers",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "finance-sensitivity-result.v1"
+    },
+    "status": {
+      "enum": [
+        "dark_ready",
+        "not_ready"
+      ]
+    },
+    "execution_scope": {
+      "const": "dark_build"
+    },
+    "snapshot_eligible": {
+      "const": false
+    },
+    "organization_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "finance_input_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "archetype_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype_id",
+        "version",
+        "registry_hash"
+      ],
+      "properties": {
+        "archetype_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "registry_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "dependency_hashes",
+        "profile_id",
+        "version",
+        "content_hash",
+        "registry_snapshot_hash",
+        "approved_manifest_id",
+        "approved_manifest_hash",
+        "policy_ref",
+        "policy_version",
+        "policy_hash"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "registry_snapshot_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "approved_manifest_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approved_manifest_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "policy_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "schema_version": {
+          "const": "finance-sensitivity-profile.v1"
+        },
+        "dependency_hashes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ref",
+              "content_hash"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "content_hash": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "finance_engine_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sensitivity_engine_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonicalization_policy": {
+      "const": "finance-v2-canonical-json.v1"
+    },
+    "axis_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "metric_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/governed_metric_id"
+      },
+      "maxItems": 8
+    },
+    "cell_count": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 441
+    },
+    "cells": {
+      "type": "array",
+      "maxItems": 441,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "row_index",
+          "column_index",
+          "row_value",
+          "column_value",
+          "derived_input_hash",
+          "metrics"
+        ],
+        "properties": {
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "column_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "row_value": {
+            "$ref": "#/$defs/canonical_decimal"
+          },
+          "column_value": {
+            "$ref": "#/$defs/canonical_decimal"
+          },
+          "derived_input_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/canonical_decimal"
+            },
+            "minProperties": 1,
+            "maxProperties": 8,
+            "propertyNames": {
+              "$ref": "#/$defs/governed_metric_id"
+            }
+          }
+        }
+      },
+      "$comment": "Complete ordered Cartesian coordinates, cell_count equality, uniqueness, and metric completeness are enforced by _validate_evaluation_invariants before result hashing.",
+      "uniqueItems": true
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "severity",
+          "field_ref",
+          "stage",
+          "cause_code",
+          "message_ar"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "high"
+            ]
+          },
+          "field_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stage": {
+            "enum": [
+              "input_derivation",
+              "model_build",
+              "model_invariant",
+              "metric_projection"
+            ]
+          },
+          "cause_code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message_ar": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "result_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "axes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "axis_id",
+          "target_ref",
+          "operation",
+          "values"
+        ],
+        "properties": {
+          "axis_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operation": {
+            "enum": [
+              "replace",
+              "multiply",
+              "add"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 21,
+            "items": {
+              "$ref": "#/$defs/canonical_decimal"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "dark_ready"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "blockers": {
+            "maxItems": 0
+          },
+          "cells": {
+            "minItems": 4
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "not_ready"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "cells": {
+            "maxItems": 0
+          },
+          "blockers": {
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      }
+    }
+  ]
+}
