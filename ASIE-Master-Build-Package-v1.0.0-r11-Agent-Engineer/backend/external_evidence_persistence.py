@@ -28,6 +28,8 @@ from backend.external_evidence_contracts import (
 
 
 Clock = Callable[[], str]
+SourceStatusResolver = Callable[[str, str, str], str | None]
+Migration = tuple[int, str, Sequence[str]]
 
 
 class ExternalEvidencePersistenceError(RuntimeError):
@@ -62,7 +64,7 @@ class ExternalEvidenceStore:
     authorized before its transaction begins.
     """
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
     _ALLOWED_TRANSITIONS = {
         "queued": frozenset({"running", "failed", "cancelled"}),
         "running": frozenset({"partial", "succeeded", "failed", "cancelled"}),
@@ -90,14 +92,25 @@ class ExternalEvidenceStore:
         authorizer: ExternalEvidenceAuthorizer,
         clock: Clock = utc_now,
         busy_timeout_ms: int = 5_000,
+        source_status_resolver: SourceStatusResolver | None = None,
     ) -> None:
+        if isinstance(busy_timeout_ms, bool) or not isinstance(busy_timeout_ms, int):
+            raise ValueError("busy_timeout_ms_must_be_non_negative_integer")
+        if busy_timeout_ms < 0:
+            raise ValueError("busy_timeout_ms_must_be_non_negative_integer")
         self._db_path = Path(db_path)
         self._authorizer = authorizer
         self._clock = clock
         self._busy_timeout_ms = busy_timeout_ms
+        self._source_status_resolver = source_status_resolver
 
     def initialize(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        migration_plan = self._migrations()
+        expected_versions = list(range(1, self.SCHEMA_VERSION + 1))
+        if [version for version, _, _ in migration_plan] != expected_versions:
+            raise ExternalEvidenceMigrationError("invalid_runtime_migration_plan")
+
         with self._transaction() as connection:
             connection.execute(
                 """
@@ -115,23 +128,31 @@ class ExternalEvidenceStore:
             if any(int(row["version"]) > self.SCHEMA_VERSION for row in applied):
                 raise ExternalEvidenceMigrationError("database_schema_is_newer_than_runtime")
 
-            statements = self._migration_statements_v1()
-            checksum = sha256_hex("\n".join(statements))
-            existing = next((row for row in applied if int(row["version"]) == 1), None)
-            if existing is not None:
-                if existing["migration_id"] != "fc20_04_p0_a_v1" or existing["checksum"] != checksum:
-                    raise ExternalEvidenceMigrationError("migration_checksum_mismatch")
-                return
+            applied_by_version = {int(row["version"]): row for row in applied}
+            if any(version not in expected_versions for version in applied_by_version):
+                raise ExternalEvidenceMigrationError("database_migration_history_unknown")
 
-            for statement in statements:
-                connection.execute(statement)
-            connection.execute(
-                """
-                INSERT INTO external_evidence_schema_migrations(version, migration_id, checksum, applied_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (1, "fc20_04_p0_a_v1", checksum, self._clock()),
-            )
+            for version, migration_id, statements in migration_plan:
+                checksum = sha256_hex("\n".join(statements))
+                existing = applied_by_version.get(version)
+                if existing is not None:
+                    if (
+                        existing["migration_id"] != migration_id
+                        or existing["checksum"] != checksum
+                    ):
+                        raise ExternalEvidenceMigrationError("migration_checksum_mismatch")
+                    continue
+
+                for statement in statements:
+                    connection.execute(statement)
+                connection.execute(
+                    """
+                    INSERT INTO external_evidence_schema_migrations(
+                        version, migration_id, checksum, applied_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (version, migration_id, checksum, self._clock()),
+                )
 
     def migration_registry(self) -> list[dict[str, Any]]:
         with self._connection() as connection:
@@ -144,7 +165,7 @@ class ExternalEvidenceStore:
         self, principal: PrincipalLike, candidate: DiscoveryCandidate
     ) -> DiscoveryCandidate:
         scope = self._scope(principal, candidate.organization_id, candidate.project_id, WRITE)
-        with self._transaction() as connection:
+        with self._transaction(integrity_error_code="candidate_persistence_conflict") as connection:
             connection.execute(
                 """
                 INSERT INTO external_evidence_candidates(
@@ -205,7 +226,7 @@ class ExternalEvidenceStore:
         if job.state != "queued":
             raise ExternalEvidenceConflict("new_job_must_be_queued")
         scope = self._scope(principal, job.organization_id, job.project_id, WRITE)
-        with self._transaction() as connection:
+        with self._transaction(integrity_error_code="job_persistence_conflict") as connection:
             existing = connection.execute(
                 """
                 SELECT * FROM external_evidence_jobs
@@ -288,6 +309,10 @@ class ExternalEvidenceStore:
             )
             if immutable_changed:
                 raise ExternalEvidenceConflict("job_identity_is_immutable")
+            if self._parse_admission_timestamp(job.updated_at) < self._parse_admission_timestamp(
+                prior.updated_at
+            ):
+                raise ExternalEvidenceConflict("job_updated_at_must_be_monotonic")
             if prior.state == job.state:
                 if prior == job:
                     return prior
@@ -352,7 +377,7 @@ class ExternalEvidenceStore:
     ) -> tuple[EvidenceArtifact, bool]:
         scope = self._scope(principal, artifact.organization_id, artifact.project_id, WRITE)
         try:
-            with self._transaction() as connection:
+            with self._transaction(integrity_error_code="artifact_persistence_conflict") as connection:
                 job_row = connection.execute(
                     """
                     SELECT state, candidate_id FROM external_evidence_jobs
@@ -498,6 +523,24 @@ class ExternalEvidenceStore:
             elif freshness_expires_at <= as_of_timestamp:
                 denial = "artifact_stale"
 
+            if self._source_status_resolver is None:
+                source_state = None
+                source_denial = "artifact_source_status_unavailable"
+            else:
+                try:
+                    source_state = self._source_status_resolver(
+                        organization_id, project_id, admitted.source_id
+                    )
+                except Exception:
+                    source_state = None
+                    source_denial = "artifact_source_status_unavailable"
+                else:
+                    source_denial = (
+                        None if source_state == "enabled" else "artifact_source_not_enabled"
+                    )
+            if source_denial:
+                denial = source_denial
+
             review_rows = connection.execute(
                 """
                 SELECT rowid AS review_sequence, decision, reviewed_at
@@ -518,10 +561,7 @@ class ExternalEvidenceStore:
             else:
                 latest_review = max(
                     eligible_reviews,
-                    key=lambda row: (
-                        self._parse_admission_timestamp(row["reviewed_at"]),
-                        int(row["review_sequence"]),
-                    ),
+                    key=lambda row: int(row["review_sequence"]),
                 )
                 if latest_review["decision"] != "approved":
                     denial = denial or "artifact_review_rejected"
@@ -565,7 +605,7 @@ class ExternalEvidenceStore:
         scope = self._scope(principal, review.organization_id, review.project_id, REVIEW)
         if review.reviewer_user_id != scope.actor_user_id:
             raise ExternalEvidenceConflict("reviewer_identity_must_be_server_owned")
-        with self._transaction() as connection:
+        with self._transaction(integrity_error_code="review_persistence_conflict") as connection:
             artifact = connection.execute(
                 """
                 SELECT artifact_hash FROM external_evidence_artifacts
@@ -577,6 +617,18 @@ class ExternalEvidenceStore:
                 raise ExternalEvidenceNotFound("external_evidence_object_not_found")
             if artifact["artifact_hash"] != review.artifact_hash:
                 raise ExternalEvidenceConflict("review_artifact_hash_mismatch")
+            latest_review = connection.execute(
+                """
+                SELECT reviewed_at FROM external_evidence_reviews
+                WHERE organization_id = ? AND project_id = ? AND artifact_id = ?
+                ORDER BY rowid DESC LIMIT 1
+                """,
+                (review.organization_id, review.project_id, review.artifact_id),
+            ).fetchone()
+            if latest_review is not None and self._parse_admission_timestamp(
+                review.reviewed_at
+            ) < self._parse_admission_timestamp(latest_review["reviewed_at"]):
+                raise ExternalEvidenceConflict("review_timestamp_must_be_monotonic")
             connection.execute(
                 """
                 INSERT INTO external_evidence_reviews(
@@ -621,7 +673,7 @@ class ExternalEvidenceStore:
                 """
                 SELECT * FROM external_evidence_reviews
                 WHERE organization_id = ? AND project_id = ? AND artifact_id = ?
-                ORDER BY reviewed_at, review_id
+                ORDER BY rowid
                 """,
                 (organization_id, project_id, artifact_id),
             ).fetchall()
@@ -638,7 +690,7 @@ class ExternalEvidenceStore:
             raise ExternalEvidenceConflict("supersession_actor_must_be_server_owned")
         if record.successor_artifact_id == record.predecessor_artifact_id:
             raise ExternalEvidenceConflict("artifact_cannot_supersede_itself")
-        with self._transaction() as connection:
+        with self._transaction(integrity_error_code="supersession_persistence_conflict") as connection:
             predecessor = connection.execute(
                 """
                 SELECT artifact_hash FROM external_evidence_artifacts
@@ -824,12 +876,19 @@ class ExternalEvidenceStore:
             connection.close()
 
     @contextmanager
-    def _transaction(self) -> Iterator[sqlite3.Connection]:
+    def _transaction(
+        self, *, integrity_error_code: str | None = None
+    ) -> Iterator[sqlite3.Connection]:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 yield connection
                 connection.commit()
+            except sqlite3.IntegrityError:
+                connection.rollback()
+                if integrity_error_code is None:
+                    raise
+                raise ExternalEvidenceConflict(integrity_error_code) from None
             except BaseException:
                 connection.rollback()
                 raise
@@ -838,13 +897,20 @@ class ExternalEvidenceStore:
     def _parse_admission_timestamp(value: str) -> datetime:
         if not isinstance(value, str) or len(value) > 40:
             raise ExternalEvidenceAdmissionError("invalid_admission_timestamp")
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(normalized)
         except ValueError as exc:
             raise ExternalEvidenceAdmissionError("invalid_admission_timestamp") from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ExternalEvidenceAdmissionError("invalid_admission_timestamp")
         return parsed
+
+    def _migrations(self) -> Sequence[Migration]:
+        return (
+            (1, "fc20_04_p0_a_v1", self._migration_statements_v1()),
+            (2, "fc20_04_review_hardening_v2", self._migration_statements_v2()),
+        )
 
     def _migration_statements_v1(self) -> Sequence[str]:
         return (
@@ -967,6 +1033,13 @@ class ExternalEvidenceStore:
             "CREATE INDEX idx_external_evidence_jobs_scope_state ON external_evidence_jobs(organization_id, project_id, state)",
             "CREATE INDEX idx_external_evidence_artifacts_scope_freshness ON external_evidence_artifacts(organization_id, project_id, freshness_expires_at)",
             "CREATE INDEX idx_external_evidence_audit_scope_sequence ON external_evidence_audit_events(organization_id, project_id, sequence_id)",
+        )
+
+    def _migration_statements_v2(self) -> Sequence[str]:
+        return (
+            "CREATE INDEX idx_external_evidence_reviews_scope_artifact ON external_evidence_reviews(organization_id, project_id, artifact_id, reviewed_at)",
+            "CREATE INDEX idx_external_evidence_supersessions_scope_predecessor ON external_evidence_supersessions(organization_id, project_id, predecessor_artifact_id, disposition)",
+            "CREATE INDEX idx_external_evidence_supersessions_scope_successor ON external_evidence_supersessions(organization_id, project_id, successor_artifact_id)",
         )
 
     @staticmethod

@@ -18,6 +18,7 @@ from backend.external_evidence_contracts import (
 )
 from backend.external_evidence_persistence import (
     ExternalEvidenceAdmissionError,
+    ExternalEvidenceConflict,
     ExternalEvidenceNotFound,
     ExternalEvidenceStore,
 )
@@ -50,16 +51,35 @@ class Ownership:
         }
 
 
+class SourceStates:
+    def __init__(self) -> None:
+        self.states = {("org-a", "project-a", "source-1"): "enabled"}
+        self.fail = False
+
+    def __call__(
+        self, organization_id: str, project_id: str, source_id: str
+    ) -> str | None:
+        if self.fail:
+            raise RuntimeError("source_registry_unavailable")
+        return self.states.get((organization_id, project_id, source_id))
+
+
 def actor(org: str = "org-a", role: str = "organization_owner", user: str = "owner-a") -> Principal:
     return Principal(user, f"session-{org}", org, role)
 
 
 @pytest.fixture
-def store(tmp_path) -> ExternalEvidenceStore:
+def source_states() -> SourceStates:
+    return SourceStates()
+
+
+@pytest.fixture
+def store(tmp_path, source_states: SourceStates) -> ExternalEvidenceStore:
     result = ExternalEvidenceStore(
         tmp_path / "admission.sqlite3",
         authorizer=ExternalEvidenceAuthorizer(Ownership()),
         clock=lambda: T3,
+        source_status_resolver=source_states,
     )
     result.initialize()
     return result
@@ -117,7 +137,14 @@ def seed_artifact(
     return store.create_or_get_artifact(owner, artifact)[0]
 
 
-def review(store: ExternalEvidenceStore, artifact: EvidenceArtifact, decision: str, review_id: str) -> None:
+def review(
+    store: ExternalEvidenceStore,
+    artifact: EvidenceArtifact,
+    decision: str,
+    review_id: str,
+    *,
+    reviewed_at: str = T3,
+) -> None:
     store.record_review(
         actor(role="reviewer", user="reviewer-a"),
         EvidenceReview.build(
@@ -129,7 +156,7 @@ def review(store: ExternalEvidenceStore, artifact: EvidenceArtifact, decision: s
             reviewer_user_id="reviewer-a",
             decision=decision,
             reason=f"Human decision: {decision}.",
-            reviewed_at=T3,
+            reviewed_at=reviewed_at,
         ),
     )
 
@@ -160,10 +187,20 @@ def test_review_required_and_candidate_ids_are_denied(store: ExternalEvidenceSto
 
 def test_latest_rejected_review_is_denied(store: ExternalEvidenceStore) -> None:
     artifact = seed_artifact(store)
+    # Equal reviewed_at values are resolved by server-recorded row order, not review_id.
     review(store, artifact, "approved", "review-z-approved-first")
     review(store, artifact, "rejected", "review-a-rejected-last")
     with pytest.raises(ExternalEvidenceAdmissionError, match="artifact_review_rejected"):
         admit(store)
+
+
+def test_backdated_review_recorded_later_is_rejected(
+    store: ExternalEvidenceStore,
+) -> None:
+    artifact = seed_artifact(store)
+    review(store, artifact, "approved", "review-approved", reviewed_at=T3)
+    with pytest.raises(ExternalEvidenceConflict, match="review_timestamp_must_be_monotonic"):
+        review(store, artifact, "rejected", "review-backdated", reviewed_at=T2)
 
 
 def test_fresh_latest_approved_artifact_is_admitted_and_audited(
@@ -185,6 +222,64 @@ def test_stale_artifact_is_denied(store: ExternalEvidenceStore) -> None:
     review(store, artifact, "approved", "review-1")
     with pytest.raises(ExternalEvidenceAdmissionError, match="artifact_stale"):
         admit(store)
+
+
+def test_artifact_captured_after_as_of_is_denied(
+    store: ExternalEvidenceStore,
+) -> None:
+    artifact = seed_artifact(store)
+    review(store, artifact, "approved", "review-1")
+    with pytest.raises(ExternalEvidenceAdmissionError, match="artifact_not_yet_captured"):
+        admit(store, as_of=T1)
+
+
+@pytest.mark.parametrize("source_state", ("blocked", "candidate", "reference_only", None))
+def test_non_enabled_source_is_denied_at_admission(
+    store: ExternalEvidenceStore,
+    source_states: SourceStates,
+    source_state: str | None,
+) -> None:
+    artifact = seed_artifact(store)
+    review(store, artifact, "approved", "review-1")
+    if source_state is None:
+        source_states.states.pop(("org-a", "project-a", "source-1"))
+    else:
+        source_states.states[("org-a", "project-a", "source-1")] = source_state
+    with pytest.raises(ExternalEvidenceAdmissionError, match="artifact_source_not_enabled"):
+        admit(store)
+
+
+def test_source_status_failure_is_visible_and_fails_closed(
+    store: ExternalEvidenceStore,
+    source_states: SourceStates,
+) -> None:
+    artifact = seed_artifact(store)
+    review(store, artifact, "approved", "review-1")
+    source_states.fail = True
+    with pytest.raises(ExternalEvidenceAdmissionError, match="source_status_unavailable"):
+        admit(store)
+    events = store.list_audit_events(
+        actor(), organization_id="org-a", project_id="project-a"
+    )
+    assert any(
+        event["action"] == "artifact.admission_denied"
+        and event["details"].get("failure_code")
+        == "artifact_source_status_unavailable"
+        for event in events
+    )
+
+
+def test_missing_source_status_resolver_fails_closed(tmp_path) -> None:
+    store_without_resolver = ExternalEvidenceStore(
+        tmp_path / "missing-source-resolver.sqlite3",
+        authorizer=ExternalEvidenceAuthorizer(Ownership()),
+        clock=lambda: T3,
+    )
+    store_without_resolver.initialize()
+    artifact = seed_artifact(store_without_resolver)
+    review(store_without_resolver, artifact, "approved", "review-1")
+    with pytest.raises(ExternalEvidenceAdmissionError, match="source_status_unavailable"):
+        admit(store_without_resolver)
 
 
 @pytest.mark.parametrize("disposition", ("revoked", "superseded"))

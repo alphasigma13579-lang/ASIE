@@ -10,6 +10,7 @@ from backend.external_evidence_contracts import (
     EvidenceArtifact,
     EvidenceReview,
     ExtractionJob,
+    SupersessionRecord,
     sha256_hex,
 )
 from backend.external_evidence_persistence import (
@@ -144,6 +145,20 @@ def test_idempotency_collision_with_different_request_fails_closed(store: Extern
         store.create_or_get_job(actor, conflicting)
 
 
+def test_job_transition_timestamps_cannot_move_backward(
+    store: ExternalEvidenceStore,
+) -> None:
+    actor = principal()
+    store.create_candidate(actor, candidate())
+    queued, _ = store.create_or_get_job(actor, job())
+    running = store.transition_job(actor, replace(queued, state="running", updated_at=T2))
+    with pytest.raises(ExternalEvidenceConflict, match="updated_at_must_be_monotonic"):
+        store.transition_job(
+            actor,
+            replace(running, state="succeeded", updated_at=T1, result_count=1),
+        )
+
+
 def test_partial_or_cancelled_job_cannot_create_artifact(store: ExternalEvidenceStore) -> None:
     actor = principal()
     store.create_candidate(actor, candidate())
@@ -262,6 +277,93 @@ def test_review_is_hash_bound_and_audit_is_redacted(store: ExternalEvidenceStore
     assert "raw-provider-payload-never-stored" not in serialized
     assert review.reason not in serialized
     assert any(event["details"].get("decision") == "approved" for event in events)
+
+
+def test_constraint_errors_use_redacted_store_contract(
+    store: ExternalEvidenceStore,
+) -> None:
+    actor = principal()
+    seed_succeeded_job(store)
+
+    def assert_redacted_conflict(call, code: str) -> None:
+        with pytest.raises(ExternalEvidenceConflict, match=code) as captured:
+            call()
+        assert captured.value.__cause__ is None
+        assert "sqlite" not in str(captured.value).lower()
+
+    assert_redacted_conflict(
+        lambda: store.create_candidate(
+            actor,
+            replace(candidate(), title="Conflicting duplicate candidate"),
+        ),
+        "candidate_persistence_conflict",
+    )
+    assert_redacted_conflict(
+        lambda: store.create_or_get_job(
+            actor,
+            job(job_id="job-1", key_material="different-key"),
+        ),
+        "job_persistence_conflict",
+    )
+
+    evidence, _ = store.create_or_get_artifact(actor, artifact())
+    assert_redacted_conflict(
+        lambda: store.create_or_get_artifact(
+            actor,
+            artifact(
+                artifact_id=evidence.artifact_id,
+                content_hash=sha256_hex("other-content"),
+            ),
+        ),
+        "artifact_persistence_conflict",
+    )
+
+    reviewer = principal(role="reviewer", user_id="reviewer-a")
+    review = EvidenceReview.build(
+        review_id="review-duplicate",
+        organization_id="org-a",
+        project_id="project-a",
+        artifact_id=evidence.artifact_id,
+        artifact_hash=evidence.artifact_hash,
+        reviewer_user_id="reviewer-a",
+        decision="approved",
+        reason="Approved once.",
+        reviewed_at=T2,
+    )
+    store.record_review(reviewer, review)
+    assert_redacted_conflict(
+        lambda: store.record_review(reviewer, review),
+        "review_persistence_conflict",
+    )
+
+    record = SupersessionRecord.build(
+        record_id="supersession-duplicate",
+        organization_id="org-a",
+        project_id="project-a",
+        predecessor_artifact_id=evidence.artifact_id,
+        predecessor_artifact_hash=evidence.artifact_hash,
+        disposition="revoked",
+        reason="Revoked once.",
+        actor_user_id="reviewer-a",
+        recorded_at=T2,
+    )
+    store.record_supersession(reviewer, record)
+    assert_redacted_conflict(
+        lambda: store.record_supersession(reviewer, record),
+        "supersession_persistence_conflict",
+    )
+
+
+@pytest.mark.parametrize("busy_timeout_ms", (-1, True, "5000"))
+def test_busy_timeout_requires_a_non_negative_integer(
+    tmp_path, busy_timeout_ms: object
+) -> None:
+    with pytest.raises(ValueError, match="non_negative_integer"):
+        ExternalEvidenceStore(
+            tmp_path / "invalid-timeout.sqlite3",
+            authorizer=ExternalEvidenceAuthorizer(Ownership()),
+            busy_timeout_ms=busy_timeout_ms,  # type: ignore[arg-type]
+        )
 
 
 def test_audit_failure_rolls_back_object_write(tmp_path) -> None:

@@ -36,9 +36,10 @@ class Principal:
     organization_id: str | None
     role: str | None
     platform_role: str | None = None
+    permissions: frozenset[str] = frozenset()
 
     def can(self, permission: str) -> bool:
-        return False
+        return permission in self.permissions
 
 
 class Ownership:
@@ -54,30 +55,36 @@ def actor(org: str, role: str = "organization_owner", user: str | None = None) -
     return Principal(user or f"owner-{suffix}", f"session-{suffix}", org, role)
 
 
-def seed_scope(store: ExternalEvidenceStore) -> tuple[EvidenceArtifact, ExtractionJob]:
-    owner = actor("org-a")
+def seed_scope(
+    store: ExternalEvidenceStore,
+    *,
+    organization_id: str = "org-a",
+    project_id: str = "project-a",
+) -> tuple[EvidenceArtifact, ExtractionJob]:
+    suffix = organization_id[-1]
+    owner = actor(organization_id)
     candidate = DiscoveryCandidate(
         candidate_id="candidate-shared-id",
-        organization_id="org-a",
-        project_id="project-a",
+        organization_id=organization_id,
+        project_id=project_id,
         source_id="source-1",
         provider_id="tavily",
         operation="search",
         canonical_url="https://example.com/evidence",
-        title="Tenant A evidence",
+        title=f"Tenant {suffix.upper()} evidence",
         discovered_at=NOW,
-        payload_hash=sha256_hex("payload"),
-        provenance_hash=sha256_hex("provenance"),
+        payload_hash=sha256_hex(f"payload-{organization_id}"),
+        provenance_hash=sha256_hex(f"provenance-{organization_id}"),
     )
     store.create_candidate(owner, candidate)
     queued = ExtractionJob(
         job_id="job-shared-id",
-        organization_id="org-a",
-        project_id="project-a",
+        organization_id=organization_id,
+        project_id=project_id,
         provider_id="tavily",
         operation="extract",
-        idempotency_key_hash=sha256_hex("key"),
-        request_hash=sha256_hex("request"),
+        idempotency_key_hash=sha256_hex(f"key-{organization_id}"),
+        request_hash=sha256_hex(f"request-{organization_id}"),
         state="queued",
         created_at=NOW,
         updated_at=NOW,
@@ -90,40 +97,40 @@ def seed_scope(store: ExternalEvidenceStore) -> tuple[EvidenceArtifact, Extracti
     )
     artifact = EvidenceArtifact.build(
         artifact_id="artifact-shared-id",
-        organization_id="org-a",
-        project_id="project-a",
+        organization_id=organization_id,
+        project_id=project_id,
         job_id=succeeded.job_id,
         candidate_id=candidate.candidate_id,
         source_id="source-1",
         canonical_url="https://example.com/evidence",
-        content_hash=sha256_hex("content"),
-        provenance_hash=sha256_hex("provenance"),
+        content_hash=sha256_hex(f"content-{organization_id}"),
+        provenance_hash=sha256_hex(f"provenance-{organization_id}"),
         captured_at=T2,
         freshness_expires_at=LATER,
     )
     store.create_or_get_artifact(owner, artifact)
-    reviewer = actor("org-a", "reviewer", "reviewer-a")
+    reviewer = actor(organization_id, "reviewer", f"reviewer-{suffix}")
     review = EvidenceReview.build(
         review_id="review-shared-id",
-        organization_id="org-a",
-        project_id="project-a",
+        organization_id=organization_id,
+        project_id=project_id,
         artifact_id=artifact.artifact_id,
         artifact_hash=artifact.artifact_hash,
-        reviewer_user_id="reviewer-a",
+        reviewer_user_id=f"reviewer-{suffix}",
         decision="approved",
-        reason="Verified by tenant A reviewer.",
+        reason=f"Verified by tenant {suffix.upper()} reviewer.",
         reviewed_at=T2,
     )
     store.record_review(reviewer, review)
     record = SupersessionRecord.build(
         record_id="supersession-shared-id",
-        organization_id="org-a",
-        project_id="project-a",
+        organization_id=organization_id,
+        project_id=project_id,
         predecessor_artifact_id=artifact.artifact_id,
         predecessor_artifact_hash=artifact.artifact_hash,
         disposition="revoked",
         reason="Revocation test.",
-        actor_user_id="reviewer-a",
+        actor_user_id=f"reviewer-{suffix}",
         recorded_at=T2,
     )
     store.record_supersession(reviewer, record)
@@ -158,6 +165,36 @@ def test_authorization_matrix_is_same_tenant_and_project_owned() -> None:
             action=READ,
         )
 
+    explicit = Principal(
+        "explicit-user",
+        "explicit-session",
+        "org-a",
+        "unmapped-role",
+        permissions=frozenset({READ}),
+    )
+    assert authorizer.authorize(
+        explicit,
+        organization_id="org-a",
+        project_id="project-a",
+        action=READ,
+    ).actor_user_id == "explicit-user"
+    with pytest.raises(ExternalEvidenceAuthorizationError, match="access_denied"):
+        authorizer.authorize(
+            explicit,
+            organization_id="org-b",
+            project_id="project-b",
+            action=READ,
+        )
+
+    for organization_id, project_id in (("", "project-a"), ("org-a", "")):
+        with pytest.raises(ExternalEvidenceAuthorizationError, match="access_denied"):
+            authorizer.authorize(
+                Principal("user", "session", organization_id, "organization_owner"),
+                organization_id=organization_id,
+                project_id=project_id,
+                action=READ,
+            )
+
 
 def test_cross_tenant_denied_for_all_five_objects_and_job_actions(tmp_path) -> None:
     store = ExternalEvidenceStore(
@@ -167,8 +204,14 @@ def test_cross_tenant_denied_for_all_five_objects_and_job_actions(tmp_path) -> N
     )
     store.initialize()
     artifact, succeeded_job = seed_scope(store)
+    artifact_b, _ = seed_scope(
+        store,
+        organization_id="org-b",
+        project_id="project-b",
+    )
     owner_a = actor("org-a")
-    attacker = actor("org-b")
+    owner_b = actor("org-b")
+    attacker = owner_b
 
     assert store.get_candidate(
         owner_a,
@@ -201,6 +244,36 @@ def test_cross_tenant_denied_for_all_five_objects_and_job_actions(tmp_path) -> N
             owner_a,
             organization_id="org-a",
             project_id="project-a",
+            artifact_id="artifact-shared-id",
+        )
+    ) == 1
+
+    assert store.get_candidate(
+        owner_b,
+        organization_id="org-b",
+        project_id="project-b",
+        candidate_id="candidate-shared-id",
+    ).title == "Tenant B evidence"
+    assert store.get_artifact(
+        owner_b,
+        organization_id="org-b",
+        project_id="project-b",
+        artifact_id="artifact-shared-id",
+    ).artifact_hash == artifact_b.artifact_hash
+    assert artifact_b.artifact_hash != artifact.artifact_hash
+    assert len(
+        store.list_reviews_for_artifact(
+            owner_b,
+            organization_id="org-b",
+            project_id="project-b",
+            artifact_id="artifact-shared-id",
+        )
+    ) == 1
+    assert len(
+        store.list_supersessions_for_artifact(
+            owner_b,
+            organization_id="org-b",
+            project_id="project-b",
             artifact_id="artifact-shared-id",
         )
     ) == 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -55,8 +56,9 @@ def _require_hash(name: str, value: str) -> None:
 def _parse_timestamp(name: str, value: str) -> datetime:
     if not isinstance(value, str) or len(value) > 40:
         raise ContractValidationError(f"invalid_{name}")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise ContractValidationError(f"invalid_{name}") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -71,11 +73,25 @@ def _require_timestamp(name: str, value: str) -> None:
 def _require_https_url(value: str) -> None:
     if not isinstance(value, str) or len(value) > 2048:
         raise ContractValidationError("invalid_canonical_url")
-    parsed = urlsplit(value)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+    except ValueError as exc:
+        raise ContractValidationError("invalid_canonical_url") from exc
+    if parsed.scheme != "https" or not hostname or parsed.username or parsed.password:
         raise ContractValidationError("invalid_canonical_url")
     if parsed.fragment:
         raise ContractValidationError("canonical_url_fragment_forbidden")
+    hostname = hostname.rstrip(".").lower()
+    if hostname == "localhost":
+        raise ContractValidationError("canonical_url_host_forbidden")
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if not address.is_global:
+            raise ContractValidationError("canonical_url_host_forbidden")
 
 
 def _validate_scope(organization_id: str, project_id: str) -> None:
@@ -156,6 +172,8 @@ class ExtractionJob:
             _require_token("failure_code", self.failure_code)
         if self.state in {"queued", "running", "succeeded", "cancelled"} and self.failure_code is not None:
             raise ContractValidationError("failure_code_not_allowed_for_state")
+        if self.state in {"failed", "partial"} and self.failure_code is None:
+            raise ContractValidationError("failure_code_required_for_state")
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

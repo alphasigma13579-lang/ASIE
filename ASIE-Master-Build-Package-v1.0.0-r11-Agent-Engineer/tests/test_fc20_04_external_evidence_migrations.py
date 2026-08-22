@@ -36,15 +36,14 @@ def test_migration_registry_is_idempotent_and_schema_is_isolated(tmp_path) -> No
     second = store.migration_registry()
 
     assert first == second
-    assert first == [
-        {
-            "version": 1,
-            "migration_id": "fc20_04_p0_a_v1",
-            "checksum": first[0]["checksum"],
-            "applied_at": NOW,
-        }
+    assert [
+        (entry["version"], entry["migration_id"], entry["applied_at"])
+        for entry in first
+    ] == [
+        (1, "fc20_04_p0_a_v1", NOW),
+        (2, "fc20_04_review_hardening_v2", NOW),
     ]
-    assert len(first[0]["checksum"]) == 64
+    assert all(len(entry["checksum"]) == 64 for entry in first)
 
     connection = sqlite3.connect(db_path)
     try:
@@ -63,6 +62,18 @@ def test_migration_registry_is_idempotent_and_schema_is_isolated(tmp_path) -> No
             "external_evidence_supersessions",
             "external_evidence_audit_events",
         }.issubset(tables)
+
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_external_evidence_%'"
+            )
+        }
+        assert {
+            "idx_external_evidence_reviews_scope_artifact",
+            "idx_external_evidence_supersessions_scope_predecessor",
+            "idx_external_evidence_supersessions_scope_successor",
+        }.issubset(indexes)
 
         for table in tables - {"external_evidence_schema_migrations"}:
             columns = {
@@ -118,6 +129,27 @@ def test_migration_checksum_drift_fails_closed(tmp_path) -> None:
     )
     with pytest.raises(ExternalEvidenceMigrationError, match="checksum_mismatch"):
         drifted.initialize()
+
+
+def test_newer_schema_version_fails_closed(tmp_path) -> None:
+    db_path = tmp_path / "newer.sqlite3"
+    build_store(db_path).initialize()
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO external_evidence_schema_migrations(
+                version, migration_id, checksum, applied_at
+            ) VALUES (3, 'future_v3', ?, ?)
+            """,
+            ("f" * 64, NOW),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(ExternalEvidenceMigrationError, match="newer_than_runtime"):
+        build_store(db_path).initialize()
 
 
 def test_database_rejects_artifact_job_candidate_mismatch(tmp_path) -> None:
