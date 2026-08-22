@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, replace
 
 import pytest
@@ -308,7 +309,7 @@ def test_artifact_change_during_source_resolution_fails_closed(tmp_path) -> None
     def source_status(
         organization_id: str, project_id: str, source_id: str
     ) -> str:
-        with sqlite3.connect(db_path) as connection:
+        with closing(sqlite3.connect(db_path)) as connection, connection:
             connection.execute(
                 """
                 UPDATE external_evidence_artifacts

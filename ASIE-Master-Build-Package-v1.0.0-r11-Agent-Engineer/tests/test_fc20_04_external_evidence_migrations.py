@@ -88,6 +88,71 @@ def test_migration_registry_is_idempotent_and_schema_is_isolated(tmp_path) -> No
         connection.close()
 
 
+def test_v2_migrates_legacy_failed_and_partial_rows(tmp_path) -> None:
+    class LegacyV1Store(ExternalEvidenceStore):
+        SCHEMA_VERSION = 1
+
+        def _migrations(self):  # type: ignore[no-untyped-def]
+            return ((1, "fc20_04_p0_a_v1", self._migration_statements_v1()),)
+
+    db_path = tmp_path / "legacy-v1.sqlite3"
+    legacy = LegacyV1Store(
+        db_path,
+        authorizer=ExternalEvidenceAuthorizer(Ownership()),
+        clock=lambda: NOW,
+    )
+    legacy.initialize()
+
+    connection = sqlite3.connect(db_path)
+    try:
+        for index, (job_id, state) in enumerate(
+            (
+                ("legacy-failed", "failed"),
+                ("legacy-partial", "partial"),
+                ("legacy-succeeded", "succeeded"),
+            ),
+            start=1,
+        ):
+            connection.execute(
+                """
+                INSERT INTO external_evidence_jobs(
+                    organization_id, project_id, job_id, provider_id, operation,
+                    idempotency_key_hash, request_hash, state, created_at, updated_at,
+                    candidate_id, result_count, failure_code
+                ) VALUES ('org-a', 'project-a', ?, 'legacy', 'extract', ?, ?, ?,
+                          ?, ?, NULL, 0, NULL)
+                """,
+                (
+                    job_id,
+                    f"{index:x}" * 64,
+                    f"{index + 3:x}" * 64,
+                    state,
+                    NOW,
+                    NOW,
+                ),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+    build_store(db_path).initialize()
+
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = dict(
+            connection.execute(
+                "SELECT job_id, failure_code FROM external_evidence_jobs ORDER BY job_id"
+            )
+        )
+    finally:
+        connection.close()
+    assert rows == {
+        "legacy-failed": "legacy_unspecified_failure",
+        "legacy-partial": "legacy_unspecified_failure",
+        "legacy-succeeded": None,
+    }
+
+
 def test_failed_migration_rolls_back_registry_and_schema(tmp_path) -> None:
     class BrokenMigrationStore(ExternalEvidenceStore):
         def _migration_statements_v1(self):  # type: ignore[no-untyped-def]

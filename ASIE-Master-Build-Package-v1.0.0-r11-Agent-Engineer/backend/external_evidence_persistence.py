@@ -17,6 +17,7 @@ from backend.external_evidence_authorization import (
     PrincipalLike,
 )
 from backend.external_evidence_contracts import (
+    ContractValidationError,
     DiscoveryCandidate,
     EvidenceArtifact,
     EvidenceReview,
@@ -542,7 +543,11 @@ class ExternalEvidenceStore:
             ).fetchone()
             if artifact_row is None:
                 raise ExternalEvidenceNotFound("external_evidence_object_not_found")
-            admitted = self._artifact_from_row(artifact_row)
+            try:
+                admitted = self._artifact_from_row(artifact_row)
+            except ContractValidationError:
+                admitted = status_snapshot
+                denial = "artifact_changed_during_admission"
 
             captured_at = self._parse_admission_timestamp(admitted.captured_at)
             freshness_expires_at = self._parse_admission_timestamp(
@@ -553,7 +558,10 @@ class ExternalEvidenceStore:
             elif freshness_expires_at <= as_of_timestamp:
                 denial = "artifact_stale"
 
-            if admitted != status_snapshot:
+            if (
+                denial == "artifact_changed_during_admission"
+                or admitted != status_snapshot
+            ):
                 denial = "artifact_changed_during_admission"
             elif source_denial:
                 denial = source_denial
@@ -1054,6 +1062,7 @@ class ExternalEvidenceStore:
 
     def _migration_statements_v2(self) -> Sequence[str]:
         return (
+            "UPDATE external_evidence_jobs SET failure_code = 'legacy_unspecified_failure' WHERE state IN ('failed','partial') AND failure_code IS NULL",
             "CREATE INDEX idx_external_evidence_reviews_scope_artifact ON external_evidence_reviews(organization_id, project_id, artifact_id, reviewed_at)",
             "CREATE INDEX idx_external_evidence_supersessions_scope_predecessor ON external_evidence_supersessions(organization_id, project_id, predecessor_artifact_id, disposition)",
             "CREATE INDEX idx_external_evidence_supersessions_scope_successor ON external_evidence_supersessions(organization_id, project_id, successor_artifact_id)",
