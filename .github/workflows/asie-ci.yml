@@ -16,6 +16,7 @@ jobs:
   build-and-test:
     name: Build frontend and test backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
@@ -61,4 +62,5 @@ jobs:
         run: python -m pytest -q
 
       - name: Benchmark C3C full 21x21 sensitivity
+        timeout-minutes: 10
         run: python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3

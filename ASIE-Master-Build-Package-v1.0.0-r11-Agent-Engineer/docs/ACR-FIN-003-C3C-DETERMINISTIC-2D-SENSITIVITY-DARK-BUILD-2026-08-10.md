@@ -264,13 +264,16 @@ Server-owned ValidatedFinanceInput
   21×21×240×8 وفرض السقفين المعتمدين.
 - `scripts/finance_v2_sensitivity_cross_platform.py` لإصدار نتيجة C3C
   القانونية القابلة للمقارنة.
-- `tests/test_beta_06_cross_platform_determinism.py` لاختبارات حارس إصدار
-  دليل C3C فقط.
-- `.github/workflows/asie-ci.yml` لإضافة خطوة benchmark C3C فقط.
+- `tests/test_beta_06_cross_platform_determinism.py` لحراسة وجود خطوتي إصدار
+  ومقارنة دليل C3C، وتثبيت كل `actions/*` على SHA، وغياب dependency التثبيت
+  غير المستخدم.
+- `.github/workflows/asie-ci.yml` لإضافة خطوة benchmark C3C فقط، مع سقف
+  10 دقائق للخطوة و20 دقيقة للوظيفة الحاوية لمنع التشغيل المعلق.
 - `.github/workflows/test-beta-06-cross-platform-determinism.yml` لإضافة
   إصدار artifact C3C ومقارنته byte-for-byte فقط، وحذف dependency غير مستخدم،
   وتثبيت كل `actions/*` الموجودة فيه على commit SHA ثابت ومتحقق من
-  المستودعات الرسمية دون تغيير صلاحيات أو منطق الوظيفة.
+  المستودعات الرسمية دون تغيير الصلاحيات، مع استمرار عرض ورفع أدلة التشخيص
+  عند فشل المقارنة دون تحويل الفشل إلى نجاح.
 
 أي تعديل آخر في workflows أو scripts يحتاج تحديثاً جديداً لهذا القرار قبل
 التنفيذ. لا تمنح هذه الإضافة سلطة Runtime أو Snapshot أو provider أو network،

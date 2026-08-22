@@ -56,6 +56,22 @@ def test_override_serialization_preserves_caller_field_reference(
     assert observed == [field_ref] * len(revenue["volume_series"])
 
 
+def test_override_kernel_rejects_unsupported_operation() -> None:
+    with pytest.raises(FinanceContractError) as error:
+        overrides_module.apply_override(
+            valid_document(),
+            {
+                "target_ref": TARGET,
+                "operation": "divide",
+                "value": "2",
+            },
+            "$.test_override",
+        )
+
+    assert error.value.code == "FIN2_SCENARIO_OPERATION"
+    assert error.value.field_ref == "$.test_override.operation"
+
+
 def test_deterministic_scenario_changes_governed_driver_and_is_reproducible() -> None:
     document = valid_document()
     document["scenarios"] = [

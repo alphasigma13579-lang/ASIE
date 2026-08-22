@@ -661,6 +661,7 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
         "minLength"
     ] == 1
     assert schema["properties"]["axis_ids"]["items"]["minLength"] == 1
+    assert schema["properties"]["axis_ids"]["uniqueItems"] is True
     axis_properties = schema["properties"]["axes"]["items"]["properties"]
     assert axis_properties["axis_id"]["minLength"] == 1
     assert axis_properties["target_ref"]["minLength"] == 1

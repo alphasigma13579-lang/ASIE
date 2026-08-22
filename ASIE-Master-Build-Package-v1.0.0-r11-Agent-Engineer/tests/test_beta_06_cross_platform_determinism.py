@@ -135,7 +135,26 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
             self.assertRegex(commit_sha, r"^[0-9a-f]{40}$")
         self.assertNotIn("Install C3C vector test dependency", workflow)
         self.assertNotIn("python -m pip install", workflow)
-        self.assertIn("compare --directory", workflow)
+        self.assertIn(
+            "scripts/finance_v2_sensitivity_cross_platform.py emit "
+            "--output artifacts/${{ matrix.label }}/c3c-sensitivity.json",
+            workflow,
+        )
+        self.assertIn(
+            "scripts/finance_v2_sensitivity_cross_platform.py compare "
+            "--directory test-beta-06-evidence",
+            workflow,
+        )
+        self.assertIn(
+            "      - name: Show comparison evidence\n"
+            "        if: always()",
+            workflow,
+        )
+        self.assertIn(
+            "      - name: Upload combined TEST-BETA-06 evidence\n"
+            "        if: always()",
+            workflow,
+        )
         self.assertIn("fail-fast: false", workflow)
 
     def test_tool_excludes_platform_and_absolute_path_material_from_vector(self) -> None:

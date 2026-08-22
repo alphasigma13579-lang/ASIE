@@ -41,6 +41,13 @@ def apply_override(
     override: dict[str, Any],
     field_ref: str,
 ) -> None:
+    operation = override.get("operation")
+    if operation not in {"replace", "multiply", "add"}:
+        raise FinanceContractError(
+            "FIN2_SCENARIO_OPERATION",
+            f"{field_ref}.operation",
+            "unsupported",
+        )
     target_ref = override["target_ref"]
     target = parse_scenario_target(target_ref, f"{field_ref}.target_ref")
     locations = _target_locations(document, target, field_ref)
@@ -53,7 +60,6 @@ def apply_override(
                 "target field is absent",
             )
         current = parse_decimal(container[key], value_ref)
-        operation = override["operation"]
         if operation == "replace":
             updated = value
         else:
