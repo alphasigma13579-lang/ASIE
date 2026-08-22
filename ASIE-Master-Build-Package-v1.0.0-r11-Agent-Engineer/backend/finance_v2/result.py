@@ -9,7 +9,7 @@ from .model import FinancialModel, FinancialPeriod, ZERO
 from .scenarios import evaluate_scenarios
 
 
-ENGINE_VERSION = "2.0.0-dark.2"
+ENGINE_VERSION = "2.0.0-dark.3"
 _METRIC_KEYS = (
     "npv_unlevered",
     "irr_unlevered",
@@ -39,6 +39,14 @@ def serialize_finance_result(
     money_scale = rounding["money_scale"]
     ratio_scale = rounding["ratio_scale"]
     lineage = _collect_lineage(document)
+    debt_coverage_metrics = _debt_coverage_metric_objects(
+        validated,
+        model,
+        document,
+        lineage,
+        money_scale,
+        ratio_scale,
+    )
     scenario_evaluations = evaluate_scenarios(validated, model)
     scenario_blockers = [
         blocker
@@ -64,8 +72,17 @@ def serialize_finance_result(
         )
         else []
     )
+    coverage_projection_blockers = _debt_coverage_projection_blockers(
+        debt_coverage_metrics,
+        model.blockers,
+    )
+    coverage_is_unavailable = any(
+        metric["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
+        for metric in debt_coverage_metrics.values()
+    )
     result_blockers = [
         *model.blockers,
+        *coverage_projection_blockers,
         *scenario_blockers,
         *legacy_scenario_blockers,
     ]
@@ -166,18 +183,26 @@ def serialize_finance_result(
                 }
                 for row in model.periods
             ],
-            "debt": [
-                {
-                    "period": period_row.period,
-                    **{
-                        field: _decimal(getattr(debt_row, field), money_scale)
-                        for field in debt_row.__dataclass_fields__
-                    },
-                }
-                for period_row, debt_row in zip(
-                    model.periods, model.debt_schedule, strict=True
-                )
-            ],
+            "debt": (
+                [
+                    {
+                        "period": period,
+                        **{
+                            field: _decimal(
+                                getattr(debt_row, field), money_scale
+                            )
+                            for field in debt_row.__dataclass_fields__
+                        },
+                    }
+                    for period, debt_row in zip(
+                        validated.periods,
+                        model.debt_schedule,
+                        strict=True,
+                    )
+                ]
+                if len(model.debt_schedule) == len(validated.periods)
+                else []
+            ),
             "fiscal": [
                 {
                     "period": row.period,
@@ -187,11 +212,16 @@ def serialize_finance_result(
             ],
         },
         "metrics": {
-            key: _metric_decimal(
-                key, model.metrics.get(key), money_scale, ratio_scale
+            key: (
+                debt_coverage_metrics[key]["value"]
+                if key in debt_coverage_metrics
+                else _metric_decimal(
+                    key, model.metrics.get(key), money_scale, ratio_scale
+                )
             )
             for key in _METRIC_KEYS
         },
+        "debt_coverage_metrics": debt_coverage_metrics,
         "invariants": [
             {
                 "invariant_id": item.invariant_id,
@@ -207,15 +237,27 @@ def serialize_finance_result(
             {
                 "scenario_id": evaluation.scenario_id,
                 "kind": evaluation.kind,
-                "status": evaluation.status,
+                "status": (
+                    "not_ready"
+                    if coverage_is_unavailable
+                    else evaluation.status
+                ),
                 "input_hash": evaluation.input_hash,
                 "override_refs": list(evaluation.override_refs),
                 "metrics": {
-                    key: _metric_decimal(
-                        key,
-                        evaluation.metrics.get(key),
-                        money_scale,
-                        ratio_scale,
+                    key: (
+                        debt_coverage_metrics[key]["value"]
+                        if key in debt_coverage_metrics
+                        and (
+                            evaluation.kind == "baseline"
+                            or coverage_is_unavailable
+                        )
+                        else _metric_decimal(
+                            key,
+                            evaluation.metrics.get(key),
+                            money_scale,
+                            ratio_scale,
+                        )
                     )
                     for key in _METRIC_KEYS
                 },
@@ -234,7 +276,13 @@ def serialize_finance_result(
         "blockers": result_blockers,
         "legacy_projection": (
             _legacy_projection(
-                model, document, lineage, money_scale, ratio_scale
+                model,
+                document,
+                lineage,
+                debt_coverage_metrics,
+                coverage_projection_blockers,
+                money_scale,
+                ratio_scale,
             )
             if include_legacy_projection
             and not legacy_scenario_blockers
@@ -248,7 +296,561 @@ def serialize_finance_result(
     }
     if include_legacy_projection:
         _apply_legacy_parity(result, money_scale, ratio_scale)
+    validate_finance_result_projection(result)
     return result
+
+
+def validate_finance_result_projection(
+    result: dict[str, Any],
+) -> None:
+    """Fail closed when compatibility metric values diverge from envelopes."""
+    try:
+        ratio_scale = result["rounding_policy"]["ratio_scale"]
+        metrics = result["metrics"]
+        envelopes = result["debt_coverage_metrics"]
+        baseline_scenarios = [
+            scenario
+            for scenario in result["scenarios"]
+            if scenario["kind"] == "baseline"
+        ]
+        if len(baseline_scenarios) != 1:
+            raise ValueError("exactly one baseline scenario is required")
+        baseline = baseline_scenarios[0]
+        coverage_is_unavailable = any(
+            envelope["applicability_status"]
+            in {"UNKNOWN", "NOT_READY", "BLOCKED"}
+            for envelope in envelopes.values()
+        )
+        if coverage_is_unavailable:
+            for scenario in result["scenarios"]:
+                if scenario["status"] == "ready":
+                    raise FinanceContractError(
+                        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                        "$.scenarios",
+                        (
+                            "scenario cannot remain ready when debt "
+                            "coverage is unavailable"
+                        ),
+                    )
+        expected_period_range = {
+            "start_period": result["periods"][0],
+            "end_period": result["periods"][-1],
+        }
+        expected_lineage = {
+            "assumption_refs": result["lineage"]["assumption_refs"],
+            "evidence_refs": result["lineage"]["evidence_refs"],
+        }
+        for metric_id in ("dscr_min", "llcr"):
+            envelope = envelopes[metric_id]
+            traceability_checks = (
+                (
+                    "source_artifact_id",
+                    envelope["source_artifact_id"],
+                    result["run_id"],
+                ),
+                (
+                    "period_range",
+                    envelope["period_range"],
+                    expected_period_range,
+                ),
+                (
+                    "lineage_refs",
+                    envelope["lineage_refs"],
+                    expected_lineage,
+                ),
+            )
+            for field_name, actual, expected in traceability_checks:
+                if actual != expected:
+                    raise FinanceContractError(
+                        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                        (
+                            "$.debt_coverage_metrics."
+                            f"{metric_id}.{field_name}"
+                        ),
+                        (
+                            "debt-coverage traceability diverges from "
+                            "the parent result"
+                        ),
+                    )
+            required_result_blockers: set[str] = set()
+            if envelope["applicability_status"] == "NOT_READY":
+                required_result_blockers.add(
+                    f"FIN2_DEBT_COVERAGE_{envelope['reason_code']}"
+                )
+            elif envelope["applicability_status"] == "BLOCKED":
+                required_result_blockers.update(envelope["blocker_codes"])
+            result_blocker_codes = {
+                blocker["code"] for blocker in result["blockers"]
+            }
+            if not required_result_blockers.issubset(
+                result_blocker_codes
+            ):
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    "$.blockers",
+                    (
+                        "result omits blockers required by governed "
+                        "debt-coverage envelopes"
+                    ),
+                )
+            blocker_codes = envelope["blocker_codes"]
+            if blocker_codes != sorted(set(blocker_codes)):
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    (
+                        "$.debt_coverage_metrics."
+                        f"{metric_id}.blocker_codes"
+                    ),
+                    (
+                        "debt-coverage blocker codes must be unique and "
+                        "canonically sorted"
+                    ),
+                )
+            envelope_value = _canonical_projection_value(
+                envelopes[metric_id]["value"],
+                ratio_scale,
+            )
+            consumers = [
+                (f"$.metrics.{metric_id}", metrics[metric_id]),
+                (
+                    f"$.scenarios.baseline.metrics.{metric_id}",
+                    baseline["metrics"][metric_id],
+                ),
+            ]
+            if coverage_is_unavailable:
+                consumers.extend(
+                    (
+                        "$.scenarios"
+                        f"[{scenario['scenario_id']}].metrics.{metric_id}",
+                        scenario["metrics"][metric_id],
+                    )
+                    for scenario in result["scenarios"]
+                    if scenario["kind"] != "baseline"
+                )
+            for field_ref, consumer_value in consumers:
+                projected_value = _canonical_projection_value(
+                    consumer_value,
+                    ratio_scale,
+                )
+                if projected_value != envelope_value:
+                    raise FinanceContractError(
+                        "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                        field_ref,
+                        (
+                            "projected metric diverges from the governed "
+                            "debt-coverage envelope"
+                        ),
+                    )
+        _validate_legacy_debt_coverage_projection(
+            result,
+            envelopes,
+            ratio_scale,
+        )
+    except FinanceContractError:
+        raise
+    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+        raise FinanceContractError(
+            "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+            "$.debt_coverage_metrics",
+            "debt-coverage projection shape or decimal value is invalid",
+        ) from exc
+
+
+def _validate_legacy_debt_coverage_projection(
+    result: dict[str, Any],
+    envelopes: dict[str, dict[str, Any]],
+    ratio_scale: int,
+) -> None:
+    legacy = result["legacy_projection"]
+    if legacy["status"] != "derived":
+        return
+    payload = legacy["payload"]
+    coverage_is_unavailable = any(
+        envelope["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
+        for envelope in envelopes.values()
+    )
+    required_blockers: set[str] = set()
+    for envelope in envelopes.values():
+        if envelope["applicability_status"] == "NOT_READY":
+            required_blockers.add(
+                f"FIN2_DEBT_COVERAGE_{envelope['reason_code']}"
+            )
+        elif envelope["applicability_status"] == "BLOCKED":
+            required_blockers.update(envelope["blocker_codes"])
+    if coverage_is_unavailable:
+        if payload["status"] == "ready":
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                "$.legacy_projection.payload.status",
+                (
+                    "legacy projection cannot remain ready when governed "
+                    "debt coverage is not ready or blocked"
+                ),
+            )
+        payload_blockers = {
+            blocker["code"] for blocker in payload["blockers"]
+        }
+        if not required_blockers.issubset(payload_blockers):
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                "$.legacy_projection.payload.blockers",
+                (
+                    "legacy projection omits governed debt-coverage "
+                    "blockers"
+                ),
+            )
+
+    baseline = payload.get("baseline")
+    if baseline is not None and coverage_is_unavailable:
+        profile_statuses = [
+            (
+                "$.legacy_projection.payload.baseline."
+                "debt_service_profile.status",
+                baseline["debt_service_profile"]["status"],
+            ),
+            (
+                "$.legacy_projection.payload."
+                "debt_service_profile.status",
+                payload["debt_service_profile"]["status"],
+            ),
+        ]
+        for index, scenario in enumerate(payload["scenarios"]):
+            profile_statuses.append(
+                (
+                    "$.legacy_projection.payload.scenarios"
+                    f"[{index}].debt_service_profile.status",
+                    scenario["debt_service_profile"]["status"],
+                )
+            )
+        for field_ref, status in profile_statuses:
+            if status != "not_ready":
+                raise FinanceContractError(
+                    "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                    field_ref,
+                    (
+                        "legacy debt-service profile must be not_ready "
+                        "when governed debt coverage is unavailable"
+                    ),
+                )
+    if baseline is None:
+        return
+    governed_dscr = _canonical_projection_value(
+        envelopes["dscr_min"]["value"],
+        ratio_scale,
+    )
+    consumers = [
+        (
+            "$.legacy_projection.payload.baseline.dscr",
+            baseline["dscr"],
+        ),
+        (
+            "$.legacy_projection.payload.baseline."
+            "debt_service_profile.dscr",
+            baseline["debt_service_profile"]["dscr"],
+        ),
+        (
+            "$.legacy_projection.payload.debt_service_profile.dscr",
+            payload["debt_service_profile"]["dscr"],
+        ),
+    ]
+    for index, scenario in enumerate(payload["scenarios"]):
+        consumers.extend(
+            [
+                (
+                    "$.legacy_projection.payload.scenarios"
+                    f"[{index}].dscr",
+                    scenario["dscr"],
+                ),
+                (
+                    "$.legacy_projection.payload.scenarios"
+                    f"[{index}].debt_service_profile.dscr",
+                    scenario["debt_service_profile"]["dscr"],
+                ),
+            ]
+        )
+    for field_ref, value in consumers:
+        if _canonical_legacy_projection_value(
+            value,
+            ratio_scale,
+        ) != governed_dscr:
+            raise FinanceContractError(
+                "FIN2_DEBT_COVERAGE_PROJECTION_MISMATCH",
+                field_ref,
+                (
+                    "legacy DSCR diverges from the governed "
+                    "debt-coverage envelope"
+                ),
+            )
+
+
+def _canonical_legacy_projection_value(
+    value: Any,
+    ratio_scale: int,
+) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("legacy projected metric must be numeric")
+    if not isfinite(float(value)):
+        raise ValueError("legacy projected metric must be finite")
+    return Decimal(_decimal(Decimal(str(value)), ratio_scale))
+
+
+def _canonical_projection_value(
+    value: Any,
+    ratio_scale: int,
+) -> Decimal | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("projected metric value must be a decimal string")
+    return Decimal(_decimal(Decimal(value), ratio_scale))
+
+
+_DEBT_COVERAGE_FORMULAS = {
+    "dscr_min": "fin2.metric.dscr_min.rolling_12m.v1",
+    "llcr": "fin2.metric.llcr.minimum_loan_life.v1",
+}
+_DEBT_COVERAGE_AGGREGATIONS = {
+    "dscr_min": "minimum_rolling_12_month",
+    "llcr": "minimum_loan_life",
+}
+_DEBT_COVERAGE_ALLOWED_BLOCKER_CODES = frozenset(
+    {
+        "FIN2_INVARIANT_BALANCE_EQUATION",
+        "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET",
+        "FIN2_INVARIANT_CASH_ROLLFORWARD",
+        "FIN2_INVARIANT_RETAINED_EARNINGS_ROLLFORWARD",
+        "FIN2_INVARIANT_PPE_ROLLFORWARD",
+        "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+        "FIN2_INVARIANT_SOURCES_USES_BALANCE",
+        "FIN2_INVARIANT_GROSS_PROFIT_EQUATION",
+        "FIN2_INVARIANT_EBIT_EQUATION",
+        "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+        "FIN2_INVARIANT_FINITE_NUMBERS",
+        "FIN2_INVARIANT_PERIOD_ORDER",
+        "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY",
+        "FIN2_INVARIANT_DETERMINISTIC_REPLAY",
+        "FIN2_DSCR_MIN_VALUE_MISSING",
+        "FIN2_LLCR_VALUE_MISSING",
+        "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
+    }
+)
+_DEBT_COVERAGE_MODEL_BLOCKER_CODES = (
+    _DEBT_COVERAGE_ALLOWED_BLOCKER_CODES
+    - {
+        "FIN2_DSCR_MIN_VALUE_MISSING",
+        "FIN2_LLCR_VALUE_MISSING",
+        "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED",
+    }
+)
+_DEBT_COVERAGE_READINESS_CODES = frozenset(
+    {
+        "FIN2_DEBT_PROFILE_UNSUPPORTED",
+        "FIN2_VAT_LEDGER_NOT_READY",
+    }
+)
+_DEBT_COVERAGE_FIELD_PREFIXES = (
+    "$.financing",
+    "$.fiscal_policy",
+    "$.statements",
+    "$.cash_flows",
+    "$.metrics.dscr",
+    "$.metrics.llcr",
+)
+
+
+def _debt_coverage_metric_objects(
+    validated: ValidatedFinanceInput,
+    model: FinancialModel,
+    document: dict[str, Any],
+    lineage: dict[str, list[str]],
+    money_scale: int,
+    ratio_scale: int,
+) -> dict[str, dict[str, Any]]:
+    declared_debt = bool(document["financing"]["debt_tranches"])
+    model_blocker_codes = {
+        blocker.get("code", "")
+        for blocker in model.blockers
+    }
+    cfads_ready = (
+        len(model.periods) == len(validated.periods)
+        and bool(model.periods)
+    )
+    debt_schedule_ready = (
+        len(model.debt_schedule) == len(validated.periods)
+        and bool(model.debt_schedule)
+    )
+    if "FIN2_DEBT_PROFILE_UNSUPPORTED" in model_blocker_codes:
+        debt_schedule_ready = False
+        # The engine returns before building periods, but the root readiness
+        # cause is the absent reviewed debt schedule, not absent CFADS.
+        cfads_ready = True
+    if "FIN2_VAT_LEDGER_NOT_READY" in model_blocker_codes:
+        cfads_ready = False
+    has_eligible_debt_service = debt_schedule_ready and any(
+        row.interest_paid + row.principal_paid + row.fees_paid > ZERO
+        for row in model.debt_schedule
+    )
+    blocker_codes = _debt_coverage_blocker_codes(model.blockers)
+    applicability, reason_code, detail_codes = _debt_coverage_state(
+        declared_debt=declared_debt,
+        cfads_ready=cfads_ready,
+        debt_schedule_ready=debt_schedule_ready,
+        has_eligible_debt_service=has_eligible_debt_service,
+        blocker_codes=blocker_codes,
+    )
+
+    output: dict[str, dict[str, Any]] = {}
+    for metric_id in ("dscr_min", "llcr"):
+        metric_applicability = applicability
+        metric_reason = reason_code
+        metric_detail_codes = detail_codes
+        value = (
+            _metric_decimal(
+                metric_id,
+                model.metrics.get(metric_id),
+                money_scale,
+                ratio_scale,
+            )
+            if metric_applicability == "APPLICABLE"
+            else None
+        )
+        if metric_applicability == "APPLICABLE" and value is None:
+            missing_code = (
+                f"FIN2_{metric_id.upper()}_VALUE_MISSING"
+            )
+            metric_applicability = "BLOCKED"
+            metric_reason = missing_code
+            metric_detail_codes = (missing_code,)
+
+        output[metric_id] = {
+            "metric_id": metric_id,
+            "value": value,
+            "value_status": (
+                "VALUE_PRESENT" if value is not None else "VALUE_ABSENT"
+            ),
+            "applicability_status": metric_applicability,
+            "reason_code": metric_reason,
+            "blocker_codes": list(metric_detail_codes),
+            "period_range": {
+                "start_period": validated.periods[0],
+                "end_period": validated.periods[-1],
+            },
+            "unit": "ratio",
+            "currency": None,
+            "currency_reason": "NOT_MONETARY_METRIC",
+            "grain": {
+                "schema_version": "finance-metric-grain.v1",
+                "frequency": "monthly",
+                "aggregation": _DEBT_COVERAGE_AGGREGATIONS[metric_id],
+                "dimensions": [],
+            },
+            "source_artifact_id": validated.run_id,
+            "formula_version": _DEBT_COVERAGE_FORMULAS[metric_id],
+            "lineage_refs": {
+                "assumption_refs": list(lineage["assumption_refs"]),
+                "evidence_refs": list(lineage["evidence_refs"]),
+            },
+        }
+    return output
+
+
+def _debt_coverage_state(
+    *,
+    declared_debt: bool,
+    cfads_ready: bool,
+    debt_schedule_ready: bool,
+    has_eligible_debt_service: bool,
+    blocker_codes: tuple[str, ...] = (),
+) -> tuple[str, str, tuple[str, ...]]:
+    canonical_blockers = tuple(sorted(set(blocker_codes)))
+    if not declared_debt:
+        return "NOT_APPLICABLE", "NO_DEBT_SERVICE", ()
+    if canonical_blockers:
+        reason = (
+            canonical_blockers[0]
+            if len(canonical_blockers) == 1
+            else "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+        )
+        return "BLOCKED", reason, canonical_blockers
+    if not cfads_ready and not debt_schedule_ready:
+        return (
+            "NOT_READY",
+            "CFADS_AND_DEBT_SCHEDULE_NOT_READY",
+            (),
+        )
+    if not cfads_ready:
+        return "NOT_READY", "CFADS_NOT_READY", ()
+    if not debt_schedule_ready:
+        return "NOT_READY", "DEBT_SCHEDULE_NOT_READY", ()
+    if not has_eligible_debt_service:
+        return "NOT_APPLICABLE", "NO_DEBT_SERVICE", ()
+    return "APPLICABLE", "READY", ()
+
+
+def _debt_coverage_blocker_codes(
+    blockers: tuple[dict[str, str], ...],
+) -> tuple[str, ...]:
+    relevant = []
+    for blocker in blockers:
+        code = blocker.get("code", "")
+        field_ref = blocker.get("field_ref", "")
+        if code in _DEBT_COVERAGE_READINESS_CODES:
+            continue
+        is_relevant = (
+            code.startswith("FIN2_INVARIANT_")
+            or field_ref.startswith(_DEBT_COVERAGE_FIELD_PREFIXES)
+        )
+        if is_relevant:
+            relevant.append(
+                code
+                if code in _DEBT_COVERAGE_MODEL_BLOCKER_CODES
+                else "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+            )
+    return tuple(sorted(set(relevant)))
+
+
+def _debt_coverage_projection_blockers(
+    metrics: dict[str, dict[str, Any]],
+    model_blockers: tuple[dict[str, str], ...],
+) -> list[dict[str, str]]:
+    existing_codes = {
+        blocker["code"]
+        for blocker in model_blockers
+        if blocker.get("code")
+    }
+    projected: dict[str, str] = {}
+    for metric_id, metric in metrics.items():
+        applicability = metric["applicability_status"]
+        if applicability == "NOT_READY":
+            code = f"FIN2_DEBT_COVERAGE_{metric['reason_code']}"
+            projected.setdefault(
+                code,
+                (
+                    "مدخلات مقياس تغطية الدين غير جاهزة: "
+                    f"{metric['reason_code']}."
+                ),
+            )
+        elif applicability == "BLOCKED":
+            for code in metric["blocker_codes"]:
+                if code not in existing_codes:
+                    projected.setdefault(
+                        code,
+                        (
+                            "إسقاط تغطية الدين محجوب للمقياس "
+                            f"{metric_id}: {code}."
+                        ),
+                    )
+    return [
+        {
+            "code": code,
+            "severity": "high",
+            "field_ref": "$.debt_coverage_metrics",
+            "message_ar": message,
+        }
+        for code, message in sorted(projected.items())
+    ]
 
 
 def _apply_legacy_parity(
@@ -348,9 +950,15 @@ def _legacy_projection(
     model: FinancialModel,
     document: dict[str, Any],
     lineage: dict[str, list[str]],
+    debt_coverage_metrics: dict[str, dict[str, Any]],
+    coverage_projection_blockers: list[dict[str, str]],
     money_scale: int,
     ratio_scale: int,
 ) -> dict[str, Any]:
+    coverage_is_unavailable = any(
+        metric["applicability_status"] in {"UNKNOWN", "NOT_READY", "BLOCKED"}
+        for metric in debt_coverage_metrics.values()
+    )
     monte_carlo = _legacy_not_ready_monte_carlo()
     if not model.periods:
         payload = _legacy_unavailable_payload(
@@ -476,9 +1084,17 @@ def _legacy_projection(
                 _decimal(average("operating_expenses"), money_scale)
             ),
         }
-        dscr = _legacy_float(model.metrics.get("dscr_min"), ratio_scale)
+        governed_dscr = debt_coverage_metrics["dscr_min"]["value"]
+        dscr = _legacy_float(
+            Decimal(governed_dscr)
+            if governed_dscr is not None
+            else None,
+            ratio_scale,
+        )
         debt_service_profile = {
-            "status": "ready",
+            "status": (
+                "not_ready" if coverage_is_unavailable else "ready"
+            ),
             "debt_amount": float(_decimal(debt_amount, money_scale)),
             "monthly_payment": (
                 float(
@@ -584,6 +1200,9 @@ def _legacy_projection(
             "assumption_refs": lineage["assumption_refs"],
             "blockers": list(model.blockers),
         }
+    if coverage_is_unavailable:
+        payload["status"] = "not_ready"
+        payload["blockers"].extend(coverage_projection_blockers)
     return {
         "schema_version": "finance.result.v1-compatible",
         "status": "derived",

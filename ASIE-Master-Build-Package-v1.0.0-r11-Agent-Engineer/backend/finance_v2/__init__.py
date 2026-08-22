@@ -11,7 +11,11 @@ from .contracts import (
     validate_finance_input,
 )
 from .model import FinancialModel, FinancialPeriod, InvariantResult
-from .result import ENGINE_VERSION, serialize_finance_result
+from .result import (
+    ENGINE_VERSION,
+    serialize_finance_result,
+    validate_finance_result_projection,
+)
 from .risk_profiles import (
     ManifestProfileBinding,
     ResolvedRiskProfileBinding,
@@ -63,5 +67,6 @@ __all__ = [
     "prepare_sensitivity_run",
     "serialize_finance_result",
     "validate_finance_input",
+    "validate_finance_result_projection",
     "validate_risk_profile",
 ]
