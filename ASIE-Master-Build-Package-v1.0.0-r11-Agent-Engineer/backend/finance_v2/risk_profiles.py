@@ -27,6 +27,9 @@ _ID_PATTERN = {
 }
 _VARIABLE_ID = re.compile(r"^var_[A-Za-z0-9_-]{1,80}$")
 _AXIS_ID = re.compile(r"^axis_[A-Za-z0-9_-]{1,80}$")
+_SENSITIVITY_DECIMAL_TEXT = re.compile(
+    r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$"
+)
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _DATE_FORMAT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DATETIME_FORMAT = re.compile(
@@ -1744,7 +1747,7 @@ def _validate_sensitivity(
             maximum=21,
         )
         parsed_values = [
-            _profile_decimal(item, f"{ref}.values[{item_index}]")
+            _sensitivity_input_decimal(item, f"{ref}.values[{item_index}]")
             for item_index, item in enumerate(values)
         ]
         if operation == "multiply" and any(value < 0 for value in parsed_values):
@@ -1794,7 +1797,7 @@ def _validate_sensitivity(
                 f"{ref}.operation",
                 "unsupported operation",
             )
-        parsed_value = _profile_decimal(row["value"], f"{ref}.value")
+        parsed_value = _sensitivity_input_decimal(row["value"], f"{ref}.value")
         if operation == "multiply" and parsed_value < 0:
             raise FinanceContractError(
                 "FIN2_SCENARIO_MULTIPLIER_NEGATIVE",
@@ -2051,6 +2054,17 @@ def _validate_quantiles(
             field_ref,
             "quantiles must be unique and allowlisted",
         )
+
+
+def _sensitivity_input_decimal(value: Any, field_ref: str) -> Decimal:
+    parsed = _profile_decimal(value, field_ref)
+    if _SENSITIVITY_DECIMAL_TEXT.fullmatch(value) is None:
+        raise FinanceContractError(
+            "FIN2_PROFILE_SENSITIVITY_DECIMAL",
+            field_ref,
+            "sensitivity input decimal must match the governed schema grammar",
+        )
+    return parsed
 
 
 def _profile_decimal(

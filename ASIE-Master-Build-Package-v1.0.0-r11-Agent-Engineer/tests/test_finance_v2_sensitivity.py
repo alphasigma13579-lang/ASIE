@@ -110,6 +110,29 @@ def test_governed_fixture_has_finite_requested_metrics() -> None:
         assert value.is_finite()
 
 
+@pytest.mark.parametrize(
+    ("location", "invalid_value"),
+    (
+        ("axis", "0.0000000051"),
+        ("fixed_override", "1e-8"),
+    ),
+)
+def test_sensitivity_input_decimals_match_the_governed_schema_grammar(
+    location: str,
+    invalid_value: str,
+) -> None:
+    def mutate(profile_document: dict[str, Any]) -> None:
+        if location == "axis":
+            profile_document["axes"][0]["values"][0] = invalid_value
+        else:
+            profile_document["fixed_overrides"][0]["value"] = invalid_value
+
+    with pytest.raises(FinanceContractError) as error:
+        controlled_sensitivity_prepared_run(profile_mutator=mutate)
+
+    assert error.value.code == "FIN2_PROFILE_SENSITIVITY_DECIMAL"
+
+
 def test_deterministic_2d_grid_is_complete_ordered_and_reproducible() -> None:
     prepared = controlled_sensitivity_prepared_run()
     first = evaluate_sensitivity(prepared)
