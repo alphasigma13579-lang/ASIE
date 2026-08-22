@@ -502,6 +502,36 @@ class ExternalEvidenceStore:
         denial: str | None = None
         admitted: EvidenceArtifact | None = None
 
+        # Resolve the source state without holding SQLite's write lock. The
+        # resolver is a local, bounded dependency supplied by the composition root.
+        with self._connection() as connection:
+            status_snapshot_row = connection.execute(
+                """
+                SELECT * FROM external_evidence_artifacts
+                WHERE organization_id = ? AND project_id = ? AND artifact_id = ?
+                """,
+                (organization_id, project_id, artifact_id),
+            ).fetchone()
+        if status_snapshot_row is None:
+            raise ExternalEvidenceNotFound("external_evidence_object_not_found")
+        status_snapshot = self._artifact_from_row(status_snapshot_row)
+
+        if self._source_status_resolver is None:
+            source_state = None
+            source_denial = "artifact_source_status_unavailable"
+        else:
+            try:
+                source_state = self._source_status_resolver(
+                    organization_id, project_id, status_snapshot.source_id
+                )
+            except Exception:  # noqa: BLE001 - trust-boundary failures must fail closed
+                source_state = None
+                source_denial = "artifact_source_status_unavailable"
+            else:
+                source_denial = (
+                    None if source_state == "enabled" else "artifact_source_not_enabled"
+                )
+
         with self._transaction() as connection:
             artifact_row = connection.execute(
                 """
@@ -523,22 +553,9 @@ class ExternalEvidenceStore:
             elif freshness_expires_at <= as_of_timestamp:
                 denial = "artifact_stale"
 
-            if self._source_status_resolver is None:
-                source_state = None
-                source_denial = "artifact_source_status_unavailable"
-            else:
-                try:
-                    source_state = self._source_status_resolver(
-                        organization_id, project_id, admitted.source_id
-                    )
-                except Exception:
-                    source_state = None
-                    source_denial = "artifact_source_status_unavailable"
-                else:
-                    source_denial = (
-                        None if source_state == "enabled" else "artifact_source_not_enabled"
-                    )
-            if source_denial:
+            if admitted != status_snapshot:
+                denial = "artifact_changed_during_admission"
+            elif source_denial:
                 denial = source_denial
 
             review_rows = connection.execute(

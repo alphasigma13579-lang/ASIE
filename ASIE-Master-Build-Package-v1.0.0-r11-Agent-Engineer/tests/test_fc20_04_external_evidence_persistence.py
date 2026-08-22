@@ -354,7 +354,7 @@ def test_constraint_errors_use_redacted_store_contract(
     )
 
 
-@pytest.mark.parametrize("busy_timeout_ms", (-1, True, "5000"))
+@pytest.mark.parametrize("busy_timeout_ms", [-1, True, "5000"])
 def test_busy_timeout_requires_a_non_negative_integer(
     tmp_path, busy_timeout_ms: object
 ) -> None:

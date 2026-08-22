@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, replace
 
 import pytest
@@ -233,7 +234,7 @@ def test_artifact_captured_after_as_of_is_denied(
         admit(store, as_of=T1)
 
 
-@pytest.mark.parametrize("source_state", ("blocked", "candidate", "reference_only", None))
+@pytest.mark.parametrize("source_state", ["blocked", "candidate", "reference_only", None])
 def test_non_enabled_source_is_denied_at_admission(
     store: ExternalEvidenceStore,
     source_states: SourceStates,
@@ -267,6 +268,72 @@ def test_source_status_failure_is_visible_and_fails_closed(
         == "artifact_source_status_unavailable"
         for event in events
     )
+
+
+def test_source_status_resolver_runs_without_sqlite_write_lock(tmp_path) -> None:
+    db_path = tmp_path / "source-status-lock.sqlite3"
+
+    def source_status(
+        organization_id: str, project_id: str, source_id: str
+    ) -> str:
+        assert (organization_id, project_id, source_id) == (
+            "org-a",
+            "project-a",
+            "source-1",
+        )
+        connection = sqlite3.connect(db_path, timeout=0)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.rollback()
+        finally:
+            connection.close()
+        return "enabled"
+
+    unlocked = ExternalEvidenceStore(
+        db_path,
+        authorizer=ExternalEvidenceAuthorizer(Ownership()),
+        clock=lambda: T3,
+        source_status_resolver=source_status,
+    )
+    unlocked.initialize()
+    artifact = seed_artifact(unlocked)
+    review(unlocked, artifact, "approved", "review-1")
+
+    assert admit(unlocked).artifact_hash == artifact.artifact_hash
+
+
+def test_artifact_change_during_source_resolution_fails_closed(tmp_path) -> None:
+    db_path = tmp_path / "source-status-snapshot.sqlite3"
+
+    def source_status(
+        organization_id: str, project_id: str, source_id: str
+    ) -> str:
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                """
+                UPDATE external_evidence_artifacts
+                SET source_id = ?
+                WHERE organization_id = ? AND project_id = ? AND artifact_id = ?
+                """,
+                ("source-changed", organization_id, project_id, "artifact-1"),
+            )
+        return "enabled"
+
+    guarded = ExternalEvidenceStore(
+        db_path,
+        authorizer=ExternalEvidenceAuthorizer(Ownership()),
+        clock=lambda: T3,
+        source_status_resolver=source_status,
+    )
+    guarded.initialize()
+    artifact = seed_artifact(guarded)
+    review(guarded, artifact, "approved", "review-1")
+
+    with pytest.raises(
+        ExternalEvidenceAdmissionError,
+        match="artifact_changed_during_admission",
+    ):
+        admit(guarded)
 
 
 def test_missing_source_status_resolver_fails_closed(tmp_path) -> None:
@@ -351,6 +418,7 @@ def test_admission_audit_failure_fails_closed(tmp_path) -> None:
         tmp_path / "admission-audit.sqlite3",
         authorizer=ExternalEvidenceAuthorizer(Ownership()),
         clock=lambda: T3,
+        source_status_resolver=lambda *_: "enabled",
     )
     failing.initialize()
     artifact = seed_artifact(failing)
