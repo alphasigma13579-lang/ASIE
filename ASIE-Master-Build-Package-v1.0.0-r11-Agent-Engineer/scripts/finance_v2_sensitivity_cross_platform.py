@@ -11,6 +11,15 @@ from collections.abc import Sequence
 
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_EXPECTED_PLATFORM_LABELS = frozenset(
+    {
+        "ubuntu-hash0",
+        "ubuntu-hash7919",
+        "windows-hash0",
+        "windows-hash7919",
+    }
+)
+_PLATFORM_LABEL_ERROR = "C3C platform labels do not match the expected matrix"
 
 
 def _ensure_repository_imports() -> None:
@@ -65,6 +74,12 @@ def compare(directory: Path) -> dict[str, object]:
         raise RuntimeError(
             f"expected four C3C platform vectors, found {len(files)}"
         )
+    labels = {
+        path.parent.name.removeprefix("test-beta-06-")
+        for path in files
+    }
+    if labels != _EXPECTED_PLATFORM_LABELS:
+        raise RuntimeError(_PLATFORM_LABEL_ERROR)
     payloads = [path.read_bytes() for path in files]
     baseline = payloads[0]
     mismatches = [

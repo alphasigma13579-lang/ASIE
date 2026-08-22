@@ -23,6 +23,7 @@ from backend.finance_v2 import (
 from backend.finance_v2.overrides import derive_validated_input
 from scripts.benchmark_finance_v2_sensitivity import _peak_rss_mib
 from scripts.finance_v2_sensitivity_cross_platform import (
+    compare as compare_c3c_cross_platform,
     emit as emit_c3c_cross_platform,
 )
 from tests.finance_v2_sensitivity_fixture import (
@@ -61,6 +62,42 @@ def test_cross_platform_emitter_uses_finance_canonical_bytes(
     assert encoded == canonical_json(payload).encode("utf-8")
     assert summary["bytes"] == len(encoded)
     assert summary["result_hash"] == payload["result_hash"]
+
+
+def test_cross_platform_compare_requires_exact_matrix_labels(
+    tmp_path: Path,
+) -> None:
+    seed_path = tmp_path / "seed.json"
+    emit_c3c_cross_platform(seed_path)
+    encoded = seed_path.read_bytes()
+    expected_labels = (
+        "ubuntu-hash0",
+        "ubuntu-hash7919",
+        "windows-hash0",
+        "windows-hash7919",
+    )
+    valid_root = tmp_path / "valid"
+    for label in expected_labels:
+        target = (
+            valid_root
+            / f"test-beta-06-{label}"
+            / "c3c-sensitivity.json"
+        )
+        target.parent.mkdir(parents=True)
+        target.write_bytes(encoded)
+
+    comparison = compare_c3c_cross_platform(valid_root)
+    assert comparison["status"] == "byte_identical"
+    assert comparison["vector_count"] == 4
+
+    invalid_root = tmp_path / "invalid"
+    for label in (*expected_labels[:3], "other-hash0"):
+        target = invalid_root / label / "c3c-sensitivity.json"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(encoded)
+
+    with pytest.raises(RuntimeError, match="platform labels"):
+        compare_c3c_cross_platform(invalid_root)
 
 
 def test_governed_fixture_has_finite_requested_metrics() -> None:
@@ -649,6 +686,12 @@ def test_result_schema_expresses_dark_only_and_atomic_contract() -> None:
         "1.",
     ):
         assert re.fullmatch(decimal_pattern, rejected) is None
+    blocker_properties = schema["properties"]["blockers"]["items"][
+        "properties"
+    ]
+    for field in ("code", "field_ref", "cause_code", "message_ar"):
+        assert blocker_properties[field]["minLength"] == 1
+    assert blocker_properties["severity"]["enum"] == ["high"]
     assert {"stage", "cause_code"} <= set(
         schema["properties"]["blockers"]["items"]["required"]
     )
@@ -1157,6 +1200,36 @@ def test_result_hash_includes_engine_versions_and_imports_stay_dark_only() -> No
         "version": "1.0.0",
         "registry_hash": "sha256:" + "b" * 64,
     }
+    assert set(hash_preimage["profile"]) == {
+        "schema_version",
+        "profile_id",
+        "version",
+        "content_hash",
+        "dependency_hashes",
+        "registry_snapshot_hash",
+        "approved_manifest_id",
+        "approved_manifest_hash",
+        "policy_ref",
+        "policy_version",
+        "policy_hash",
+    }
+    assert all(
+        set(axis) == {"axis_id", "target_ref", "operation", "values"}
+        for axis in hash_preimage["axes"]
+    )
+    assert hash_preimage["cells"]
+    assert all(
+        set(cell)
+        == {
+            "row_index",
+            "column_index",
+            "row_value",
+            "column_value",
+            "derived_input_hash",
+            "metrics",
+        }
+        for cell in hash_preimage["cells"]
+    )
 
     changed_finance = dict(hash_preimage)
     changed_finance["finance_engine_version"] = "tampered"

@@ -281,13 +281,17 @@
         ],
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "severity": {
-            "type": "string"
+            "enum": [
+              "high"
+            ]
           },
           "field_ref": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "stage": {
             "enum": [
@@ -298,10 +302,12 @@
             ]
           },
           "cause_code": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "message_ar": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         }
       }
