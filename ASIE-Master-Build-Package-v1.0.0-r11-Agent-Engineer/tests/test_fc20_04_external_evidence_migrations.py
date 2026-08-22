@@ -8,6 +8,7 @@ from backend.external_evidence_authorization import ExternalEvidenceAuthorizer
 from backend.external_evidence_persistence import (
     ExternalEvidenceMigrationError,
     ExternalEvidenceStore,
+    Migration,
 )
 
 
@@ -92,7 +93,7 @@ def test_v2_migrates_legacy_failed_and_partial_rows(tmp_path) -> None:
     class LegacyV1Store(ExternalEvidenceStore):
         SCHEMA_VERSION = 1
 
-        def _migrations(self):  # type: ignore[no-untyped-def]
+        def _migrations(self) -> tuple[Migration, ...]:
             return ((1, "fc20_04_p0_a_v1", self._migration_statements_v1()),)
 
     db_path = tmp_path / "legacy-v1.sqlite3"
