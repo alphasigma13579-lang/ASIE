@@ -1,14 +1,14 @@
 # FINANCE-V2-S2C3C — Deterministic Sensitivity Benchmark Evidence
 
-- Evidence version: `v2.2.0`
-- Status: `FINAL_REVIEW_REPAIR_SOURCE_VERIFIED_AWAITING_EVIDENCE_HEAD_GATES`
+- Evidence version: `v2.3.0`
+- Status: `FINAL_REVIEW_REGRESSION_SOURCE_VERIFIED_AWAITING_EVIDENCE_HEAD_GATES`
 - Owner: Finance Engineering + Principal Architecture
 - Last verified: 2026-08-22
 - Scope: C3C deterministic 2D sensitivity dark build only
 - Governing decisions: `ACR-FIN-003-C3C-v1.0.0` and `ACR-FIN-004-v0.2.0`
-- Verified implementation source SHA: `39d2b9d1f6ff05fd8719f286f081515bf3150013`
-- ASIE CI verification: [#450](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32540060192)
-- Cross-platform verification: [#301](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32540060199)
+- Verified implementation source SHA: `4ffed9002ddc31d8c92c1516c7cb21cc90a4d49d`
+- ASIE CI verification: [#452](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32541476256)
+- Cross-platform verification: [#303](https://github.com/alphasigma13579-lang/ASIE/actions/runs/32541476246)
 
 ## Decision and claim boundary
 
@@ -20,8 +20,8 @@ later C3D-C3F gates.
 
 ## Final review-repair scope
 
-The verified source incorporates independent audits of nine findings across
-the two exact-head CodeRabbit reviews without treating their suggestions as
+The verified source incorporates independent audits of eleven findings across
+the three exact-head CodeRabbit reviews without treating their suggestions as
 authority:
 
 - it keeps Finance-model metric Decimals at full finite precision and documents
@@ -38,7 +38,12 @@ authority:
 - it requires the exact Ubuntu/Windows and hash-seed label matrix, not merely
   four equal files;
 - it pins nested profile, axis, and cell fields in the result-hash preimage
-  regression test; and
+  regression test;
+- it compares migrated non-idempotent `fixed_overrides` against an established
+  equivalent input baseline for identical cell input hashes and metrics, and
+  pins the fixed-override failure as an atomic `not_ready` result;
+- it states that the mocked 441-cell test proves grid structure and invocation
+  counts while the CI benchmark exercises the real 441×240×8 path; and
 - it leaves engine calculations, the 441-cell hard cap, fail-closed behavior,
   and all protected paths unchanged.
 
@@ -70,7 +75,9 @@ The corrected baseline and subsequent verified sources were separate events:
 - ASIE CI #446 preserved the workload, applied the ACR ceiling formula, and
   passed the complete test and benchmark gates.
 - ASIE CI #448 and Cross-Platform #299 verified the first review-repair source.
-- ASIE CI #450 and Cross-Platform #301 verified the final review-repair source
+- ASIE CI #450 and Cross-Platform #301 verified the schema and integrity
+  review-repair source.
+- ASIE CI #452 and Cross-Platform #303 verified the final regression source
   without changing the workload, hard caps, financial calculations, or
   canonical C3C result.
 
@@ -142,26 +149,26 @@ JSON evidence so the gate cannot be separated from its provenance.
 
 ## Exact implementation verification
 
-ASIE CI #450 verified
-`39d2b9d1f6ff05fd8719f286f081515bf3150013`:
+ASIE CI #452 verified
+`4ffed9002ddc31d8c92c1516c7cb21cc90a4d49d`:
 
 | Verification measure | Value |
 |---|---:|
-| Python tests | 888 passed |
+| Python tests | 889 passed |
 | Warnings | 10 |
-| Test duration | 88.04 s |
-| Trial 1 | 19.396382269000014 s |
-| Trial 2 | 19.405197853999994 s |
-| Trial 3 | 19.410571259999983 s |
-| p50 | 19.405197853999994 s |
-| p95 | 19.410571259999983 s |
-| Peak RSS | 23.12890625 MiB |
+| Test duration | 79.21 s |
+| Trial 1 | 19.684637107000015 s |
+| Trial 2 | 19.718075580000004 s |
+| Trial 3 | 19.682315998000007 s |
+| p50 | 19.684637107000015 s |
+| p95 | 19.718075580000004 s |
+| Peak RSS | 22.82421875 MiB |
 | Runtime ceiling | 29.961531237000017 s — passed |
 | Memory ceiling | 64.0 MiB — passed |
 
 ## Cross-platform canonical evidence
 
-Cross-Platform #301 emitted the actual C3C 3×3 canonical result in all four
+Cross-Platform #303 emitted the actual C3C 3×3 canonical result in all four
 matrix jobs and compared the files byte-for-byte:
 
 | Evidence | Value |
@@ -179,10 +186,10 @@ matrix jobs and compared the files byte-for-byte:
 |---|---|
 | T-C3C-007 maximum grid | benchmark asserts 441 ordered cells |
 | T-C3C-010 unavailable metric | atomic `not_ready`, empty cells, no null/zero |
-| T-C3C-015 cross-platform result | Cross-Platform #301, four byte-identical files |
+| T-C3C-015 cross-platform result | Cross-Platform #303, four byte-identical files |
 | T-C3C-016 protected paths | no Runtime, Snapshot, Decision Council, or AAS freeze file changed |
-| T-C3C-017 dark import boundary | existing import-boundary tests, 888-test suite |
-| T-C3C-018 performance evidence | ASIE CI #445 baseline and #450 passing gate |
+| T-C3C-017 dark import boundary | existing import-boundary tests, 889-test suite |
+| T-C3C-018 performance evidence | ASIE CI #445 baseline and #452 passing gate |
 
 The evidence-document commit necessarily descends from the verified
 implementation source. It cannot embed its own SHA without changing that SHA.
