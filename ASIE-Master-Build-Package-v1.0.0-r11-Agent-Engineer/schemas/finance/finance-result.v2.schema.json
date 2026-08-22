@@ -21,6 +21,7 @@
     "cash_flows",
     "subledgers",
     "metrics",
+    "debt_coverage_metrics",
     "invariants",
     "scenarios",
     "lineage",
@@ -517,6 +518,121 @@
         }
       }
     },
+    "debt_coverage_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dscr_min",
+        "llcr"
+      ],
+      "properties": {
+        "dscr_min": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/debtCoverageMetric"
+            },
+            {
+              "properties": {
+                "metric_id": {
+                  "const": "dscr_min"
+                },
+                "formula_version": {
+                  "const": "fin2.metric.dscr_min.rolling_12m.v1"
+                },
+                "grain": {
+                  "properties": {
+                    "aggregation": {
+                      "const": "minimum_rolling_12_month"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "reason_code": {
+                        "const": "FIN2_LLCR_VALUE_MISSING"
+                      }
+                    },
+                    "required": [
+                      "reason_code"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "blocker_codes": {
+                        "contains": {
+                          "const": "FIN2_LLCR_VALUE_MISSING"
+                        }
+                      }
+                    },
+                    "required": [
+                      "blocker_codes"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "llcr": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/debtCoverageMetric"
+            },
+            {
+              "properties": {
+                "metric_id": {
+                  "const": "llcr"
+                },
+                "formula_version": {
+                  "const": "fin2.metric.llcr.minimum_loan_life.v1"
+                },
+                "grain": {
+                  "properties": {
+                    "aggregation": {
+                      "const": "minimum_loan_life"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "reason_code": {
+                        "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                      }
+                    },
+                    "required": [
+                      "reason_code"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "blocker_codes": {
+                        "contains": {
+                          "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                        }
+                      }
+                    },
+                    "required": [
+                      "blocker_codes"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "$comment": "Sibling value equality with metrics.dscr_min/llcr is a semantic invariant enforced by validate_finance_result_projection after canonical decimal normalization; JSON Schema 2020-12 cannot compare sibling values dynamically."
+    },
     "invariants": {
       "type": "array",
       "minItems": 0,
@@ -1005,6 +1121,40 @@
                 "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
               }
             }
+          },
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "applicability_status": {
+                    "enum": [
+                      "APPLICABLE",
+                      "NOT_APPLICABLE"
+                    ]
+                  }
+                },
+                "required": [
+                  "applicability_status"
+                ]
+              },
+              "llcr": {
+                "properties": {
+                  "applicability_status": {
+                    "enum": [
+                      "APPLICABLE",
+                      "NOT_APPLICABLE"
+                    ]
+                  }
+                },
+                "required": [
+                  "applicability_status"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min",
+              "llcr"
+            ]
           }
         }
       }
@@ -1027,9 +1177,847 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "value": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "dscr_min": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "dscr_min": {
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/decimal"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "dscr_min": {
+                "$ref": "#/$defs/decimal"
+              }
+            },
+            "required": [
+              "dscr_min"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "llcr": {
+                "properties": {
+                  "value": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "llcr": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "properties": {
+              "llcr": {
+                "properties": {
+                  "value": {
+                    "$ref": "#/$defs/decimal"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "metrics": {
+            "properties": {
+              "llcr": {
+                "$ref": "#/$defs/decimal"
+              }
+            },
+            "required": [
+              "llcr"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "debt_coverage_metrics": {
+            "anyOf": [
+              {
+                "properties": {
+                  "dscr_min": {
+                    "properties": {
+                      "applicability_status": {
+                        "enum": [
+                          "UNKNOWN",
+                          "NOT_READY",
+                          "BLOCKED"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "applicability_status"
+                    ]
+                  }
+                },
+                "required": [
+                  "dscr_min"
+                ]
+              },
+              {
+                "properties": {
+                  "llcr": {
+                    "properties": {
+                      "applicability_status": {
+                        "enum": [
+                          "UNKNOWN",
+                          "NOT_READY",
+                          "BLOCKED"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "applicability_status"
+                    ]
+                  }
+                },
+                "required": [
+                  "llcr"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "debt_coverage_metrics"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scenarios": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "status": {
+                    "const": "ready"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
+    "debtCoverageMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "value",
+        "value_status",
+        "applicability_status",
+        "reason_code",
+        "blocker_codes",
+        "period_range",
+        "unit",
+        "currency",
+        "currency_reason",
+        "grain",
+        "source_artifact_id",
+        "formula_version",
+        "lineage_refs"
+      ],
+      "properties": {
+        "metric_id": {
+          "enum": [
+            "dscr_min",
+            "llcr"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/nullableDecimal"
+        },
+        "value_status": {
+          "enum": [
+            "VALUE_PRESENT",
+            "ZERO_VERIFIED",
+            "VALUE_ABSENT"
+          ]
+        },
+        "applicability_status": {
+          "enum": [
+            "APPLICABLE",
+            "NOT_APPLICABLE",
+            "UNKNOWN",
+            "NOT_READY",
+            "BLOCKED"
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{2,120}$"
+        },
+        "blocker_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "FIN2_INVARIANT_BALANCE_EQUATION",
+              "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET",
+              "FIN2_INVARIANT_CASH_ROLLFORWARD",
+              "FIN2_INVARIANT_RETAINED_EARNINGS_ROLLFORWARD",
+              "FIN2_INVARIANT_PPE_ROLLFORWARD",
+              "FIN2_INVARIANT_DEBT_ROLLFORWARD",
+              "FIN2_INVARIANT_SOURCES_USES_BALANCE",
+              "FIN2_INVARIANT_GROSS_PROFIT_EQUATION",
+              "FIN2_INVARIANT_EBIT_EQUATION",
+              "FIN2_INVARIANT_CASH_FLOW_EQUATION",
+              "FIN2_INVARIANT_FINITE_NUMBERS",
+              "FIN2_INVARIANT_PERIOD_ORDER",
+              "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY",
+              "FIN2_INVARIANT_DETERMINISTIC_REPLAY",
+              "FIN2_DSCR_MIN_VALUE_MISSING",
+              "FIN2_LLCR_VALUE_MISSING",
+              "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+            ]
+          }
+        },
+        "period_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start_period",
+            "end_period"
+          ],
+          "properties": {
+            "start_period": {
+              "$ref": "#/$defs/period"
+            },
+            "end_period": {
+              "$ref": "#/$defs/period"
+            }
+          }
+        },
+        "unit": {
+          "const": "ratio"
+        },
+        "currency": {
+          "type": "null"
+        },
+        "currency_reason": {
+          "const": "NOT_MONETARY_METRIC"
+        },
+        "grain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "frequency",
+            "aggregation",
+            "dimensions"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": "finance-metric-grain.v1"
+            },
+            "frequency": {
+              "const": "monthly"
+            },
+            "aggregation": {
+              "enum": [
+                "minimum_rolling_12_month",
+                "minimum_loan_life"
+              ]
+            },
+            "dimensions": {
+              "type": "array",
+              "maxItems": 0
+            }
+          }
+        },
+        "source_artifact_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "formula_version": {
+          "type": "string",
+          "pattern": "^fin2\\.metric\\.[a-z0-9_.]+\\.v[0-9]+$"
+        },
+        "lineage_refs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assumption_refs",
+            "evidence_refs"
+          ],
+          "properties": {
+            "assumption_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "evidence_refs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "APPLICABLE"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "$ref": "#/$defs/decimal"
+              },
+              "value_status": {
+                "enum": [
+                  "VALUE_PRESENT",
+                  "ZERO_VERIFIED"
+                ]
+              },
+              "blocker_codes": {
+                "maxItems": 0
+              },
+              "reason_code": {
+                "const": "READY"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "enum": [
+                  "NOT_APPLICABLE",
+                  "UNKNOWN",
+                  "NOT_READY",
+                  "BLOCKED"
+                ]
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "value_status": {
+                "const": "VALUE_ABSENT"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "BLOCKED"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "blocker_codes": {
+                "minItems": 1
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_BALANCE_EQUATION"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_BALANCE_EQUATION"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_CASH_STATEMENT_BALANCE_SHEET"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_CASH_ROLLFORWARD"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_CASH_ROLLFORWARD"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_RETAINED_EARNINGS_ROLLFORWARD"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_RETAINED_EARNINGS_ROLLFORWARD"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_PPE_ROLLFORWARD"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_PPE_ROLLFORWARD"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_DEBT_ROLLFORWARD"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_DEBT_ROLLFORWARD"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_SOURCES_USES_BALANCE"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_SOURCES_USES_BALANCE"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_GROSS_PROFIT_EQUATION"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_GROSS_PROFIT_EQUATION"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_EBIT_EQUATION"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_EBIT_EQUATION"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_CASH_FLOW_EQUATION"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_CASH_FLOW_EQUATION"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_FINITE_NUMBERS"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_FINITE_NUMBERS"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_PERIOD_ORDER"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_PERIOD_ORDER"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_LEGACY_PROJECTION_PARITY"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_INVARIANT_DETERMINISTIC_REPLAY"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_INVARIANT_DETERMINISTIC_REPLAY"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_DSCR_MIN_VALUE_MISSING"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_LLCR_VALUE_MISSING"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_LLCR_VALUE_MISSING"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+                  },
+                  "blocker_codes": {
+                    "prefixItems": [
+                      {
+                        "const": "FIN2_DEBT_COVERAGE_BLOCKER_UNRECOGNIZED"
+                      }
+                    ],
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "reason_code": {
+                    "const": "MULTIPLE_DEBT_COVERAGE_BLOCKERS"
+                  },
+                  "blocker_codes": {
+                    "minItems": 2
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "properties": {
+              "blocker_codes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value_status": {
+                "const": "ZERO_VERIFIED"
+              }
+            },
+            "required": [
+              "value_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "pattern": "^0(?:\\.0{1,8})?$"
+              },
+              "lineage_refs": {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "NOT_APPLICABLE"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "const": "NO_DEBT_SERVICE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applicability_status": {
+                "const": "NOT_READY"
+              }
+            },
+            "required": [
+              "applicability_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "enum": [
+                  "CFADS_NOT_READY",
+                  "DEBT_SCHEDULE_NOT_READY",
+                  "CFADS_AND_DEBT_SCHEDULE_NOT_READY"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
     "decimal": {
       "type": "string",
       "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
