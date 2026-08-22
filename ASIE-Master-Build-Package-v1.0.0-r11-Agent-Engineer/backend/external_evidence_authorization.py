@@ -64,6 +64,8 @@ class ExternalEvidenceAuthorizer:
             raise ExternalEvidenceAuthorizationError("external_evidence_access_denied")
         if not principal.user_id or not principal.session_id:
             raise ExternalEvidenceAuthorizationError("external_evidence_access_denied")
+        if not organization_id or not project_id:
+            raise ExternalEvidenceAuthorizationError("external_evidence_access_denied")
         if principal.organization_id != organization_id:
             raise ExternalEvidenceAuthorizationError("external_evidence_access_denied")
         if not self._ownership.project_belongs_to(organization_id, project_id):

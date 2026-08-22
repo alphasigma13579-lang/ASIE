@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -117,12 +118,39 @@ def test_candidate_and_artifact_cannot_self_claim_approval() -> None:
 def test_contracts_reject_unsafe_url_hash_and_naive_time() -> None:
     with pytest.raises(ContractValidationError, match="invalid_canonical_url"):
         candidate(canonical_url="http://127.0.0.1/private")
+    with pytest.raises(ContractValidationError, match="invalid_canonical_url"):
+        candidate(canonical_url="https://[::1")
+    for forbidden_url in (
+        "https://127.0.0.1/private",
+        "https://localhost/private",
+        "https://[::1]/private",
+        "https://192.168.1.10/private",
+    ):
+        with pytest.raises(ContractValidationError, match="canonical_url_host_forbidden"):
+            candidate(canonical_url=forbidden_url)
     with pytest.raises(ContractValidationError, match="invalid_payload_hash"):
         candidate(payload_hash="not-a-hash")
     with pytest.raises(ContractValidationError, match="invalid_discovered_at"):
         candidate(discovered_at="2026-08-05T00:00:00")
     with pytest.raises(ContractValidationError, match="freshness_must_follow_capture"):
         artifact(freshness_expires_at=NOW)
+
+
+def test_failed_and_partial_jobs_require_failure_codes() -> None:
+    base = {
+        "job_id": "job-1",
+        "organization_id": "org-1",
+        "project_id": "project-1",
+        "provider_id": "tavily",
+        "operation": "extract",
+        "idempotency_key_hash": HASH_A,
+        "request_hash": HASH_B,
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+    for state in ("failed", "partial"):
+        with pytest.raises(ContractValidationError, match="failure_code_required_for_state"):
+            ExtractionJob(**base, state=state)
 
 
 def test_record_hashes_detect_tampering() -> None:
@@ -162,20 +190,34 @@ def test_supersession_shape_is_fail_closed() -> None:
 
 def test_p0_a_modules_have_no_network_or_provider_client_dependency() -> None:
     backend = Path(__file__).resolve().parents[1] / "backend"
-    combined = "\n".join(
-        (backend / name).read_text(encoding="utf-8")
-        for name in (
-            "external_evidence_contracts.py",
-            "external_evidence_authorization.py",
-            "external_evidence_persistence.py",
-        )
-    )
-    forbidden = (
-        "import requests",
-        "import socket",
+    forbidden_modules = {
+        "requests",
+        "socket",
+        "httpx",
+        "aiohttp",
         "urllib.request",
-        "live_provider_clients",
-        "external_acquisition",
-        "provider_security_control_plane",
-    )
-    assert all(token not in combined for token in forbidden)
+        "backend.live_provider_clients",
+        "backend.external_acquisition",
+        "backend.provider_security_control_plane",
+    }
+
+    imported: set[str] = set()
+    for name in (
+        "external_evidence_contracts.py",
+        "external_evidence_authorization.py",
+        "external_evidence_persistence.py",
+    ):
+        tree = ast.parse((backend / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+                imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+
+    assert not {
+        imported_name
+        for imported_name in imported
+        for forbidden in forbidden_modules
+        if imported_name == forbidden or imported_name.startswith(f"{forbidden}.")
+    }
