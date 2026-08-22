@@ -133,8 +133,8 @@ jobs:
       - name: Show comparison evidence
         if: always()
         run: |
-          cat test-beta-06-evidence/comparison.json
-          cat test-beta-06-evidence/c3c-comparison.json
+          cat test-beta-06-evidence/comparison.json || true
+          cat test-beta-06-evidence/c3c-comparison.json || true
 
       - name: Upload combined TEST-BETA-06 evidence
         if: always()

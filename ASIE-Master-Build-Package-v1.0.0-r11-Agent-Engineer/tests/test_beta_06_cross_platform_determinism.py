@@ -155,6 +155,14 @@ class TestBeta06CrossPlatformDeterminism(unittest.TestCase):
             "        if: always()",
             workflow,
         )
+        self.assertIn(
+            "cat test-beta-06-evidence/comparison.json || true",
+            workflow,
+        )
+        self.assertIn(
+            "cat test-beta-06-evidence/c3c-comparison.json || true",
+            workflow,
+        )
         self.assertIn("fail-fast: false", workflow)
 
     def test_tool_excludes_platform_and_absolute_path_material_from_vector(self) -> None:
