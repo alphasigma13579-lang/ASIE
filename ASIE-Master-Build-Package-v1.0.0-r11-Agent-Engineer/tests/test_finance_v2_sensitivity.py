@@ -198,6 +198,17 @@ def test_each_cell_builds_once_and_non_idempotent_fixed_override_applies_once(
         prepared.validated_input.thaw()["working_capital"]["dso_days"]
     )
     expected_dso = _metric_text(baseline_dso + Decimal("5"))
+
+    def baseline_input(document):
+        document["working_capital"]["dso_days"] = expected_dso
+
+    def baseline_profile(profile_document):
+        profile_document["fixed_overrides"] = []
+
+    established_baseline = controlled_sensitivity_prepared_run(
+        input_mutator=baseline_input,
+        profile_mutator=baseline_profile,
+    )
     calls = 0
     original = sensitivity_module.build_financial_model
 
@@ -212,9 +223,43 @@ def test_each_cell_builds_once_and_non_idempotent_fixed_override_applies_once(
 
     monkeypatch.setattr(sensitivity_module, "build_financial_model", counted)
     result = evaluate_sensitivity(prepared)
+    baseline_result = evaluate_sensitivity(established_baseline)
 
-    assert result.status == "dark_ready"
-    assert calls == 9
+    assert result.status == baseline_result.status == "dark_ready"
+    assert [
+        (cell.derived_input_hash, cell.metrics) for cell in result.cells
+    ] == [
+        (cell.derived_input_hash, cell.metrics)
+        for cell in baseline_result.cells
+    ]
+    assert calls == 18
+
+
+def test_invalid_fixed_override_has_stable_atomic_failure_result() -> None:
+    def mutate(profile_document):
+        profile_document["fixed_overrides"][0]["target_ref"] = (
+            "$.revenue_streams[rev-missing].volume_series[*].value"
+        )
+
+    prepared = controlled_sensitivity_prepared_run(profile_mutator=mutate)
+    result = evaluate_sensitivity(prepared)
+
+    assert result.status == "not_ready"
+    assert result.finance_input_hash == prepared.validated_input.input_hash
+    assert result.cells == ()
+    assert result.blockers == (
+        {
+            "code": "FIN2_SENSITIVITY_CELL_NOT_READY",
+            "severity": "high",
+            "field_ref": "$.cells[0][0]",
+            "stage": "input_derivation",
+            "cause_code": "FIN2_SCENARIO_TARGET_MISSING",
+            "message_ar": (
+                "فشلت خلية الحساسية الحتمية بسبب "
+                "FIN2_SCENARIO_TARGET_MISSING."
+            ),
+        },
+    )
 
 
 def test_first_failed_cell_is_atomic_and_returns_no_partial_metrics(
@@ -791,6 +836,8 @@ def test_baseline_equivalent_cell_and_input_profile_immutability() -> None:
 def test_maximum_21_by_21_grid_builds_exactly_once_per_cell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Mocks prove grid structure and call counts; the benchmark script executes
+    # the real 441 x 240 x 8 workload and enforces the CI resource ceilings.
     def mutate(profile_document: dict[str, Any]) -> None:
         profile_document["axes"][0]["values"] = list(
             MAXIMUM_PRICE_AXIS_VALUES
