@@ -112,11 +112,13 @@ def _canonical_url(value: Any) -> tuple[str, str, str, str]:
         decoded = unquote(path, encoding="utf-8", errors="strict")
     except (UnicodeDecodeError, ValueError) as exc:
         raise PublicKnowledgeError("public_source_path_invalid") from exc
+    encoded_path_control = re.search(r"%(?:2e|2f|5c)", path, re.IGNORECASE)
     if (
         not decoded.startswith("/")
         or "\\" in decoded
         or "//" in decoded
-        or decoded != path
+        or encoded_path_control is not None
+        or unquote(decoded, encoding="utf-8", errors="strict") != decoded
         or any(segment in {".", ".."} for segment in decoded.split("/"))
     ):
         raise PublicKnowledgeError("public_source_path_invalid")
@@ -455,7 +457,7 @@ def _extract_crawl_text(
     *,
     source: Mapping[str, Any],
     admission_policy: PublicKnowledgeSourcePolicy,
-) -> str:
+) -> tuple[str, list[tuple[str, str]]]:
     payload = response.get("payload")
     results = payload.get("results") if isinstance(payload, Mapping) else None
     if not isinstance(results, list) or not results or len(results) > int(source["crawl_limit"]):
@@ -484,15 +486,22 @@ def _extract_crawl_text(
             pages[key] = content
     if not pages:
         raise PublicKnowledgeError("public_source_crawl_empty")
+    documents = [
+        (
+            f"https://{host}{path}{'?' + query if query else ''}",
+            pages[(host, path, query)],
+        )
+        for host, path, query in sorted(pages)
+    ]
     combined = _normalize_text(
         "\n\n".join(
-            f"Source URL: https://{host}{path}{'?' + query if query else ''}\n{pages[(host, path, query)]}"
-            for host, path, query in sorted(pages)
+            f"Source URL: {source_url}\n{content}"
+            for source_url, content in documents
         )
     )
     if len(combined) > MAX_CONTENT_CHARS:
         raise PublicKnowledgeError("public_source_content_too_large")
-    return combined
+    return combined, documents
 
 
 def _empty_corpus() -> dict[str, Any]:
@@ -547,19 +556,22 @@ class PublicKnowledgeSync:
         self,
         *,
         source: Mapping[str, Any],
-        source_url: str,
-        text: str,
+        documents: Sequence[tuple[str, str]],
         content_hash: str,
         version: int,
         retrieved_at: str,
     ) -> list[dict[str, Any]]:
-        chunks = _chunk_text(text)
+        document_chunks = [
+            (source_url, chunk)
+            for source_url, text in documents
+            for chunk in _chunk_text(text)
+        ]
         fresh_until = _iso_after(retrieved_at, int(source["freshness_days"]))
         expires_at = _iso_after(retrieved_at, int(source["expiry_days"]))
         source_id = str(source["source_id"])
-        record_count = len(chunks)
+        record_count = len(document_chunks)
         records: list[dict[str, Any]] = []
-        for index, chunk in enumerate(chunks, start=1):
+        for index, (source_url, chunk) in enumerate(document_chunks, start=1):
             records.append(
                 {
                     "_id": f"public-{source_id}-{index:04d}",
@@ -681,7 +693,6 @@ class PublicKnowledgeSync:
                 summary["sources_skipped_tombstone"] += 1
                 continue
             try:
-                content_url = str(source["url"])
                 if source.get("acquisition_mode") == "crawl":
                     response = self.tavily.crawl(
                         source_id=source_id,
@@ -691,7 +702,7 @@ class PublicKnowledgeSync:
                         limit=int(source["crawl_limit"]),
                         select_paths=list(source["allowed_paths"]),
                     )
-                    text = _extract_crawl_text(
+                    text, documents = _extract_crawl_text(
                         response,
                         source=source,
                         admission_policy=admission_policy,
@@ -708,6 +719,7 @@ class PublicKnowledgeSync:
                         source=source,
                         admission_policy=admission_policy,
                     )
+                    documents = [(content_url, text)]
                 anomalies = _content_anomalies(text)
                 if anomalies:
                     summary["sources_quarantined"] += 1
@@ -734,8 +746,7 @@ class PublicKnowledgeSync:
                 version = int(previous.get("current_version") or 0) + 1
                 records = self._records(
                     source=source,
-                    source_url=content_url,
-                    text=text,
+                    documents=documents,
                     content_hash=content_hash,
                     version=version,
                     retrieved_at=checked_at,

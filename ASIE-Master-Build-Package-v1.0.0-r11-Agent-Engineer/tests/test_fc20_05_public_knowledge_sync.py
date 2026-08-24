@@ -227,6 +227,17 @@ def test_policy_denies_host_and_path_widening() -> None:
             )
 
 
+def test_percent_encoded_unicode_license_path_remains_valid() -> None:
+    license_url = (
+        "https://www.sdb.gov.sa/en/open-data/"
+        "%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9-%D8%A7%D9%84%D8%A8%D9%8A%D8%A7%D9%86%D8%A7%D8%AA"
+    )
+    validated = validate_public_source_registry(
+        registry(source_record(license_ref=license_url))
+    )
+    assert validated["sources"][0]["license_ref"] == license_url
+
+
 def test_enabled_auto_source_rejects_root_url_or_root_allowlist() -> None:
     with pytest.raises(PublicKnowledgeError, match="public_source_root_path_not_admitted"):
         validate_public_source_registry(
@@ -250,9 +261,15 @@ def test_crawl_is_bounded_to_admitted_paths_and_quarantines_widening(tmp_path: P
         crawl_max_depth=2,
         crawl_limit=10,
     )
-    in_scope_url = "https://mof.gov.sa/en/generalservcies/open-data/dataset-a"
+    in_scope_urls = (
+        "https://mof.gov.sa/en/generalservcies/open-data/dataset-a",
+        "https://mof.gov.sa/en/generalservcies/open-data/dataset-b",
+    )
     tavily = FakeCrawlTavily(
-        [{"url": in_scope_url, "raw_content": "Official economic dataset. " * 30}]
+        [
+            {"url": in_scope_urls[0], "raw_content": "Official economic dataset A. " * 30},
+            {"url": in_scope_urls[1], "raw_content": "Official economic dataset B. " * 30},
+        ]
     )
     pinecone = FakePinecone()
     service = PublicKnowledgeSync(
@@ -267,6 +284,9 @@ def test_crawl_is_bounded_to_admitted_paths_and_quarantines_widening(tmp_path: P
     assert tavily.calls[0]["max_depth"] == 2
     assert tavily.calls[0]["limit"] == 10
     assert pinecone.upserts
+    records = [record for batch in pinecone.upserts for record in batch]
+    assert {record["source_url"] for record in records} == set(in_scope_urls)
+    assert len({record["_id"] for record in records}) == len(records)
 
     service.tavily = FakeCrawlTavily(
         [{"url": "https://mof.gov.sa/private", "raw_content": "Out of scope. " * 30}]
