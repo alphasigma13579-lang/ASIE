@@ -192,10 +192,10 @@ def validate_pinecone(payload: Any, operation: str, *, expected_index_name: str 
         if not isinstance(status.get("ready"), bool):
             _fail(provider, operation, "status.ready")
         _text(status.get("state"), provider, operation, "status.state", maximum=80)
-    elif operation == "upsert_approved_text":
+    elif operation in {"upsert_approved_text", "upsert_public_knowledge"}:
         if body.get("accepted") is not True:
             _fail(provider, operation, "accepted")
-    elif operation == "search_text":
+    elif operation in {"search_text", "search_public_knowledge"}:
         result = _object(body.get("result"), provider, operation, "result")
         hits = _list(result.get("hits"), provider, operation, "result.hits")
         for index, item in enumerate(hits):
@@ -203,6 +203,10 @@ def validate_pinecone(payload: Any, operation: str, *, expected_index_name: str 
             _text(hit.get("_id"), provider, operation, f"result.hits[{index}]._id", maximum=512)
             _number(hit.get("_score"), provider, operation, f"result.hits[{index}]._score")
             _object(hit.get("fields"), provider, operation, f"result.hits[{index}].fields")
+    elif operation == "delete_public_knowledge":
+        # Pinecone delete endpoints return an empty JSON object on success.
+        if body:
+            _fail(provider, operation, "payload")
     else:
         _fail(provider, operation, "operation")
     return body
@@ -218,7 +222,16 @@ VALIDATORS: Mapping[tuple[str, str], Callable[[Any], Mapping[str, Any]]] = {
     ("google_maps_platform", "search_places_text"): lambda payload: validate_google(payload, "search_places_text"),
     ("pinecone", "describe_index"): lambda payload: validate_pinecone(payload, "describe_index"),
     ("pinecone", "upsert_approved_text"): lambda payload: validate_pinecone(payload, "upsert_approved_text"),
+    ("pinecone", "upsert_public_knowledge"): lambda payload: validate_pinecone(
+        payload, "upsert_public_knowledge"
+    ),
     ("pinecone", "search_text"): lambda payload: validate_pinecone(payload, "search_text"),
+    ("pinecone", "search_public_knowledge"): lambda payload: validate_pinecone(
+        payload, "search_public_knowledge"
+    ),
+    ("pinecone", "delete_public_knowledge"): lambda payload: validate_pinecone(
+        payload, "delete_public_knowledge"
+    ),
 }
 
 

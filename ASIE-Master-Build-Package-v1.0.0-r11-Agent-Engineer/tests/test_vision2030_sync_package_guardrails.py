@@ -18,12 +18,27 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
             self.assertTrue(source["url"].startswith("https://www.vision2030.gov.sa/"))
             self.assertEqual(source["authority"], "Saudi Vision 2030")
 
+        public_registry = json.loads(
+            (PACKAGE_ROOT / "config" / "public_knowledge_sources.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(public_registry["policy"], "official_open_auto_with_anomaly_quarantine")
+        self.assertTrue(any(row["source_id"] == "world-bank-indicators-api" for row in public_registry["sources"]))
+        self.assertTrue(any(row["source_id"] == "imf-data-api" for row in public_registry["sources"]))
+        self.assertTrue(
+            any(
+                row["authority"] == "private_analytical_reference"
+                and row["state"] == "reference_only"
+                for row in public_registry["sources"]
+            )
+        )
+
     def test_workflow_is_manual_authorized_and_secret_scoped(self) -> None:
         workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "vision2030-kb-sync.yml").read_text(encoding="utf-8")
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("cron:", workflow)
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("authorization_commit", workflow)
+        self.assertIn("source_id", workflow)
         self.assertIn("git rev-parse origin/main", workflow)
         self.assertIn("external_network_authorized", workflow)
         self.assertIn("provider_activation_authorized", workflow)
@@ -34,12 +49,16 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertIn('PINECONE_INDEX: "vision2030-kb"', workflow)
         self.assertIn("actions/cache/restore@v4", workflow)
         self.assertIn("actions/cache/save@v4", workflow)
+        self.assertIn("python -m pip install -r requirements-dev.txt", workflow)
         self.assertIn("--dry-run", workflow)
+        self.assertIn("python -m backend.public_knowledge", workflow)
+        self.assertIn("ASIE_PROVIDER_TAVILY_STATE: enabled", workflow)
+        self.assertIn("ASIE_PROVIDER_PINECONE_STATE: enabled", workflow)
         self.assertNotIn("DEEPSEEK_API_KEY", workflow)
         self.assertNotIn("GOOGLE_MAPS_API_KEY", workflow)
 
     def test_sync_does_not_import_frozen_runtime_or_finance(self) -> None:
-        source = (PACKAGE_ROOT / "backend" / "vision2030_kb_sync.py").read_text(encoding="utf-8")
+        source = (PACKAGE_ROOT / "backend" / "public_knowledge.py").read_text(encoding="utf-8")
         forbidden = (
             "backend.aas_kernel",
             "backend.heart_controller",
@@ -56,8 +75,8 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertIn('"finance_mutated": False', source)
 
     def test_no_provider_secret_is_committed(self) -> None:
-        source = (PACKAGE_ROOT / "backend" / "vision2030_kb_sync.py").read_text(encoding="utf-8")
-        registry = (PACKAGE_ROOT / "config" / "vision2030_sources.json").read_text(encoding="utf-8")
+        source = (PACKAGE_ROOT / "backend" / "public_knowledge.py").read_text(encoding="utf-8")
+        registry = (PACKAGE_ROOT / "config" / "public_knowledge_sources.json").read_text(encoding="utf-8")
         self.assertNotIn("pcsk_", source + registry)
         self.assertNotIn("tvly-", source + registry)
         self.assertNotIn("Bearer ", source + registry)

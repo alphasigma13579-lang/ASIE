@@ -1,74 +1,52 @@
+"""Compatibility entrypoint for the former Vision-only FC20-05 sync.
+
+The governed implementation now lives in :mod:`backend.public_knowledge` and
+uses the shared public corpus. This wrapper preserves the old import and CLI
+surface without retaining a second, stale provider integration.
+"""
+
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+from pathlib import Path
 import re
 import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
-from backend.external_acquisition import ExternalAcquisitionPolicy, GovernedExternalAcquisitionGateway
-from backend.live_provider_clients import (
-    GovernedProviderTransport,
-    PineconeKnowledgeClient,
-    ProviderConfigurationError,
-    TavilyResearchClient,
-    tenant_project_namespace,
+from backend.provider_security_control_plane import TrustedProviderScope
+from backend.public_knowledge import (
+    DEFAULT_PUBLIC_CORPUS,
+    PublicKnowledgeError,
+    PublicKnowledgeSync,
+    build_public_knowledge_sync_from_env,
 )
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTRY = PACKAGE_ROOT / "config" / "vision2030_sources.json"
-DEFAULT_STATE = PACKAGE_ROOT / ".state" / "vision2030_sync_state.json"
-ORGANIZATION_ID = "asie-sovereign-knowledge"
-PROJECT_ID = "vision2030-kb-sync"
-MAX_CHUNK_CHARS = 6_000
-CHUNK_OVERLAP_CHARS = 300
-
-
-class Vision2030SyncError(RuntimeError):
-    """Raised when the governed Vision 2030 knowledge sync cannot proceed."""
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+DEFAULT_STATE = DEFAULT_PUBLIC_CORPUS
+Vision2030SyncError = PublicKnowledgeError
 
 
 def _normalize_text(value: str) -> str:
-    value = value.replace("\r\n", "\n").replace("\r", "\n")
-    value = re.sub(r"[ \t]+", " ", value)
-    value = re.sub(r"\n{3,}", "\n\n", value)
-    return value.strip()
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
 
 
-def _sha256_text(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _safe_id(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip()).strip("-._")
-    if not cleaned:
-        raise Vision2030SyncError("invalid_source_id")
-    return cleaned[:180]
-
-
-def _chunk_text(text: str, *, maximum: int = MAX_CHUNK_CHARS, overlap: int = CHUNK_OVERLAP_CHARS) -> list[str]:
+def _chunk_text(text: str, *, maximum: int = 6_000, overlap: int = 300) -> list[str]:
     if maximum < 1_000 or overlap < 0 or overlap >= maximum:
         raise Vision2030SyncError("invalid_chunk_policy")
     normalized = _normalize_text(text)
-    if not normalized:
-        return []
     chunks: list[str] = []
     cursor = 0
     while cursor < len(normalized):
         end = min(cursor + maximum, len(normalized))
         if end < len(normalized):
-            split = normalized.rfind("\n", cursor + maximum // 2, end)
-            if split <= cursor:
-                split = normalized.rfind(" ", cursor + maximum // 2, end)
+            split = normalized.rfind(" ", cursor + maximum // 2, end)
             if split > cursor:
                 end = split
         chunk = normalized[cursor:end].strip()
@@ -85,14 +63,16 @@ def load_registry(path: Path) -> dict[str, Any]:
         registry = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise Vision2030SyncError("invalid_vision2030_source_registry") from exc
-    sources = registry.get("sources")
+    sources = registry.get("sources") if isinstance(registry, dict) else None
     if not isinstance(sources, list) or not sources:
         raise Vision2030SyncError("vision2030_source_registry_empty")
     seen: set[str] = set()
     for source in sources:
         if not isinstance(source, dict):
             raise Vision2030SyncError("invalid_vision2030_source_entry")
-        source_id = _safe_id(str(source.get("source_id") or ""))
+        source_id = str(source.get("source_id") or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,159}", source_id):
+            raise Vision2030SyncError("invalid_vision2030_source_id")
         if source_id in seen:
             raise Vision2030SyncError("duplicate_vision2030_source_id")
         seen.add(source_id)
@@ -104,200 +84,77 @@ def load_registry(path: Path) -> dict[str, Any]:
     return registry
 
 
-def load_state(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"state_version": 1, "sources": {}}
-    try:
-        state = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise Vision2030SyncError("invalid_vision2030_sync_state") from exc
-    if not isinstance(state.get("sources"), dict):
-        raise Vision2030SyncError("invalid_vision2030_sync_state_sources")
-    return state
-
-
-def save_state(path: Path, state: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
-
-
-def _extract_result_text(response: Mapping[str, Any], expected_url: str) -> str:
-    payload = response.get("payload")
-    if not isinstance(payload, dict):
-        raise Vision2030SyncError("invalid_tavily_extract_payload")
-    results = payload.get("results")
-    if not isinstance(results, list) or not results:
-        raise Vision2030SyncError("tavily_extract_returned_no_results")
-    selected: Mapping[str, Any] | None = None
-    for row in results:
-        if isinstance(row, dict) and str(row.get("url") or "").rstrip("/") == expected_url.rstrip("/"):
-            selected = row
-            break
-    if selected is None:
-        selected = next((row for row in results if isinstance(row, dict)), None)
-    if selected is None:
-        raise Vision2030SyncError("tavily_extract_result_invalid")
-    normalized = _normalize_text(str(selected.get("raw_content") or selected.get("content") or selected.get("markdown") or ""))
-    if len(normalized) < 200:
-        raise Vision2030SyncError("vision2030_source_content_too_short")
-    return normalized
-
-
-def _delete_records(pinecone: PineconeKnowledgeClient, record_ids: list[str]) -> int:
-    if not record_ids:
-        return 0
-    namespace = tenant_project_namespace(ORGANIZATION_ID, PROJECT_ID, pinecone.namespace_prefix)
-    deleted = 0
-    for offset in range(0, len(record_ids), 1_000):
-        batch = record_ids[offset : offset + 1_000]
-        pinecone.transport.request_json(
-            provider_id="pinecone",
-            url=f"https://{pinecone._host()}/vectors/delete",
-            headers=pinecone._headers(),
-            body={"ids": batch, "namespace": namespace},
-        )
-        deleted += len(batch)
-    return deleted
-
-
-@dataclass
-class Vision2030KnowledgeSync:
-    tavily: TavilyResearchClient
-    pinecone: PineconeKnowledgeClient
-    state_path: Path = DEFAULT_STATE
-
-    def run(self, registry: Mapping[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
-        state = load_state(self.state_path)
-        previous_sources = state.setdefault("sources", {})
-        summary: dict[str, Any] = {
-            "sync_id": "asie-vision2030-kb-sync-v1",
-            "started_at": _utc_now(),
-            "index_name": self.pinecone.index_name,
-            "dry_run": dry_run,
-            "sources_checked": 0,
-            "sources_changed": 0,
-            "sources_unchanged": 0,
-            "records_upserted": 0,
-            "records_deleted": 0,
-            "errors": [],
-            "source_of_truth": False,
-            "snapshot_mutated": False,
-            "finance_mutated": False,
-        }
-        for source in registry["sources"]:
-            if not source.get("enabled", True):
-                continue
-            summary["sources_checked"] += 1
-            source_id = _safe_id(str(source["source_id"]))
-            source_url = str(source["url"])
-            checked_at = _utc_now()
-            try:
-                response = self.tavily.extract(
-                    urls=[source_url],
-                    query="Extract the complete authoritative content, headings, tables, metrics, dates, and document links.",
-                    depth=str(source.get("extract_depth") or "advanced"),
-                )
-                text = _extract_result_text(response, source_url)
-                content_hash = _sha256_text(text)
-                previous = previous_sources.get(source_id) if isinstance(previous_sources.get(source_id), dict) else {}
-                previous_hash = str(previous.get("content_sha256") or "")
-                previous_record_ids = [str(value) for value in previous.get("record_ids", []) if str(value)]
-                if content_hash == previous_hash:
-                    summary["sources_unchanged"] += 1
-                    previous_sources[source_id] = {**previous, "last_checked_at": checked_at, "last_result": "unchanged"}
-                    continue
-                chunks = _chunk_text(text)
-                if not chunks:
-                    raise Vision2030SyncError("vision2030_source_produced_no_chunks")
-                record_ids = [f"vision2030-{source_id}-{index:04d}" for index in range(1, len(chunks) + 1)]
-                records = [
-                    {
-                        "_id": record_id,
-                        "chunk_text": chunk,
-                        "source_url": source_url,
-                        "source_id": source_id,
-                        "evidence_ref": f"vision2030:{source_id}:sha256:{content_hash}",
-                        "review_status": "approved",
-                        "data_classification": "public",
-                    }
-                    for record_id, chunk in zip(record_ids, chunks, strict=True)
-                ]
-                if not dry_run:
-                    for offset in range(0, len(records), 100):
-                        batch = records[offset : offset + 100]
-                        self.pinecone.upsert_approved_text(
-                            organization_id=ORGANIZATION_ID,
-                            project_id=PROJECT_ID,
-                            records=batch,
-                        )
-                        summary["records_upserted"] += len(batch)
-                    stale_ids = sorted(set(previous_record_ids) - set(record_ids))
-                    summary["records_deleted"] += _delete_records(self.pinecone, stale_ids)
-                summary["sources_changed"] += 1
-                previous_sources[source_id] = {
-                    "source_url": source_url,
-                    "title": str(source.get("title") or source_id),
-                    "language": str(source.get("language") or ""),
-                    "content_sha256": content_hash,
-                    "record_ids": record_ids,
-                    "record_count": len(record_ids),
-                    "last_checked_at": checked_at,
-                    "last_changed_at": checked_at,
-                    "last_result": "changed_dry_run" if dry_run else "changed_upserted",
-                }
-            except Exception as exc:
-                summary["errors"].append({"source_id": source_id, "error_type": type(exc).__name__, "reason": str(exc)})
-                previous = previous_sources.get(source_id) if isinstance(previous_sources.get(source_id), dict) else {}
-                previous_sources[source_id] = {
-                    **previous,
-                    "source_url": source_url,
-                    "last_checked_at": checked_at,
-                    "last_result": "failed",
-                    "last_error_type": type(exc).__name__,
-                }
-        summary["completed_at"] = _utc_now()
-        summary["status"] = "failed" if summary["errors"] else ("changed" if summary["sources_changed"] else "unchanged")
-        state.update(
+def _as_public_registry(registry: Mapping[str, Any]) -> dict[str, Any]:
+    sources: list[dict[str, Any]] = []
+    for source in registry["sources"]:
+        parsed = urlsplit(str(source["url"]))
+        path = parsed.path or "/"
+        enabled = source.get("enabled", True) is True
+        sources.append(
             {
-                "state_version": 1,
-                "registry_id": registry.get("registry_id"),
-                "index_name": self.pinecone.index_name,
-                "last_run_at": summary["completed_at"],
-                "last_run_status": summary["status"],
-                "sources": previous_sources,
+                "source_id": str(source["source_id"]).lower(),
+                "publisher": "Saudi Vision 2030",
+                "authority": "saudi_official",
+                "url": source["url"],
+                "state": "enabled" if enabled else "candidate",
+                "admission_mode": "official_open_auto" if enabled else "metadata_only",
+                "license_id": "saudi-open-data-license-2.0",
+                "license_ref": "docs/legal/third-party/saudi-open-data/README.md",
+                "attribution": "Saudi Vision 2030",
+                "classification": "public_open_data",
+                "geographies": ["saudi_arabia"],
+                "sectors": ["all"],
+                "language": str(source.get("language") or "ar,en"),
+                "freshness_days": 31,
+                "expiry_days": 93,
+                "unit": "not_applicable",
+                "confidence": 0.98,
+                "allowed_paths": [path],
+                "allow_query_parameters": False,
+                "extract_depth": str(source.get("extract_depth") or "advanced"),
             }
         )
-        save_state(self.state_path, state)
-        return summary
+    return {
+        "registry_id": "asie-vision2030-public-knowledge-compatibility-v1",
+        "schema_version": 1,
+        "sources": sources,
+    }
 
 
-def build_sync_from_env(state_path: Path) -> Vision2030KnowledgeSync:
-    policy = ExternalAcquisitionPolicy.from_env()
-    if not policy.enabled:
-        raise ProviderConfigurationError("external_network_disabled_by_policy")
-    gateway = GovernedExternalAcquisitionGateway(policy)
-    transport = GovernedProviderTransport(gateway)
-    return Vision2030KnowledgeSync(
-        tavily=TavilyResearchClient.from_env(transport),
-        pinecone=PineconeKnowledgeClient.from_env(transport),
-        state_path=state_path,
-    )
+class Vision2030KnowledgeSync:
+    def __init__(self, *, tavily: Any, pinecone: Any, state_path: Path) -> None:
+        self._delegate = PublicKnowledgeSync(
+            tavily=tavily,
+            pinecone=pinecone,
+            scope=TrustedProviderScope.for_platform_workload("public-knowledge-sync"),
+            corpus_path=state_path,
+        )
+
+    def run(self, registry: Mapping[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
+        return self._delegate.run(_as_public_registry(registry), dry_run=dry_run)
+
+
+def build_sync_from_env(state_path: Path, registry: Mapping[str, Any]) -> PublicKnowledgeSync:
+    public_registry = _as_public_registry(registry)
+    return build_public_knowledge_sync_from_env(public_registry, corpus_path=state_path)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="ASIE monthly Vision 2030 Pinecone knowledge sync")
+    parser = argparse.ArgumentParser(description="ASIE Vision 2030 compatibility sync")
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     try:
         registry = load_registry(args.registry)
-        result = build_sync_from_env(args.state).run(registry, dry_run=args.dry_run)
+        public_registry = _as_public_registry(registry)
+        result = build_sync_from_env(args.state, registry).run(
+            public_registry,
+            dry_run=args.dry_run,
+        )
     except Exception as exc:
         result = {
-            "sync_id": "asie-vision2030-kb-sync-v1",
+            "sync_id": "fc20-05-public-economic-knowledge-v1",
             "status": "failed",
             "error_type": type(exc).__name__,
             "reason": str(exc),
@@ -306,7 +163,7 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0 if result["status"] in {"changed", "unchanged"} else 1
+    return 0 if result["status"] in {"changed", "unchanged", "changed_dry_run"} else 1
 
 
 if __name__ == "__main__":

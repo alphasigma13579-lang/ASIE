@@ -415,8 +415,8 @@
     {
       "id": "FC20-05",
       "priority": "P0",
-      "title": "Vision 2030 knowledge authority and Pinecone lifecycle",
-      "state": "ACR_REQUIRED",
+      "title": "Public economic knowledge authority and Pinecone lifecycle",
+      "state": "IN_PROGRESS",
       "depends_on": [
         "FC20-03",
         "FC20-04"
@@ -424,21 +424,28 @@
       "acr": true,
       "beta": true,
       "scope": [
-        "Reconcile source_registry reference_only rule with the explicit Vision sync exception",
-        "Keep exact official Vision allowlist and change-detection hashing",
-        "Pinecone namespace isolation, approved-chunk admission, versioning, retention, deletion propagation, and restore/reindex",
+        "Auto-admit exact official open-data sources while quarantining anomalies and keeping private research metadata-only",
+        "Bound Tavily extraction or crawl by server-owned source, domain, path, depth, and result limits with returned-URL re-admission",
+        "Keep an exact Saudi and international official allowlist with licensing, provenance, freshness, and change-detection hashing",
+        "Separate the shared public Pinecone namespace from tenant/project data with versioning, retention, deletion propagation, and restore/reindex",
+        "Expose evidence-qualified feasibility context without mutating Finance, Snapshot, Decision Council, or AAS",
         "Restore monthly schedule only after explicit external/provider authorization and dry-run evidence"
       ],
       "tests": [
-        "Non-official Vision host rejected",
+        "Non-official or widened host/path rejected",
         "unchanged content produces no write",
         "changed content versions and removes stale tail safely",
-        "cross-tenant retrieval denied",
-        "deletion and reindex are tenant-scoped and auditable"
+        "tenant reads use a fixed public namespace while tenant writes and platform reads are denied",
+        "delete, restore, compensation, and reindex are platform-scoped and auditable",
+        "deleted tombstones are not reingested without explicit restore",
+        "stale, malformed, lineage-tampered, temporally inconsistent, or unqualified evidence produces explicit gaps instead of a feasibility claim"
       ],
       "unblocked_at": "2026-08-05T02:29:54Z",
       "unblocked_by_commit": "853e2b706a9e0bc49f7da061106f8c89f7c56612",
-      "gate_note": "FC20-04 is complete. FC20-05 requires its separate ACR before implementation and grants no network or provider authority."
+      "gate_note": "The FC20-05 ACR admits offline/dark implementation only and grants no network, provider, schedule, or public-release authority.",
+      "started_at": "2026-08-23T00:00:00Z",
+      "opened_from_commit": "6247a3fed8bb9cd973d36e47379cbff99d492733",
+      "acr_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FC20-05-PUBLIC-ECONOMIC-KNOWLEDGE-2026-08-23.md"
     },
     {
       "id": "FC20-06",

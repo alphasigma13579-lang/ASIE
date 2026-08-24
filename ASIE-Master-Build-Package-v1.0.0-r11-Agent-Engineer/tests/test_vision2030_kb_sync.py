@@ -19,8 +19,15 @@ class FakeTavily:
         self.content_by_url = content_by_url
         self.calls: list[dict[str, Any]] = []
 
-    def extract(self, *, urls: list[str], query: str | None = None, depth: str = "basic") -> dict[str, Any]:
-        self.calls.append({"urls": urls, "query": query, "depth": depth})
+    def extract(
+        self,
+        *,
+        urls: list[str],
+        source_ids: dict[str, str],
+        query: str | None = None,
+        depth: str = "basic",
+    ) -> dict[str, Any]:
+        self.calls.append({"urls": urls, "source_ids": source_ids, "query": query, "depth": depth})
         url = urls[0]
         return {
             "payload": {
@@ -48,18 +55,22 @@ class FakePinecone:
     namespace_prefix = "asie"
 
     def __init__(self) -> None:
-        self.transport = FakeTransport()
         self.upserts: list[list[dict[str, Any]]] = []
+        self.deletes: list[dict[str, Any]] = []
 
-    def upsert_approved_text(self, *, organization_id: str, project_id: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+    def upsert_public_knowledge(self, *, scope: Any, records: list[dict[str, Any]]) -> dict[str, Any]:
         self.upserts.append(records)
         return {"record_count": len(records)}
 
-    def _host(self) -> str:
-        return "vision2030-kb.example.svc.pinecone.io"
-
-    def _headers(self) -> dict[str, str]:
-        return {"Api-Key": "redacted", "X-Pinecone-Api-Version": "2026-04"}
+    def delete_public_knowledge(
+        self,
+        *,
+        scope: Any,
+        record_ids: list[str] | None = None,
+        delete_all: bool = False,
+    ) -> dict[str, Any]:
+        self.deletes.append({"record_ids": list(record_ids or []), "delete_all": delete_all})
+        return {"deleted": len(record_ids or [])}
 
 
 def registry(url: str = "https://www.vision2030.gov.sa/ar/") -> dict[str, Any]:
@@ -127,10 +138,8 @@ class Vision2030SyncTests(unittest.TestCase):
         self.assertEqual(first["status"], "changed")
         self.assertEqual(second["status"], "changed")
         self.assertGreater(second["records_deleted"], 0)
-        self.assertEqual(len(pinecone.transport.calls), 1)
-        delete_call = pinecone.transport.calls[0]
-        self.assertTrue(delete_call["url"].endswith("/vectors/delete"))
-        self.assertNotIn("Api-Key", json.dumps(delete_call["body"]))
+        self.assertEqual(len(pinecone.deletes), 1)
+        self.assertTrue(pinecone.deletes[0]["record_ids"])
 
     def test_dry_run_detects_change_without_writing_pinecone(self) -> None:
         content = ("بيانات رسمية جديدة لرؤية السعودية 2030. " * 30).strip()
@@ -141,7 +150,8 @@ class Vision2030SyncTests(unittest.TestCase):
             result = Vision2030KnowledgeSync(tavily=tavily, pinecone=pinecone, state_path=state).run(
                 registry(), dry_run=True
             )
-        self.assertEqual(result["status"], "changed")
+            self.assertFalse(state.exists())
+        self.assertEqual(result["status"], "changed_dry_run")
         self.assertEqual(result["records_upserted"], 0)
         self.assertEqual(pinecone.upserts, [])
 

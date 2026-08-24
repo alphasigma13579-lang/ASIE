@@ -1,9 +1,15 @@
-# LIVE-INTEL-002 — Vision 2030 Knowledge Sync
+# LIVE-INTEL-002 — Vision 2030 Knowledge Sync (superseded)
 
-**Status:** Implemented foundation, activation requires production secrets  
-**Target index:** `vision2030-kb`  
-**Cadence:** First day of every month at `03:17 UTC`, plus manual execution  
-**Source policy:** Official Saudi Vision 2030 hosts only
+**Status:** `SUPERSEDED / HISTORICAL RECORD / DO NOT OPERATE`
+**Superseded by:** `docs/ACR-FC20-05-PUBLIC-ECONOMIC-KNOWLEDGE-2026-08-23.md` and `docs/EKB/domains/Public-Economic-Knowledge.md`
+**Target index:** `vision2030-kb`
+**Current cadence:** none; the replacement workflow is manual, exact-head gated, and live activation remains blocked
+**Current source policy:** governed Saudi and international public economic knowledge registry
+
+> Warning: the remaining sections are retained only to explain the replaced
+> July 2026 design. They are not current activation, storage, scheduling,
+> namespace, or review instructions. Secrets being present do not authorize a
+> provider, network access, a canary, a recurring job, or public release.
 
 ## 1. Purpose
 

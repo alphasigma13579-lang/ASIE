@@ -16,7 +16,12 @@ def test_preflight_configuration_mode_exposes_no_secrets(monkeypatch) -> None:
     assert result["network_policy"]["enabled"] is False
     assert result["provider_security"]["enabled"] is False
     assert result["provider_security"]["network_authorized"] is False
-    assert result["response_contracts"]["operation_count"] == 10
+    assert result["response_contracts"]["operation_count"] == 13
+    assert {
+        "provider_id": "pinecone",
+        "operation": "delete_public_knowledge",
+        "fail_closed": True,
+    } in result["response_contracts"]["operations"]
     assert result["response_contracts"]["all_contracts_fail_closed"] is True
     assert result["response_contracts"]["content_auto_approved"] is False
     assert set(result["live_checks"]) == {
