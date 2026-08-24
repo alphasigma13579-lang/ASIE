@@ -13,7 +13,10 @@ from backend.live_provider_clients import (
     TavilyResearchClient,
 )
 from backend.provider_security_control_plane import TrustedProviderScope
-from backend.public_knowledge import build_feasibility_evidence_context
+from backend.public_knowledge import (
+    build_feasibility_evidence_context,
+    build_unavailable_feasibility_evidence_context,
+)
 
 
 class LiveIntelligenceProductError(RuntimeError):
@@ -184,12 +187,9 @@ class LiveIntelligenceProductService:
         except Exception as exc:
             failures.append({"provider": "google_maps_platform", **_safe_error(exc)})
 
-        public_evidence_context: dict[str, Any] = {
-            "contract_id": "public-knowledge-evidence.v1",
-            "status": "not_ready",
-            "evidence": [],
-            "gaps": [{"record_id": "", "reason": "public_knowledge_unavailable"}],
-        }
+        public_evidence_context = build_unavailable_feasibility_evidence_context(
+            "public_knowledge_unavailable"
+        )
         try:
             response = self.pinecone.search_public_knowledge(
                 scope=scope,

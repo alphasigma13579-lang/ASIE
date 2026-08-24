@@ -124,6 +124,8 @@ class TrustedProviderScope:
             getattr(principal, "organization_id", None),
             field="organization_id",
         )
+        if organization_id == "__platform__":
+            raise ProviderSecurityError("invalid_provider_context:organization_id")
         bounded_project_id = _bounded_identifier(project_id, field="project_id")
         authoritative_organization_id = project_organization_resolver(bounded_project_id)
         if authoritative_organization_id is None:
@@ -132,6 +134,8 @@ class TrustedProviderScope:
             authoritative_organization_id,
             field="project_organization_id",
         )
+        if authoritative_organization_id == "__platform__":
+            raise ProviderSecurityError("invalid_provider_context:project_organization_id")
         if authoritative_organization_id != organization_id:
             raise ProviderSecurityError("provider_project_tenant_mismatch")
         return cls(

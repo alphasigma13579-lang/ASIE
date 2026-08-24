@@ -88,8 +88,10 @@ def _as_public_registry(registry: Mapping[str, Any]) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     for source in registry["sources"]:
         parsed = urlsplit(str(source["url"]))
-        path = parsed.path or "/"
         enabled = source.get("enabled", True) is True
+        path = (parsed.path or "/").rstrip("/") or "/"
+        if enabled and path == "/":
+            raise Vision2030SyncError("vision2030_enabled_source_root_path_forbidden")
         sources.append(
             {
                 "source_id": str(source["source_id"]).lower(),

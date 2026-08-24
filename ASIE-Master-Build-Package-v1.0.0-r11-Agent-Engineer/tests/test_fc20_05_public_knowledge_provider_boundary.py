@@ -7,6 +7,7 @@ import pytest
 
 from backend.live_provider_clients import (
     PineconeKnowledgeClient,
+    ProviderConfigurationError,
     TavilyResearchClient,
     public_knowledge_namespace,
     tenant_project_namespace,
@@ -174,6 +175,32 @@ def test_only_exact_platform_workload_can_be_issued() -> None:
         TrustedProviderScope.for_platform_workload("arbitrary-admin-job")
 
 
+def test_tenant_scope_rejects_reserved_platform_organization() -> None:
+    principal = SimpleNamespace(
+        user_id="user-a",
+        session_id="session-a",
+        organization_id="__platform__",
+        role="analyst",
+    )
+    with pytest.raises(ProviderSecurityError, match="invalid_provider_context:organization_id"):
+        TrustedProviderScope.for_tenant(
+            principal=principal,
+            project_id="project-a",
+            project_organization_resolver=lambda _: "__platform__",
+        )
+
+    principal.organization_id = "org-a"
+    with pytest.raises(
+        ProviderSecurityError,
+        match="invalid_provider_context:project_organization_id",
+    ):
+        TrustedProviderScope.for_tenant(
+            principal=principal,
+            project_id="project-a",
+            project_organization_resolver=lambda _: "__platform__",
+        )
+
+
 def test_public_namespace_is_fixed_and_separate_from_tenant_namespaces() -> None:
     public = public_knowledge_namespace("asie")
     assert public == "asie-public-economic-knowledge-v1"
@@ -202,8 +229,40 @@ def test_platform_write_uses_public_namespace_and_rejects_customer_fields() -> N
 
     forbidden = public_record()
     forbidden["organization_id"] = "org-a"
-    with pytest.raises(Exception, match="public_knowledge_customer_field_forbidden"):
+    with pytest.raises(ProviderConfigurationError, match="public_knowledge_customer_field_forbidden"):
         client.upsert_public_knowledge(scope=scope, records=[forbidden])
+
+
+def test_platform_delete_uses_exact_body_and_validates_empty_response() -> None:
+    transport = RecordingTransport()
+    client = PineconeKnowledgeClient(transport=transport, api_key="secret")
+    scope = TrustedProviderScope.for_platform_workload("public-knowledge-sync")
+
+    by_id = client.delete_public_knowledge(
+        scope=scope,
+        record_ids=["public-mof-0001"],
+    )
+    assert by_id["deleted"] == 1
+    assert by_id["delete_all"] is False
+    assert transport.calls[-1]["url"].endswith("/vectors/delete")
+    assert transport.calls[-1]["body"] == {
+        "namespace": "asie-public-economic-knowledge-v1",
+        "ids": ["public-mof-0001"],
+    }
+
+    all_records = client.delete_public_knowledge(scope=scope, delete_all=True)
+    assert all_records["delete_all"] is True
+    assert transport.calls[-1]["body"] == {
+        "namespace": "asie-public-economic-knowledge-v1",
+        "deleteAll": True,
+    }
+
+    with pytest.raises(ProviderConfigurationError, match="public_knowledge_delete_scope_invalid"):
+        client.delete_public_knowledge(
+            scope=scope,
+            record_ids=["public-mof-0001"],
+            delete_all=True,
+        )
 
 
 def test_two_tenants_read_same_public_namespace_but_keep_request_scopes() -> None:

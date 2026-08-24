@@ -8,7 +8,7 @@
       "source_id": "saudi-open-data-portal",
       "publisher": "Saudi Data and AI Authority",
       "authority": "saudi_official",
-      "url": "https://open.data.gov.sa/",
+      "url": "https://open.data.gov.sa/en/datasets",
       "state": "enabled",
       "admission_mode": "official_open_auto",
       "license_id": "saudi-open-data-license-2.0",
@@ -23,7 +23,7 @@
       "expiry_days": 93,
       "unit": "not_applicable",
       "confidence": 0.98,
-      "allowed_paths": ["/"],
+      "allowed_paths": ["/en/datasets"],
       "allow_query_parameters": false,
       "extract_depth": "advanced"
     },

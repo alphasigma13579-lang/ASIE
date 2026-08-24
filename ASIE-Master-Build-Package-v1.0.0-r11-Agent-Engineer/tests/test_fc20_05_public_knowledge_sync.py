@@ -14,6 +14,7 @@ from backend.public_knowledge import (
     PublicKnowledgeSync,
     _validate_cli_mode,
     load_public_source_registry,
+    validate_public_source_registry,
 )
 
 
@@ -206,6 +207,23 @@ def test_policy_denies_host_and_path_widening() -> None:
         )
 
 
+def test_enabled_auto_source_rejects_root_url_or_root_allowlist() -> None:
+    with pytest.raises(PublicKnowledgeError, match="public_source_root_path_not_admitted"):
+        validate_public_source_registry(
+            registry(
+                source_record(
+                    url="https://open.data.gov.sa/",
+                    allowed_paths=["/"],
+                )
+            )
+        )
+
+    with pytest.raises(PublicKnowledgeError, match="public_source_root_path_not_admitted"):
+        validate_public_source_registry(
+            registry(source_record(allowed_paths=["/"]))
+        )
+
+
 def test_crawl_is_bounded_to_admitted_paths_and_quarantines_widening(tmp_path: Path) -> None:
     source = source_record(
         acquisition_mode="crawl",
@@ -329,8 +347,25 @@ def test_delete_restore_and_full_reindex_use_canonical_corpus(tmp_path: Path) ->
     assert restored["status"] == "restored"
     rebuilt = service.reindex()
     assert rebuilt["status"] == "rebuilt"
-    assert pinecone.deletes[-1]["delete_all"] is True
+    assert not any(call["delete_all"] for call in pinecone.deletes)
     assert rebuilt["records_upserted"] > 0
+    assert rebuilt["records_deleted"] == 0
+
+
+def test_reindex_upserts_before_deleting_only_known_stale_record_ids(tmp_path: Path) -> None:
+    service, pinecone = sync(tmp_path, "A" * 13_000)
+    service.run(registry(source_record()))
+    service.tavily = FakeTavily("B" * 500)
+    service.run(registry(source_record()))
+    before_reindex = len(pinecone.deletes)
+
+    rebuilt = service.reindex()
+
+    assert rebuilt["records_upserted"] == 1
+    assert rebuilt["records_deleted"] > 0
+    assert len(pinecone.deletes) == before_reindex + 1
+    assert pinecone.deletes[-1]["record_ids"]
+    assert pinecone.deletes[-1]["delete_all"] is False
 
 
 def test_deleted_tombstone_is_not_reingested_by_the_next_sync(tmp_path: Path) -> None:
@@ -387,12 +422,91 @@ def test_partial_restore_is_removed_before_corpus_activation(tmp_path: Path) -> 
     assert corpus["sources"]["mof-open-data"]["status"] == "deleted_tombstone"
 
 
-def test_failed_reindex_replays_canonical_records_before_reporting_failure(tmp_path: Path) -> None:
+def test_delete_commit_failure_restores_projection_and_keeps_active_corpus(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    service, pinecone = sync(tmp_path, "Official economic content. " * 30)
+    service.run(registry(source_record()))
+
+    def fail_save(path: Path, corpus: dict[str, Any]) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(public_knowledge_module, "_save_corpus", fail_save)
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_source_delete_commit_failed_compensated",
+    ):
+        service.delete_source("mof-open-data")
+    assert len(pinecone.upserts) == 2
+    corpus = json.loads(service.corpus_path.read_text(encoding="utf-8"))
+    assert corpus["sources"]["mof-open-data"]["status"] == "active"
+
+
+def test_restore_commit_failure_removes_projection_and_keeps_tombstone_corpus(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    service, pinecone = sync(tmp_path, "Official economic content. " * 30)
+    service.run(registry(source_record()))
+    service.delete_source("mof-open-data")
+
+    def fail_save(path: Path, corpus: dict[str, Any]) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(public_knowledge_module, "_save_corpus", fail_save)
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_source_restore_commit_failed_compensated",
+    ):
+        service.restore_source("mof-open-data")
+    assert pinecone.deletes[-1]["record_ids"]
+    corpus = json.loads(service.corpus_path.read_text(encoding="utf-8"))
+    assert corpus["sources"]["mof-open-data"]["status"] == "deleted_tombstone"
+
+
+def test_delete_commit_reports_incomplete_compensation(tmp_path: Path, monkeypatch) -> None:
+    service, _ = sync(tmp_path, "Official economic content. " * 30)
+    service.run(registry(source_record()))
+    service.pinecone = FailOncePinecone(fail_operation="upsert")
+
+    def fail_save(path: Path, corpus: dict[str, Any]) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(public_knowledge_module, "_save_corpus", fail_save)
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_source_delete_commit_failed_compensation_incomplete",
+    ):
+        service.delete_source("mof-open-data")
+
+
+def test_restore_commit_reports_incomplete_compensation(tmp_path: Path, monkeypatch) -> None:
+    service, _ = sync(tmp_path, "Official economic content. " * 30)
+    service.run(registry(source_record()))
+    service.delete_source("mof-open-data")
+    service.pinecone = FailOncePinecone(fail_operation="delete")
+
+    def fail_save(path: Path, corpus: dict[str, Any]) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(public_knowledge_module, "_save_corpus", fail_save)
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_source_restore_commit_failed_compensation_incomplete",
+    ):
+        service.restore_source("mof-open-data")
+
+
+def test_failed_reindex_preserves_existing_projection_without_delete_all(tmp_path: Path) -> None:
     service, _ = sync(tmp_path, "Official economic content. " * 30)
     service.run(registry(source_record()))
     failing = FailOncePinecone(fail_operation="upsert")
     service.pinecone = failing
-    with pytest.raises(PublicKnowledgeError, match="public_knowledge_reindex_failed_recovered"):
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_knowledge_reindex_failed_projection_preserved",
+    ):
         service.reindex()
-    assert len(failing.deletes) == 2
-    assert len(failing.upserts) == 2
+    assert failing.deletes == []
+    assert len(failing.upserts) == 1

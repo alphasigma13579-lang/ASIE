@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from backend.live_intelligence_product import LiveIntelligenceProductError, LiveIntelligenceProductService
@@ -43,6 +44,13 @@ class FakeGoogle:
 
 class FakePinecone:
     def search_public_knowledge(self, **kwargs):
+        retrieved_at = datetime.now(timezone.utc) - timedelta(days=1)
+        fresh_until = retrieved_at + timedelta(days=365)
+        expires_at = fresh_until + timedelta(days=90)
+
+        def iso(value: datetime) -> str:
+            return value.isoformat().replace("+00:00", "Z")
+
         return {
             "payload": {
                 "result": {
@@ -63,12 +71,12 @@ class FakePinecone:
                                 "geography": "saudi_arabia",
                                 "language": "en",
                                 "published_at": "unknown",
-                                "retrieved_at": "2026-08-20T00:00:00Z",
+                                "retrieved_at": iso(retrieved_at),
                                 "content_sha256": "a" * 64,
                                 "version": 1,
                                 "freshness_days": 365,
-                                "fresh_until": "2027-08-20T00:00:00Z",
-                                "expires_at": "2027-11-20T00:00:00Z",
+                                "fresh_until": iso(fresh_until),
+                                "expires_at": iso(expires_at),
                                 "unit": "not_applicable",
                                 "confidence": 0.98,
                                 "evidence_ref": "public:vision2030-ar:sha256:" + "a" * 64,
@@ -93,6 +101,11 @@ class FakeDeepSeek:
             "controlled_numbers": [],
             "sovereign_verdict": None,
         }
+
+
+class FailingPinecone(FakePinecone):
+    def search_public_knowledge(self, **kwargs):
+        raise RuntimeError("simulated pinecone outage")
 
 
 def service():
@@ -132,6 +145,40 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
     assert len(result["context_hash"]) == 64
+
+
+def test_market_context_preserves_complete_evidence_contract_when_pinecone_fails():
+    product = LiveIntelligenceProductService(
+        deepseek=FakeDeepSeek(),
+        tavily=FakeTavily(),
+        google=FakeGoogle(),
+        pinecone=FailingPinecone(),
+    )
+    result = product.build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+    context = result["public_evidence_context"]
+    assert set(context) == {
+        "contract_id",
+        "status",
+        "as_of",
+        "evidence",
+        "gaps",
+        "permitted_uses",
+        "claims_project_success",
+        "claims_funding_acceptance",
+        "source_of_truth",
+        "snapshot_eligible",
+        "requires_separate_assumption_admission_for_finance",
+    }
+    assert context["status"] == "not_ready"
+    assert context["gaps"] == [
+        {"record_id": "", "reason": "public_knowledge_unavailable"}
+    ]
+    assert context["requires_separate_assumption_admission_for_finance"] is True
+    assert result["knowledge_hits"] == []
 
 
 def test_narrative_requires_approved_context():

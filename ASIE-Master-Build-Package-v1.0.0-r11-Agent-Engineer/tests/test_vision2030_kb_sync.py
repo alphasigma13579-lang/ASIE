@@ -9,6 +9,7 @@ from typing import Any
 from backend.vision2030_kb_sync import (
     Vision2030KnowledgeSync,
     Vision2030SyncError,
+    _as_public_registry,
     _chunk_text,
     load_registry,
 )
@@ -98,6 +99,14 @@ class Vision2030SyncTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(Vision2030SyncError, "official_https"):
                 load_registry(path)
+
+    def test_enabled_compatibility_source_rejects_root_path(self) -> None:
+        payload = registry("https://www.vision2030.gov.sa/")
+        with self.assertRaisesRegex(
+            Vision2030SyncError,
+            "vision2030_enabled_source_root_path_forbidden",
+        ):
+            _as_public_registry(payload)
 
     def test_chunking_is_bounded_and_overlapping(self) -> None:
         text = ("رؤية 2030 والتحول الوطني والاقتصاد المزدهر. " * 400).strip()

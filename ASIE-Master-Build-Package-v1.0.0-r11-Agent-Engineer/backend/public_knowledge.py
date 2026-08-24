@@ -205,6 +205,8 @@ def _validate_source(source: Mapping[str, Any]) -> dict[str, Any]:
             if host != source_host or query:
                 raise PublicKnowledgeError("invalid_public_source_allowed_paths")
             canonical_paths.append(path)
+        if source_path == "/" or "/" in canonical_paths:
+            raise PublicKnowledgeError("public_source_root_path_not_admitted")
         if not any(_path_within(source_path, root) for root in canonical_paths):
             raise PublicKnowledgeError("public_source_url_outside_allowed_paths")
         if source_query and normalized.get("allow_query_parameters") is not True:
@@ -841,9 +843,16 @@ class PublicKnowledgeSync:
         corpus["audit_events"].append({"event": "source_deleted", "source_id": normalized_id, "at": at})
         try:
             _save_corpus(self.corpus_path, corpus)
-        except Exception as exc:
-            self._upsert(source.get("records", []))
-            raise PublicKnowledgeError("public_source_delete_commit_failed_compensated") from exc
+        except Exception as commit_error:
+            try:
+                self._upsert(source.get("records", []))
+            except Exception as compensation_error:
+                raise PublicKnowledgeError(
+                    "public_source_delete_commit_failed_compensation_incomplete"
+                ) from compensation_error
+            raise PublicKnowledgeError(
+                "public_source_delete_commit_failed_compensated"
+            ) from commit_error
         return {"status": "deleted", "source_id": normalized_id, "records_deleted": deleted}
 
     def restore_source(self, source_id: str) -> dict[str, Any]:
@@ -872,9 +881,16 @@ class PublicKnowledgeSync:
         corpus["audit_events"].append({"event": "source_restored", "source_id": normalized_id, "at": at})
         try:
             _save_corpus(self.corpus_path, corpus)
-        except Exception as exc:
-            self._delete_ids([str(record["_id"]) for record in records])
-            raise PublicKnowledgeError("public_source_restore_commit_failed_compensated") from exc
+        except Exception as commit_error:
+            try:
+                self._delete_ids([str(record["_id"]) for record in records])
+            except Exception as compensation_error:
+                raise PublicKnowledgeError(
+                    "public_source_restore_commit_failed_compensation_incomplete"
+                ) from compensation_error
+            raise PublicKnowledgeError(
+                "public_source_restore_commit_failed_compensated"
+            ) from commit_error
         return {"status": "restored", "source_id": normalized_id, "records_upserted": upserted}
 
     def reindex(self) -> dict[str, Any]:
@@ -887,22 +903,57 @@ class PublicKnowledgeSync:
         ]
         if not records:
             raise PublicKnowledgeError("public_knowledge_reindex_empty")
-        self.pinecone.delete_public_knowledge(scope=self.scope, delete_all=True)
+        rebuilt_ids = {str(record["_id"]) for record in records}
+        known_ids: set[str] = set(rebuilt_ids)
+        for source in corpus["sources"].values():
+            if not isinstance(source, Mapping):
+                raise PublicKnowledgeError("public_knowledge_corpus_invalid")
+            versions = source.get("versions", [])
+            if not isinstance(versions, list):
+                raise PublicKnowledgeError("public_knowledge_corpus_invalid")
+            record_sets = [source.get("records", [])]
+            record_sets.extend(
+                version.get("records", [])
+                for version in versions
+                if isinstance(version, Mapping)
+            )
+            for record_set in record_sets:
+                if not isinstance(record_set, list):
+                    raise PublicKnowledgeError("public_knowledge_corpus_invalid")
+                for record in record_set:
+                    record_id = str(record.get("_id") or "") if isinstance(record, Mapping) else ""
+                    if not _RECORD_ID_RE.fullmatch(record_id):
+                        raise PublicKnowledgeError("public_knowledge_corpus_record_invalid")
+                    known_ids.add(record_id)
         try:
             upserted = self._upsert(records)
         except Exception as exc:
-            try:
-                self.pinecone.delete_public_knowledge(scope=self.scope, delete_all=True)
-                self._upsert(records)
-            except Exception as recovery_error:
-                raise PublicKnowledgeError(
-                    "public_knowledge_reindex_failed_recovery_incomplete"
-                ) from recovery_error
-            raise PublicKnowledgeError("public_knowledge_reindex_failed_recovered") from exc
+            raise PublicKnowledgeError(
+                "public_knowledge_reindex_failed_projection_preserved"
+            ) from exc
+        stale_ids = sorted(known_ids - rebuilt_ids)
+        try:
+            deleted = self._delete_ids(stale_ids)
+        except Exception as exc:
+            raise PublicKnowledgeError(
+                "public_knowledge_reindex_cleanup_incomplete"
+            ) from exc
         at = self.now()
-        corpus["audit_events"].append({"event": "public_namespace_reindexed", "records": upserted, "at": at})
+        corpus["audit_events"].append(
+            {
+                "event": "public_namespace_reindexed",
+                "records": upserted,
+                "stale_records_deleted": deleted,
+                "at": at,
+            }
+        )
         _save_corpus(self.corpus_path, corpus)
-        return {"status": "rebuilt", "records_upserted": upserted, "source_of_truth": "canonical_corpus"}
+        return {
+            "status": "rebuilt",
+            "records_upserted": upserted,
+            "records_deleted": deleted,
+            "source_of_truth": "canonical_corpus",
+        }
 
 
 _EVIDENCE_REQUIRED_FIELDS = (
@@ -935,6 +986,55 @@ _EVIDENCE_TEXT_FIELDS = tuple(
     for field in _EVIDENCE_REQUIRED_FIELDS
     if field not in {"version", "freshness_days", "confidence"}
 )
+
+
+def _feasibility_evidence_context(
+    *,
+    as_of: str,
+    evidence: Sequence[Mapping[str, Any]],
+    gaps: Sequence[Mapping[str, str]],
+) -> dict[str, Any]:
+    evidence_rows = [dict(row) for row in evidence]
+    gap_rows = [dict(row) for row in gaps]
+    return {
+        "contract_id": "public-knowledge-evidence.v1",
+        "status": "ready" if evidence_rows and not gap_rows else "ready_with_gaps" if evidence_rows else "not_ready",
+        "as_of": as_of,
+        "evidence": evidence_rows,
+        "gaps": gap_rows,
+        "permitted_uses": [
+            "market_size",
+            "demand_context",
+            "competition_context",
+            "funding_cost_context",
+            "government_spending",
+            "investment_opportunities",
+            "vision_2030_alignment",
+            "sensitivity_context",
+        ],
+        "claims_project_success": False,
+        "claims_funding_acceptance": False,
+        "source_of_truth": False,
+        "snapshot_eligible": False,
+        "requires_separate_assumption_admission_for_finance": True,
+    }
+
+
+def build_unavailable_feasibility_evidence_context(
+    reason: str,
+    *,
+    as_of: str | None = None,
+) -> dict[str, Any]:
+    normalized_reason = str(reason or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{2,119}", normalized_reason):
+        raise PublicKnowledgeError("public_knowledge_unavailable_reason_invalid")
+    as_of_value = as_of or _utc_now()
+    _parse_utc(as_of_value, field="as_of")
+    return _feasibility_evidence_context(
+        as_of=as_of_value,
+        evidence=[],
+        gaps=[{"record_id": "", "reason": normalized_reason}],
+    )
 
 
 def build_feasibility_evidence_context(
@@ -1050,28 +1150,11 @@ def build_feasibility_evidence_context(
                 "source_of_truth": False,
             }
         )
-    return {
-        "contract_id": "public-knowledge-evidence.v1",
-        "status": "ready" if evidence and not gaps else "ready_with_gaps" if evidence else "not_ready",
-        "as_of": as_of_value,
-        "evidence": evidence,
-        "gaps": gaps,
-        "permitted_uses": [
-            "market_size",
-            "demand_context",
-            "competition_context",
-            "funding_cost_context",
-            "government_spending",
-            "investment_opportunities",
-            "vision_2030_alignment",
-            "sensitivity_context",
-        ],
-        "claims_project_success": False,
-        "claims_funding_acceptance": False,
-        "source_of_truth": False,
-        "snapshot_eligible": False,
-        "requires_separate_assumption_admission_for_finance": True,
-    }
+    return _feasibility_evidence_context(
+        as_of=as_of_value,
+        evidence=evidence,
+        gaps=gaps,
+    )
 
 
 def build_public_knowledge_sync_from_env(

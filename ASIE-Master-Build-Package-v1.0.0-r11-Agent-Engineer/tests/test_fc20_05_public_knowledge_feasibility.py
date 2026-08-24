@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from backend.public_knowledge import (
@@ -178,7 +179,7 @@ def test_unsafe_license_reference_is_rejected_at_ingress_and_retrieval() -> None
 def test_public_knowledge_module_has_no_frozen_runtime_dependency() -> None:
     import backend.public_knowledge as module
 
-    source = open(module.__file__, encoding="utf-8").read()
+    source = Path(module.__file__).read_text(encoding="utf-8")
     for forbidden in (
         "aas_kernel",
         "ProjectRunWorkflow",
