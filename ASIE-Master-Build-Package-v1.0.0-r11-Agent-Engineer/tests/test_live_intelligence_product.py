@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import backend.live_intelligence_product as live_intelligence_product
 from backend.live_intelligence_product import LiveIntelligenceProductError, LiveIntelligenceProductService
 from backend.provider_security_control_plane import TrustedProviderScope
 
@@ -138,6 +139,7 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert len(result["source_candidates"]) == 1
     assert len(result["places"]) == 1
     assert len(result["knowledge_hits"]) == 1
+    assert result["knowledge_hits"][0]["review_status"] == "review_required"
     assert result["public_evidence_context"]["status"] == "ready"
     assert result["human_review_required"] is True
     assert result["eligible_for_controlled_assumptions"] is False
@@ -145,6 +147,73 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
     assert len(result["context_hash"]) == 64
+
+
+def test_context_hash_excludes_only_the_volatile_evidence_clock(monkeypatch):
+    as_of_values = iter(("2026-08-24T10:00:00Z", "2026-08-24T10:00:01Z"))
+
+    def stable_evidence_context(_response):
+        return {
+            "contract_id": "public-knowledge-evidence.v1",
+            "status": "ready",
+            "as_of": next(as_of_values),
+            "evidence": [
+                {
+                    "record_id": "vision-1",
+                    "score": 0.92,
+                    "chunk_text": "Stable public evidence",
+                    "source_id": "vision2030-ar",
+                    "publisher": "Saudi Vision 2030",
+                    "authority": "saudi_official",
+                    "source_url": "https://vision2030.gov.sa/",
+                    "license_id": "saudi-open-data-license-2.0",
+                    "license_ref": "docs/legal/third-party/saudi-open-data/README.md",
+                    "attribution": "Saudi Vision 2030",
+                    "sector": "all",
+                    "geography": "saudi_arabia",
+                    "language": "en",
+                    "published_at": "unknown",
+                    "retrieved_at": "2026-08-23T00:00:00Z",
+                    "content_sha256": "a" * 64,
+                    "version": 1,
+                    "freshness_days": 365,
+                    "fresh_until": "2027-08-23T00:00:00Z",
+                    "expires_at": "2027-11-21T00:00:00Z",
+                    "unit": "not_applicable",
+                    "confidence": 0.98,
+                    "evidence_ref": "public:vision2030-ar:sha256:" + "a" * 64,
+                    "admission_status": "auto_admitted_official_open",
+                    "data_classification": "public",
+                    "source_of_truth": False,
+                }
+            ],
+            "gaps": [],
+            "permitted_uses": ["market_size"],
+            "claims_project_success": False,
+            "claims_funding_acceptance": False,
+            "source_of_truth": False,
+            "snapshot_eligible": False,
+            "requires_separate_assumption_admission_for_finance": True,
+        }
+
+    monkeypatch.setattr(
+        live_intelligence_product,
+        "build_feasibility_evidence_context",
+        stable_evidence_context,
+    )
+    first = service().build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+    second = service().build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+
+    assert first["public_evidence_context"]["as_of"] != second["public_evidence_context"]["as_of"]
+    assert first["context_hash"] == second["context_hash"]
 
 
 def test_market_context_preserves_complete_evidence_contract_when_pinecone_fails():

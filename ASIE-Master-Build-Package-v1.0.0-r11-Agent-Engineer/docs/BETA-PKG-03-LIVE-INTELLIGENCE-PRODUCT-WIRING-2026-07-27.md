@@ -50,7 +50,9 @@ Runs controlled provider checks when external fetch is enabled. DeepSeek is not 
 
 ### `live.intelligence.context.v1`
 
-Collects source candidates, places, Vision 2030 knowledge hits, failures, and a deterministic context hash. The contract declares:
+Collects source candidates, places, governed public-economic evidence, failures, and a deterministic context hash. The public evidence is exposed both as the complete `public_evidence_context` contract and as backward-compatible `knowledge_hits` rows carrying `review_status: review_required`. Each evidence row includes its publisher, source URL, retrieval and freshness dates, geography, sector, unit, confidence, and lineage reference.
+
+The response keeps `public_evidence_context.as_of` for freshness disclosure, but excludes that volatile clock field alone from `context_hash`. Evidence, gaps, status, and every other result field remain hash-bound, so identical evidence yields the same integrity marker while material readiness changes still change it. The contract declares:
 
 ```json
 {
@@ -78,7 +80,7 @@ The Arabic RTL workspace displays:
 - provider status: disabled, configured, missing secret, live, or failed;
 - a clear notice when external fetch is disabled;
 - source links marked as requiring review;
-- place-result and Vision 2030 retrieval counts;
+- place-result counts and public-economic evidence cards with source, freshness, geography, sector, unit, and confidence;
 - provider failures without exposing credentials;
 - an explicit statement that results are not automatically used as financial values or final decisions.
 

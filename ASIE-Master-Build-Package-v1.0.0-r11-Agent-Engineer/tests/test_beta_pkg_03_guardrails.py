@@ -47,3 +47,17 @@ def test_ui_discloses_review_and_live_status():
     assert "تحتاج مراجعة" in text
     assert "الاتصال الخارجي معطّل" in text
     assert "لا تُستخدم تلقائيًا كأرقام مالية" in text
+    assert "الأدلة الاقتصادية العامة" in text
+    assert "public_evidence_context" in text
+    fields = (
+        "publisher",
+        "source_url",
+        "geography",
+        "sector",
+        "unit",
+        "confidence",
+        "retrieved_at",
+        "fresh_until",
+    )
+    for field in fields:
+        assert field in text

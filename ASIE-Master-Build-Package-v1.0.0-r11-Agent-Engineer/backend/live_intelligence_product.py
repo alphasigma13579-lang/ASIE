@@ -43,6 +43,16 @@ def _sha256_json(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _stable_context_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    stable = dict(payload)
+    evidence_context = stable.get("public_evidence_context")
+    if isinstance(evidence_context, Mapping):
+        stable["public_evidence_context"] = {
+            key: value for key, value in evidence_context.items() if key != "as_of"
+        }
+    return stable
+
+
 def provider_status_snapshot() -> dict[str, Any]:
     enabled = os.getenv("ASIE_ALLOW_EXTERNAL_FETCH", "false").strip().lower() in {"1", "true", "yes", "on"}
     providers = {
@@ -200,7 +210,11 @@ class LiveIntelligenceProductService:
         except Exception as exc:
             failures.append({"provider": "pinecone", **_safe_error(exc)})
 
-        knowledge_hits = list(public_evidence_context.get("evidence") or [])
+        knowledge_hits = [
+            {**dict(evidence), "review_status": "review_required"}
+            for evidence in public_evidence_context.get("evidence") or []
+            if isinstance(evidence, Mapping)
+        ]
         product_status = "review_required" if source_candidates or places or knowledge_hits else "failed"
         result = {
             "contract_id": "live.intelligence.context.v1",
@@ -218,7 +232,7 @@ class LiveIntelligenceProductService:
             "finance_mutated": False,
             "snapshot_mutated": False,
         }
-        result["context_hash"] = _sha256_json(result)
+        result["context_hash"] = _sha256_json(_stable_context_hash_payload(result))
         return result
 
     def create_reviewed_narrative(
