@@ -47,7 +47,15 @@ def _docx_available() -> bool:
 def _pdf_renderer_available() -> bool:
     if os.environ.get("ASIE_PDF_RENDERER"):
         return True
-    return shutil.which("chrome") is not None or shutil.which("msedge") is not None
+    if shutil.which("chrome") is not None or shutil.which("msedge") is not None:
+        return True
+    return any(
+        path.exists()
+        for path in (
+            Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+            Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        )
+    )
 
 
 class ReportExportRouteTests(unittest.TestCase):

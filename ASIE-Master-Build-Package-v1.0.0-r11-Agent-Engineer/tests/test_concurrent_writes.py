@@ -40,7 +40,11 @@ class ConcurrentWriteTest(unittest.TestCase):
             self.assertEqual(errors, [], f"concurrent writes failed: {errors!r}")
             projects = repo.list_projects(org["organization_id"])
             self.assertEqual(len(projects), 10)
-            journal_mode = repo.connect().execute("PRAGMA journal_mode").fetchone()[0]
+            connection = repo.connect()
+            try:
+                journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            finally:
+                connection.close()
             self.assertEqual(journal_mode.lower(), "wal")
 
 

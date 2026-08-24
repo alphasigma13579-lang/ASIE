@@ -216,7 +216,7 @@ class GovernedFreezeReviewTests(unittest.TestCase):
         missing_path = next(iter(REQUIRED_EVIDENCE_PATHS["SEC-BETA-03"]))
 
         def paths(path: Path) -> bool:
-            return not str(path).endswith(missing_path)
+            return not path.as_posix().endswith(missing_path)
 
         review = evaluate_governed_freeze_review(
             valid_gate_report(commit),
