@@ -98,8 +98,9 @@ active -> deleted_tombstone -> restored | purged by separate authority
 
 The canonical corpus retains bounded prior versions. A content hash no-op does
 not write Pinecone. Dry-run writes neither corpus nor Pinecone. Delete creates a
-tombstone; restore creates a new audit event. Reindex resets only the fixed
-public namespace and rebuilds it from active canonical records.
+tombstone; restore creates a new audit event. Reindex first upserts every active
+canonical record, then deletes only known stale record IDs; it never empties the
+fixed namespace before rebuilding.
 
 ## Data flows
 
@@ -109,7 +110,7 @@ public namespace and rebuilds it from active canonical records.
 | `PK-INDEX-01` | Valid changed content | Corpus -> Pinecone | `public-knowledge-record.v1` | stable record IDs; compensation on partial write | FC20-05 |
 | `PK-READ-01` | Authenticated project query | Tenant scope -> Pinecone -> adapter | `public-knowledge-evidence.v1` | bounded top-k; abstain on invalid hit | Intelligence |
 | `PK-DELETE-01` | Explicit maintenance action | Corpus -> Pinecone | tombstone event | exact source IDs; restore available | Platform admin |
-| `PK-REINDEX-01` | Explicit recovery | Corpus -> Pinecone | corpus schema version | reset fixed namespace, replay all active records | Platform admin |
+| `PK-REINDEX-01` | Explicit recovery | Corpus -> Pinecone | corpus schema version | additive upsert, then delete only known stale IDs | Platform admin |
 
 ## Consistency, recovery, SLO, and cost
 
@@ -158,7 +159,8 @@ disabled and requires a separate AIA activation decision.
 
 - Build and tests are offline; fake transports must expose the real client
   signatures and security contexts.
-- Manual workflow remains dry-run by default and exact-head gated.
+- Manual workflow is exact-head gated and fails closed to dry-run only until a
+  durable canonical production store is admitted.
 - Canary is one allowlisted public source with bounded records and no customer
   data. It is not authorized by this ACR.
 - Kill switches and default-disabled provider policy remain unchanged.

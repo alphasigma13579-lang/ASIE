@@ -135,6 +135,16 @@ class FailOncePinecone(FakePinecone):
         return result
 
 
+class FailWriteAndCompensationPinecone(FakePinecone):
+    def upsert_public_knowledge(self, **kwargs: Any) -> dict[str, Any]:
+        super().upsert_public_knowledge(**kwargs)
+        raise RuntimeError("simulated projection write failure")
+
+    def delete_public_knowledge(self, **kwargs: Any) -> dict[str, Any]:
+        super().delete_public_knowledge(**kwargs)
+        raise RuntimeError("simulated compensation failure")
+
+
 def sync(tmp_path: Path, content: str) -> tuple[PublicKnowledgeSync, FakePinecone]:
     pinecone = FakePinecone()
     service = PublicKnowledgeSync(
@@ -338,6 +348,25 @@ def test_prompt_injection_or_redirect_mismatch_is_quarantined_without_index_writ
     ]
 
 
+def test_extract_returned_url_is_readmitted_against_source_policy(tmp_path: Path) -> None:
+    pinecone = FakePinecone()
+    service = PublicKnowledgeSync(
+        tavily=FakeTavily(
+            "Official economic content. " * 30,
+            returned_url="https://mof.gov.sa/en/generalservcies/open-data/Pages/canonical.aspx",
+        ),
+        pinecone=pinecone,
+        scope=TrustedProviderScope.for_platform_workload("public-knowledge-sync"),
+        corpus_path=tmp_path / "public-corpus.json",
+        now=lambda: NOW,
+    )
+
+    result = service.run(registry(source_record()))
+
+    assert result["sources_changed"] == 1
+    assert pinecone.upserts
+
+
 def test_delete_restore_and_full_reindex_use_canonical_corpus(tmp_path: Path) -> None:
     service, pinecone = sync(tmp_path, "Official economic content. " * 30)
     service.run(registry(source_record()))
@@ -496,6 +525,28 @@ def test_restore_commit_reports_incomplete_compensation(tmp_path: Path, monkeypa
         match="public_source_restore_commit_failed_compensation_incomplete",
     ):
         service.restore_source("mof-open-data")
+
+
+def test_sync_compensation_failure_aborts_without_canonical_commit(tmp_path: Path) -> None:
+    pinecone = FailWriteAndCompensationPinecone()
+    corpus_path = tmp_path / "public-corpus.json"
+    service = PublicKnowledgeSync(
+        tavily=FakeTavily("Official economic content. " * 30),
+        pinecone=pinecone,
+        scope=TrustedProviderScope.for_platform_workload("public-knowledge-sync"),
+        corpus_path=corpus_path,
+        now=lambda: NOW,
+    )
+
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_source_sync_failed_compensation_incomplete",
+    ):
+        service.run(registry(source_record()))
+
+    assert not corpus_path.exists()
+    assert pinecone.upserts
+    assert pinecone.deletes
 
 
 def test_failed_reindex_preserves_existing_projection_without_delete_all(tmp_path: Path) -> None:

@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       source_id:
-        description: "Exact allowlisted source ID; non-dry runs remain single-source canaries"
+        description: "Exact allowlisted source ID; dry-run only until durable canonical storage is admitted"
         required: true
         default: "vision2030-open-data"
         type: string
@@ -59,6 +59,7 @@ jobs:
         with:
           ref: ${{ env.ASIE_AUTHORIZATION_COMMIT }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Require exact current main and explicit marker authority
         shell: bash
@@ -91,6 +92,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.authorization_commit }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -100,13 +102,11 @@ jobs:
       - name: Install Python test dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Restore canonical public corpus
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ env.PACKAGE_ROOT }}/.state/public_knowledge_corpus.json
-          key: public-knowledge-${{ github.run_id }}
-          restore-keys: |
-            public-knowledge-
+      - name: Enforce dark-build storage boundary
+        env:
+          REQUESTED_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          test "$REQUESTED_DRY_RUN" = "true"
 
       - name: Validate public registry, provider boundary, and lifecycle
         run: |
@@ -117,30 +117,15 @@ jobs:
             tests/test_fc20_05_public_knowledge_feasibility.py \
             tests/test_vision2030_kb_sync.py
 
-      - name: Run exact-source dry-run or bounded canary
+      - name: Run exact-source dry-run
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           SOURCE_ID: ${{ inputs.source_id }}
         run: |
-          dry_run="false"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
-            dry_run="true"
-          fi
-          args=()
-          if [ "$dry_run" = "true" ]; then
-            args+=(--dry-run)
-          fi
-          args+=(--source-id "$SOURCE_ID")
+          args=(--dry-run --source-id "$SOURCE_ID")
           python -m backend.public_knowledge "${args[@]}" | tee /tmp/public-knowledge-sync-summary.json
-
-      - name: Persist canonical public corpus
-        if: ${{ always() && !inputs.dry_run }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ env.PACKAGE_ROOT }}/.state/public_knowledge_corpus.json
-          key: public-knowledge-${{ github.run_id }}
 
       - name: Upload redacted sync summary
         if: always()

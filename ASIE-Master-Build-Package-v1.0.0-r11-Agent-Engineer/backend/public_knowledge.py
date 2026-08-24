@@ -415,25 +415,32 @@ def _content_anomalies(text: str) -> list[str]:
     return anomalies
 
 
-def _extract_text(response: Mapping[str, Any], expected_url: str) -> str:
+def _extract_text(
+    response: Mapping[str, Any],
+    *,
+    source: Mapping[str, Any],
+    admission_policy: PublicKnowledgeSourcePolicy,
+) -> str:
     payload = response.get("payload")
     if not isinstance(payload, Mapping):
         raise PublicKnowledgeError("public_source_extract_payload_invalid")
     results = payload.get("results")
     if not isinstance(results, list) or not results:
         raise PublicKnowledgeError("public_source_extract_empty")
-    expected = _canonical_url(expected_url)
     selected: Mapping[str, Any] | None = None
     for result in results:
         if not isinstance(result, Mapping):
             continue
         try:
-            candidate = _canonical_url(result.get("url"))
+            admission_policy.authorize_content_url(
+                source_id=str(source["source_id"]),
+                url=str(result.get("url") or ""),
+                operation="extract",
+            )
         except PublicKnowledgeError:
             continue
-        if candidate[1:] == expected[1:]:
-            selected = result
-            break
+        selected = result
+        break
     if selected is None:
         raise PublicKnowledgeError("public_source_extract_url_mismatch")
     return _normalize_text(str(selected.get("raw_content") or selected.get("content") or ""))
@@ -621,6 +628,17 @@ class PublicKnowledgeSync:
         }
         compensations: list[tuple[list[dict[str, Any]], list[str], list[str]]] = []
 
+        def compensate_records(
+            previous_records: Sequence[Mapping[str, Any]],
+            previous_ids: Sequence[str],
+            new_ids: Sequence[str],
+        ) -> None:
+            if previous_records:
+                self._upsert(previous_records)
+            extra_ids = sorted(set(new_ids) - set(previous_ids))
+            if extra_ids:
+                self._delete_ids(extra_ids)
+
         def record_quarantine(
             *,
             source: Mapping[str, Any],
@@ -679,7 +697,11 @@ class PublicKnowledgeSync:
                         query="Extract authoritative headings, tables, metrics, dates, units, and linked public evidence.",
                         depth=str(source.get("extract_depth") or "advanced"),
                     )
-                    text = _extract_text(response, str(source["url"]))
+                    text = _extract_text(
+                        response,
+                        source=source,
+                        admission_policy=admission_policy,
+                    )
                 anomalies = _content_anomalies(text)
                 if anomalies:
                     summary["sources_quarantined"] += 1
@@ -721,11 +743,19 @@ class PublicKnowledgeSync:
                     stale_ids = sorted(set(previous_ids) - set(new_ids))
                     source_records_deleted = self._delete_ids(stale_ids)
                 except Exception:
-                    if previous_records:
-                        self._upsert(previous_records)
-                    extra_ids = sorted(set(new_ids) - set(previous_ids))
-                    if extra_ids:
-                        self._delete_ids(extra_ids)
+                    try:
+                        compensate_records(previous_records, previous_ids, new_ids)
+                    except Exception as compensation_error:
+                        try:
+                            for prior_records, prior_ids, prior_new_ids in reversed(compensations):
+                                compensate_records(prior_records, prior_ids, prior_new_ids)
+                        except Exception as prior_compensation_error:
+                            raise PublicKnowledgeError(
+                                "public_source_sync_failed_compensation_incomplete"
+                            ) from prior_compensation_error
+                        raise PublicKnowledgeError(
+                            "public_source_sync_failed_compensation_incomplete"
+                        ) from compensation_error
                     raise
                 summary["records_upserted"] += source_records_upserted
                 summary["records_deleted"] += source_records_deleted
@@ -763,6 +793,11 @@ class PublicKnowledgeSync:
                 )
                 summary["sources_changed"] += 1
             except Exception as exc:
+                if (
+                    isinstance(exc, PublicKnowledgeError)
+                    and str(exc) == "public_source_sync_failed_compensation_incomplete"
+                ):
+                    raise
                 if isinstance(exc, PublicKnowledgeError) and str(exc) in {
                     "public_source_extract_url_mismatch",
                     "public_source_crawl_url_mismatch",
@@ -800,11 +835,7 @@ class PublicKnowledgeSync:
             except Exception as commit_error:
                 try:
                     for previous_records, previous_ids, new_ids in reversed(compensations):
-                        if previous_records:
-                            self._upsert(previous_records)
-                        extra_ids = sorted(set(new_ids) - set(previous_ids))
-                        if extra_ids:
-                            self._delete_ids(extra_ids)
+                        compensate_records(previous_records, previous_ids, new_ids)
                 except Exception as compensation_error:
                     raise PublicKnowledgeError(
                         "public_corpus_commit_failed_compensation_incomplete"
