@@ -215,6 +215,16 @@ def test_policy_denies_host_and_path_widening() -> None:
             url="https://mof.gov.sa/private",
             operation="extract",
         )
+    for encoded_url in (
+        "https://mof.gov.sa/en/generalservcies/open-data/Pages%2fprivate",
+        "https://mof.gov.sa/en/generalservcies/open-data/Pages/%2esecret",
+    ):
+        with pytest.raises(PublicKnowledgeError, match="public_source_path_invalid"):
+            policy.authorize_content_url(
+                source_id="mof-open-data",
+                url=encoded_url,
+                operation="extract",
+            )
 
 
 def test_enabled_auto_source_rejects_root_url_or_root_allowlist() -> None:
@@ -349,11 +359,12 @@ def test_prompt_injection_or_redirect_mismatch_is_quarantined_without_index_writ
 
 
 def test_extract_returned_url_is_readmitted_against_source_policy(tmp_path: Path) -> None:
+    returned_url = "https://mof.gov.sa/en/generalservcies/open-data/Pages/canonical.aspx"
     pinecone = FakePinecone()
     service = PublicKnowledgeSync(
         tavily=FakeTavily(
             "Official economic content. " * 30,
-            returned_url="https://mof.gov.sa/en/generalservcies/open-data/Pages/canonical.aspx",
+            returned_url=returned_url,
         ),
         pinecone=pinecone,
         scope=TrustedProviderScope.for_platform_workload("public-knowledge-sync"),
@@ -365,6 +376,7 @@ def test_extract_returned_url_is_readmitted_against_source_policy(tmp_path: Path
 
     assert result["sources_changed"] == 1
     assert pinecone.upserts
+    assert pinecone.upserts[0][0]["source_url"] == returned_url
 
 
 def test_delete_restore_and_full_reindex_use_canonical_corpus(tmp_path: Path) -> None:

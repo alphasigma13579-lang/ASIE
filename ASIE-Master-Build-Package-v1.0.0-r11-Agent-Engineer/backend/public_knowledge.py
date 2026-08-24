@@ -116,7 +116,7 @@ def _canonical_url(value: Any) -> tuple[str, str, str, str]:
         not decoded.startswith("/")
         or "\\" in decoded
         or "//" in decoded
-        or unquote(decoded, encoding="utf-8", errors="strict") != decoded
+        or decoded != path
         or any(segment in {".", ".."} for segment in decoded.split("/"))
     ):
         raise PublicKnowledgeError("public_source_path_invalid")
@@ -420,7 +420,7 @@ def _extract_text(
     *,
     source: Mapping[str, Any],
     admission_policy: PublicKnowledgeSourcePolicy,
-) -> str:
+) -> tuple[str, str]:
     payload = response.get("payload")
     if not isinstance(payload, Mapping):
         raise PublicKnowledgeError("public_source_extract_payload_invalid")
@@ -428,22 +428,26 @@ def _extract_text(
     if not isinstance(results, list) or not results:
         raise PublicKnowledgeError("public_source_extract_empty")
     selected: Mapping[str, Any] | None = None
+    selected_url = ""
     for result in results:
         if not isinstance(result, Mapping):
             continue
+        candidate_url = str(result.get("url") or "").strip()
         try:
             admission_policy.authorize_content_url(
                 source_id=str(source["source_id"]),
-                url=str(result.get("url") or ""),
+                url=candidate_url,
                 operation="extract",
             )
         except PublicKnowledgeError:
             continue
         selected = result
+        selected_url = candidate_url
         break
     if selected is None:
         raise PublicKnowledgeError("public_source_extract_url_mismatch")
-    return _normalize_text(str(selected.get("raw_content") or selected.get("content") or ""))
+    text = _normalize_text(str(selected.get("raw_content") or selected.get("content") or ""))
+    return text, selected_url
 
 
 def _extract_crawl_text(
@@ -543,6 +547,7 @@ class PublicKnowledgeSync:
         self,
         *,
         source: Mapping[str, Any],
+        source_url: str,
         text: str,
         content_hash: str,
         version: int,
@@ -562,7 +567,7 @@ class PublicKnowledgeSync:
                     "source_id": source_id,
                     "publisher": str(source["publisher"]),
                     "authority": str(source["authority"]),
-                    "source_url": str(source["url"]),
+                    "source_url": source_url,
                     "license_id": str(source["license_id"]),
                     "license_ref": str(source["license_ref"]),
                     "attribution": str(source["attribution"]),
@@ -676,6 +681,7 @@ class PublicKnowledgeSync:
                 summary["sources_skipped_tombstone"] += 1
                 continue
             try:
+                content_url = str(source["url"])
                 if source.get("acquisition_mode") == "crawl":
                     response = self.tavily.crawl(
                         source_id=source_id,
@@ -697,7 +703,7 @@ class PublicKnowledgeSync:
                         query="Extract authoritative headings, tables, metrics, dates, units, and linked public evidence.",
                         depth=str(source.get("extract_depth") or "advanced"),
                     )
-                    text = _extract_text(
+                    text, content_url = _extract_text(
                         response,
                         source=source,
                         admission_policy=admission_policy,
@@ -728,6 +734,7 @@ class PublicKnowledgeSync:
                 version = int(previous.get("current_version") or 0) + 1
                 records = self._records(
                     source=source,
+                    source_url=content_url,
                     text=text,
                     content_hash=content_hash,
                     version=version,
