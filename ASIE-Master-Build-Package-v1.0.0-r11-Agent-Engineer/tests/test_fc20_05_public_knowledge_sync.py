@@ -263,7 +263,7 @@ def test_crawl_is_bounded_to_admitted_paths_and_quarantines_widening(tmp_path: P
     )
     in_scope_urls = (
         "https://mof.gov.sa/en/generalservcies/open-data/dataset-a",
-        "https://mof.gov.sa/en/generalservcies/open-data/dataset-b",
+        "https://mof.gov.sa/en/generalservcies/open-data/%D8%A8%D9%8A%D8%A7%D9%86%D8%A7%D8%AA",
     )
     tavily = FakeCrawlTavily(
         [
@@ -295,6 +295,37 @@ def test_crawl_is_bounded_to_admitted_paths_and_quarantines_widening(tmp_path: P
     assert result["sources_quarantined"] == 1
     assert result["errors"][0]["anomalies"] == ["public_source_crawl_url_mismatch"]
     assert len(pinecone.upserts) == 1
+
+
+def test_crawl_skips_short_pages_without_dropping_valid_evidence(tmp_path: Path) -> None:
+    source = source_record(
+        acquisition_mode="crawl",
+        crawl_max_depth=2,
+        crawl_limit=10,
+    )
+    short_url = "https://mof.gov.sa/en/generalservcies/open-data/brief"
+    valid_url = "https://mof.gov.sa/en/generalservcies/open-data/annual-report"
+    pinecone = FakePinecone()
+    service = PublicKnowledgeSync(
+        tavily=FakeCrawlTavily(
+            [
+                {"url": short_url, "raw_content": "Brief."},
+                {"url": valid_url, "raw_content": "Official annual economic evidence. " * 30},
+            ]
+        ),
+        pinecone=pinecone,
+        scope=TrustedProviderScope.for_platform_workload("public-knowledge-sync"),
+        corpus_path=tmp_path / "public-corpus.json",
+        now=lambda: NOW,
+    )
+
+    result = service.run(registry(source))
+
+    assert result["status"] == "changed"
+    assert result["errors"] == []
+    records = [record for batch in pinecone.upserts for record in batch]
+    assert records
+    assert {record["source_url"] for record in records} == {valid_url}
 
 
 def test_dry_run_is_side_effect_free(tmp_path: Path) -> None:

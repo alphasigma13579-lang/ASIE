@@ -23,6 +23,7 @@ DEFAULT_PUBLIC_SOURCE_REGISTRY = PACKAGE_ROOT / "config" / "public_knowledge_sou
 DEFAULT_PUBLIC_CORPUS = PACKAGE_ROOT / ".state" / "public_knowledge_corpus.json"
 MAX_SOURCES = 100
 MAX_CONTENT_CHARS = 2_000_000
+MIN_CONTENT_CHARS = 200
 MAX_CHUNK_CHARS = 6_000
 CHUNK_OVERLAP_CHARS = 300
 MAX_RETAINED_VERSIONS = 3
@@ -375,7 +376,7 @@ class PublicKnowledgeSourcePolicy:
 
 def _chunk_text(text: str) -> list[str]:
     normalized = _normalize_text(text)
-    if len(normalized) < 200:
+    if len(normalized) < MIN_CONTENT_CHARS:
         raise PublicKnowledgeError("public_source_content_too_short")
     if len(normalized) > MAX_CONTENT_CHARS:
         raise PublicKnowledgeError("public_source_content_too_large")
@@ -462,37 +463,32 @@ def _extract_crawl_text(
     results = payload.get("results") if isinstance(payload, Mapping) else None
     if not isinstance(results, list) or not results or len(results) > int(source["crawl_limit"]):
         raise PublicKnowledgeError("public_source_crawl_payload_invalid")
-    pages: dict[tuple[str, str, str], str] = {}
+    pages: dict[tuple[str, str, str], tuple[str, str]] = {}
     total_content_chars = 0
     for result in results:
         if not isinstance(result, Mapping):
             raise PublicKnowledgeError("public_source_crawl_payload_invalid")
         url = str(result.get("url") or "")
         try:
+            raw_url, host, path, query = _canonical_url(url)
             admission_policy.authorize_content_url(
                 source_id=str(source["source_id"]),
-                url=url,
+                url=raw_url,
                 operation="crawl",
             )
-            _raw, host, path, query = _canonical_url(url)
         except PublicKnowledgeError as exc:
             raise PublicKnowledgeError("public_source_crawl_url_mismatch") from exc
         content = _normalize_text(str(result.get("raw_content") or result.get("content") or ""))
-        if content:
+        if len(content) >= MIN_CONTENT_CHARS:
             key = (host, path, query)
-            total_content_chars += len(content) - len(pages.get(key, ""))
+            previous = pages.get(key)
+            total_content_chars += len(content) - (len(previous[1]) if previous else 0)
             if total_content_chars > MAX_CONTENT_CHARS:
                 raise PublicKnowledgeError("public_source_content_too_large")
-            pages[key] = content
+            pages[key] = (raw_url, content)
     if not pages:
         raise PublicKnowledgeError("public_source_crawl_empty")
-    documents = [
-        (
-            f"https://{host}{path}{'?' + query if query else ''}",
-            pages[(host, path, query)],
-        )
-        for host, path, query in sorted(pages)
-    ]
+    documents = [pages[key] for key in sorted(pages)]
     combined = _normalize_text(
         "\n\n".join(
             f"Source URL: {source_url}\n{content}"
