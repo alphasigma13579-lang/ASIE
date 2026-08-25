@@ -634,6 +634,7 @@ class PublicKnowledgeSync:
             "sources_changed": 0,
             "sources_unchanged": 0,
             "sources_quarantined": 0,
+            "sources_failed": 0,
             "sources_skipped_tombstone": 0,
             "records_upserted": 0,
             "records_deleted": 0,
@@ -832,13 +833,17 @@ class PublicKnowledgeSync:
                             anomalies=anomalies,
                         )
                     continue
+                summary["sources_failed"] += 1
                 summary["errors"].append(
                     {"source_id": source_id, "error_type": type(exc).__name__, "reason": str(exc)}
                 )
         summary["completed_at"] = self.now()
         if dry_run:
-            summary["status"] = "changed_dry_run" if summary["sources_changed"] else (
-                "quarantined" if summary["sources_quarantined"] else "unchanged"
+            summary["status"] = (
+                "failed" if summary["sources_failed"] else
+                "changed_dry_run" if summary["sources_changed"] else
+                "quarantined" if summary["sources_quarantined"] else
+                "unchanged"
             )
         elif (
             summary["sources_changed"]
@@ -859,7 +864,9 @@ class PublicKnowledgeSync:
                     ) from compensation_error
                 raise PublicKnowledgeError("public_corpus_commit_failed_compensated") from commit_error
             summary["status"] = (
-                "partial" if summary["errors"] and summary["sources_changed"] else
+                "partial" if summary["sources_failed"] or (
+                    summary["errors"] and summary["sources_changed"]
+                ) else
                 "quarantined" if summary["sources_quarantined"] and not summary["sources_changed"] else
                 "changed" if summary["sources_changed"] else "unchanged"
             )

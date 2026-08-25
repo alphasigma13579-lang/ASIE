@@ -97,7 +97,8 @@ active -> deleted_tombstone -> restored | purged by separate authority
 ```
 
 The canonical corpus retains bounded prior versions. A content hash no-op does
-not write Pinecone. Dry-run writes neither corpus nor Pinecone. Delete creates a
+not write Pinecone. Dry-run writes neither corpus nor Pinecone and reports
+`failed` when any non-quarantine source error occurs. Delete creates a
 tombstone; restore creates a new audit event. Reindex first upserts every active
 canonical record, then deletes only known stale record IDs; it never empties the
 fixed namespace before rebuilding.

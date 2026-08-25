@@ -344,6 +344,25 @@ def test_dry_run_is_side_effect_free(tmp_path: Path) -> None:
     service, pinecone = sync(tmp_path, "Official economic content. " * 30)
     result = service.run(registry(source_record()), dry_run=True)
     assert result["status"] == "changed_dry_run"
+    assert result["sources_failed"] == 0
+    assert not service.corpus_path.exists()
+    assert pinecone.upserts == []
+    assert pinecone.deletes == []
+
+
+def test_dry_run_reports_source_failure_instead_of_unchanged(tmp_path: Path) -> None:
+    service, pinecone = sync(tmp_path, "Brief.")
+    result = service.run(registry(source_record()), dry_run=True)
+
+    assert result["status"] == "failed"
+    assert result["sources_failed"] == 1
+    assert result["errors"] == [
+        {
+            "source_id": "mof-open-data",
+            "error_type": "PublicKnowledgeError",
+            "reason": "public_source_content_too_short",
+        }
+    ]
     assert not service.corpus_path.exists()
     assert pinecone.upserts == []
     assert pinecone.deletes == []
