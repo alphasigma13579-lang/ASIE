@@ -35,6 +35,68 @@ _RECORD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _OFFICIAL_AUTHORITIES = frozenset({"saudi_official", "international_official"})
 _STATES = frozenset({"candidate", "enabled", "reference_only", "blocked"})
+_ENABLED_SOURCE_TRUST_ANCHORS: Mapping[str, Mapping[str, Any]] = {
+    "saudi-open-data-portal": {
+        "authority": "saudi_official",
+        "host": "open.data.gov.sa",
+        "source_path": "/en/datasets",
+        "allowed_paths": ("/en/datasets",),
+    },
+    "vision2030-ar-home": {
+        "authority": "saudi_official",
+        "host": "www.vision2030.gov.sa",
+        "source_path": "/ar",
+        "allowed_paths": ("/ar",),
+    },
+    "vision2030-en-home": {
+        "authority": "saudi_official",
+        "host": "www.vision2030.gov.sa",
+        "source_path": "/en",
+        "allowed_paths": ("/en",),
+    },
+    "vision2030-national-transformation-program": {
+        "authority": "saudi_official",
+        "host": "www.vision2030.gov.sa",
+        "source_path": "/en/explore/programs/national-transformation-program",
+        "allowed_paths": ("/en/explore/programs/national-transformation-program",),
+    },
+    "vision2030-open-data": {
+        "authority": "saudi_official",
+        "host": "www.vision2030.gov.sa",
+        "source_path": "/en/open-data",
+        "allowed_paths": ("/en/open-data",),
+    },
+    "mof-open-data": {
+        "authority": "saudi_official",
+        "host": "mof.gov.sa",
+        "source_path": "/en/generalservcies/open-data/Pages/default.aspx",
+        "allowed_paths": ("/en/generalservcies/open-data",),
+    },
+    "sama-open-data": {
+        "authority": "saudi_official",
+        "host": "sama.gov.sa",
+        "source_path": "/en-US/Publications/EconomicReports/Pages/database.aspx",
+        "allowed_paths": ("/en-US/Publications/EconomicReports",),
+    },
+    "sdb-open-data": {
+        "authority": "saudi_official",
+        "host": "www.sdb.gov.sa",
+        "source_path": "/en/open-data/open-data-library",
+        "allowed_paths": ("/en/open-data",),
+    },
+    "world-bank-indicators-api": {
+        "authority": "international_official",
+        "host": "datahelpdesk.worldbank.org",
+        "source_path": "/knowledgebase/articles/889392-about-the-indicators-api-documentation",
+        "allowed_paths": ("/knowledgebase/articles",),
+    },
+    "imf-data-api": {
+        "authority": "international_official",
+        "host": "data.imf.org",
+        "source_path": "/en/Resource-Pages/IMF-API",
+        "allowed_paths": ("/en/Resource-Pages",),
+    },
+}
 _INJECTION_MARKERS = (
     "ignore previous instructions",
     "ignore all previous instructions",
@@ -216,6 +278,15 @@ def _validate_source(source: Mapping[str, Any]) -> dict[str, Any]:
         if source_query and normalized.get("allow_query_parameters") is not True:
             raise PublicKnowledgeError("public_source_query_not_admitted")
         normalized["allowed_paths"] = canonical_paths
+        trust_anchor = _ENABLED_SOURCE_TRUST_ANCHORS.get(source_id)
+        if (
+            trust_anchor is None
+            or authority != trust_anchor["authority"]
+            or source_host != trust_anchor["host"]
+            or source_path != trust_anchor["source_path"]
+            or tuple(canonical_paths) != trust_anchor["allowed_paths"]
+        ):
+            raise PublicKnowledgeError("public_source_trust_anchor_mismatch")
         _positive_int(normalized.get("freshness_days"), field="freshness_days")
         _positive_int(normalized.get("expiry_days"), field="expiry_days")
         acquisition_mode = str(normalized.get("acquisition_mode") or "extract").strip()

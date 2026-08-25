@@ -69,6 +69,23 @@ def test_registry_requires_exact_governance_policy() -> None:
             validate_public_source_registry(payload)
 
 
+def test_enabled_source_cannot_self_declare_official_trust() -> None:
+    mutations = (
+        {"source_id": "untrusted-open-data"},
+        {"authority": "international_official"},
+        {
+            "url": "https://example.com/en/generalservcies/open-data/Pages/default.aspx",
+        },
+        {"allowed_paths": ["/en"]},
+    )
+    for mutation in mutations:
+        with pytest.raises(
+            PublicKnowledgeError,
+            match="public_source_trust_anchor_mismatch",
+        ):
+            validate_public_source_registry(registry(source_record(**mutation)))
+
+
 class FakeTavily:
     def __init__(self, content: str, *, returned_url: str | None = None) -> None:
         self.content = content

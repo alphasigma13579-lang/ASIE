@@ -75,8 +75,53 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         )
         self.assertEqual(public_registry["policy"], "official_open_auto_with_anomaly_quarantine")
         self.assertNotIn("public_namespace", public_registry)
-        self.assertTrue(any(row["source_id"] == "world-bank-indicators-api" for row in public_registry["sources"]))
-        self.assertTrue(any(row["source_id"] == "imf-data-api" for row in public_registry["sources"]))
+        expected_enabled_scope = {
+            "saudi-open-data-portal": (
+                "saudi_official",
+                "https://open.data.gov.sa/en/datasets",
+                ("/en/datasets",),
+            ),
+            "vision2030-open-data": (
+                "saudi_official",
+                "https://www.vision2030.gov.sa/en/open-data",
+                ("/en/open-data",),
+            ),
+            "mof-open-data": (
+                "saudi_official",
+                "https://mof.gov.sa/en/generalservcies/open-data/Pages/default.aspx",
+                ("/en/generalservcies/open-data",),
+            ),
+            "sama-open-data": (
+                "saudi_official",
+                "https://sama.gov.sa/en-US/Publications/EconomicReports/Pages/database.aspx",
+                ("/en-US/Publications/EconomicReports",),
+            ),
+            "sdb-open-data": (
+                "saudi_official",
+                "https://www.sdb.gov.sa/en/open-data/open-data-library",
+                ("/en/open-data",),
+            ),
+            "world-bank-indicators-api": (
+                "international_official",
+                "https://datahelpdesk.worldbank.org/knowledgebase/articles/889392-about-the-indicators-api-documentation",
+                ("/knowledgebase/articles",),
+            ),
+            "imf-data-api": (
+                "international_official",
+                "https://data.imf.org/en/Resource-Pages/IMF-API",
+                ("/en/Resource-Pages",),
+            ),
+        }
+        actual_enabled_scope = {
+            row["source_id"]: (
+                row["authority"],
+                row["url"],
+                tuple(row["allowed_paths"]),
+            )
+            for row in public_registry["sources"]
+            if row["state"] == "enabled"
+        }
+        self.assertEqual(actual_enabled_scope, expected_enabled_scope)
         self.assertTrue(
             any(
                 row["authority"] == "private_analytical_reference"
