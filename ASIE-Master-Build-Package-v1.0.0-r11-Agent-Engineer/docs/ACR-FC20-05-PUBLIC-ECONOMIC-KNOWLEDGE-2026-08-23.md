@@ -162,7 +162,9 @@ disabled and requires a separate AIA activation decision.
 - Build and tests are offline; fake transports must expose the real client
   signatures and security contexts.
 - Manual workflow is exact-head gated and fails closed to dry-run only until a
-  durable canonical production store is admitted.
+  durable canonical production store is admitted. External-network and Tavily
+  activation variables are scoped only to the sync job, never the authorization
+  job.
 - Canary is one allowlisted public source with bounded records and no customer
   data. It is not authorized by this ACR.
 - Kill switches and default-disabled provider policy remain unchanged.

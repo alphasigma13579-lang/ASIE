@@ -103,14 +103,20 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertEqual(inputs["source_id"]["type"], "string")
 
         environment = parsed["env"]
-        self.assertEqual(environment["ASIE_ALLOW_EXTERNAL_FETCH"], "true")
-        self.assertEqual(environment["ASIE_PROVIDER_GLOBAL_KILL_SWITCH"], "false")
-        self.assertEqual(environment["ASIE_PROVIDER_TAVILY_STATE"], "enabled")
-        self.assertEqual(environment["ASIE_PROVIDER_TAVILY_KILL_SWITCH"], "false")
-        self.assertNotIn("ASIE_PROVIDER_PINECONE_STATE", environment)
-        self.assertNotIn("ASIE_PROVIDER_PINECONE_KILL_SWITCH", environment)
+        self.assertEqual(set(environment), {"PACKAGE_ROOT", "PYTHONPATH"})
 
         jobs = parsed["jobs"]
+        authorize_environment = jobs["authorize"]["env"]
+        self.assertEqual(set(authorize_environment), {"ASIE_AUTHORIZATION_COMMIT"})
+        self.assertNotIn("ASIE_ALLOW_EXTERNAL_FETCH", authorize_environment)
+
+        sync_environment = jobs["sync"]["env"]
+        self.assertEqual(sync_environment["ASIE_ALLOW_EXTERNAL_FETCH"], "true")
+        self.assertEqual(sync_environment["ASIE_PROVIDER_GLOBAL_KILL_SWITCH"], "false")
+        self.assertEqual(sync_environment["ASIE_PROVIDER_TAVILY_STATE"], "enabled")
+        self.assertEqual(sync_environment["ASIE_PROVIDER_TAVILY_KILL_SWITCH"], "false")
+        self.assertNotIn("ASIE_PROVIDER_PINECONE_STATE", sync_environment)
+        self.assertNotIn("ASIE_PROVIDER_PINECONE_KILL_SWITCH", sync_environment)
         authorize_steps = jobs["authorize"]["steps"]
         sync_steps = jobs["sync"]["steps"]
         authorize_checkout = next(
