@@ -4,11 +4,12 @@
 |---|---|
 | Record ID | `ASIE-COMPREHENSIVE-EVALUATION-2026-08-23` |
 | Owner | Principal architecture and independent audit gate |
-| Status | `PRE-REVIEW / EXACT-HEAD EVIDENCE PENDING` |
-| Version | `0.1.0` |
+| Status | `POST-REVIEW / EXACT-HEAD VERIFIED / APPROVE WITH CONDITIONS` |
+| Version | `0.2.0` |
 | Baseline | `main@6247a3fed8bb9cd973d36e47379cbff99d492733` |
 | Rebuilt prerequisite baseline | `main@0a0da250ba507589a645c0c43a92c8ef076dedd4` |
-| Last reviewed | `2026-08-23` |
+| Reviewed PR head | `f32766b1e43b1999864f9dc338f7212edeaa2989` |
+| Last reviewed | `2026-08-26` |
 | Public release | `BLOCK` |
 | Network/provider activation | `BLOCK` |
 | Supersedes | none |
@@ -23,7 +24,7 @@ public-live**.
 
 Current decision split:
 
-- FC20-05 dark implementation: `APPROVE WITH CONDITIONS` before external review.
+- FC20-05 dark implementation: `APPROVE WITH CONDITIONS` after exact-head CI and external AI review.
 - ASIE continued controlled build: `APPROVE WITH CONDITIONS`.
 - Bank-grade or institutionally accepted feasibility claim: `BLOCK`.
 - Public release, recurring external sync, or live provider activation: `BLOCK`.
@@ -43,7 +44,7 @@ financial review, recovery exercises, or a public-release authorization.
 | `src/App.tsx`, `src/CommandCenter.tsx`, `src/LiveCockpit.tsx` | product implementation | Arabic guided journey, snapshot/decision navigation and explicit development simulations | live competitor map, draggable cockpit, complete realtime UX |
 | `.github/workflows/*` | executable delivery controls | Linux CI, selected Windows determinism, freeze/release/provider gates | complete SAST/SCA/DAST, browser E2E, accessibility and load coverage |
 | Baseline local gates | reproduced evidence | frontend build passed; baseline Python result was `978 passed, 4 failed, 3 skipped` with three reproducible Windows test defects and one isolated transient socket failure | post-change exact-head Python pass |
-| Current pre-review gates | reproduced evidence | Python compile succeeds; registry validates 12 sources/7 enabled/0 private-auto with one bounded-crawl source; runnable local unit/evidence/crawl/tombstone checks pass; frozen files match; frontend production build passes with 1,599 transformed modules | full Python exact-head pass while pytest is unavailable in the current runner |
+| Exact-head gates at `f32766b1` | GitHub Actions and review evidence | ASIE CI #480 passed `1031` tests with `10` warnings; frontend built `1,599` modules; TEST-BETA-06 #337, LIVE-INTEL CI #93 and Evidence-Backed Beta Release Gate #81 passed; all review threads are resolved; CodeRabbit and Copilot reviewed the exact head | live provider quality, production durability, bank acceptance or public-release readiness |
 
 ## Evaluation matrix
 
@@ -61,7 +62,7 @@ financial review, recovery exercises, or a public-release authorization.
 | Live cockpit | `PARTIAL/DEMO` | Product gap | KPI drill-down exists in command views, but the competitor map and opportunity guidance are explicitly labelled simulated; drag/drop and user-controlled module hiding are not implemented. | FC20-10 and FC20-13 live map, consented GPS, modular widgets, persistence, drill-down and realtime states. |
 | Performance and cost | `PARTIAL` | High risk | Finance sensitivity has a benchmark gate and FC20-05 bounds batches/top-k/provider quotas. No real Tavily/Pinecone latency, ingestion volume or cost-per-study evidence exists. | Canary p50/p95, bytes/records, credits/vector cost, budget alerts and cost-per-study model. |
 | Reliability | `PARTIAL` | High risk | FC20-05 is idempotent by hash and compensates partial update/delete/restore/reindex paths. Production corpus backup and disaster recovery are not proven. | Durable-store restore, provider outage/retry exercise, concurrency test and RPO/RTO evidence. |
-| Tests and CI | `PARTIAL/EXTENSIVE` | Defect + risk | The repository has 119 Python test files and 884 statically discovered test functions/methods, Linux CI and selected Windows determinism. Current exact-head full Python execution is pending and browser/security suites are incomplete. | All required workflows green on one SHA; no disabled tests; browser E2E/security/performance evidence attached. |
+| Tests and CI | `PARTIAL/EXTENSIVE` | Risk | On exact head `f32766b1`, ASIE CI passed `1031` Python tests, the frontend production build transformed `1,599` modules, and all three companion workflows passed. Browser E2E, continuous security scanning, accessibility and load suites remain incomplete. | Add browser E2E, SAST/SCA/DAST, accessibility and performance evidence without weakening the existing exact-head gates. |
 | Operations | `MISSING/PARTIAL` | High risk | Provider readiness, kill switches and deployment workflows exist, but FC20-15 remains blocked and public-corpus alerts/runbooks/backup ownership are incomplete. | Monitoring, actionable alerts, retention, backup/restore, on-call and incident runbooks. |
 | Licensing and compliance | `PARTIAL` | Risk | Saudi Open Data License v2 Arabic/English snapshots and per-source metadata are present; ambiguous/private sources remain non-ingested. This is not a legal/PDPL/NCA certification. | Per-dataset terms verification, attribution rendering, deletion/retention mapping and qualified legal/privacy review. |
 | Code quality | `PARTIAL/GOOD FOUNDATION` | Improvement | Core financial and provider boundaries are explicit and heavily tested. The large frontend surface, legacy compatibility paths and documentation volume increase drift risk. | Keep atomic PRs, contract tests, dead-path removal decisions and generated traceability checks. |
@@ -74,7 +75,7 @@ financial review, recovery exercises, or a public-release authorization.
 | `EXISTS` | Unified source registry; exact HTTPS host/path admission; official-open automatic lane; bounded extract/crawl with returned-URL re-admission; private/reference-only lane; content fingerprint; freshness/expiry; quarantine audit; canonical dark corpus; fixed public Pinecone namespace; separately audited platform-only writes/deletes; tenant-scoped reads; retrieval lineage/temporal/license revalidation; feasibility permitted-use/abstention contract; tombstone-safe sync; delete/restore/reindex and compensation tests; bilingual Saudi license snapshots. |
 | `PARTIAL` | Public source extraction currently treats pages as text rather than verified typed datasets; World Bank/IMF entries are API documentation roots, not indicator adapters; production corpus uses no durable shared store; content anomaly detection is bounded deterministic screening, not full DLP/malware analysis; product integration exposes evidence in the service but has no complete customer-facing citation component. |
 | `CONFLICT` | The old Vision-only operational document is now explicitly marked superseded while the program ledger uses the broader public-economic scope; completion evidence remains intentionally absent. The workflow now fails closed to dry-run only and has no production source of truth until a durable adapter is admitted. |
-| `MISSING` | Real dry-run/canary results; quality and cost evidence; durable store/backup/restore; structured dataset schema and unit validation; concurrency proof; live citation UX; recurring schedule authority; CodeRabbit/Copilot exact-head adjudication; all-workflow exact-head evidence. |
+| `MISSING` | Authorized real dry-run/canary results; quality and cost evidence; durable store/backup/restore; structured dataset schema and unit validation; concurrency proof; live citation UX; recurring schedule authority. |
 
 ## Claims policy
 
@@ -100,30 +101,41 @@ Blocked now:
    `74e502ec9bc311e62fdd75f3bf4d0006eaf3c1d4`; stale PR #126 was closed.
 2. Windows portability PR #142 was independently reviewed and merged as
    `0a0da250ba507589a645c0c43a92c8ef076dedd4`; it changed tests only.
-3. Submit FC20-05 implementation, contracts, registry, ACR, EKB, workflow and
-   evaluation as one capability PR only after prerequisites are resolved.
+3. PR #143 contains the FC20-05 implementation, contracts, registry, ACR, EKB,
+   workflow and evaluation on top of the resolved prerequisites.
 4. Keep PR #125 under separate independent review.
 5. Do not merge PR #124, #42 or #10; only re-propose still-valid ideas in new
    small requests.
 
-## Exact-head gates still required
+## Exact-head evidence recorded
 
-- focused FC20-05, provider, tenant-isolation and feasibility tests;
-- full Python suite and frontend production build;
-- Linux and Windows required workflows;
-- freeze-manifest and protected-contract diff;
-- secret scan and workflow guardrails;
-- dry-run only after explicit provider/network authority, then one-source
-  canary under a separate authorization;
-- CodeRabbit and Copilot review with no commit while either review is pending;
-- independent adjudication of every Critical/High finding;
-- final committed SHA, workflow run IDs, rollback proof and residual-risk
-  record before `FC20-05.state=COMPLETE`.
+- Reviewed head: `f32766b1e43b1999864f9dc338f7212edeaa2989`.
+- ASIE CI #480: frontend build passed with `1,599` modules; Python result was
+  `1031 passed, 10 warnings`.
+- TEST-BETA-06 Cross-Platform Determinism #337: passed.
+- LIVE-INTEL CI #93: passed.
+- Evidence-Backed Beta Release Gate #81: passed.
+- All ten frozen AAS/Runtime/Snapshot files, the freeze manifest, and
+  `backend/finance_engine.py` have identical Git blob SHAs at base and head.
+- CodeRabbit and Copilot reviewed the exact head; every review thread is
+  resolved and no independently validated Critical/High finding remains.
+
+## Operational exit gates still required
+
+- An explicitly authorized provider/network dry-run and separate one-source
+  canary; neither was run or implied by this review.
+- Durable canonical corpus storage, backup/restore and concurrency proof.
+- Structured dataset schema/unit validation, live citation UX, observed
+  provider quality/latency/cost and recurring schedule authority.
+- Browser E2E, continuous security scanning, accessibility/load evidence,
+  lender-profile validation and professional financial review.
+- Rollback/recovery evidence and a new exact-head review after any later commit
+  before `FC20-05.state=COMPLETE` or any live/public claim.
 
 ## Final readiness rule
 
-Until every exact-head gate above is attached to the same commit, the only
-honest overall verdict is:
+The exact-head gates support merging the governed dark build, but they do not
+satisfy the operational exit gates. The only honest overall verdict remains:
 
 ```text
 CONTINUED CONTROLLED BUILD: APPROVE WITH CONDITIONS
