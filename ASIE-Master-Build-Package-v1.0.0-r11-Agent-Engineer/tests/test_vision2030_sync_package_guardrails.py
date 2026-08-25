@@ -203,6 +203,13 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertNotIn("DEEPSEEK_API_KEY", workflow)
         self.assertNotIn("GOOGLE_MAPS_API_KEY", workflow)
 
+    def test_deploy_verification_installs_complete_test_requirements(self) -> None:
+        workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "deploy-hostinger.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("python -m pip install -r requirements-dev.txt", workflow)
+        self.assertNotIn("pip install -r requirements.txt pytest", workflow)
+
     def test_sync_does_not_import_frozen_runtime_or_finance(self) -> None:
         source = (PACKAGE_ROOT / "backend" / "public_knowledge.py").read_text(encoding="utf-8")
         forbidden = (

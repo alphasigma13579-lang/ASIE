@@ -4,12 +4,13 @@
 |---|---|
 | Record ID | `ASIE-COMPREHENSIVE-EVALUATION-2026-08-23` |
 | Owner | Principal architecture and independent audit gate |
-| Status | `POST-REVIEW / EXACT-HEAD VERIFIED / APPROVE WITH CONDITIONS` |
-| Version | `0.2.0` |
+| Status | `POST-REVIEW / FINAL PR HEAD GATED BY GITHUB / APPROVE WITH CONDITIONS` |
+| Version | `0.2.1` |
 | Baseline | `main@6247a3fed8bb9cd973d36e47379cbff99d492733` |
 | Rebuilt prerequisite baseline | `main@0a0da250ba507589a645c0c43a92c8ef076dedd4` |
-| Reviewed PR head | `f32766b1e43b1999864f9dc338f7212edeaa2989` |
+| Reviewed implementation ancestor | `f32766b1e43b1999864f9dc338f7212edeaa2989` |
 | Last reviewed | `2026-08-26` |
+| Review timezone | `Asia/Riyadh (UTC+03:00)` |
 | Public release | `BLOCK` |
 | Network/provider activation | `BLOCK` |
 | Supersedes | none |
@@ -44,7 +45,7 @@ financial review, recovery exercises, or a public-release authorization.
 | `src/App.tsx`, `src/CommandCenter.tsx`, `src/LiveCockpit.tsx` | product implementation | Arabic guided journey, snapshot/decision navigation and explicit development simulations | live competitor map, draggable cockpit, complete realtime UX |
 | `.github/workflows/*` | executable delivery controls | Linux CI, selected Windows determinism, freeze/release/provider gates | complete SAST/SCA/DAST, browser E2E, accessibility and load coverage |
 | Baseline local gates | reproduced evidence | frontend build passed; baseline Python result was `978 passed, 4 failed, 3 skipped` with three reproducible Windows test defects and one isolated transient socket failure | post-change exact-head Python pass |
-| Exact-head gates at `f32766b1` | GitHub Actions and review evidence | ASIE CI #480 passed `1031` tests with `10` warnings; frontend built `1,599` modules; TEST-BETA-06 #337, LIVE-INTEL CI #93 and Evidence-Backed Beta Release Gate #81 passed; all review threads are resolved; CodeRabbit and Copilot reviewed the exact head | live provider quality, production durability, bank acceptance or public-release readiness |
+| Implementation evidence at `f32766b1` | GitHub Actions and review evidence | ASIE CI #480 passed `1031` tests with `10` warnings; frontend built `1,599` modules; TEST-BETA-06 #337, LIVE-INTEL CI #93 and Evidence-Backed Beta Release Gate #81 passed; all review threads are resolved; CodeRabbit and Copilot reviewed the exact head | live provider quality, production durability, bank acceptance or public-release readiness |
 
 ## Evaluation matrix
 
@@ -107,9 +108,12 @@ Blocked now:
 5. Do not merge PR #124, #42 or #10; only re-propose still-valid ideas in new
    small requests.
 
-## Exact-head evidence recorded
+## Implementation evidence recorded
 
-- Reviewed head: `f32766b1e43b1999864f9dc338f7212edeaa2989`.
+- Reviewed implementation ancestor: `f32766b1e43b1999864f9dc338f7212edeaa2989`.
+  Documentation-only or CI-maintenance descendants must pass the same GitHub
+  gates and reviewers before merge; the authoritative final SHA is therefore
+  the live PR #143 head, not a self-referential value inside this file.
 - ASIE CI #480: frontend build passed with `1,599` modules; Python result was
   `1031 passed, 10 warnings`.
 - TEST-BETA-06 Cross-Platform Determinism #337: passed.
@@ -117,8 +121,9 @@ Blocked now:
 - Evidence-Backed Beta Release Gate #81: passed.
 - All ten frozen AAS/Runtime/Snapshot files, the freeze manifest, and
   `backend/finance_engine.py` have identical Git blob SHAs at base and head.
-- CodeRabbit and Copilot reviewed the exact head; every review thread is
-  resolved and no independently validated Critical/High finding remains.
+- CodeRabbit and Copilot reviewed the implementation ancestor and every finding
+  was independently adjudicated. The authoritative final review state is the
+  current PR #143 head and its GitHub review threads.
 
 ## Operational exit gates still required
 
@@ -134,8 +139,9 @@ Blocked now:
 
 ## Final readiness rule
 
-The exact-head gates support merging the governed dark build, but they do not
-satisfy the operational exit gates. The only honest overall verdict remains:
+The implementation evidence supports merging the governed dark build only if
+all required checks and reviewers also pass on the current PR #143 head. It does
+not satisfy the operational exit gates. The honest overall verdict remains:
 
 ```text
 CONTINUED CONTROLLED BUILD: APPROVE WITH CONDITIONS
