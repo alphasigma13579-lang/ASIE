@@ -138,9 +138,18 @@ class Vision2030KnowledgeSync:
         return self._delegate.run(_as_public_registry(registry), dry_run=dry_run)
 
 
-def build_sync_from_env(state_path: Path, registry: Mapping[str, Any]) -> PublicKnowledgeSync:
+def build_sync_from_env(
+    state_path: Path,
+    registry: Mapping[str, Any],
+    *,
+    dry_run: bool = False,
+) -> PublicKnowledgeSync:
     public_registry = _as_public_registry(registry)
-    return build_public_knowledge_sync_from_env(public_registry, corpus_path=state_path)
+    return build_public_knowledge_sync_from_env(
+        public_registry,
+        corpus_path=state_path,
+        dry_run=dry_run,
+    )
 
 
 def main() -> int:
@@ -152,7 +161,11 @@ def main() -> int:
     try:
         registry = load_registry(args.registry)
         public_registry = _as_public_registry(registry)
-        result = build_sync_from_env(args.state, registry).run(
+        result = build_sync_from_env(
+            args.state,
+            registry,
+            dry_run=bool(args.dry_run),
+        ).run(
             public_registry,
             dry_run=args.dry_run,
         )

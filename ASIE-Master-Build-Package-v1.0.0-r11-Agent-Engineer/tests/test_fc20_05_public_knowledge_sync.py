@@ -13,6 +13,7 @@ from backend.public_knowledge import (
     PublicKnowledgeSourcePolicy,
     PublicKnowledgeSync,
     _validate_cli_mode,
+    build_public_knowledge_sync_from_env,
     load_public_source_registry,
     validate_public_source_registry,
 )
@@ -338,6 +339,29 @@ def test_crawl_skips_short_pages_without_dropping_valid_evidence(tmp_path: Path)
     records = [record for batch in pinecone.upserts for record in batch]
     assert records
     assert {record["source_url"] for record in records} == {valid_url}
+
+
+def test_dry_run_builder_does_not_require_or_admit_pinecone(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ASIE_ALLOW_EXTERNAL_FETCH", "true")
+    monkeypatch.setenv("ASIE_EXTERNAL_ALLOWED_HOSTS", "api.tavily.com")
+    monkeypatch.setenv("TAVILY_API_KEY", "test-only-tavily-key")
+    monkeypatch.delenv("PINECONE_API_KEY", raising=False)
+    monkeypatch.delenv("ASIE_PROVIDER_CONTROL_PLANE_ENABLED", raising=False)
+
+    service = build_public_knowledge_sync_from_env(
+        registry(source_record()),
+        corpus_path=tmp_path / "public-corpus.json",
+        dry_run=True,
+    )
+
+    with pytest.raises(
+        PublicKnowledgeError,
+        match="public_dry_run_projection_write_forbidden",
+    ):
+        service.pinecone.upsert_public_knowledge(scope=service.scope, records=[])
 
 
 def test_dry_run_is_side_effect_free(tmp_path: Path) -> None:

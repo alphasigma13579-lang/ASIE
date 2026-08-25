@@ -106,9 +106,9 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertEqual(environment["ASIE_ALLOW_EXTERNAL_FETCH"], "true")
         self.assertEqual(environment["ASIE_PROVIDER_GLOBAL_KILL_SWITCH"], "false")
         self.assertEqual(environment["ASIE_PROVIDER_TAVILY_STATE"], "enabled")
-        self.assertEqual(environment["ASIE_PROVIDER_PINECONE_STATE"], "enabled")
         self.assertEqual(environment["ASIE_PROVIDER_TAVILY_KILL_SWITCH"], "false")
-        self.assertEqual(environment["ASIE_PROVIDER_PINECONE_KILL_SWITCH"], "false")
+        self.assertNotIn("ASIE_PROVIDER_PINECONE_STATE", environment)
+        self.assertNotIn("ASIE_PROVIDER_PINECONE_KILL_SWITCH", environment)
 
         jobs = parsed["jobs"]
         authorize_steps = jobs["authorize"]["steps"]
@@ -138,8 +138,9 @@ class Vision2030SyncPackageGuardrails(unittest.TestCase):
         self.assertIn("needs: authorize", workflow)
         self.assertIn("environment: production", workflow)
         self.assertIn("secrets.TAVILY_API_KEY", workflow)
-        self.assertIn("secrets.PINECONE_API_KEY", workflow)
-        self.assertIn('PINECONE_INDEX: "vision2030-kb"', workflow)
+        self.assertNotIn("secrets.PINECONE_API_KEY", workflow)
+        self.assertNotIn("PINECONE_INDEX", workflow)
+        self.assertNotIn("api.pinecone.io", workflow)
         self.assertIn("python -m pip install -r requirements-dev.txt", workflow)
         self.assertIn('REQUESTED_DRY_RUN: ${{ inputs.dry_run }}', workflow)
         self.assertIn('test "$REQUESTED_DRY_RUN" = "true"', workflow)

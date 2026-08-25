@@ -1212,10 +1212,19 @@ def build_feasibility_evidence_context(
     )
 
 
+class _DryRunPineconeProjection:
+    def upsert_public_knowledge(self, **_kwargs: Any) -> dict[str, Any]:
+        raise PublicKnowledgeError("public_dry_run_projection_write_forbidden")
+
+    def delete_public_knowledge(self, **_kwargs: Any) -> dict[str, Any]:
+        raise PublicKnowledgeError("public_dry_run_projection_write_forbidden")
+
+
 def build_public_knowledge_sync_from_env(
     registry: Mapping[str, Any],
     *,
     corpus_path: Path = DEFAULT_PUBLIC_CORPUS,
+    dry_run: bool = False,
 ) -> PublicKnowledgeSync:
     from backend.external_acquisition import (
         ExternalAcquisitionPolicy,
@@ -1240,7 +1249,11 @@ def build_public_knowledge_sync_from_env(
             scope=scope,
             admission_policy=admission,
         ),
-        pinecone=PineconeKnowledgeClient.from_env(transport),
+        pinecone=(
+            _DryRunPineconeProjection()
+            if dry_run
+            else PineconeKnowledgeClient.from_env(transport)
+        ),
         scope=scope,
         corpus_path=corpus_path,
     )
@@ -1270,7 +1283,11 @@ def main() -> int:
         registry = load_public_source_registry(args.registry)
         if args.source_id:
             registry = select_public_source(registry, args.source_id)
-        service = build_public_knowledge_sync_from_env(registry, corpus_path=args.corpus)
+        service = build_public_knowledge_sync_from_env(
+            registry,
+            corpus_path=args.corpus,
+            dry_run=bool(args.dry_run),
+        )
         result = service.reindex() if args.reindex else service.run(registry, dry_run=args.dry_run)
     except Exception as exc:
         result = {
