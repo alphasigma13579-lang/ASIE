@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from backend.provider_security_control_plane import TrustedProviderScope
 from backend.public_knowledge import (
     DEFAULT_PUBLIC_CORPUS,
+    PUBLIC_KNOWLEDGE_REGISTRY_POLICY,
     PublicKnowledgeError,
     PublicKnowledgeSync,
     build_public_knowledge_sync_from_env,
@@ -119,6 +120,7 @@ def _as_public_registry(registry: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "registry_id": "asie-vision2030-public-knowledge-compatibility-v1",
         "schema_version": 1,
+        "policy": PUBLIC_KNOWLEDGE_REGISTRY_POLICY,
         "sources": sources,
     }
 

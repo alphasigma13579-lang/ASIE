@@ -52,8 +52,20 @@ def registry(*sources: dict[str, Any]) -> dict[str, Any]:
     return {
         "registry_id": "asie-public-economic-knowledge-v1",
         "schema_version": 1,
+        "policy": "official_open_auto_with_anomaly_quarantine",
         "sources": list(sources or (source_record(),)),
     }
+
+
+def test_registry_requires_exact_governance_policy() -> None:
+    for policy in (None, "official_open_auto_without_quarantine"):
+        payload = registry()
+        if policy is None:
+            payload.pop("policy")
+        else:
+            payload["policy"] = policy
+        with pytest.raises(PublicKnowledgeError, match="public_source_registry_policy_invalid"):
+            validate_public_source_registry(payload)
 
 
 class FakeTavily:

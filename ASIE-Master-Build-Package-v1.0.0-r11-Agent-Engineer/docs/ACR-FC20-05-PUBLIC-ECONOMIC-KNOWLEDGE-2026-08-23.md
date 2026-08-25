@@ -47,7 +47,7 @@ written to the public namespace.
 
 | Component | Responsibility | Owned data | Failure isolation |
 |---|---|---|---|
-| Public source registry | Exact URLs, authority, license, scopes, freshness, admission mode | Versioned configuration | Invalid record blocks only that registry load. |
+| Public source registry | Exact governance policy ID, URLs, authority, license, scopes, freshness, admission mode | Versioned configuration | A missing or changed policy ID, or any invalid record, blocks the registry load. |
 | Public admission policy | Exact host/path and auto-admission eligibility | No mutable data | Denies before provider transport. |
 | Public knowledge sync | Extract, normalize, fingerprint, chunk, version, compensate | Sync transaction state | Source failure is recorded; prior active version remains. |
 | Canonical corpus store | Atomic current versions, retained history, tombstones, audit events | Authoritative dark-build corpus | Atomic replace; failed write preserves previous file. A durable production adapter is an exit gate. |

@@ -17,6 +17,7 @@ from backend.provider_security_control_plane import TrustedProviderScope
 
 
 PUBLIC_KNOWLEDGE_SCHEMA_VERSION = 1
+PUBLIC_KNOWLEDGE_REGISTRY_POLICY = "official_open_auto_with_anomaly_quarantine"
 PUBLIC_KNOWLEDGE_WORKLOAD = "public-knowledge-sync"
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PUBLIC_SOURCE_REGISTRY = PACKAGE_ROOT / "config" / "public_knowledge_sources.json"
@@ -248,6 +249,8 @@ def _validate_source(source: Mapping[str, Any]) -> dict[str, Any]:
 def validate_public_source_registry(registry: Mapping[str, Any]) -> dict[str, Any]:
     if registry.get("schema_version") != PUBLIC_KNOWLEDGE_SCHEMA_VERSION:
         raise PublicKnowledgeError("public_source_registry_schema_version_invalid")
+    if registry.get("policy") != PUBLIC_KNOWLEDGE_REGISTRY_POLICY:
+        raise PublicKnowledgeError("public_source_registry_policy_invalid")
     sources = registry.get("sources")
     if not isinstance(sources, list) or not sources or len(sources) > MAX_SOURCES:
         raise PublicKnowledgeError("public_source_registry_size_invalid")

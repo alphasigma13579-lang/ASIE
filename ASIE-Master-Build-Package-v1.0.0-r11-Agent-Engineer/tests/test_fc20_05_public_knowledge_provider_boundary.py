@@ -136,6 +136,7 @@ def public_record() -> dict[str, Any]:
 def public_registry() -> dict[str, Any]:
     return {
         "schema_version": 1,
+        "policy": "official_open_auto_with_anomaly_quarantine",
         "sources": [
             {
                 "source_id": "mof-open-data",

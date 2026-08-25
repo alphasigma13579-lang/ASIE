@@ -150,7 +150,13 @@ def test_unsafe_license_reference_is_rejected_at_ingress_and_retrieval() -> None
         "allow_query_parameters": False,
     }
     try:
-        validate_public_source_registry({"schema_version": 1, "sources": [source]})
+        validate_public_source_registry(
+            {
+                "schema_version": 1,
+                "policy": "official_open_auto_with_anomaly_quarantine",
+                "sources": [source],
+            }
+        )
     except PublicKnowledgeError as exc:
         assert str(exc) == "public_source_license_ref_invalid"
     else:
