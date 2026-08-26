@@ -95,7 +95,10 @@ class LiveIntelligenceProductService:
         for provider_id, operation in {
             "pinecone": lambda: self.pinecone.describe_index(),
             "tavily": lambda: self.tavily.search(query="Saudi Vision 2030 official portal", include_domains=["vision2030.gov.sa"], max_results=1),
-            "google_maps_platform": lambda: self.google.geocode_address("الرياض، المملكة العربية السعودية"),
+            "google_maps_platform": lambda: self.google.geocode_address(
+                "الرياض، المملكة العربية السعودية",
+                scope=TrustedProviderScope.for_platform_preflight(),
+            ),
         }.items():
             try:
                 response = operation()
@@ -172,6 +175,7 @@ class LiveIntelligenceProductService:
         places: list[dict[str, Any]] = []
         try:
             place_response = self.google.search_places_text(
+                scope=scope,
                 text_query=location_query,
                 latitude=latitude,
                 longitude=longitude,
