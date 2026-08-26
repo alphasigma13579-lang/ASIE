@@ -1,0 +1,151 @@
+# ASIE comprehensive evaluation and FC20-05 readiness record
+
+| Field | Value |
+|---|---|
+| Record ID | `ASIE-COMPREHENSIVE-EVALUATION-2026-08-23` |
+| Owner | Principal architecture and independent audit gate |
+| Status | `POST-REVIEW / FINAL PR HEAD GATED BY GITHUB / APPROVE WITH CONDITIONS` |
+| Version | `0.2.1` |
+| Baseline | `main@6247a3fed8bb9cd973d36e47379cbff99d492733` |
+| Rebuilt prerequisite baseline | `main@0a0da250ba507589a645c0c43a92c8ef076dedd4` |
+| Reviewed implementation ancestor | `f32766b1e43b1999864f9dc338f7212edeaa2989` |
+| Last reviewed | `2026-08-26` |
+| Review timezone | `Asia/Riyadh (UTC+03:00)` |
+| Public release | `BLOCK` |
+| Network/provider activation | `BLOCK` |
+| Supersedes | none |
+| Review trigger | every commit, reviewer finding, live canary, or material contract change |
+
+## Executive decision
+
+The platform is suitable for continued governed construction and offline product
+validation. It is **not yet proven as a professional feasibility service that
+can be relied on for any Saudi project, and it is not proven as bank-ready or
+public-live**.
+
+Current decision split:
+
+- FC20-05 dark implementation: `APPROVE WITH CONDITIONS` after exact-head CI and external AI review.
+- ASIE continued controlled build: `APPROVE WITH CONDITIONS`.
+- Bank-grade or institutionally accepted feasibility claim: `BLOCK`.
+- Public release, recurring external sync, or live provider activation: `BLOCK`.
+
+The decision is deliberately narrower than CI status. Passing code gates cannot
+replace lender-profile validation, real dataset/canary evidence, professional
+financial review, recovery exercises, or a public-release authorization.
+
+## Evidence basis
+
+| Evidence | Classification | What it proves | What it does not prove |
+|---|---|---|---|
+| `FOUNDATION-COMPLETE-20.json` | authoritative program ledger | FC20-02/03/04 completion evidence, FC20-05 dependency state, release/network blocks | FC20-05 completion before exact-head evidence is recorded |
+| `docs/FEASIBILITY-COMPLETE-01-...md` | authoritative execution plan | the accepted professional/bank-readiness gaps and gates | completion of later finance/lender/pilot work |
+| `backend/finance_v2/*` and finance-v2 tests | executable implementation/evidence | deterministic statements, debt, scenario, sensitivity and result contracts implemented to their current slices | universal sector coverage, lender acceptance, actual/reforecast completion |
+| `backend/public_knowledge.py` and FC20-05 tests | executable dark implementation/evidence | registry admission, quarantine, versioning, public namespace boundary, evidence validation, delete/restore/reindex | real-source retrieval quality, provider cost, production durability |
+| `src/App.tsx`, `src/CommandCenter.tsx`, `src/LiveCockpit.tsx` | product implementation | Arabic guided journey, snapshot/decision navigation and explicit development simulations | live competitor map, draggable cockpit, complete realtime UX |
+| `.github/workflows/*` | executable delivery controls | Linux CI, selected Windows determinism, freeze/release/provider gates | complete SAST/SCA/DAST, browser E2E, accessibility and load coverage |
+| Baseline local gates | reproduced evidence | frontend build passed; baseline Python result was `978 passed, 4 failed, 3 skipped` with three reproducible Windows test defects and one isolated transient socket failure | post-change exact-head Python pass |
+| Implementation evidence at `f32766b1` | GitHub Actions and review evidence | ASIE CI #480 passed `1031` tests with `10` warnings; frontend built `1,599` modules; TEST-BETA-06 #337, LIVE-INTEL CI #93 and Evidence-Backed Beta Release Gate #81 passed; all review threads are resolved; CodeRabbit and Copilot reviewed the exact head | live provider quality, production durability, bank acceptance or public-release readiness |
+
+## Evaluation matrix
+
+| Axis | Status | Classification | Evidence-backed judgment | Required exit gate |
+|---|---|---|---|---|
+| Product value | `PARTIAL` | Risk | The product has an Arabic guided project journey and deterministic decision path, but professional completeness for every project remains explicitly blocked. | Complete the remaining FEASIBILITY workstreams and representative sector golden cases. |
+| Saudi funding standards | `MISSING/PARTIAL` | High risk | Funder reports and readiness projections exist, but no current, product-specific lender-profile registry and no bank/SDB validation prove acceptance. No official accreditation may be claimed. | Versioned lender/product profiles, effective dates, evidence, reviewer sign-off, and bank/SDB pilot. |
+| Financial model correctness | `PARTIAL/STRONG FOUNDATION` | Risk | Finance V2 has deterministic statements, debt coverage, scenarios and governed sensitivity. Actual/reforecast lifecycle, full archetype coverage and professional validation remain incomplete. | Complete governed lifecycle slices, invariants, golden cases and independent finance reviewer/CPA review. |
+| Market data | `PARTIAL` | High risk | FC20-05 provides a governed public corpus contract for seven enabled official sources plus candidates/references. It has no real dataset canary or structured indicator validation yet. | Dry-run and one-source canary evidence, structured data/unit validation, freshness monitoring and conflict policy. |
+| AI and RAG | `PARTIAL` | High risk | Retrieval evidence is source-qualified and abstains on malformed/stale evidence; injection markers quarantine content. Live model routing and grounded-answer evaluations remain disabled/unproven. | Adversarial multilingual eval set, retrieval quality thresholds, refusal/conflict tests and separate model activation AIA. |
+| Architecture | `PARTIAL/CONTROLLED` | Risk | Public data, tenant evidence, Finance, Snapshot and AAS responsibilities are separated. The dark-build file corpus is not a production durability design. | Durable source-of-truth adapter, backup/restore, concurrency and migration ADR before recurring operation. |
+| Multi-tenancy | `EXISTS/OFFLINE-PROVEN` | Risk | Existing tenant tests plus the new fixed public namespace prevent tenant writes and preserve tenant-scoped reads/quotas. Live deployment isolation is not exercised here. | Exact-head cross-tenant suite plus deployed negative exercise without customer data. |
+| Security and privacy | `PARTIAL/CONTROLLED` | High risk | Identity, tenant scope, SSRF, provider quotas, secret redaction and release freeze have tests. Continuous SAST/SCA/DAST and production security operation are not evidenced in CI. | Add security scanning/evidence, deployed authorization tests, retention/privacy review and incident exercise. |
+| Arabic UX | `PARTIAL` | Improvement | The guided path covers location, sector, classification, project, gap, audience and capital with Arabic-first copy and visible not-ready states. Full browser E2E and usability evidence are absent. | Browser E2E, keyboard/screen-reader/RTL QA and representative-user validation. |
+| Live cockpit | `PARTIAL/DEMO` | Product gap | KPI drill-down exists in command views, but the competitor map and opportunity guidance are explicitly labelled simulated; drag/drop and user-controlled module hiding are not implemented. | FC20-10 and FC20-13 live map, consented GPS, modular widgets, persistence, drill-down and realtime states. |
+| Performance and cost | `PARTIAL` | High risk | Finance sensitivity has a benchmark gate and FC20-05 bounds batches/top-k/provider quotas. No real Tavily/Pinecone latency, ingestion volume or cost-per-study evidence exists. | Canary p50/p95, bytes/records, credits/vector cost, budget alerts and cost-per-study model. |
+| Reliability | `PARTIAL` | High risk | FC20-05 is idempotent by hash and compensates partial update/delete/restore/reindex paths. Production corpus backup and disaster recovery are not proven. | Durable-store restore, provider outage/retry exercise, concurrency test and RPO/RTO evidence. |
+| Tests and CI | `PARTIAL/EXTENSIVE` | Risk | On exact head `f32766b1`, ASIE CI passed `1031` Python tests, the frontend production build transformed `1,599` modules, and all three companion workflows passed. Browser E2E, continuous security scanning, accessibility and load suites remain incomplete. | Add browser E2E, SAST/SCA/DAST, accessibility and performance evidence without weakening the existing exact-head gates. |
+| Operations | `MISSING/PARTIAL` | High risk | Provider readiness, kill switches and deployment workflows exist, but FC20-15 remains blocked and public-corpus alerts/runbooks/backup ownership are incomplete. | Monitoring, actionable alerts, retention, backup/restore, on-call and incident runbooks. |
+| Licensing and compliance | `PARTIAL` | Risk | Saudi Open Data License v2 Arabic/English snapshots and per-source metadata are present; ambiguous/private sources remain non-ingested. This is not a legal/PDPL/NCA certification. | Per-dataset terms verification, attribution rendering, deletion/retention mapping and qualified legal/privacy review. |
+| Code quality | `PARTIAL/GOOD FOUNDATION` | Improvement | Core financial and provider boundaries are explicit and heavily tested. The large frontend surface, legacy compatibility paths and documentation volume increase drift risk. | Keep atomic PRs, contract tests, dead-path removal decisions and generated traceability checks. |
+| Commercial readiness | `MISSING/PARTIAL` | High risk | The value proposition and Arabic conversion path are visible. Support model, validated willingness-to-pay, cost per study, service level and bank-grade assurance are not proven. | Closed pilot, support/runbook capacity, unit economics and measured conversion/completion evidence. |
+
+## FC20-05 gap map after implementation
+
+| State | Capability/evidence |
+|---|---|
+| `EXISTS` | Unified source registry; exact HTTPS host/path admission; official-open automatic lane; bounded extract/crawl with returned-URL re-admission; private/reference-only lane; content fingerprint; freshness/expiry; quarantine audit; canonical dark corpus; fixed public Pinecone namespace; separately audited platform-only writes/deletes; tenant-scoped reads; retrieval lineage/temporal/license revalidation; feasibility permitted-use/abstention contract; tombstone-safe sync; delete/restore/reindex and compensation tests; bilingual Saudi license snapshots. |
+| `PARTIAL` | Public source extraction currently treats pages as text rather than verified typed datasets; World Bank/IMF entries are API documentation roots, not indicator adapters; production corpus uses no durable shared store; content anomaly detection is bounded deterministic screening, not full DLP/malware analysis; product integration exposes evidence in the service but has no complete customer-facing citation component. |
+| `CONFLICT` | The old Vision-only operational document is now explicitly marked superseded while the program ledger uses the broader public-economic scope; completion evidence remains intentionally absent. The workflow now fails closed to dry-run only and has no production source of truth until a durable adapter is admitted. |
+| `MISSING` | Authorized real dry-run/canary results; quality and cost evidence; durable store/backup/restore; structured dataset schema and unit validation; concurrency proof; live citation UX; recurring schedule authority. |
+
+## Claims policy
+
+Allowed now:
+
+- “ASIE contains a governed offline foundation for dynamic feasibility and
+  public economic evidence.”
+- “The platform can show source-qualified context and explicit gaps.”
+- “Selected financial-model slices are deterministic and tested.”
+
+Blocked now:
+
+- “Accepted/approved by Saudi banks, SDB, Ministry of Finance, Monsha'at or any
+  regulator.”
+- “Reliable for every project in Saudi Arabia.”
+- “The public corpus is live/current” before an authorized successful sync.
+- “A market signal predicts project success or funding acceptance.”
+- “PDPL/NCA compliant” as a certification claim.
+
+## Root-cause repair and PR boundaries
+
+1. License replacement PR #141 was independently reviewed and merged as
+   `74e502ec9bc311e62fdd75f3bf4d0006eaf3c1d4`; stale PR #126 was closed.
+2. Windows portability PR #142 was independently reviewed and merged as
+   `0a0da250ba507589a645c0c43a92c8ef076dedd4`; it changed tests only.
+3. PR #143 contains the FC20-05 implementation, contracts, registry, ACR, EKB,
+   workflow and evaluation on top of the resolved prerequisites.
+4. Keep PR #125 under separate independent review.
+5. Do not merge PR #124, #42 or #10; only re-propose still-valid ideas in new
+   small requests.
+
+## Implementation evidence recorded
+
+- Reviewed implementation ancestor: `f32766b1e43b1999864f9dc338f7212edeaa2989`.
+  Documentation-only or CI-maintenance descendants must pass the same GitHub
+  gates and reviewers before merge; the authoritative final SHA is therefore
+  the live PR #143 head, not a self-referential value inside this file.
+- ASIE CI #480: frontend build passed with `1,599` modules; Python result was
+  `1031 passed, 10 warnings`.
+- TEST-BETA-06 Cross-Platform Determinism #337: passed.
+- LIVE-INTEL CI #93: passed.
+- Evidence-Backed Beta Release Gate #81: passed.
+- All ten frozen AAS/Runtime/Snapshot files, the freeze manifest, and
+  `backend/finance_engine.py` have identical Git blob SHAs at base and head.
+- CodeRabbit and Copilot reviewed the implementation ancestor and every finding
+  was independently adjudicated. The authoritative final review state is the
+  current PR #143 head and its GitHub review threads.
+
+## Operational exit gates still required
+
+- An explicitly authorized provider/network dry-run and separate one-source
+  canary; neither was run or implied by this review.
+- Durable canonical corpus storage, backup/restore and concurrency proof.
+- Structured dataset schema/unit validation, live citation UX, observed
+  provider quality/latency/cost and recurring schedule authority.
+- Browser E2E, continuous security scanning, accessibility/load evidence,
+  lender-profile validation and professional financial review.
+- Rollback/recovery evidence and a new exact-head review after any later commit
+  before `FC20-05.state=COMPLETE` or any live/public claim.
+
+## Final readiness rule
+
+The implementation evidence supports merging the governed dark build only if
+all required checks and reviewers also pass on the current PR #143 head. It does
+not satisfy the operational exit gates. The honest overall verdict remains:
+
+```text
+CONTINUED CONTROLLED BUILD: APPROVE WITH CONDITIONS
+FC20-05 DARK IMPLEMENTATION: APPROVE WITH CONDITIONS
+BANK-GRADE FEASIBILITY CLAIM: BLOCK
+PUBLIC/LIVE RELEASE: BLOCK
+```

@@ -18,6 +18,7 @@ Clock = Callable[[], float]
 _PROVIDER_STATES = frozenset({"disabled", "preflight", "enabled"})
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,160}$")
 _TRUSTED_PROVIDER_CONTEXT_PROOF = object()
+_ALLOWED_PLATFORM_PROVIDER_WORKLOADS = frozenset({"public-knowledge-sync"})
 
 
 class ProviderSecurityError(PermissionError):
@@ -123,6 +124,8 @@ class TrustedProviderScope:
             getattr(principal, "organization_id", None),
             field="organization_id",
         )
+        if organization_id == "__platform__":
+            raise ProviderSecurityError("invalid_provider_context:organization_id")
         bounded_project_id = _bounded_identifier(project_id, field="project_id")
         authoritative_organization_id = project_organization_resolver(bounded_project_id)
         if authoritative_organization_id is None:
@@ -131,6 +134,8 @@ class TrustedProviderScope:
             authoritative_organization_id,
             field="project_organization_id",
         )
+        if authoritative_organization_id == "__platform__":
+            raise ProviderSecurityError("invalid_provider_context:project_organization_id")
         if authoritative_organization_id != organization_id:
             raise ProviderSecurityError("provider_project_tenant_mismatch")
         return cls(
@@ -148,6 +153,28 @@ class TrustedProviderScope:
             preflight=True,
             _proof=_TRUSTED_PROVIDER_CONTEXT_PROOF,
         )
+
+    @classmethod
+    def for_platform_workload(cls, workload_id: str) -> "TrustedProviderScope":
+        bounded_workload_id = _bounded_identifier(workload_id, field="workload_id")
+        if bounded_workload_id not in _ALLOWED_PLATFORM_PROVIDER_WORKLOADS:
+            raise ProviderSecurityError("platform_provider_workload_not_allowed")
+        return cls(
+            organization_id="__platform__",
+            project_id=bounded_workload_id,
+            preflight=False,
+            _proof=_TRUSTED_PROVIDER_CONTEXT_PROOF,
+        )
+
+    def require_platform_workload(self, workload_id: str) -> None:
+        if self._proof is not _TRUSTED_PROVIDER_CONTEXT_PROOF:
+            raise ProviderSecurityError("provider_scope_not_trusted")
+        if (
+            self.preflight
+            or self.organization_id != "__platform__"
+            or self.project_id != workload_id
+        ):
+            raise ProviderSecurityError("public_knowledge_platform_workload_required")
 
     def request_context(self, operation: str, *, cost_units: int = 1) -> "ProviderRequestContext":
         if self._proof is not _TRUSTED_PROVIDER_CONTEXT_PROOF:
@@ -758,4 +785,3 @@ class ProviderSecurityControlPlane:
             "secret_values_exposed": False,
             "network_authorized": False,
         }
-

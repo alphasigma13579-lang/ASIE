@@ -36,6 +36,7 @@
 - `Execution-Engine`: خطة التنفيذ.
 - `Evidence-Ledger`: الأدلة.
 - [`Tavily-Governed-Source-Admission`](Tavily-Governed-Source-Admission.md): بحث اكتشافي مقيد، وموافقة خادمية إلزامية قبل extract/crawl/map.
+- [`Public-Economic-Knowledge`](Public-Economic-Knowledge.md): معرفة اقتصادية عامة موثقة، منفصلة عن بيانات العملاء وموردي المشتريات.
 
 ## Product
 

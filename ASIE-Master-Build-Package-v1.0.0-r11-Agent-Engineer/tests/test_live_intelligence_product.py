@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+import backend.live_intelligence_product as live_intelligence_product
 from backend.live_intelligence_product import LiveIntelligenceProductError, LiveIntelligenceProductService
+from backend.provider_security_control_plane import TrustedProviderScope
 
 
 class FakeTavily:
@@ -39,7 +44,14 @@ class FakeGoogle:
 
 
 class FakePinecone:
-    def search_text(self, **kwargs):
+    def search_public_knowledge(self, **kwargs):
+        retrieved_at = datetime.now(timezone.utc) - timedelta(days=1)
+        fresh_until = retrieved_at + timedelta(days=365)
+        expires_at = fresh_until + timedelta(days=90)
+
+        def iso(value: datetime) -> str:
+            return value.isoformat().replace("+00:00", "Z")
+
         return {
             "payload": {
                 "result": {
@@ -51,8 +63,26 @@ class FakePinecone:
                                 "chunk_text": "Vision 2030 alignment text",
                                 "source_url": "https://vision2030.gov.sa/",
                                 "source_id": "vision2030-ar",
-                                "evidence_ref": "vision2030:vision2030-ar:sha256:test",
-                                "review_status": "approved",
+                                "publisher": "Saudi Vision 2030",
+                                "authority": "saudi_official",
+                                "license_id": "saudi-open-data-license-2.0",
+                                "license_ref": "docs/legal/third-party/saudi-open-data/README.md",
+                                "attribution": "Saudi Vision 2030",
+                                "sector": "all",
+                                "geography": "saudi_arabia",
+                                "language": "en",
+                                "published_at": "unknown",
+                                "retrieved_at": iso(retrieved_at),
+                                "content_sha256": "a" * 64,
+                                "version": 1,
+                                "freshness_days": 365,
+                                "fresh_until": iso(fresh_until),
+                                "expires_at": iso(expires_at),
+                                "unit": "not_applicable",
+                                "confidence": 0.98,
+                                "evidence_ref": "public:vision2030-ar:sha256:" + "a" * 64,
+                                "admission_status": "auto_admitted_official_open",
+                                "data_classification": "public",
                             },
                         }
                     ]
@@ -74,16 +104,33 @@ class FakeDeepSeek:
         }
 
 
+class FailingPinecone(FakePinecone):
+    def search_public_knowledge(self, **kwargs):
+        raise RuntimeError("simulated pinecone outage")
+
+
 def service():
     return LiveIntelligenceProductService(
         deepseek=FakeDeepSeek(), tavily=FakeTavily(), google=FakeGoogle(), pinecone=FakePinecone()
     )
 
 
+def tenant_scope():
+    return TrustedProviderScope.for_tenant(
+        principal=SimpleNamespace(
+            user_id="user-1",
+            session_id="session-1",
+            organization_id="org-1",
+            role="analyst",
+        ),
+        project_id="project-1",
+        project_organization_resolver=lambda _: "org-1",
+    )
+
+
 def test_market_context_combines_sources_places_and_knowledge_without_finance_mutation():
     result = service().build_market_context(
-        project_id="project-1",
-        organization_id="org-1",
+        scope=tenant_scope(),
         query="shawarma market Riyadh",
         location_query="shawarma restaurants Riyadh",
     )
@@ -92,12 +139,115 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert len(result["source_candidates"]) == 1
     assert len(result["places"]) == 1
     assert len(result["knowledge_hits"]) == 1
+    assert result["knowledge_hits"][0]["review_status"] == "review_required"
+    assert result["public_evidence_context"]["status"] == "ready"
     assert result["human_review_required"] is True
     assert result["eligible_for_controlled_assumptions"] is False
     assert result["controlled_numbers"] == []
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
     assert len(result["context_hash"]) == 64
+
+
+def test_context_hash_excludes_only_the_volatile_evidence_clock(monkeypatch):
+    as_of_values = iter(("2026-08-24T10:00:00Z", "2026-08-24T10:00:01Z"))
+
+    def stable_evidence_context(_response):
+        return {
+            "contract_id": "public-knowledge-evidence.v1",
+            "status": "ready",
+            "as_of": next(as_of_values),
+            "evidence": [
+                {
+                    "record_id": "vision-1",
+                    "score": 0.92,
+                    "chunk_text": "Stable public evidence",
+                    "source_id": "vision2030-ar",
+                    "publisher": "Saudi Vision 2030",
+                    "authority": "saudi_official",
+                    "source_url": "https://vision2030.gov.sa/",
+                    "license_id": "saudi-open-data-license-2.0",
+                    "license_ref": "docs/legal/third-party/saudi-open-data/README.md",
+                    "attribution": "Saudi Vision 2030",
+                    "sector": "all",
+                    "geography": "saudi_arabia",
+                    "language": "en",
+                    "published_at": "unknown",
+                    "retrieved_at": "2026-08-23T00:00:00Z",
+                    "content_sha256": "a" * 64,
+                    "version": 1,
+                    "freshness_days": 365,
+                    "fresh_until": "2027-08-23T00:00:00Z",
+                    "expires_at": "2027-11-21T00:00:00Z",
+                    "unit": "not_applicable",
+                    "confidence": 0.98,
+                    "evidence_ref": "public:vision2030-ar:sha256:" + "a" * 64,
+                    "admission_status": "auto_admitted_official_open",
+                    "data_classification": "public",
+                    "source_of_truth": False,
+                }
+            ],
+            "gaps": [],
+            "permitted_uses": ["market_size"],
+            "claims_project_success": False,
+            "claims_funding_acceptance": False,
+            "source_of_truth": False,
+            "snapshot_eligible": False,
+            "requires_separate_assumption_admission_for_finance": True,
+        }
+
+    monkeypatch.setattr(
+        live_intelligence_product,
+        "build_feasibility_evidence_context",
+        stable_evidence_context,
+    )
+    first = service().build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+    second = service().build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+
+    assert first["public_evidence_context"]["as_of"] != second["public_evidence_context"]["as_of"]
+    assert first["context_hash"] == second["context_hash"]
+
+
+def test_market_context_preserves_complete_evidence_contract_when_pinecone_fails():
+    product = LiveIntelligenceProductService(
+        deepseek=FakeDeepSeek(),
+        tavily=FakeTavily(),
+        google=FakeGoogle(),
+        pinecone=FailingPinecone(),
+    )
+    result = product.build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+    context = result["public_evidence_context"]
+    assert set(context) == {
+        "contract_id",
+        "status",
+        "as_of",
+        "evidence",
+        "gaps",
+        "permitted_uses",
+        "claims_project_success",
+        "claims_funding_acceptance",
+        "source_of_truth",
+        "snapshot_eligible",
+        "requires_separate_assumption_admission_for_finance",
+    }
+    assert context["status"] == "not_ready"
+    assert context["gaps"] == [
+        {"record_id": "", "reason": "public_knowledge_unavailable"}
+    ]
+    assert context["requires_separate_assumption_admission_for_finance"] is True
+    assert result["knowledge_hits"] == []
 
 
 def test_narrative_requires_approved_context():

@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "backend" / "live_intelligence_product.py"
 UI = ROOT / "src" / "LiveIntelligenceWorkspace.tsx"
+DOC = ROOT / "docs" / "BETA-PKG-03-LIVE-INTELLIGENCE-PRODUCT-WIRING-2026-07-27.md"
 
 FROZEN = {
     "aas_kernel.py",
@@ -23,6 +24,13 @@ def test_package_files_exist_and_do_not_replace_frozen_runtime():
     assert SERVICE.exists()
     assert UI.exists()
     assert SERVICE.name not in FROZEN
+
+
+def test_product_wiring_document_uses_public_economic_corpus_contract():
+    text = DOC.read_text(encoding="utf-8")
+    assert "Governed public-economic corpus retrieval" in text
+    assert "fixed shared corpus" in text
+    assert "Vision 2030" not in text
 
 
 def test_service_has_no_direct_finance_or_snapshot_import():
@@ -47,3 +55,17 @@ def test_ui_discloses_review_and_live_status():
     assert "تحتاج مراجعة" in text
     assert "الاتصال الخارجي معطّل" in text
     assert "لا تُستخدم تلقائيًا كأرقام مالية" in text
+    assert "الأدلة الاقتصادية العامة" in text
+    assert "public_evidence_context" in text
+    fields = (
+        "publisher",
+        "source_url",
+        "geography",
+        "sector",
+        "unit",
+        "confidence",
+        "retrieved_at",
+        "fresh_until",
+    )
+    for field in fields:
+        assert field in text

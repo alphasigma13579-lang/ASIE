@@ -16,8 +16,53 @@ export type LiveIntelligenceSnapshot = {
   >;
 };
 
+export type PublicEvidence = {
+  record_id: string;
+  score: number;
+  chunk_text: string;
+  source_id: string;
+  publisher: string;
+  authority: "saudi_official" | "international_official";
+  source_url: string;
+  license_id: string;
+  license_ref: string;
+  attribution: string;
+  sector: string;
+  geography: string;
+  language: string;
+  published_at: string;
+  retrieved_at: string;
+  content_sha256: string;
+  version: number;
+  freshness_days: number;
+  fresh_until: string;
+  expires_at: string;
+  unit: string;
+  confidence: number;
+  evidence_ref: string;
+  admission_status: "auto_admitted_official_open";
+  data_classification: "public";
+  source_of_truth: false;
+};
+
+export type PublicEvidenceContext = {
+  contract_id: "public-knowledge-evidence.v1";
+  status: "ready" | "ready_with_gaps" | "not_ready";
+  as_of: string;
+  evidence: PublicEvidence[];
+  gaps: Array<{ record_id: string; reason: string }>;
+  permitted_uses: string[];
+  claims_project_success: false;
+  claims_funding_acceptance: false;
+  source_of_truth: false;
+  snapshot_eligible: false;
+  requires_separate_assumption_admission_for_finance: true;
+};
+
 export type LiveContext = {
   contract_id: "live.intelligence.context.v1";
+  project_id: string;
+  organization_id: string;
   status: "review_required" | "failed";
   source_candidates: Array<{
     candidate_id: string;
@@ -35,17 +80,15 @@ export type LiveContext = {
     business_status?: string;
     google_maps_uri?: string;
   }>;
-  knowledge_hits: Array<{
-    record_id?: string;
-    score?: number;
-    chunk_text?: string;
-    source_url?: string;
-    source_id?: string;
-    evidence_ref?: string;
-    review_status?: string;
-  }>;
+  knowledge_hits: Array<PublicEvidence & { review_status: "review_required" }>;
+  public_evidence_context: PublicEvidenceContext;
   failures: Array<{ provider: string; error_type: string; reason: string }>;
   human_review_required: true;
+  eligible_for_controlled_assumptions: false;
+  controlled_numbers: unknown[];
+  finance_mutated: false;
+  snapshot_mutated: false;
+  context_hash: string;
 };
 
 type Props = {
@@ -149,9 +192,33 @@ export function LiveIntelligenceWorkspace({ providerStatus, context, loading = f
             <p>{context.places.length} نتيجة مكانية. تُحفظ هوية المكان فقط وفق سياسة الاستخدام.</p>
           </section>
 
-          <section aria-labelledby="vision-title">
-            <h3 id="vision-title">معرفة رؤية 2030</h3>
-            <p>{context.knowledge_hits.length} مقطع مسترجع من الفهرس المعرفي.</p>
+          <section aria-labelledby="public-evidence-title">
+            <h3 id="public-evidence-title">الأدلة الاقتصادية العامة</h3>
+            <p>
+              {context.knowledge_hits.length} دليل موثق حتى {context.public_evidence_context.as_of}.
+              هذه الأدلة إرشادية وتحتاج مراجعة بشرية، ولا تضمن نجاح المشروع أو قبول التمويل.
+            </p>
+            {context.knowledge_hits.length === 0 ? (
+              <p>لا توجد أدلة عامة صالحة وحديثة لهذا البحث.</p>
+            ) : (
+              <div className="public-evidence-list">
+                {context.knowledge_hits.map((evidence) => (
+                  <article key={evidence.record_id} className="public-evidence-card">
+                    <h4>{evidence.publisher}</h4>
+                    <p>{evidence.chunk_text}</p>
+                    <p><strong>المنطقة:</strong> {evidence.geography}</p>
+                    <p><strong>القطاع:</strong> {evidence.sector}</p>
+                    <p><strong>الوحدة:</strong> {evidence.unit}</p>
+                    <p><strong>الثقة:</strong> {(evidence.confidence * 100).toFixed(0)}%</p>
+                    <p><strong>تاريخ الجلب:</strong> {evidence.retrieved_at}</p>
+                    <p><strong>صالح حتى:</strong> {evidence.fresh_until}</p>
+                    <a href={evidence.source_url} target="_blank" rel="noreferrer">
+                      فتح المصدر الرسمي
+                    </a>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           {context.failures.length > 0 && (

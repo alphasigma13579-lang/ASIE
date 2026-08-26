@@ -142,8 +142,12 @@ def test_fc20_04_completion_gates_fc20_05_without_authorizing_launch() -> None:
     assert fc20_04["completion_evidence"]["commit_sha"] == "ef4579c7f41dead63a506f7cdf6e163d11dd5c74"
     assert fc20_04["completion_evidence"]["workflow_run_id"] == ["30968258854", "30968258858"]
     assert fc20_04["completion_evidence"]["residual_risk_review"]["frozen_files_changed"] is False
-    assert fc20_05["state"] == "ACR_REQUIRED"
+    assert fc20_05["state"] == "IN_PROGRESS"
     assert fc20_05["acr"] is True
+    assert fc20_05["opened_from_commit"] == "6247a3fed8bb9cd973d36e47379cbff99d492733"
+    assert fc20_05["acr_document"].endswith(
+        "docs/ACR-FC20-05-PUBLIC-ECONOMIC-KNOWLEDGE-2026-08-23.md"
+    )
     assert all(packages[dependency]["state"] == "COMPLETE" for dependency in fc20_05["depends_on"])
     assert manifest["current_release_verdict"] == "BLOCK"
     assert manifest["external_network_authorized"] is False

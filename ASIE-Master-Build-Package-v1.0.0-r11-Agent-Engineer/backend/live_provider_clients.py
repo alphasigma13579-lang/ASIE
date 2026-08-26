@@ -347,6 +347,11 @@ def tenant_project_namespace(organization_id: str, project_id: str, prefix: str 
     return f"{safe_prefix}-o-{_namespace_part(organization_id)}-p-{_namespace_part(project_id)}"
 
 
+def public_knowledge_namespace(prefix: str = "asie") -> str:
+    safe_prefix = re.sub(r"[^a-z0-9-]", "-", prefix.lower()).strip("-") or "asie"
+    return f"{safe_prefix}-public-economic-knowledge-v1"
+
+
 def _provider_security_context(
     scope: TrustedProviderScope,
     operation: str,
@@ -596,10 +601,19 @@ class TavilyResearchClient:
             body=body,
         )
         response = _validated_response(response, "tavily", "extract")
+        review_status = (
+            "auto_admitted_official_open"
+            if admissions
+            and all(
+                admission.get("review_status") == "auto_admitted_official_open"
+                for admission in admissions
+            )
+            else "review_required"
+        )
         return {
             **response,
             "source_admissions": admissions,
-            "review_status": "review_required",
+            "review_status": review_status,
             "eligible_for_controlled_assumptions": False,
         }
 
@@ -651,10 +665,15 @@ class TavilyResearchClient:
             },
         )
         response = _validated_response(response, "tavily", "crawl")
+        review_status = (
+            "auto_admitted_official_open"
+            if admission.get("review_status") == "auto_admitted_official_open"
+            else "review_required"
+        )
         return {
             **response,
             "source_admission": admission,
-            "review_status": "review_required",
+            "review_status": review_status,
             "eligible_for_controlled_assumptions": False,
         }
 
@@ -960,5 +979,225 @@ class PineconeKnowledgeClient:
             "namespace": namespace,
             "source_of_truth": False,
             "retrieval_requires_evidence_validation": True,
+        }
+
+    def upsert_public_knowledge(
+        self,
+        *,
+        scope: TrustedProviderScope,
+        records: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        scope.require_platform_workload("public-knowledge-sync")
+        if not records or len(records) > 100:
+            raise ProviderConfigurationError("invalid_pinecone_record_batch")
+        namespace = public_knowledge_namespace(self.namespace_prefix)
+        forbidden_customer_fields = {
+            "organization_id",
+            "organization_ref",
+            "project_id",
+            "project_ref",
+            "user_id",
+            "session_id",
+            "snapshot_id",
+            "run_id",
+            "prompt",
+            "query",
+        }
+        text_fields = (
+            "source_id",
+            "publisher",
+            "authority",
+            "source_url",
+            "license_id",
+            "license_ref",
+            "attribution",
+            "sector",
+            "geography",
+            "language",
+            "published_at",
+            "retrieved_at",
+            "content_sha256",
+            "fresh_until",
+            "expires_at",
+            "unit",
+            "evidence_ref",
+            "admission_status",
+            "data_classification",
+        )
+        safe_records: list[dict[str, Any]] = []
+        for record in records:
+            if forbidden_customer_fields.intersection(record):
+                raise ProviderConfigurationError("public_knowledge_customer_field_forbidden")
+            safe: dict[str, Any] = {
+                "_id": _bounded_text(
+                    record.get("_id") or record.get("id"),
+                    field="record_id",
+                    maximum=512,
+                ),
+                "chunk_text": _bounded_text(
+                    record.get("chunk_text") or record.get("text"),
+                    field="chunk_text",
+                    maximum=8_000,
+                ),
+            }
+            for field_name in text_fields:
+                safe[field_name] = _bounded_text(
+                    record.get(field_name),
+                    field=field_name,
+                    maximum=2_000,
+                )
+            for field_name in ("version", "freshness_days", "chunk_index", "chunk_count"):
+                value = record.get(field_name)
+                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                    raise ProviderConfigurationError(f"invalid_public_knowledge_number:{field_name}")
+                safe[field_name] = value
+            confidence = record.get("confidence")
+            if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+                raise ProviderConfigurationError("invalid_public_knowledge_number:confidence")
+            if not 0.0 <= float(confidence) <= 1.0:
+                raise ProviderConfigurationError("invalid_public_knowledge_number:confidence")
+            safe["confidence"] = float(confidence)
+            if not re.fullmatch(r"[0-9a-f]{64}", safe["content_sha256"]):
+                raise ProviderConfigurationError("invalid_public_knowledge_content_hash")
+            parsed_source = urlsplit(safe["source_url"])
+            if parsed_source.scheme != "https" or not parsed_source.hostname:
+                raise ProviderConfigurationError("invalid_public_knowledge_source_url")
+            if safe["authority"] not in {"saudi_official", "international_official"}:
+                raise ProviderConfigurationError("public_knowledge_authority_forbidden")
+            if safe["admission_status"] != "auto_admitted_official_open":
+                raise ProviderConfigurationError("public_knowledge_admission_forbidden")
+            if safe["data_classification"] != "public":
+                raise ProviderConfigurationError("public_knowledge_classification_forbidden")
+            safe["source_of_truth"] = False
+            safe_records.append(safe)
+        response = self.transport.request_ndjson(
+            provider_id="pinecone",
+            url=f"https://{self._host(scope)}/records/namespaces/{quote(namespace, safe='')}/upsert",
+            headers=self._headers(),
+            records=safe_records,
+            security_context=_provider_security_context(
+                scope,
+                "upsert_public_knowledge",
+                cost_units=len(safe_records),
+            ),
+        )
+        response = _validated_response(response, "pinecone", "upsert_public_knowledge")
+        return {
+            **response,
+            "index_name": self.index_name,
+            "namespace": namespace,
+            "record_count": len(safe_records),
+            "source_of_truth": False,
+            "records_required_approved_review": False,
+            "records_require_policy_admission": True,
+        }
+
+    def search_public_knowledge(
+        self,
+        *,
+        scope: TrustedProviderScope,
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        if scope.preflight or scope.organization_id == "__platform__":
+            raise ProviderSecurityError("public_knowledge_tenant_scope_required")
+        scope.request_context("search_public_knowledge")
+        if top_k < 1 or top_k > 50:
+            raise ProviderConfigurationError("invalid_pinecone_top_k")
+        namespace = public_knowledge_namespace(self.namespace_prefix)
+        fields = (
+            "chunk_text",
+            "source_id",
+            "publisher",
+            "authority",
+            "source_url",
+            "license_id",
+            "license_ref",
+            "attribution",
+            "sector",
+            "geography",
+            "language",
+            "published_at",
+            "retrieved_at",
+            "content_sha256",
+            "version",
+            "freshness_days",
+            "fresh_until",
+            "expires_at",
+            "unit",
+            "confidence",
+            "evidence_ref",
+            "admission_status",
+            "data_classification",
+        )
+        response = self.transport.request_json(
+            provider_id="pinecone",
+            url=f"https://{self._host(scope)}/records/namespaces/{quote(namespace, safe='')}/search",
+            headers=self._headers(),
+            security_context=_provider_security_context(
+                scope,
+                "search_public_knowledge",
+                cost_units=top_k,
+            ),
+            body={
+                "query": {
+                    "inputs": {"text": _bounded_text(query, field="query", maximum=2_000)},
+                    "top_k": top_k,
+                },
+                "fields": list(fields),
+            },
+        )
+        response = _validated_response(response, "pinecone", "search_public_knowledge")
+        return {
+            **response,
+            "index_name": self.index_name,
+            "namespace": namespace,
+            "source_of_truth": False,
+            "retrieval_requires_evidence_validation": True,
+            "application_persists_query": False,
+            "provider_retention_governed_externally": True,
+        }
+
+    def delete_public_knowledge(
+        self,
+        *,
+        scope: TrustedProviderScope,
+        record_ids: Sequence[str] | None = None,
+        delete_all: bool = False,
+    ) -> dict[str, Any]:
+        scope.require_platform_workload("public-knowledge-sync")
+        bounded_ids = [
+            _bounded_text(value, field="record_id", maximum=512)
+            for value in (record_ids or ())
+        ]
+        if delete_all == bool(bounded_ids):
+            raise ProviderConfigurationError("public_knowledge_delete_scope_invalid")
+        if len(bounded_ids) > 1_000:
+            raise ProviderConfigurationError("public_knowledge_delete_batch_too_large")
+        namespace = public_knowledge_namespace(self.namespace_prefix)
+        body: dict[str, Any] = {"namespace": namespace}
+        if delete_all:
+            body["deleteAll"] = True
+        else:
+            body["ids"] = bounded_ids
+        response = self.transport.request_json(
+            provider_id="pinecone",
+            url=f"https://{self._host(scope)}/vectors/delete",
+            headers=self._headers(),
+            body=body,
+            security_context=_provider_security_context(
+                scope,
+                "delete_public_knowledge",
+                cost_units=max(1, len(bounded_ids)),
+            ),
+        )
+        response = _validated_response(response, "pinecone", "delete_public_knowledge")
+        return {
+            **response,
+            "index_name": self.index_name,
+            "namespace": namespace,
+            "deleted": len(bounded_ids),
+            "delete_all": delete_all,
+            "source_of_truth": False,
         }
 

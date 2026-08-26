@@ -12,6 +12,11 @@ from backend.live_provider_clients import (
     PineconeKnowledgeClient,
     TavilyResearchClient,
 )
+from backend.provider_security_control_plane import TrustedProviderScope
+from backend.public_knowledge import (
+    build_feasibility_evidence_context,
+    build_unavailable_feasibility_evidence_context,
+)
 
 
 class LiveIntelligenceProductError(RuntimeError):
@@ -36,6 +41,16 @@ def _safe_error(exc: Exception) -> dict[str, str]:
 def _sha256_json(payload: Mapping[str, Any]) -> str:
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _stable_context_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    stable = dict(payload)
+    evidence_context = stable.get("public_evidence_context")
+    if isinstance(evidence_context, Mapping):
+        stable["public_evidence_context"] = {
+            key: value for key, value in evidence_context.items() if key != "as_of"
+        }
+    return stable
 
 
 def provider_status_snapshot() -> dict[str, Any]:
@@ -110,8 +125,7 @@ class LiveIntelligenceProductService:
     def build_market_context(
         self,
         *,
-        project_id: str,
-        organization_id: str,
+        scope: TrustedProviderScope,
         query: str,
         location_query: str,
         sector_id: str = "general",
@@ -119,8 +133,9 @@ class LiveIntelligenceProductService:
         latitude: float | None = None,
         longitude: float | None = None,
     ) -> dict[str, Any]:
-        if not project_id.strip() or not organization_id.strip():
-            raise LiveIntelligenceProductError("organization_and_project_required")
+        if scope.preflight or scope.organization_id == "__platform__":
+            raise LiveIntelligenceProductError("authenticated_tenant_scope_required")
+        scope.request_context("search_public_knowledge")
         if not query.strip() or not location_query.strip():
             raise LiveIntelligenceProductError("query_and_location_required")
 
@@ -182,44 +197,34 @@ class LiveIntelligenceProductService:
         except Exception as exc:
             failures.append({"provider": "google_maps_platform", **_safe_error(exc)})
 
-        knowledge_hits: list[dict[str, Any]] = []
+        public_evidence_context = build_unavailable_feasibility_evidence_context(
+            "public_knowledge_unavailable"
+        )
         try:
-            response = self.pinecone.search_text(
-                organization_id=organization_id,
-                project_id=project_id,
+            response = self.pinecone.search_public_knowledge(
+                scope=scope,
                 query=query,
                 top_k=8,
             )
-            payload = response.get("payload") if isinstance(response, Mapping) else None
-            result = payload.get("result") if isinstance(payload, Mapping) else None
-            hits = result.get("hits", []) if isinstance(result, Mapping) else []
-            for row in hits[:8]:
-                if not isinstance(row, Mapping):
-                    continue
-                fields = row.get("fields") if isinstance(row.get("fields"), Mapping) else {}
-                knowledge_hits.append(
-                    {
-                        "record_id": row.get("_id"),
-                        "score": row.get("_score"),
-                        "chunk_text": fields.get("chunk_text"),
-                        "source_url": fields.get("source_url"),
-                        "source_id": fields.get("source_id"),
-                        "evidence_ref": fields.get("evidence_ref"),
-                        "review_status": fields.get("review_status"),
-                    }
-                )
+            public_evidence_context = build_feasibility_evidence_context(response)
         except Exception as exc:
             failures.append({"provider": "pinecone", **_safe_error(exc)})
 
+        knowledge_hits = [
+            {**dict(evidence), "review_status": "review_required"}
+            for evidence in public_evidence_context.get("evidence") or []
+            if isinstance(evidence, Mapping)
+        ]
         product_status = "review_required" if source_candidates or places or knowledge_hits else "failed"
         result = {
             "contract_id": "live.intelligence.context.v1",
-            "project_id": project_id,
-            "organization_id": organization_id,
+            "project_id": scope.project_id,
+            "organization_id": scope.organization_id,
             "status": product_status,
             "source_candidates": source_candidates,
             "places": places,
             "knowledge_hits": knowledge_hits,
+            "public_evidence_context": public_evidence_context,
             "failures": failures,
             "human_review_required": True,
             "eligible_for_controlled_assumptions": False,
@@ -227,7 +232,7 @@ class LiveIntelligenceProductService:
             "finance_mutated": False,
             "snapshot_mutated": False,
         }
-        result["context_hash"] = _sha256_json(result)
+        result["context_hash"] = _sha256_json(_stable_context_hash_payload(result))
         return result
 
     def create_reviewed_narrative(

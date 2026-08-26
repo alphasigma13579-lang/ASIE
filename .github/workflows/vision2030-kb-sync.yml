@@ -1,4 +1,4 @@
-name: Vision 2030 Knowledge Sync
+name: FC20-05 Public Economic Knowledge Sync
 
 on:
   workflow_dispatch:
@@ -12,6 +12,11 @@ on:
         description: "Exact current main commit with explicit external-sync authority"
         required: true
         type: string
+      source_id:
+        description: "Exact allowlisted source ID; dry-run only until durable canonical storage is admitted"
+        required: true
+        default: "vision2030-open-data"
+        type: string
 
 permissions:
   contents: read
@@ -19,15 +24,6 @@ permissions:
 env:
   PACKAGE_ROOT: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
   PYTHONPATH: ${{ github.workspace }}/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
-  ASIE_ALLOW_EXTERNAL_FETCH: "true"
-  ASIE_EXTERNAL_ALLOWED_HOSTS: "api.tavily.com,api.pinecone.io,*.pinecone.io"
-  ASIE_EXTERNAL_TIMEOUT_SECONDS: "30"
-  ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "20971520"
-  ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "1"
-  ASIE_EXTERNAL_ROBOTS_FAILURE_MODE: "deny"
-  PINECONE_INDEX: "vision2030-kb"
-  PINECONE_API_VERSION: "2026-04"
-  PINECONE_NAMESPACE_PREFIX: "asie"
 
 jobs:
   authorize:
@@ -39,10 +35,11 @@ jobs:
       ASIE_AUTHORIZATION_COMMIT: ${{ inputs.authorization_commit }}
     steps:
       - name: Check out requested authorization commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.ASIE_AUTHORIZATION_COMMIT }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Require exact current main and explicit marker authority
         shell: bash
@@ -64,6 +61,20 @@ jobs:
     needs: authorize
     runs-on: ubuntu-latest
     environment: production
+    env:
+      ASIE_ALLOW_EXTERNAL_FETCH: "true"
+      ASIE_EXTERNAL_ALLOWED_HOSTS: "api.tavily.com"
+      ASIE_EXTERNAL_TIMEOUT_SECONDS: "30"
+      ASIE_EXTERNAL_MAX_RESPONSE_BYTES: "20971520"
+      ASIE_EXTERNAL_MIN_INTERVAL_SECONDS: "1"
+      ASIE_EXTERNAL_ROBOTS_FAILURE_MODE: "deny"
+      ASIE_PROVIDER_CONTROL_PLANE_ENABLED: "true"
+      ASIE_PROVIDER_CONTROL_DB_PATH: /tmp/fc20-05-provider-control.sqlite3
+      ASIE_PROVIDER_GLOBAL_KILL_SWITCH: "false"
+      ASIE_PROVIDER_TAVILY_STATE: enabled
+      ASIE_PROVIDER_TAVILY_KILL_SWITCH: "false"
+      ASIE_PROVIDER_TAVILY_REQUESTS_PER_WINDOW: "20"
+      ASIE_PROVIDER_TAVILY_COST_UNITS_PER_WINDOW: "60"
     concurrency:
       group: vision2030-kb-sync
       cancel-in-progress: false
@@ -72,56 +83,48 @@ jobs:
         working-directory: ${{ env.PACKAGE_ROOT }}
     steps:
       - name: Check out authorized commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.authorization_commit }}
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
 
-      - name: Restore prior change-detection state
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.PACKAGE_ROOT }}/.state/vision2030_sync_state.json
-          key: vision2030-sync-${{ github.run_id }}
-          restore-keys: |
-            vision2030-sync-
+      - name: Install Python test dependencies
+        run: python -m pip install -r requirements-dev.txt
 
-      - name: Validate source registry and sync module
+      - name: Enforce dark-build storage boundary
+        env:
+          REQUESTED_DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          python -m py_compile backend/vision2030_kb_sync.py
-          python -m unittest tests.test_vision2030_kb_sync
+          test "$REQUESTED_DRY_RUN" = "true"
 
-      - name: Run monthly Vision 2030 sync
+      - name: Validate public registry, provider boundary, and lifecycle
+        run: |
+          python -m py_compile backend/public_knowledge.py backend/vision2030_kb_sync.py
+          python -m pytest -q \
+            tests/test_fc20_05_public_knowledge_provider_boundary.py \
+            tests/test_fc20_05_public_knowledge_sync.py \
+            tests/test_fc20_05_public_knowledge_feasibility.py \
+            tests/test_vision2030_kb_sync.py
+
+      - name: Run exact-source dry-run
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
-          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          SOURCE_ID: ${{ inputs.source_id }}
         run: |
-          dry_run="false"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
-            dry_run="true"
-          fi
-          args=()
-          if [ "$dry_run" = "true" ]; then
-            args+=(--dry-run)
-          fi
-          python -m backend.vision2030_kb_sync "${args[@]}" | tee /tmp/vision2030-sync-summary.json
-
-      - name: Persist change-detection state
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.PACKAGE_ROOT }}/.state/vision2030_sync_state.json
-          key: vision2030-sync-${{ github.run_id }}
+          args=(--dry-run --source-id "$SOURCE_ID")
+          python -m backend.public_knowledge "${args[@]}" | tee /tmp/public-knowledge-sync-summary.json
 
       - name: Upload redacted sync summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: vision2030-sync-summary-${{ github.run_id }}
-          path: /tmp/vision2030-sync-summary.json
+          name: public-knowledge-sync-summary-${{ github.run_id }}
+          path: /tmp/public-knowledge-sync-summary.json
           if-no-files-found: warn
           retention-days: 90

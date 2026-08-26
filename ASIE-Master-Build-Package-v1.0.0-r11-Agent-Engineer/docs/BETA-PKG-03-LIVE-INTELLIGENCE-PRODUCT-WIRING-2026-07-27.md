@@ -5,7 +5,7 @@ Status: implementation package
 
 ## 1. Purpose
 
-Connect the governed provider foundation admitted in LIVE-INTEL-001 and the Vision 2030 knowledge synchronization admitted in LIVE-INTEL-002 to a product-facing intelligence service without bypassing evidence review, Finance ownership, Snapshot Assembly, or the AAS Runtime Freeze.
+Connect the governed provider foundation admitted in LIVE-INTEL-001 and the superseding FC20-05 public-economic knowledge corpus to a product-facing intelligence service without bypassing evidence review, Finance ownership, Snapshot Assembly, or the AAS Runtime Freeze.
 
 ## 2. Canonical flow
 
@@ -14,7 +14,7 @@ User query and project location
 → Live Intelligence Product Service
 → Tavily source candidates
 → Google Maps location/place context
-→ Pinecone Vision 2030 retrieval
+→ Governed public-economic corpus retrieval
 → Human evidence review
 → Approved narrative context
 → DeepSeek narrative explanation
@@ -35,7 +35,7 @@ The provider layer does not write controlled Finance inputs and does not assembl
 |---|---|---|
 | Tavily | Discover web sources and summaries | Evidence candidate; review required |
 | Google Maps Platform | Resolve location and nearby place context | Display/context only under persistence policy |
-| Pinecone | Retrieve approved Vision 2030 chunks | Retrieval result; evidence validation required |
+| Pinecone | Retrieve governed public-economic evidence from the fixed shared corpus | Retrieval result; evidence validation required |
 | DeepSeek | Explain approved evidence | Narrative only; human review pending |
 
 ## 5. Product contracts
@@ -50,7 +50,9 @@ Runs controlled provider checks when external fetch is enabled. DeepSeek is not 
 
 ### `live.intelligence.context.v1`
 
-Collects source candidates, places, Vision 2030 knowledge hits, failures, and a deterministic context hash. The contract declares:
+Collects source candidates, places, governed public-economic evidence, failures, and a deterministic context hash. The public evidence is exposed both as the complete `public_evidence_context` contract and as backward-compatible `knowledge_hits` rows carrying `review_status: review_required`. Each evidence row includes its publisher, source URL, retrieval and freshness dates, geography, sector, unit, confidence, and lineage reference.
+
+The response keeps `public_evidence_context.as_of` for freshness disclosure, but excludes that volatile clock field alone from `context_hash`. Evidence, gaps, status, and every other result field remain hash-bound, so identical evidence yields the same integrity marker while material readiness changes still change it. The contract declares:
 
 ```json
 {
@@ -78,7 +80,7 @@ The Arabic RTL workspace displays:
 - provider status: disabled, configured, missing secret, live, or failed;
 - a clear notice when external fetch is disabled;
 - source links marked as requiring review;
-- place-result and Vision 2030 retrieval counts;
+- place-result counts and public-economic evidence cards with source, freshness, geography, sector, unit, and confidence;
 - provider failures without exposing credentials;
 - an explicit statement that results are not automatically used as financial values or final decisions.
 
