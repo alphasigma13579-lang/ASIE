@@ -755,6 +755,7 @@ class GoogleLocationClient:
             security_context=_provider_security_context(
                 scope,
                 "geocode_address",
+                preflight=scope.preflight,
             ),
             headers={
                 "X-Goog-Api-Key": self.api_key,
@@ -1200,4 +1201,4 @@ class PineconeKnowledgeClient:
             "delete_all": delete_all,
             "source_of_truth": False,
         }
-
+\n

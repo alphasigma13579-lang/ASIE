@@ -22,11 +22,11 @@ class FakeTavily:
 
 
 class FakeGoogle:
-    def __init__(self):
-        self.search_scopes = []
-        self.geocode_scopes = []
+    def __init__(self) -> None:
+        self.search_scopes: list[object] = []
+        self.geocode_scopes: list[TrustedProviderScope] = []
 
-    def search_places_text(self, **kwargs):
+    def search_places_text(self, **kwargs: object) -> dict[str, object]:
         self.search_scopes.append(kwargs.get("scope"))
         return {
             "payload": {
@@ -44,7 +44,14 @@ class FakeGoogle:
             }
         }
 
-    def geocode_address(self, address, *, scope):
+    def geocode_address(
+        self,
+        address: str,
+        *,
+        scope: TrustedProviderScope,
+    ) -> dict[str, object]:
+        if not address:
+            raise AssertionError("address_required")
         self.geocode_scopes.append(scope)
         return {"payload": {"results": []}, "network_attempted": True, "review_status": "review_required"}
 

@@ -292,6 +292,16 @@ def test_tavily_disables_generated_answer_and_external_crawl_expansion() -> None
 def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> None:
     transport = FakeTransport()
     client = GoogleLocationClient(transport=transport, api_key="google-secret")
+
+    preflight_scope = TrustedProviderScope.for_platform_preflight()
+    client.geocode_address(
+        "الرياض، المملكة العربية السعودية",
+        scope=preflight_scope,
+    )
+    preflight_call = transport.calls[-1]
+    assert preflight_call["security_context"]["preflight"] is True
+    assert preflight_call["security_context"]["organization_id"] == "__platform__"
+
     client.geocode_address(
         "حي العليا، الرياض",
         scope=trusted_scope(),
@@ -409,4 +419,4 @@ def test_live_clients_do_not_import_frozen_runtime() -> None:
     assert "deepseek-v4-flash" in source
     assert "include_answer\": False" in source
     assert "eligible_for_pinecone\": False" in source
-
+\n
