@@ -30,8 +30,7 @@ def test_product_wiring_document_uses_public_economic_corpus_contract():
     text = DOC.read_text(encoding="utf-8")
     assert "Governed public-economic corpus retrieval" in text
     assert "fixed shared corpus" in text
-    assert "Pinecone Vision 2030 retrieval" not in text
-    assert "approved Vision 2030 chunks" not in text
+    assert "Vision 2030" not in text
 
 
 def test_service_has_no_direct_finance_or_snapshot_import():
