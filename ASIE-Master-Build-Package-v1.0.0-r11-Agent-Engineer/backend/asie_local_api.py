@@ -19,6 +19,7 @@ from warnings import deprecated
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.acceptance import build_acceptance_pack
+from backend.beta_access import beta_access_status, beta_billing_mutation_blocked
 from backend.bootstrap_security import authorize_local_bootstrap, legacy_local_operator_allowed
 from backend.aas_kernel import AASKernel
 from backend.architecture_status import build_architecture_runtime_status
@@ -1311,6 +1312,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             write_json(self, {"ok": True, "service": "asie-local-api", "strict_profile": PROFILE_ID})
             return
+        if path == "/api/v1/beta/access-status":
+            write_json(self, beta_access_status())
+            return
         if path == "/api/funding-profiles":
             write_json(self, {"profiles": profile_catalog(), "external_fetch_enabled": False, "reference_only": True})
             return
@@ -1753,6 +1757,9 @@ class Handler(BaseHTTPRequestHandler):
                 principal = self._require_platform_permission("subscription.manage")
                 if principal is None:
                     return
+                if beta_billing_mutation_blocked():
+                    write_error(self, "beta_billing_disabled", 409)
+                    return
                 subscription = REPO.set_subscription(
                     organization_id=organization_id,
                     plan_code=str(payload.get("plan_code") or ""),
@@ -1769,6 +1776,9 @@ class Handler(BaseHTTPRequestHandler):
                 organization_id = path.split("/")[4]
                 principal = self._require_platform_permission("subscription.manage")
                 if principal is None:
+                    return
+                if beta_billing_mutation_blocked():
+                    write_error(self, "beta_billing_disabled", 409)
                     return
                 invoice = REPO.create_local_invoice(organization_id=organization_id, amount_minor=int(payload.get("amount_minor") or 0), currency=str(payload.get("currency") or "SAR"), actor_user_id=principal.user_id)
                 write_json(self, {"invoice": invoice, "payment_collection_enabled": False}, 201)
