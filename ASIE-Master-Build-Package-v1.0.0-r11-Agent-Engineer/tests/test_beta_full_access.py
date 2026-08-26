@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from backend.beta_access import (
     beta_access_status,
     beta_billing_mutation_blocked,
