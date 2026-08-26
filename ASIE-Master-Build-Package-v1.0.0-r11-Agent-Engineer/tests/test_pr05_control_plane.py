@@ -48,6 +48,15 @@ class PR05ControlPlaneTests(unittest.TestCase):
         self.assertEqual(401, denied_status)
         self.assertEqual("authentication_required", denied_body["error"])
 
+        with tempfile.TemporaryDirectory() as empty_directory:
+            api.REPO = Repository(Path(empty_directory) / "empty-control.sqlite3")
+            try:
+                empty_status, empty_body = self.request("GET", "/api/v1/beta/access-status", authenticated=False)
+            finally:
+                api.REPO = self.repo
+        self.assertEqual(401, empty_status)
+        self.assertEqual("authentication_required", empty_body["error"])
+
         status, body = self.request("GET", "/api/v1/beta/access-status")
         self.assertEqual(200, status)
         self.assertEqual("beta_full_access", body["entitlement_profile"])

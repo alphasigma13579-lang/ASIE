@@ -1314,7 +1314,9 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, {"ok": True, "service": "asie-local-api", "strict_profile": PROFILE_ID})
             return
         if path == "/api/v1/beta/access-status":
-            if self._principal() is None:
+            token = self._bearer_token()
+            if token is None or REPO.principal_for_token(token) is None:
+                write_error(self, "authentication_required", 401)
                 return
             write_json(self, beta_access_status())
             return
