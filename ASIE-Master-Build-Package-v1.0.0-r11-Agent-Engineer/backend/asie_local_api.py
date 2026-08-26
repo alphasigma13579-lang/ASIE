@@ -1760,6 +1760,16 @@ class Handler(BaseHTTPRequestHandler):
                 if principal is None:
                     return
                 if beta_billing_mutation_blocked():
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=organization_id,
+                        action="subscription.change",
+                        target_type="organization_entitlement",
+                        target_id=organization_id,
+                        result="denied",
+                        reason="beta_billing_disabled",
+                        correlation_id=self.request_id,
+                    )
                     write_error(self, "beta_billing_disabled", 409)
                     return
                 subscription = REPO.set_subscription(
@@ -1780,6 +1790,16 @@ class Handler(BaseHTTPRequestHandler):
                 if principal is None:
                     return
                 if beta_billing_mutation_blocked():
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=organization_id,
+                        action="invoice.create",
+                        target_type="organization_billing",
+                        target_id=organization_id,
+                        result="denied",
+                        reason="beta_billing_disabled",
+                        correlation_id=self.request_id,
+                    )
                     write_error(self, "beta_billing_disabled", 409)
                     return
                 invoice = REPO.create_local_invoice(organization_id=organization_id, amount_minor=int(payload.get("amount_minor") or 0), currency=str(payload.get("currency") or "SAR"), actor_user_id=principal.user_id)
