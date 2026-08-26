@@ -38,18 +38,22 @@ class PR05ControlPlaneTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_subscription_change_is_audited_and_does_not_enable_payment(self) -> None:
-        status, body = self.request("POST", f"/api/admin/organizations/{self.organization['organization_id']}/subscription", {"plan_code": "local_pro", "lifecycle_status": "trial", "quota": {"projects": 10}, "reason": "internal trial"})
-        self.assertEqual(200, status)
-        self.assertEqual("trial", body["subscription"]["lifecycle_status"])
-        self.assertFalse(body["external_payments_enabled"])
-        self.assertEqual("subscription.change", self.repo.security_audit_events(limit=1)[0]["action"])
+    def test_subscription_mutation_is_dormant_during_closed_beta(self) -> None:
+        """The legacy component remains stored but cannot change beta entitlement."""
 
-    def test_invoice_and_notifications_are_local_only(self) -> None:
+        before = self.repo.subscription_for_organization(self.organization["organization_id"])
+        status, body = self.request("POST", f"/api/admin/organizations/{self.organization['organization_id']}/subscription", {"plan_code": "local_pro", "lifecycle_status": "trial", "quota": {"projects": 10}, "reason": "internal trial"})
+        self.assertEqual(409, status)
+        self.assertEqual("beta_billing_disabled", body["error"])
+        self.assertEqual(before, self.repo.subscription_for_organization(self.organization["organization_id"]))
+
+    def test_invoice_is_blocked_but_notifications_remain_local(self) -> None:
+        """Billing stays dormant without regressing the unrelated notification path."""
+
         status, invoice = self.request("POST", f"/api/admin/organizations/{self.organization['organization_id']}/invoices", {"amount_minor": 12500, "currency": "sar"})
-        self.assertEqual(201, status)
-        self.assertEqual("issued_uncollected", invoice["invoice"]["status"])
-        self.assertFalse(invoice["payment_collection_enabled"])
+        self.assertEqual(409, status)
+        self.assertEqual("beta_billing_disabled", invoice["error"])
+        self.assertEqual([], self.repo.local_invoices(self.organization["organization_id"]))
         status, notification = self.request("POST", f"/api/admin/organizations/{self.organization['organization_id']}/notifications", {"template_id": "review_requested", "reference_type": "snapshot", "reference_id": "snap_reference"})
         self.assertEqual(201, status)
         self.assertEqual("in_app_pending", notification["notification"]["delivery_status"])

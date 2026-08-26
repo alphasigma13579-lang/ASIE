@@ -18,7 +18,7 @@ _BETA_ACCESS_STATUS: dict[str, Any] = {
     "automatic_paid_conversion": False,
     "retroactive_charges_allowed": False,
     "pricing_decision_status": "not_decided",
-    "provider_exhaustion_behavior": "operator_incident_retry_without_upsell",
+    "provider_exhaustion_behavior": "operator_incident_retry_only_after_durable_acceptance_without_upsell",
     "technical_protection_limits": {
         "purpose": "security_reliability_and_abuse_prevention_only",
         "may_trigger_upgrade_prompt": False,
@@ -41,22 +41,37 @@ def beta_access_status() -> dict[str, Any]:
 
 
 def beta_billing_mutation_blocked() -> bool:
-    """Billing and subscription mutations stay dormant until a later pricing decision."""
+    """Keep billing and subscription mutations dormant until a pricing decision."""
 
     return True
 
 
-def beta_provider_incident(*, provider_id: str, correlation_id: str | None = None) -> dict[str, Any]:
+def beta_provider_incident(
+    *,
+    provider_id: str,
+    correlation_id: str | None = None,
+    accepted_retry_task_id: str | None = None,
+) -> dict[str, Any]:
+    """Describe an outage and claim retry scheduling only after durable acceptance."""
+
     provider = str(provider_id or "").strip()
     if not provider:
         raise ValueError("provider_id_required")
+    retry_task_id = str(accepted_retry_task_id or "").strip() or None
+    retry_scheduled = retry_task_id is not None
+    message = (
+        "الخدمة الخارجية متوقفة مؤقتًا، حُفظ طلبك وسنعيد المحاولة."
+        if retry_scheduled
+        else "الخدمة الخارجية متوقفة مؤقتًا. لم تُجدول إعادة المحاولة بعد؛ حاول مجددًا لاحقًا."
+    )
     return {
         "contract_id": "beta.provider-incident.v1",
         "status": "temporarily_unavailable",
         "provider_id": provider,
         "correlation_id": correlation_id,
-        "retry_scheduled": True,
+        "retry_scheduled": retry_scheduled,
+        "retry_task_id": retry_task_id,
         "upgrade_required": False,
         "payment_required": False,
-        "user_message_ar": "الخدمة الخارجية متوقفة مؤقتًا، حُفظ طلبك وسنعيد المحاولة.",
+        "user_message_ar": message,
     }

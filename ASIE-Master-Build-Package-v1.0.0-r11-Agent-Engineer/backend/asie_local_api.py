@@ -1306,6 +1306,7 @@ class Handler(BaseHTTPRequestHandler):
             write_error(self, exc.code, exc.status)
 
     def _dispatch_get(self) -> None:
+        """Route one admitted GET request without mutating platform state."""
         if not self._allow_request():
             return
         path = urlparse(self.path).path
@@ -1686,6 +1687,7 @@ class Handler(BaseHTTPRequestHandler):
         write_error(self, "not_found", 404)
 
     def do_POST(self) -> None:
+        """Authorize and dispatch one state-changing API request."""
         if not self._allow_request():
             return
         path = urlparse(self.path).path
