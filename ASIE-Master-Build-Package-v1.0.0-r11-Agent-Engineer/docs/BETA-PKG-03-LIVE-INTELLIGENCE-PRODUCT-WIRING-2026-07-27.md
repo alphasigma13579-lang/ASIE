@@ -5,7 +5,7 @@ Status: implementation package
 
 ## 1. Purpose
 
-Connect the governed provider foundation admitted in LIVE-INTEL-001 and the Vision 2030 knowledge synchronization admitted in LIVE-INTEL-002 to a product-facing intelligence service without bypassing evidence review, Finance ownership, Snapshot Assembly, or the AAS Runtime Freeze.
+Connect the governed provider foundation admitted in LIVE-INTEL-001 and the superseding FC20-05 public-economic knowledge corpus to a product-facing intelligence service without bypassing evidence review, Finance ownership, Snapshot Assembly, or the AAS Runtime Freeze.
 
 ## 2. Canonical flow
 
@@ -14,7 +14,7 @@ User query and project location
 → Live Intelligence Product Service
 → Tavily source candidates
 → Google Maps location/place context
-→ Pinecone Vision 2030 retrieval
+→ Governed public-economic corpus retrieval
 → Human evidence review
 → Approved narrative context
 → DeepSeek narrative explanation
@@ -35,7 +35,7 @@ The provider layer does not write controlled Finance inputs and does not assembl
 |---|---|---|
 | Tavily | Discover web sources and summaries | Evidence candidate; review required |
 | Google Maps Platform | Resolve location and nearby place context | Display/context only under persistence policy |
-| Pinecone | Retrieve approved Vision 2030 chunks | Retrieval result; evidence validation required |
+| Pinecone | Retrieve governed public-economic evidence from the fixed shared corpus | Retrieval result; evidence validation required |
 | DeepSeek | Explain approved evidence | Narrative only; human review pending |
 
 ## 5. Product contracts
