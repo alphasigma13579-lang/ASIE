@@ -28,11 +28,14 @@ class PR05ControlPlaneTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+    def request(self, method: str, path: str, payload: dict | None = None, *, authenticated: bool = True) -> tuple[int, dict]:
         connection = HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=10)
         try:
             body = json.dumps(payload) if payload is not None else None
-            connection.request(method, path, body=body, headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
+            headers = {"Content-Type": "application/json"}
+            if authenticated:
+                headers["Authorization"] = f"Bearer {self.token}"
+            connection.request(method, path, body=body, headers=headers)
             response = connection.getresponse()
             return response.status, json.loads(response.read().decode("utf-8"))
         finally:
@@ -40,6 +43,10 @@ class PR05ControlPlaneTests(unittest.TestCase):
 
     def test_beta_access_status_exposes_free_full_access_contract(self) -> None:
         """The live HTTP contract exposes one free entitlement without upsell."""
+
+        denied_status, denied_body = self.request("GET", "/api/v1/beta/access-status", authenticated=False)
+        self.assertEqual(401, denied_status)
+        self.assertEqual("authentication_required", denied_body["error"])
 
         status, body = self.request("GET", "/api/v1/beta/access-status")
         self.assertEqual(200, status)

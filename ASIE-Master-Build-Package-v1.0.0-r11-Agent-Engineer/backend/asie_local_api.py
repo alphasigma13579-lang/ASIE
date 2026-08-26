@@ -1314,6 +1314,8 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, {"ok": True, "service": "asie-local-api", "strict_profile": PROFILE_ID})
             return
         if path == "/api/v1/beta/access-status":
+            if self._principal() is None:
+                return
             write_json(self, beta_access_status())
             return
         if path == "/api/funding-profiles":
