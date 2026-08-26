@@ -1201,4 +1201,4 @@ class PineconeKnowledgeClient:
             "delete_all": delete_all,
             "source_of_truth": False,
         }
-\n
+
