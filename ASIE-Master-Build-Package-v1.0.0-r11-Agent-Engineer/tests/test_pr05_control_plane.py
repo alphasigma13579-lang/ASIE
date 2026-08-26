@@ -38,6 +38,18 @@ class PR05ControlPlaneTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_beta_access_status_exposes_free_full_access_contract(self) -> None:
+        """The live HTTP contract exposes one free entitlement without upsell."""
+
+        status, body = self.request("GET", "/api/v1/beta/access-status")
+        self.assertEqual(200, status)
+        self.assertEqual("beta_full_access", body["entitlement_profile"])
+        self.assertEqual("not_applicable_during_beta", body["billing_status"])
+        self.assertEqual("observability_only", body["usage_metering_mode"])
+        self.assertEqual([], body["feature_restrictions"])
+        self.assertFalse(body["upgrade_required"])
+        self.assertFalse(body["payment_method_required"])
+
     def test_subscription_mutation_is_dormant_during_closed_beta(self) -> None:
         """The legacy component remains stored but cannot change beta entitlement."""
 

@@ -9,10 +9,6 @@ from backend.beta_access import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
-API_SOURCE = (ROOT / "backend" / "asie_local_api.py").read_text(encoding="utf-8")
-
-
 def test_closed_beta_is_full_access_free_and_never_auto_converts() -> None:
     """All invited beta users receive one free, unrestricted entitlement."""
 
@@ -64,10 +60,7 @@ def test_provider_incident_exposes_a_durably_accepted_retry() -> None:
     assert "سنعيد المحاولة" in incident["user_message_ar"]
 
 
-def test_billing_mutations_are_dormant_during_beta() -> None:
-    """The HTTP surface exposes status but rejects both commercial mutations."""
+def test_beta_billing_policy_remains_enabled() -> None:
+    """Commercial mutations remain dormant throughout the closed beta."""
 
     assert beta_billing_mutation_blocked() is True
-    assert 'if path == "/api/v1/beta/access-status":' in API_SOURCE
-    assert API_SOURCE.count('write_error(self, "beta_billing_disabled", 409)') == 2
-    assert "beta_access_status()" in API_SOURCE
