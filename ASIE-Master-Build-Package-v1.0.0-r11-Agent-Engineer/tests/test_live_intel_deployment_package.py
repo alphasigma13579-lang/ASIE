@@ -23,9 +23,30 @@ def test_production_environment_template_is_secret_free_and_pinecone_targeted() 
         "DEEPSEEK_API_KEY",
         "TAVILY_API_KEY",
         "GOOGLE_MAPS_API_KEY",
+        "VITE_GOOGLE_MAPS_BROWSER_KEY",
         "PINECONE_API_KEY",
     ):
         assert f"{secret_name}=\n" in content
+
+
+def test_google_browser_map_build_configuration_is_separated_from_server_key() -> None:
+    environment = read(PACKAGE_ROOT / ".env.production.example")
+    frontend = read(PACKAGE_ROOT / "Dockerfile.frontend")
+    compose = read(PACKAGE_ROOT / "docker-compose.production.yml")
+    workflow = read(REPOSITORY_ROOT / ".github" / "workflows" / "deploy-hostinger.yml")
+
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY=\n" in environment
+    assert "GOOGLE_MAP_ID=\n" in environment
+    assert "ARG VITE_GOOGLE_MAPS_BROWSER_KEY" in frontend
+    assert "ARG VITE_GOOGLE_MAP_ID" in frontend
+    assert "GOOGLE_MAPS_API_KEY" not in frontend
+
+    web_service = compose.split("\n  web:\n", 1)[1].split("\n  caddy:\n", 1)[0]
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${VITE_GOOGLE_MAPS_BROWSER_KEY:-}" in web_service
+    assert "VITE_GOOGLE_MAP_ID: ${GOOGLE_MAP_ID:-}" in web_service
+    assert "GOOGLE_MAPS_API_KEY" not in web_service
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
+    assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
 
 
 def test_gitignore_blocks_populated_environments_and_private_keys() -> None:

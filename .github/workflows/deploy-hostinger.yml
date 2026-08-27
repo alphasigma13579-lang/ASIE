@@ -135,6 +135,8 @@ jobs:
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
       TAVILY_PROJECT: ${{ secrets.TAVILY_PROJECT }}
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}
+      GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}
       PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
       ASIE_TLS_EMAIL: ${{ secrets.ASIE_TLS_EMAIL }}
       ENABLE_EXTERNAL_FETCH: ${{ inputs.enable_external_fetch }}
@@ -154,7 +156,7 @@ jobs:
             fi
           done
           if [ "$ENABLE_EXTERNAL_FETCH" = "true" ]; then
-            for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY PINECONE_API_KEY; do
+            for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY GOOGLE_MAP_ID PINECONE_API_KEY; do
               value=$(printenv "$name")
               if [ -z "$value" ]; then
                 echo "External fetch requested but provider secret is missing: $name" >&2
@@ -193,6 +195,8 @@ jobs:
               "TAVILY_PROJECT": os.environ.get("TAVILY_PROJECT", ""),
               "TAVILY_SEARCH_DEPTH": "basic",
               "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+              "VITE_GOOGLE_MAPS_BROWSER_KEY": os.environ.get("VITE_GOOGLE_MAPS_BROWSER_KEY", ""),
+              "GOOGLE_MAP_ID": os.environ.get("GOOGLE_MAP_ID", ""),
               "GOOGLE_MAPS_REGION": "SA",
               "GOOGLE_MAPS_LANGUAGE": "ar",
               "PINECONE_API_KEY": os.environ.get("PINECONE_API_KEY", ""),
