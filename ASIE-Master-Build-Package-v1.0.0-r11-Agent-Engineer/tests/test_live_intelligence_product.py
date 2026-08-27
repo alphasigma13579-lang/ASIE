@@ -22,7 +22,12 @@ class FakeTavily:
 
 
 class FakeGoogle:
-    def search_places_text(self, **kwargs):
+    def __init__(self) -> None:
+        self.search_scopes: list[object] = []
+        self.geocode_scopes: list[TrustedProviderScope] = []
+
+    def search_places_text(self, **kwargs: object) -> dict[str, object]:
+        self.search_scopes.append(kwargs.get("scope"))
         return {
             "payload": {
                 "places": [
@@ -39,7 +44,15 @@ class FakeGoogle:
             }
         }
 
-    def geocode_address(self, address):
+    def geocode_address(
+        self,
+        address: str,
+        *,
+        scope: TrustedProviderScope,
+    ) -> dict[str, object]:
+        if not address:
+            raise AssertionError("address_required")
+        self.geocode_scopes.append(scope)
         return {"payload": {"results": []}, "network_attempted": True, "review_status": "review_required"}
 
 
@@ -128,9 +141,24 @@ def tenant_scope():
     )
 
 
+def test_preflight_forwards_platform_scope_to_google(monkeypatch):
+    monkeypatch.setenv("ASIE_ALLOW_EXTERNAL_FETCH", "true")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "configured-for-fake-client")
+    product = service()
+
+    result = product.preflight()
+
+    assert result["checks"]["google_maps_platform"]["status"] == "live"
+    assert len(product.google.geocode_scopes) == 1
+    assert product.google.geocode_scopes[0].preflight is True
+    assert product.google.geocode_scopes[0].organization_id == "__platform__"
+
+
 def test_market_context_combines_sources_places_and_knowledge_without_finance_mutation():
-    result = service().build_market_context(
-        scope=tenant_scope(),
+    product = service()
+    scope = tenant_scope()
+    result = product.build_market_context(
+        scope=scope,
         query="shawarma market Riyadh",
         location_query="shawarma restaurants Riyadh",
     )
@@ -143,6 +171,7 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert result["public_evidence_context"]["status"] == "ready"
     assert result["human_review_required"] is True
     assert result["eligible_for_controlled_assumptions"] is False
+    assert product.google.search_scopes == [scope]
     assert result["controlled_numbers"] == []
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
