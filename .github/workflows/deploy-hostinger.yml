@@ -149,7 +149,7 @@ jobs:
         run: |
           set -eu
           for name in ASIE_DOMAIN HOSTINGER_VPS_HOST HOSTINGER_VPS_USER; do
-            value=$(printenv "$name")
+            value=$(printenv "$name" || true)
             if [ -z "$value" ]; then
               echo "Missing required GitHub production secret: $name" >&2
               exit 1
@@ -157,7 +157,7 @@ jobs:
           done
           if [ "$ENABLE_EXTERNAL_FETCH" = "true" ]; then
             for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY GOOGLE_MAP_ID PINECONE_API_KEY; do
-              value=$(printenv "$name")
+              value=$(printenv "$name" || true)
               if [ -z "$value" ]; then
                 echo "External fetch requested but provider secret is missing: $name" >&2
                 exit 1
