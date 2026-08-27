@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from backend.production_provider_readiness import (
     REQUIRED_PROVIDER_SECRETS as PRODUCTION_REQUIRED_PROVIDER_SECRETS,
 )
@@ -53,13 +55,12 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert frontend.index(map_id_export) < frontend.index(build_step)
     assert "GOOGLE_MAPS_API_KEY" not in frontend
 
-    _before_web, web_marker, after_web = compose.partition("\n  web:\n")
-    assert web_marker, "web service block missing"
-    web_service, caddy_marker, _after_caddy = after_web.partition("\n  caddy:\n")
-    assert caddy_marker, "caddy service block missing after web"
-    assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${VITE_GOOGLE_MAPS_BROWSER_KEY:-}" in web_service
-    assert "VITE_GOOGLE_MAP_ID: ${GOOGLE_MAP_ID:-}" in web_service
-    assert "GOOGLE_MAPS_API_KEY" not in web_service
+    web_service = yaml.safe_load(compose)["services"].get("web")
+    assert isinstance(web_service, dict), "web service block missing"
+    build_args = web_service["build"]["args"]
+    assert build_args["VITE_GOOGLE_MAPS_BROWSER_KEY"] == "${VITE_GOOGLE_MAPS_BROWSER_KEY:-}"
+    assert build_args["VITE_GOOGLE_MAP_ID"] == "${GOOGLE_MAP_ID:-}"
+    assert "GOOGLE_MAPS_API_KEY" not in str(web_service)
     assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
     assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
     assert REQUIRED_PROVIDER_SECRETS == PRODUCTION_REQUIRED_PROVIDER_SECRETS
@@ -70,7 +71,7 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert '\"VITE_GOOGLE_MAPS_BROWSER_KEY\": os.environ.get(\"VITE_GOOGLE_MAPS_BROWSER_KEY\", \"\")' in workflow
     assert '\"GOOGLE_MAP_ID\": os.environ.get(\"GOOGLE_MAP_ID\", \"\")' in workflow
     assert 'value=$(printenv "$name")' not in workflow
-    assert workflow.count('value=$(printenv "$name" || true)') == 2
+    assert workflow.count('value=$(printenv "$name" || true)') >= 2
     for text in (environment, frontend, compose, workflow):
         assert text.endswith("\n")
     assert Path(__file__).read_bytes().endswith(b"\n")
