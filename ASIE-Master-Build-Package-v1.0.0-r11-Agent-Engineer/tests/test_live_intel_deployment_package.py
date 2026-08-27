@@ -57,8 +57,14 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert "GOOGLE_MAPS_API_KEY" not in web_service
     assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
     assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
+    assert "for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY GOOGLE_MAP_ID PINECONE_API_KEY; do" in workflow
+    assert '\"VITE_GOOGLE_MAPS_BROWSER_KEY\": os.environ.get(\"VITE_GOOGLE_MAPS_BROWSER_KEY\", \"\")' in workflow
+    assert '\"GOOGLE_MAP_ID\": os.environ.get(\"GOOGLE_MAP_ID\", \"\")' in workflow
     assert 'value=$(printenv "$name")' not in workflow
     assert workflow.count('value=$(printenv "$name" || true)') == 2
+    for text in (environment, frontend, compose, workflow):
+        assert text.endswith("\n")
+    assert Path(__file__).read_bytes().endswith(b"\n")
 
 
 def test_gitignore_blocks_populated_environments_and_private_keys() -> None:
