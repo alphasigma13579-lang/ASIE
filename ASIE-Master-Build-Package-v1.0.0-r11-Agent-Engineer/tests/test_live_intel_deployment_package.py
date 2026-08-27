@@ -39,6 +39,13 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert "GOOGLE_MAP_ID=\n" in environment
     assert "ARG VITE_GOOGLE_MAPS_BROWSER_KEY" in frontend
     assert "ARG VITE_GOOGLE_MAP_ID" in frontend
+    browser_key_export = "ENV VITE_GOOGLE_MAPS_BROWSER_KEY=${VITE_GOOGLE_MAPS_BROWSER_KEY}"
+    map_id_export = "ENV VITE_GOOGLE_MAP_ID=${VITE_GOOGLE_MAP_ID}"
+    build_step = "RUN corepack enable && pnpm install --frozen-lockfile && pnpm build"
+    assert browser_key_export in frontend
+    assert map_id_export in frontend
+    assert frontend.index(browser_key_export) < frontend.index(build_step)
+    assert frontend.index(map_id_export) < frontend.index(build_step)
     assert "GOOGLE_MAPS_API_KEY" not in frontend
 
     web_service = compose.split("\n  web:\n", 1)[1].split("\n  caddy:\n", 1)[0]
