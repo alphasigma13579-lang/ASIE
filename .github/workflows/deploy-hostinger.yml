@@ -156,7 +156,7 @@ jobs:
             fi
           done
           if [ "$ENABLE_EXTERNAL_FETCH" = "true" ]; then
-            for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY PINECONE_API_KEY; do
+            for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY PINECONE_API_KEY; do
               value=$(printenv "$name" || true)
               if [ -z "$value" ]; then
                 echo "External fetch requested but provider secret is missing: $name" >&2

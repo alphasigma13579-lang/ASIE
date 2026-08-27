@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.production_provider_readiness import (
+    REQUIRED_PROVIDER_SECRETS as PRODUCTION_REQUIRED_PROVIDER_SECRETS,
+)
+from backend.provider_secret_store_readiness import REQUIRED_PROVIDER_SECRETS
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PACKAGE_ROOT.parent
@@ -57,9 +62,11 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert "GOOGLE_MAPS_API_KEY" not in web_service
     assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
     assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
-    required_provider_line = "for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY PINECONE_API_KEY; do"
+    assert REQUIRED_PROVIDER_SECRETS == PRODUCTION_REQUIRED_PROVIDER_SECRETS
+    required_provider_line = f"for name in {' '.join(REQUIRED_PROVIDER_SECRETS)}; do"
     assert required_provider_line in workflow
     assert "GOOGLE_MAP_ID" not in required_provider_line
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY" not in required_provider_line
     assert '\"VITE_GOOGLE_MAPS_BROWSER_KEY\": os.environ.get(\"VITE_GOOGLE_MAPS_BROWSER_KEY\", \"\")' in workflow
     assert '\"GOOGLE_MAP_ID\": os.environ.get(\"GOOGLE_MAP_ID\", \"\")' in workflow
     assert 'value=$(printenv "$name")' not in workflow
