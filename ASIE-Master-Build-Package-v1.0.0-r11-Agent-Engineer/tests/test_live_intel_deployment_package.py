@@ -57,7 +57,9 @@ def test_google_browser_map_build_configuration_is_separated_from_server_key() -
     assert "GOOGLE_MAPS_API_KEY" not in web_service
     assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
     assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
-    assert "for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY GOOGLE_MAP_ID PINECONE_API_KEY; do" in workflow
+    required_provider_line = "for name in DEEPSEEK_API_KEY TAVILY_API_KEY GOOGLE_MAPS_API_KEY VITE_GOOGLE_MAPS_BROWSER_KEY PINECONE_API_KEY; do"
+    assert required_provider_line in workflow
+    assert "GOOGLE_MAP_ID" not in required_provider_line
     assert '\"VITE_GOOGLE_MAPS_BROWSER_KEY\": os.environ.get(\"VITE_GOOGLE_MAPS_BROWSER_KEY\", \"\")' in workflow
     assert '\"GOOGLE_MAP_ID\": os.environ.get(\"GOOGLE_MAP_ID\", \"\")' in workflow
     assert 'value=$(printenv "$name")' not in workflow
