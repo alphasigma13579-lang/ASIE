@@ -36,9 +36,23 @@ export function assertSessionRevision(revision: number): void {
 function updateSessionContext(token: string, organizationId: string): void {
   const previousToken = getSessionToken();
   const previousOrganization = getActiveOrganizationId();
-  safeSet(TOKEN_STORAGE_KEY, token);
-  safeSet(ORGANIZATION_STORAGE_KEY, organizationId);
-  if (previousToken !== getSessionToken() || previousOrganization !== getActiveOrganizationId()) {
+  const tokenWritten = safeSet(TOKEN_STORAGE_KEY, token);
+  const organizationWritten = safeSet(ORGANIZATION_STORAGE_KEY, organizationId);
+
+  // sessionStorage has no transaction. Never publish a token/organization pair
+  // unless both writes are observable; compensate before this tab sees a change.
+  if (
+    !tokenWritten ||
+    !organizationWritten ||
+    getSessionToken() !== token ||
+    getActiveOrganizationId() !== organizationId
+  ) {
+    safeSet(TOKEN_STORAGE_KEY, previousToken);
+    safeSet(ORGANIZATION_STORAGE_KEY, previousOrganization);
+    return;
+  }
+
+  if (previousToken !== token || previousOrganization !== organizationId) {
     sessionRevision += 1;
     contextListeners.forEach((listener) => listener());
   }
@@ -52,12 +66,14 @@ function safeGet(key: string): string {
   }
 }
 
-function safeSet(key: string, value: string) {
+function safeSet(key: string, value: string): boolean {
   try {
     if (value) window.sessionStorage.setItem(key, value);
     else window.sessionStorage.removeItem(key);
+    return true;
   } catch {
     // Storage can be denied; unavailable credentials must fail closed.
+    return false;
   }
 }
 
