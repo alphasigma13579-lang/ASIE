@@ -36,7 +36,7 @@ The browser may use OS/network-assisted geolocation according to its permission 
 | Cancel/retry/unmount | Invalidate late callbacks and discard candidate; getCurrentPosition itself is not cancellable |
 | Denied/unavailable/timeout/insecure | Arabic explanation, no raw error text; manual entry remains available |
 | Persistence | No storage, telemetry, API, or logging of candidate/accuracy |
-| Project/tenant | No new persistence route or privilege; do not invent a tenant scope before a project exists |
+| Project/tenant | Key the control by user/organization/project so context changes discard candidates and pending callbacks. No new persistence route or privilege; do not invent a tenant scope before a project exists |
 
 Coordinates do not establish a Saudi administrative address. Users still select the region/city and check that the location represents their project. Reverse geocoding/address reconciliation, an authenticated location API, real maps, competitor search, provider checks, and genuine cross-tenant integration tests are separate remaining slices of the same overall goal, not claimed here.
 
@@ -52,7 +52,7 @@ Coordinates do not establish a Saudi administrative address. Users still select 
 
 ## Acceptance and non-regression evidence
 
-A dedicated GitHub Actions browser job must test the real React component in Chromium, including: no automatic request; no commit before confirmation; valid coordinates and accuracy; permission denial; timeout/unavailable; invalid coordinates/accuracy; cancellation and stale callbacks; retry isolation; unmount; secure-context/unavailable fallback; keyboard confirmation; and mobile RTL layout with manual inputs available. Outbound browser requests must be limited to the loopback test server and unexpected requests fail the suite. Test-only fixtures are outside the production Vite entry graph and must not appear in dist.
+A dedicated GitHub Actions browser job must test the real React component in Chromium, including: no automatic request; no commit before confirmation; valid coordinates and accuracy; permission denial; timeout/unavailable; invalid coordinates/accuracy; cancellation and stale callbacks; retry isolation; unmount; user/organization/project context reset; secure-context/unavailable fallback; keyboard confirmation; and mobile RTL layout with manual inputs available. Outbound browser requests must be limited to the loopback test server and unexpected requests fail the suite. Test-only fixtures are outside the production Vite entry graph and must not appear in dist.
 
 Static intake tests remain and add integration checks; they are not substituted for browser evidence. Run full baseline tests, frontend build, frozen-file comparison, cross-platform CI, CodeRabbit, Copilot, and independent exact-head review before merge. A new commit restarts those gates. No readiness claim from a mocked browser test: it proves UI/control behavior only.
 

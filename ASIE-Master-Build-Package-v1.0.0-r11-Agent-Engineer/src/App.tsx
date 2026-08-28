@@ -2550,7 +2550,7 @@ export function App() {
                 <p className="guided-question-card__kicker">الموقع داخل المملكة</p>
                 <h3>أين سيعمل المشروع؟</h3>
                 <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
-                <LocationConsentInput onConfirm={({ latitude, longitude }) => {
+                <LocationConsentInput key={JSON.stringify([authUser?.user_id, activeOrganizationId, project?.project_id])} onConfirm={({ latitude, longitude }) => {
                   updateInputs({ location_latitude: latitude, location_longitude: longitude });
                 }} />
                 <div className="location-fields">

@@ -21,6 +21,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "http://127.0.0.1:5195"
 FIXTURE = ORIGIN + "/tools/browser/location-consent.html"
+ARTIFACTS = ROOT / "browser-artifacts"
 REQUEST = "تحديد موقعي بإذني"
 RETRY = "إعادة طلب موقعي"
 CONFIRM = "تأكيد الإحداثيات لموقعي"
@@ -74,6 +75,9 @@ class LocationConsentBrowserChecks(unittest.TestCase):
             yield page
             self.assertEqual(blocked, [], "Browser attempted unexpected outbound traffic")
             self.assertEqual(errors, [], "Uncaught browser errors")
+        except Exception:
+            page.screenshot(path=str(ARTIFACTS / (self._testMethodName + "-failure.png")), full_page=True)
+            raise
         finally:
             context.close()
 
@@ -106,6 +110,7 @@ class LocationConsentBrowserChecks(unittest.TestCase):
             expect(page.get_by_text("13 متر", exact=True)).to_be_visible()
             expect(page.get_by_text("24.713600", exact=True)).to_be_visible()
             self.assert_unconfirmed(page)
+            page.screenshot(path=str(ARTIFACTS / "desktop-candidate.png"), full_page=True)
             expect(page.get_by_label("خط العرض اليدوي")).to_have_value("")
             page.get_by_role("button", name=CONFIRM, exact=True).click()
             values = json.loads(page.get_by_test_id("confirmed").inner_text())
@@ -187,6 +192,21 @@ class LocationConsentBrowserChecks(unittest.TestCase):
             expect(page.get_by_role("button", name=CONFIRM, exact=True)).to_have_count(0)
             self.assertEqual(page.evaluate("window.__gps.calls.length"), 1)
 
+    def test_context_switch_discards_pending_and_candidate_positions(self):
+        for complete in (False, True):
+            with self.subTest(complete=complete), self.page() as page:
+                page.get_by_role("button", name=REQUEST, exact=True).click()
+                if complete:
+                    self.succeed(page)
+                    expect(page.get_by_role("button", name=CONFIRM, exact=True)).to_be_visible()
+                page.get_by_role("button", name="تغيير السياق للاختبار").click()
+                self.succeed(page)
+                page.evaluate("window.__gps.fail(0, 1)")
+                expect(page.get_by_role("button", name=REQUEST, exact=True)).to_be_visible()
+                expect(page.get_by_role("button", name=CONFIRM, exact=True)).to_have_count(0)
+                self.assert_unconfirmed(page)
+                self.assertEqual(page.evaluate("window.__gps.calls.length"), 1)
+
     def test_insecure_or_unsupported_environment_never_requests_gps(self):
         cases = [
             ('Object.defineProperty(window, "isSecureContext", {value: false});', "HTTPS"),
@@ -214,6 +234,7 @@ class LocationConsentBrowserChecks(unittest.TestCase):
             page.get_by_role("button", name=REQUEST, exact=True).focus()
             page.keyboard.press("Enter")
             self.succeed(page)
+            page.screenshot(path=str(ARTIFACTS / "mobile-candidate.png"), full_page=True)
             page.get_by_role("button", name=CONFIRM, exact=True).focus()
             page.keyboard.press("Enter")
             expect(page.get_by_role("status")).to_contain_text("تم نقل")
@@ -229,6 +250,7 @@ class LocationConsentBrowserChecks(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    ARTIFACTS.mkdir(exist_ok=True)
     # Prevent a developer's ambient provider flags from affecting this harness.
     env = dict(os.environ, ASIE_ALLOW_EXTERNAL_FETCH="false", ASIE_PROVIDER_CONTROL_ENABLED="false")
     pnpm = shutil.which("pnpm")

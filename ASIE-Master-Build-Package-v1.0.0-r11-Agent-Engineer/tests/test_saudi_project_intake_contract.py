@@ -17,7 +17,8 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
 
     def test_consented_location_uses_existing_form_boundary(self):
         self.assertIn('import { LocationConsentInput } from "./LocationConsentInput"', APP)
-        self.assertIn('<LocationConsentInput onConfirm={({ latitude, longitude }) => {', APP)
+        self.assertIn('<LocationConsentInput key={JSON.stringify([authUser?.user_id, activeOrganizationId, project?.project_id])}', APP)
+        self.assertIn('onConfirm={({ latitude, longitude }) => {', APP)
         self.assertIn('updateInputs({ location_latitude: latitude, location_longitude: longitude })', APP)
         self.assertIn('onClick={requestPosition}', LOCATION)
         self.assertIn('onClick={confirm}', LOCATION)
