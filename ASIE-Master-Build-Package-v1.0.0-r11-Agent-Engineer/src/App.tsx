@@ -341,7 +341,10 @@ function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
   return detailedTotal > 0 ? detailedTotal : Number(inputs.monthly_fixed_cost) || 0;
 }
 
-const defaultInputs: Required<ProjectInputs> = {
+type ProjectFormInputs = Omit<Required<ProjectInputs>, "location_latitude" | "location_longitude">
+  & Pick<ProjectInputs, "location_latitude" | "location_longitude">;
+
+const defaultInputs: ProjectFormInputs = {
   primary_sector_id: "",
   subsector_id: "",
   activity_description: "",
@@ -350,8 +353,6 @@ const defaultInputs: Required<ProjectInputs> = {
   location_region: "",
   location_city: "",
   location_district: "",
-  location_latitude: 0,
-  location_longitude: 0,
   gap_statement: "",
   competitive_edge: "",
   target_audience: "",
@@ -754,7 +755,7 @@ function SessionWorkspace() {
 
   function updateStructuredLocation(
     part: "location_region" | "location_city" | "location_district" | "location_latitude" | "location_longitude",
-    value: string | number
+    value: string | number | undefined
   ) {
     setForm((current) => {
       const inputs = { ...current.inputs, [part]: value };
@@ -2539,8 +2540,14 @@ function SessionWorkspace() {
                         if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
                       }}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
                   <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
-                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
-                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
+                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude ?? ""} placeholder="24.7136" onChange={(event) => {
+                    const raw = event.target.value;
+                    updateStructuredLocation("location_latitude", raw === "" ? undefined : Number(raw));
+                  }} /></label>
+                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude ?? ""} placeholder="46.6753" onChange={(event) => {
+                    const raw = event.target.value;
+                    updateStructuredLocation("location_longitude", raw === "" ? undefined : Number(raw));
+                  }} /></label>
                 </div>
                 <p className="guided-hint">لا تُقرأ إحداثيات الجهاز تلقائيًا. إدخالها اختياري وتحت سيطرة المستخدم.</p>
               </>
