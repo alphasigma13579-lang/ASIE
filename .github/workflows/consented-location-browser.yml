@@ -45,7 +45,7 @@ jobs:
         run: pnpm build
       - name: Ensure browser fixture is not shipped
         run: |
-          if grep -R -E '__gps|ASIE consent behavior fixture|تبديل المكون للاختبار|تغيير السياق للاختبار' dist; then
+          if grep -R -E '__gps|ASIE consent behavior fixture|ASIE app session behavior fixture|تبديل المكون للاختبار|تغيير السياق للاختبار' dist; then
             echo "Test fixture leaked into the production bundle"
             exit 1
           fi
@@ -55,6 +55,8 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Check consent and fallback without real GPS or provider calls
         run: python tools/check_location_consent_browser.py
+      - name: Check real App session boundary without providers
+        run: python tools/check_app_session_browser.py
       - name: Preserve browser-only visual evidence
         if: always()
         uses: actions/upload-artifact@v4

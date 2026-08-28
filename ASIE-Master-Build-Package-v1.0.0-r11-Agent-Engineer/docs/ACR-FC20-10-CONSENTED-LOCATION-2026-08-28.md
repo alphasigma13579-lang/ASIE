@@ -59,3 +59,47 @@ Static intake tests remain and add integration checks; they are not substituted 
 ## Rollback and next handoff
 
 This slice has no database migration or stored-data transformation. Revert its PR to restore the pre-GPS wizard and manual-only path. Preserve user-saved projects. Follow-up API/map work must extend this ACR with trusted tenant/project scope, canonical route registration, Google content-retention restrictions and negative security tests before implementation. Do not use a platform preflight scope for a tenant request.
+
+## PR #147 review remediation — session lifetime boundary (2026-08-28)
+
+Baseline for this repair: main `42603fc18ce387af8260b931eeeeba1bba9a338f`, PR head
+`ba64f0458d93637d79c1b7d9a0eb822458c43d00`. User explicitly authorized continuation
+after the one-time review stopped. CodeRabbit review 5053614646 requested changes.
+This addendum authorizes only the following defensive frontend repair and tests;
+it does not change release, provider, Finance, Snapshot, Council or AAS authority.
+
+### Finding, threat and scope
+F-147-01 is a High-priority frontend context-integrity defect: App's parent form
+survives organization changes; a child GPS remount clears only unconfirmed
+candidates. The old form can subsequently be saved with the new organization
+header. The missing parent reset predates #147. Stale successful/401 responses
+may also cross the session lifetime. This is a source-confirmed path, not a
+claim that a real customer leak was observed.
+
+Assets: unsaved coordinates, form fields, project/evidence/result state and
+session-bound responses. Trust boundary: user/session/organization A to B in one
+tab. Controls: reset the App workspace on effective identity/organization change;
+invalidate old asynchronous results before they can populate current state or
+expire a newer session; same-context navigation must retain ordinary drafts.
+No server-side object authorization is weakened or replaced by these UI controls.
+
+### Test-first repair and allowlist
+Add a fixture importing the actual App and intercept APIs in Chromium. Prove
+same-organization preservation, organization switch clearing, logout/login,
+expiry/login, delayed success, delayed 401, and A-B-A stale-response rejection.
+Do not call real backend/provider services or geolocation. First commit tests
+only and record the failing CI evidence; repair implementation only after
+distinguishing real assertion failures from harness failures.
+
+Repair allowlist: `src/App.tsx`, `src/session.ts`, `src/api.ts`, the browser
+test/fixture files under `tools/`, the existing browser workflow, directly
+relevant regression tests, and this ACR. API routes/payloads and `src/contracts.ts`
+remain unchanged. Source-policy, runtime and backend financial logic are out of
+scope. No migration or stored-project deletion: rollback is a code revert.
+
+After every implementation commit: focused browser tests, full build/test,
+frozen-file comparison, cross-platform and evidence gates, then both reviewers
+and independent exact-head review. Stop commits while reviewers run. Record
+evidence in the PR rather than claiming success before CI returns. Remaining
+whole-platform surfaces outside App, genuine hosted GPS, address/map/competitor
+integration and live acceptance are not certified by these controlled tests.
