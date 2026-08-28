@@ -552,6 +552,7 @@
       "id": "FC20-10",
       "priority": "P1",
       "title": "Google Maps live competitor intelligence and consented location UX",
+      "acr_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FC20-10-CONSENTED-LOCATION-2026-08-28.md",
       "state": "BLOCKED_BY_PREDECESSOR",
       "depends_on": [
         "FC20-03",

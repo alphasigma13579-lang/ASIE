@@ -1,0 +1,30 @@
+.location-consent {
+  margin-block: 12px;
+  padding: 16px;
+  border: 1px solid #8da497;
+  border-radius: 12px;
+  background: #f5faf7;
+  color: #173e2c;
+  min-width: 0;
+}
+.location-consent p { margin-block: 0 12px; }
+.location-consent [role="status"]:empty { margin: 0; }
+.location-consent .button-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.location-consent button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  font: inherit;
+}
+.location-consent button:focus-visible { outline: 3px solid #176443; outline-offset: 3px; }
+.location-consent__coordinates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block: 12px;
+}
+.location-consent__coordinates dt { font-weight: 700; }
+.location-consent__coordinates dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .location-consent button { transition: none; transform: none; }
+}

@@ -1,0 +1,2 @@
+# Isolated browser-test dependency; not a backend/runtime dependency.
+playwright==1.62.0

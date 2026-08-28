@@ -1,0 +1,57 @@
+name: Consented Location Browser Checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consented-location-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: GPS consent and manual fallback (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_PROVIDER_CONTROL_ENABLED: "false"
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install locked frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build production frontend
+        run: pnpm build
+      - name: Ensure browser fixture is not shipped
+        run: |
+          if grep -R -E '__gps|ASIE consent behavior fixture|تبديل المكون للاختبار' dist; then
+            echo "Test fixture leaked into the production bundle"
+            exit 1
+          fi
+      - name: Install isolated browser test dependencies
+        run: pip install -r requirements-browser.txt
+      - name: Install Chromium for tests
+        run: python -m playwright install --with-deps chromium
+      - name: Check consent and fallback without real GPS or provider calls
+        run: python tools/check_location_consent_browser.py

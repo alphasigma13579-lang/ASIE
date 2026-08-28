@@ -40,6 +40,8 @@
 
 ## Product
 
+- [Consented project location — ACR-FC20-10](../../ACR-FC20-10-CONSENTED-LOCATION-2026-08-28.md): موافقة صريحة وإحداثيات مؤقتة قبل التأكيد؛ شريحة بناء دون مزودات، ولا تعني اكتمال الخرائط أو رفع حظر الحزمة.
+
 - `Dashboard-Command-Center`: قراري اليوم، KPIs، الأقسام.
 - `Project-Launch-Guide`: تراخيص، جهات، موظفون، موردون، خطوات.
 

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
+import { LocationConsentInput } from "./LocationConsentInput";
 import { BrandLockup } from "./BrandMark";
 import { CommandCenter } from "./CommandCenter";
 import {
@@ -2549,6 +2550,9 @@ export function App() {
                 <p className="guided-question-card__kicker">الموقع داخل المملكة</p>
                 <h3>أين سيعمل المشروع؟</h3>
                 <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
+                <LocationConsentInput onConfirm={({ latitude, longitude }) => {
+                  updateInputs({ location_latitude: latitude, location_longitude: longitude });
+                }} />
                 <div className="location-fields">
                   <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
                   <label className="field"><span>المنطقة</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">اختر المنطقة</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
