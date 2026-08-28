@@ -199,6 +199,7 @@ export async function openSnapshotDocument(snapshotId: string, suffix: string, m
     } catch {
       // Non-JSON error body; keep the status-based message.
     }
+    assertSessionRevision(revision);
     throw new Error(message);
   }
   const blob = await response.blob();
