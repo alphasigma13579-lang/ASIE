@@ -275,6 +275,40 @@ class AppSessionBrowserChecks(unittest.TestCase):
             self.assertEqual("rejected", probe["status"])
             self.assertEqual("تغير الحساب أو المؤسسة؛ أعد المحاولة في المساحة الحالية.", probe["message"])
 
+    def test_failed_session_storage_write_cannot_publish_partial_context(self):
+        """A failed organization write rolls back the token and emits no mixed-session event."""
+        with self.app() as (page, _state):
+            probe = page.evaluate("""async () => {
+                const session = await import("/src/session.ts");
+                const beforeRevision = session.getSessionRevision();
+                let events = 0;
+                const unsubscribe = session.onSessionContextChanged(() => { events += 1; });
+                const originalSetItem = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(key, value) {
+                    if (key === "asie.active_organization.v1") {
+                        throw new DOMException("simulated storage failure", "QuotaExceededError");
+                    }
+                    return originalSetItem.call(this, key, value);
+                };
+                try {
+                    session.setSessionToken("test-session-b");
+                } finally {
+                    Storage.prototype.setItem = originalSetItem;
+                    unsubscribe();
+                }
+                return {
+                    token: sessionStorage.getItem("asie.session_token.v1"),
+                    organization: sessionStorage.getItem("asie.active_organization.v1"),
+                    revision: session.getSessionRevision(),
+                    beforeRevision,
+                    events,
+                };
+            }""")
+            self.assertEqual("test-session-a", probe["token"])
+            self.assertEqual("org-a", probe["organization"])
+            self.assertEqual(probe["beforeRevision"], probe["revision"])
+            self.assertEqual(0, probe["events"])
+
     def test_organization_switch_discards_confirmed_parent_form(self):
         """Regression: keying only the child GPS control does not clear App.form."""
         with self.app() as (page, state):
