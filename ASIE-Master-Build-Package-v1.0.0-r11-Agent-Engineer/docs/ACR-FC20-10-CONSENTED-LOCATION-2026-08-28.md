@@ -3,7 +3,7 @@
 ## Decision and authority
 
 Date: 2026-08-28. Baseline: `main@42603fc18ce387af8260b931eeeeba1bba9a338f`.
-Authority: the user's approved full, free, invitation-only live-beta implementation plan and explicit continuation. This ACR authorizes only the providerless consent-input slice described below. It does not clear FC20-10 predecessors, activate Google, authorize deployment, or certify live-beta readiness. `/FOUNDATION-COMPLETE-20.json` remains the program-state authority; FC20-10 remains BLOCKED_BY_PREDECESSOR.
+Authority: the user's approved full, free, invitation-only live-beta implementation plan and explicit continuation. This ACR authorizes only the providerless consent-input slice described below. It does not clear FC20-10 predecessors, activate Google, authorize deployment, or certify live-beta readiness. `docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md` and `/EMERGENCY-RELEASE-FREEZE.json` remain the current program-state authorities; `/FOUNDATION-COMPLETE-20.json` is dated evidence only. FC20-10 remains BLOCKED_BY_PREDECESSOR.
 
 ## Verified baseline and gap map
 
