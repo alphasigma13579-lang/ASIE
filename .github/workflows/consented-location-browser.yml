@@ -1,0 +1,67 @@
+name: Consented Location Browser Checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consented-location-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: GPS consent and manual fallback (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASIE_ALLOW_EXTERNAL_FETCH: "false"
+      ASIE_PROVIDER_CONTROL_ENABLED: "false"
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/pnpm-lock.yaml
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - name: Install locked frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build production frontend
+        run: pnpm build
+      - name: Ensure browser fixture is not shipped
+        run: |
+          if grep -R -E '__gps|ASIE consent behavior fixture|ASIE app session behavior fixture|تبديل المكون للاختبار|تغيير السياق للاختبار' dist; then
+            echo "Test fixture leaked into the production bundle"
+            exit 1
+          fi
+      - name: Install isolated browser test dependencies
+        run: pip install -r requirements-browser.txt
+      - name: Install Chromium for tests
+        run: python -m playwright install --with-deps chromium
+      - name: Check consent and fallback without real GPS or provider calls
+        run: python tools/check_location_consent_browser.py
+      - name: Check real App session boundary without providers
+        run: python tools/check_app_session_browser.py
+      - name: Preserve browser-only visual evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: consented-location-browser
+          path: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/browser-artifacts/
+          if-no-files-found: error
+          retention-days: 7

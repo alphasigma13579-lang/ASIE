@@ -30,9 +30,10 @@ import type {
   TransformationLineageRecord,
   TransformationRecord,
 } from "./contracts";
-import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./session";
+import { assertSessionRevision, getActiveOrganizationId, getSessionRevision, getSessionToken, handleUnauthorized } from "./session";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const revision = getSessionRevision();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init?.headers as Record<string, string> | undefined) ?? {}),
@@ -42,11 +43,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const organizationId = getActiveOrganizationId();
   if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
   const response = await fetch(path, { ...init, headers });
+  assertSessionRevision(revision);
   if (response.status === 401 && token) {
     // The server rejected a token we hold: it expired or was revoked.
     handleUnauthorized();
+    throw new Error("انتهت الجلسة. سجّل الدخول مرة أخرى.");
   }
   const payload = (await response.json()) as T & { error?: string };
+  assertSessionRevision(revision);
   if (!response.ok) {
     throw new Error(payload.error ?? `تعذر الاتصال بخدمة ASIE المحلية (${response.status})`);
   }
@@ -179,10 +183,14 @@ export async function fetchReleaseRecord(snapshotId: string): Promise<ReleaseRec
  * tab from a blob URL, binary exports download as attachments.
  */
 export async function openSnapshotDocument(snapshotId: string, suffix: string, mode: "open" | "download"): Promise<void> {
+  const revision = getSessionRevision();
   const headers: Record<string, string> = {};
   const token = getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const organizationId = getActiveOrganizationId();
+  if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
   const response = await fetch(`/api/snapshots/${snapshotId}/${suffix}`, { headers });
+  assertSessionRevision(revision);
   if (!response.ok) {
     let message = `تعذر فتح المستند (${response.status})`;
     try {
@@ -191,9 +199,11 @@ export async function openSnapshotDocument(snapshotId: string, suffix: string, m
     } catch {
       // Non-JSON error body; keep the status-based message.
     }
+    assertSessionRevision(revision);
     throw new Error(message);
   }
   const blob = await response.blob();
+  assertSessionRevision(revision);
   const url = URL.createObjectURL(blob);
   if (mode === "download") {
     const anchor = document.createElement("a");

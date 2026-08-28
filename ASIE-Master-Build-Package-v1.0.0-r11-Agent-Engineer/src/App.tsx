@@ -22,8 +22,9 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
+import { LocationConsentInput } from "./LocationConsentInput";
 import { BrandLockup } from "./BrandMark";
 import { CommandCenter } from "./CommandCenter";
 import {
@@ -74,6 +75,8 @@ import {
   clearSession,
   getActiveOrganizationId,
   getSessionToken,
+  getSessionRevision,
+  onSessionContextChanged,
   onSessionExpired,
   setActiveOrganizationId,
   setSessionToken,
@@ -338,7 +341,10 @@ function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
   return detailedTotal > 0 ? detailedTotal : Number(inputs.monthly_fixed_cost) || 0;
 }
 
-const defaultInputs: Required<ProjectInputs> = {
+type ProjectFormInputs = Omit<Required<ProjectInputs>, "location_latitude" | "location_longitude">
+  & Pick<ProjectInputs, "location_latitude" | "location_longitude">;
+
+const defaultInputs: ProjectFormInputs = {
   primary_sector_id: "",
   subsector_id: "",
   activity_description: "",
@@ -347,8 +353,6 @@ const defaultInputs: Required<ProjectInputs> = {
   location_region: "",
   location_city: "",
   location_district: "",
-  location_latitude: 0,
-  location_longitude: 0,
   gap_statement: "",
   competitive_edge: "",
   target_audience: "",
@@ -630,7 +634,13 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+/** Reset the entire in-memory workspace, not only the transient GPS child. */
 export function App() {
+  const revision = useSyncExternalStore(onSessionContextChanged, getSessionRevision);
+  return <SessionWorkspace key={revision} />;
+}
+
+function SessionWorkspace() {
   const [sourcePolicy, setSourcePolicy] = useState<SourcePolicy | null>(null);
   const [sources, setSources] = useState<SourceReviewRecord[]>([]);
   const [sourceChecklists, setSourceChecklists] = useState<SourceReviewChecklist[]>([]);
@@ -745,7 +755,7 @@ export function App() {
 
   function updateStructuredLocation(
     part: "location_region" | "location_city" | "location_district" | "location_latitude" | "location_longitude",
-    value: string | number
+    value: string | number | undefined
   ) {
     setForm((current) => {
       const inputs = { ...current.inputs, [part]: value };
@@ -842,55 +852,25 @@ export function App() {
     []
   );
 
-  async function handleAuthenticated(response: LoginResponse) {
+  function handleAuthenticated(response: LoginResponse) {
+    // The new workspace re-reads /auth/me before loading any scoped data.
     setSessionToken(response.access_token);
-    try {
-      // The server is the source of truth for scope: re-read memberships
-      // instead of trusting the login/bootstrap response shape.
-      const me = await fetchMe();
-      const nextOrganization = me.memberships?.[0]?.organization_id ?? response.organization?.organization_id ?? "";
-      if (nextOrganization) setActiveOrganizationId(nextOrganization);
-      setActiveOrganizationState(nextOrganization);
-      setMemberships(me.memberships ?? []);
-      setAuthUser({ user_id: me.user_id, display_name: response.user.display_name, email: response.user.email, platform_role: me.platform_role });
-    } catch {
-      const fallbackOrganization = response.organization?.organization_id ?? response.memberships?.[0]?.organization_id ?? "";
-      if (fallbackOrganization) setActiveOrganizationId(fallbackOrganization);
-      setActiveOrganizationState(fallbackOrganization);
-      setMemberships(response.memberships ?? []);
-      setAuthUser(response.user);
-    }
-    setAuthState("authenticated");
-    setError(null);
-    void loadPolicy();
   }
 
   async function handleLogout() {
+    const revision = getSessionRevision();
     try {
       await logout();
     } catch {
-      // The server session may already be gone; local cleanup continues.
+      // Local cleanup is still required if the current session cannot log out.
     }
-    clearSession();
-    setAuthState("anonymous");
-    setAuthUser(null);
-    setMemberships([]);
-    setActiveOrganizationState("");
+    // A delayed logout must never clear a newer identity/organization lifetime.
+    if (revision === getSessionRevision()) clearSession();
   }
 
   function switchOrganization(organizationId: string) {
+    // Effective changes remount all workspace state; same-context clicks do not.
     setActiveOrganizationId(organizationId);
-    setActiveOrganizationState(organizationId);
-    setProject(null);
-    setWorkspace(null);
-    setOverview(null);
-    setReport(null);
-    setReportView(null);
-    setDecisionPack(null);
-    setReadiness(null);
-    setComparison(null);
-    setReleaseRecord(null);
-    void loadPolicy();
   }
 
   function openOverlay(next: Exclude<AppOverlay, null>) {
@@ -2549,6 +2529,9 @@ export function App() {
                 <p className="guided-question-card__kicker">الموقع داخل المملكة</p>
                 <h3>أين سيعمل المشروع؟</h3>
                 <p>المرحلة الحالية مخصصة للسوق السعودي. اكتب المنطقة والمدينة، وأضف الحي أو الإحداثيات عند الحاجة.</p>
+                <LocationConsentInput key={JSON.stringify([authUser?.user_id, activeOrganizationId, project?.project_id])} onConfirm={({ latitude, longitude }) => {
+                  updateInputs({ location_latitude: latitude, location_longitude: longitude });
+                }} />
                 <div className="location-fields">
                   <label className="field"><span>الدولة</span><input value="المملكة العربية السعودية" readOnly aria-readonly="true" /></label>
                   <label className="field"><span>المنطقة</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">اختر المنطقة</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
@@ -2557,8 +2540,14 @@ export function App() {
                         if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
                       }}><option value="">اختر المدينة</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
                   <label className="field"><span>الحي أو الشارع <small>(اختياري)</small></span><input maxLength={50} value={form.inputs.location_district} placeholder="مثال: حي العليا" onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
-                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude || ""} placeholder="24.7136" onChange={(event) => updateStructuredLocation("location_latitude", Number(event.target.value) || 0)} /></label>
-                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude || ""} placeholder="46.6753" onChange={(event) => updateStructuredLocation("location_longitude", Number(event.target.value) || 0)} /></label>
+                  <label className="field"><span>خط العرض <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_latitude ?? ""} placeholder="24.7136" onChange={(event) => {
+                    const raw = event.target.value;
+                    updateStructuredLocation("location_latitude", raw === "" ? undefined : Number(raw));
+                  }} /></label>
+                  <label className="field"><span>خط الطول <small>(اختياري)</small></span><input type="number" step="any" value={form.inputs.location_longitude ?? ""} placeholder="46.6753" onChange={(event) => {
+                    const raw = event.target.value;
+                    updateStructuredLocation("location_longitude", raw === "" ? undefined : Number(raw));
+                  }} /></label>
                 </div>
                 <p className="guided-hint">لا تُقرأ إحداثيات الجهاز تلقائيًا. إدخالها اختياري وتحت سيطرة المستخدم.</p>
               </>
