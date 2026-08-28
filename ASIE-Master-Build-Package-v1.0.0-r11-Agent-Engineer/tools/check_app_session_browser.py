@@ -86,6 +86,9 @@ class AppSessionBrowserChecks(unittest.TestCase):
             elif path == "/api/snapshots/snapshot-probe/report.html":
                 route.fulfill(status=200, body="<html><body>snapshot probe</body></html>", content_type="text/html")
                 return
+            elif path == "/api/snapshots/snapshot-stale/report.html":
+                route.fulfill(status=500, json={"error": "PRIVATE-STALE-SNAPSHOT-ERROR"})
+                return
             elif path == "/api/source-policy":
                 payload = policy
             elif path == "/api/sources":
@@ -240,6 +243,37 @@ class AppSessionBrowserChecks(unittest.TestCase):
                 ("/api/snapshots/snapshot-probe/report.html", "org-a", "GET"),
                 state["requests"],
             )
+
+    def test_stale_snapshot_error_body_is_rejected_after_organization_switch(self):
+        """A delayed document-error body cannot surface after the selected context changes."""
+        with self.app() as (page, _state):
+            page.evaluate("""async () => {
+                const originalFetch = window.fetch;
+                window.__resumeSnapshotError = null;
+                window.__sessionProbe = null;
+                window.fetch = async (...args) => {
+                    const response = await originalFetch(...args);
+                    if (String(args[0]).includes("/api/snapshots/snapshot-stale/report.html")) {
+                        const readJson = response.json.bind(response);
+                        response.json = () => new Promise(resolve => {
+                            window.__resumeSnapshotError = () => readJson().then(resolve);
+                        });
+                    }
+                    return response;
+                };
+                const api = await import("/src/api.ts");
+                void api.openSnapshotDocument("snapshot-stale", "report.html", "open").then(
+                    () => { window.__sessionProbe = {status: "fulfilled"}; },
+                    error => { window.__sessionProbe = {status: "rejected", message: String(error.message)}; },
+                );
+            }""")
+            page.wait_for_function("typeof window.__resumeSnapshotError === 'function'")
+            self.switch(page)
+            page.evaluate("window.__resumeSnapshotError()")
+            page.wait_for_function("window.__sessionProbe !== null")
+            probe = page.evaluate("window.__sessionProbe")
+            self.assertEqual("rejected", probe["status"])
+            self.assertEqual("تغير الحساب أو المؤسسة؛ أعد المحاولة في المساحة الحالية.", probe["message"])
 
     def test_organization_switch_discards_confirmed_parent_form(self):
         """Regression: keying only the child GPS control does not clear App.form."""
