@@ -283,17 +283,17 @@ class AppSessionBrowserChecks(unittest.TestCase):
                 const beforeRevision = session.getSessionRevision();
                 let events = 0;
                 const unsubscribe = session.onSessionContextChanged(() => { events += 1; });
-                const originalSetItem = Storage.prototype.setItem;
-                Storage.prototype.setItem = function(key, value) {
+                const originalRemoveItem = Storage.prototype.removeItem;
+                Storage.prototype.removeItem = function(key) {
                     if (key === "asie.active_organization.v1") {
                         throw new DOMException("simulated storage failure", "QuotaExceededError");
                     }
-                    return originalSetItem.call(this, key, value);
+                    return originalRemoveItem.call(this, key);
                 };
                 try {
                     session.setSessionToken("test-session-b");
                 } finally {
-                    Storage.prototype.setItem = originalSetItem;
+                    Storage.prototype.removeItem = originalRemoveItem;
                     unsubscribe();
                 }
                 return {
