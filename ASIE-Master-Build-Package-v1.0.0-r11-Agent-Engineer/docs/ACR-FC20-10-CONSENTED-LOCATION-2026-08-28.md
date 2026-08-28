@@ -103,3 +103,24 @@ and independent exact-head review. Stop commits while reviewers run. Record
 evidence in the PR rather than claiming success before CI returns. Remaining
 whole-platform surfaces outside App, genuine hosted GPS, address/map/competitor
 integration and live acceptance are not certified by these controlled tests.
+
+### Reproduction evidence
+Test-only head `92c7df6445549090c78e2dd10a630b7c8de702ad`, browser run
+[33197520971](https://github.com/alphasigma13579-lang/ASIE/actions/runs/33197520971):
+the existing 12 consent tests passed; the 7 new App tests produced **6 assertion
+failures and 1 passing same-context control**. Confirmed latitude 24.7136 survived
+organization switch, logout/login and expiry/login; stale successful responses
+were fulfilled after A-B and A-B-A; a stale 401 cleared the active session token.
+Production build and fixture-exclusion checks passed before those assertions.
+No production code had changed in this test-only commit.
+
+### Repair implementation
+A monotonic session revision now keys the App workspace. An effective token or
+organization change clears its in-memory descendants, while same-context
+navigation retains drafts. A new token clears the previous organization before
+the normal server identity probe selects membership. API replies are checked
+both after response headers and after JSON/blob consumption; stale replies
+cannot publish data, open an old document, or invalidate a newer session. A
+delayed logout also checks its lifetime. No transport, public API shape, backend
+authorization, stored project, or frozen file is changed. Passing repair evidence
+is pending CI and exact-head review; the test-only failures are retained above.

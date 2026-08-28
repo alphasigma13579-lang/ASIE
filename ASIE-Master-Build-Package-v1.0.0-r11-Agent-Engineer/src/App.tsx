@@ -22,7 +22,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { LocationConsentInput } from "./LocationConsentInput";
 import { BrandLockup } from "./BrandMark";
@@ -75,6 +75,8 @@ import {
   clearSession,
   getActiveOrganizationId,
   getSessionToken,
+  getSessionRevision,
+  onSessionContextChanged,
   onSessionExpired,
   setActiveOrganizationId,
   setSessionToken,
@@ -631,7 +633,13 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+/** Reset the entire in-memory workspace, not only the transient GPS child. */
 export function App() {
+  const revision = useSyncExternalStore(onSessionContextChanged, getSessionRevision);
+  return <SessionWorkspace key={revision} />;
+}
+
+function SessionWorkspace() {
   const [sourcePolicy, setSourcePolicy] = useState<SourcePolicy | null>(null);
   const [sources, setSources] = useState<SourceReviewRecord[]>([]);
   const [sourceChecklists, setSourceChecklists] = useState<SourceReviewChecklist[]>([]);
@@ -843,55 +851,25 @@ export function App() {
     []
   );
 
-  async function handleAuthenticated(response: LoginResponse) {
+  function handleAuthenticated(response: LoginResponse) {
+    // The new workspace re-reads /auth/me before loading any scoped data.
     setSessionToken(response.access_token);
-    try {
-      // The server is the source of truth for scope: re-read memberships
-      // instead of trusting the login/bootstrap response shape.
-      const me = await fetchMe();
-      const nextOrganization = me.memberships?.[0]?.organization_id ?? response.organization?.organization_id ?? "";
-      if (nextOrganization) setActiveOrganizationId(nextOrganization);
-      setActiveOrganizationState(nextOrganization);
-      setMemberships(me.memberships ?? []);
-      setAuthUser({ user_id: me.user_id, display_name: response.user.display_name, email: response.user.email, platform_role: me.platform_role });
-    } catch {
-      const fallbackOrganization = response.organization?.organization_id ?? response.memberships?.[0]?.organization_id ?? "";
-      if (fallbackOrganization) setActiveOrganizationId(fallbackOrganization);
-      setActiveOrganizationState(fallbackOrganization);
-      setMemberships(response.memberships ?? []);
-      setAuthUser(response.user);
-    }
-    setAuthState("authenticated");
-    setError(null);
-    void loadPolicy();
   }
 
   async function handleLogout() {
+    const revision = getSessionRevision();
     try {
       await logout();
     } catch {
-      // The server session may already be gone; local cleanup continues.
+      // Local cleanup is still required if the current session cannot log out.
     }
-    clearSession();
-    setAuthState("anonymous");
-    setAuthUser(null);
-    setMemberships([]);
-    setActiveOrganizationState("");
+    // A delayed logout must never clear a newer identity/organization lifetime.
+    if (revision === getSessionRevision()) clearSession();
   }
 
   function switchOrganization(organizationId: string) {
+    // Effective changes remount all workspace state; same-context clicks do not.
     setActiveOrganizationId(organizationId);
-    setActiveOrganizationState(organizationId);
-    setProject(null);
-    setWorkspace(null);
-    setOverview(null);
-    setReport(null);
-    setReportView(null);
-    setDecisionPack(null);
-    setReadiness(null);
-    setComparison(null);
-    setReleaseRecord(null);
-    void loadPolicy();
   }
 
   function openOverlay(next: Exclude<AppOverlay, null>) {
