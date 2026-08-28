@@ -130,15 +130,35 @@ class AppSessionBrowserChecks(unittest.TestCase):
         expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
 
     def settings(self, page):
-        """Open the existing account overlay."""
-        if not page.get_by_role("button", name="عودة إلى المسار", exact=True).count():
+        """Open the existing account overlay and wait until it is usable."""
+        close = page.get_by_role("button", name="عودة إلى المسار", exact=True)
+        if not close.is_visible():
             page.locator(".sidebar").get_by_role("button", name="الحساب والفريق", exact=True).click()
+        expect(close).to_be_visible()
+        expect(page.get_by_role("heading", name="المنظمة النشطة", exact=True)).to_be_visible()
 
     def switch(self, page, organization="org-b"):
-        """Select a real App organization chip and wait for its active state."""
+        """Select an organization and reopen settings after the real context reset."""
         self.settings(page)
         name = "مؤسسة باء" if organization == "org-b" else "مؤسسة ألف"
-        page.locator(".org-chip").filter(has_text=name).click()
+        target = page.locator(".org-chip").filter(has_text=name)
+        already_active = target.evaluate("(element) => element.classList.contains('org-chip--active')")
+        target.click()
+        if already_active:
+            expect(page.locator(".org-chip--active")).to_contain_text(name)
+            return
+
+        # An effective context switch deliberately remounts App. Its established
+        # history bootstrap closes the old overlay and returns to #dashboard;
+        # reopen the real settings control only after that new lifetime exists.
+        page.wait_for_function(
+            """(expected) =>
+                sessionStorage.getItem("asie.active_organization.v1") === expected &&
+                window.location.hash === "#dashboard"
+            """,
+            organization,
+        )
+        self.settings(page)
         expect(page.locator(".org-chip--active")).to_contain_text(name)
 
     def confirm_location(self, page):
