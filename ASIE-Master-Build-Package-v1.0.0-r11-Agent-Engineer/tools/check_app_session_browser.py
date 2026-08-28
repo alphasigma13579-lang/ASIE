@@ -156,7 +156,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
                 sessionStorage.getItem("asie.active_organization.v1") === expected &&
                 window.location.hash === "#dashboard"
             """,
-            organization,
+            arg=organization,
         )
         self.settings(page)
         expect(page.locator(".org-chip--active")).to_contain_text(name)
