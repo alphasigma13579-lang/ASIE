@@ -161,6 +161,21 @@ class TenantIsolationMatrixTests(unittest.TestCase):
                 status, body = self.request("GET", path, token=self.token_a)
                 self.assert_denied(status, body, 403, path)
 
+    def test_multi_membership_snapshot_read_requires_selected_organization(self) -> None:
+        """A second membership must not revive a snapshot outside the selected context."""
+        self.repo.add_membership(
+            organization_id=self.org_b_id,
+            user_id=self.user_a["user_id"],
+            role="organization_owner",
+        )
+        status, body = self.request(
+            "GET",
+            f"/api/snapshots/{self.snapshot_b_id}/report.html",
+            token=self.token_a,
+            organization_id=self.org_a_id,
+        )
+        self.assert_denied(status, body, 403, "selected-org snapshot document")
+
     def test_cross_tenant_dataset_reads_and_org_scoped_lists_denied(self) -> None:
         did = self.dataset_b_id
         for path in (f"/api/datasets/{did}", f"/api/datasets/{did}/quality-gate", f"/api/datasets/{did}/transformations"):
