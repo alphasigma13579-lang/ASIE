@@ -210,6 +210,21 @@ class AppSessionBrowserChecks(unittest.TestCase):
             expect(page.get_by_label("خط العرض")).to_have_value("24.7136")
             expect(page.get_by_label("الحي أو الشارع")).to_have_value("PRIVATE-ORG-A-DRAFT")
 
+    def test_manual_zero_coordinates_are_retained_and_can_be_cleared(self):
+        """Optional numeric coordinates distinguish explicit zero from no value."""
+        with self.app() as (page, state):
+            self.location(page)
+            latitude = page.get_by_label("خط العرض")
+            longitude = page.get_by_label("خط الطول")
+            latitude.fill("0")
+            longitude.fill("0")
+            expect(latitude).to_have_value("0")
+            expect(longitude).to_have_value("0")
+            latitude.fill("")
+            longitude.fill("")
+            expect(latitude).to_have_value("")
+            expect(longitude).to_have_value("")
+
     def test_organization_switch_discards_confirmed_parent_form(self):
         """Regression: keying only the child GPS control does not clear App.form."""
         with self.app() as (page, state):
