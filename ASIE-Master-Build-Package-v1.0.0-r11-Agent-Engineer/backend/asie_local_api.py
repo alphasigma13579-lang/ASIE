@@ -1208,7 +1208,29 @@ class Handler(BaseHTTPRequestHandler):
         if project_id is None:
             write_error(self, "snapshot_not_found", 404)
             return None
-        return project_id if self._require_project_permission(project_id, permission) else None
+        project = REPO.get_project(project_id)
+        if project is None:
+            write_error(self, "snapshot_not_found", 404)
+            return None
+        selected_organization_id = self._organization_from_request()
+        if selected_organization_id is None:
+            return None
+        principal = self._require_organization_permission(selected_organization_id, permission)
+        if principal is None:
+            return None
+        if project.organization_id != selected_organization_id:
+            REPO.audit(
+                actor_user_id=principal.user_id,
+                organization_id=selected_organization_id,
+                action="authorization.check",
+                target_type="snapshot",
+                target_id=snapshot_id,
+                result="denied",
+                reason="snapshot_selected_organization_mismatch",
+            )
+            write_error(self, "permission_denied", 403)
+            return None
+        return project_id
 
     def _require_run_permission(self, run_id: str, permission: str = "snapshot.read") -> str | None:
         project_id = REPO.run_project_id(run_id)

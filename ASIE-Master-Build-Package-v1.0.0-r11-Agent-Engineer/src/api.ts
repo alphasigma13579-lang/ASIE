@@ -187,6 +187,8 @@ export async function openSnapshotDocument(snapshotId: string, suffix: string, m
   const headers: Record<string, string> = {};
   const token = getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const organizationId = getActiveOrganizationId();
+  if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
   const response = await fetch(`/api/snapshots/${snapshotId}/${suffix}`, { headers });
   assertSessionRevision(revision);
   if (!response.ok) {

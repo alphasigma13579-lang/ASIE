@@ -83,6 +83,9 @@ class AppSessionBrowserChecks(unittest.TestCase):
                            "external_access_enabled": False}
             elif path == "/api/auth/logout":
                 payload = {"ok": True}
+            elif path == "/api/snapshots/snapshot-probe/report.html":
+                route.fulfill(status=200, body="<html><body>snapshot probe</body></html>", content_type="text/html")
+                return
             elif path == "/api/source-policy":
                 payload = policy
             elif path == "/api/sources":
@@ -224,6 +227,19 @@ class AppSessionBrowserChecks(unittest.TestCase):
             longitude.fill("")
             expect(latitude).to_have_value("")
             expect(longitude).to_have_value("")
+
+    def test_snapshot_document_includes_active_organization(self):
+        """Document requests keep the same selected-organization boundary as JSON APIs."""
+        with self.app() as (page, state):
+            page.evaluate("""async () => {
+                window.open = () => null;
+                const api = await import("/src/api.ts");
+                await api.openSnapshotDocument("snapshot-probe", "report.html", "open");
+            }""")
+            self.assertIn(
+                ("/api/snapshots/snapshot-probe/report.html", "org-a", "GET"),
+                state["requests"],
+            )
 
     def test_organization_switch_discards_confirmed_parent_form(self):
         """Regression: keying only the child GPS control does not clear App.form."""
