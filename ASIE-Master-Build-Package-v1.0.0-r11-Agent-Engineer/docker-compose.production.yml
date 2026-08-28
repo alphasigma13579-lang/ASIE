@@ -99,6 +99,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        VITE_GOOGLE_MAPS_BROWSER_KEY: ${VITE_GOOGLE_MAPS_BROWSER_KEY:-}
+        VITE_GOOGLE_MAP_ID: ${GOOGLE_MAP_ID:-}
     depends_on:
       api:
         condition: service_healthy

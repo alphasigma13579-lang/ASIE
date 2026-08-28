@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
+from backend.production_provider_readiness import (
+    REQUIRED_PROVIDER_SECRETS as PRODUCTION_REQUIRED_PROVIDER_SECRETS,
+)
+from backend.provider_secret_store_readiness import REQUIRED_PROVIDER_SECRETS
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PACKAGE_ROOT.parent
@@ -23,9 +30,51 @@ def test_production_environment_template_is_secret_free_and_pinecone_targeted() 
         "DEEPSEEK_API_KEY",
         "TAVILY_API_KEY",
         "GOOGLE_MAPS_API_KEY",
+        "VITE_GOOGLE_MAPS_BROWSER_KEY",
         "PINECONE_API_KEY",
     ):
         assert f"{secret_name}=\n" in content
+
+
+def test_google_browser_map_build_configuration_is_separated_from_server_key() -> None:
+    environment = read(PACKAGE_ROOT / ".env.production.example")
+    frontend = read(PACKAGE_ROOT / "Dockerfile.frontend")
+    compose = read(PACKAGE_ROOT / "docker-compose.production.yml")
+    workflow = read(REPOSITORY_ROOT / ".github" / "workflows" / "deploy-hostinger.yml")
+
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY=\n" in environment
+    assert "GOOGLE_MAP_ID=\n" in environment
+    assert "ARG VITE_GOOGLE_MAPS_BROWSER_KEY\n" in frontend
+    assert "ARG VITE_GOOGLE_MAP_ID\n" in frontend
+    browser_key_export = "ENV VITE_GOOGLE_MAPS_BROWSER_KEY=${VITE_GOOGLE_MAPS_BROWSER_KEY}"
+    map_id_export = "ENV VITE_GOOGLE_MAP_ID=${VITE_GOOGLE_MAP_ID}"
+    build_step = "RUN corepack enable && pnpm install --frozen-lockfile && pnpm build"
+    assert browser_key_export in frontend
+    assert map_id_export in frontend
+    assert frontend.index(browser_key_export) < frontend.index(build_step)
+    assert frontend.index(map_id_export) < frontend.index(build_step)
+    assert "GOOGLE_MAPS_API_KEY" not in frontend
+
+    web_service = yaml.safe_load(compose)["services"].get("web")
+    assert isinstance(web_service, dict), "web service block missing"
+    build_args = web_service["build"]["args"]
+    assert build_args["VITE_GOOGLE_MAPS_BROWSER_KEY"] == "${VITE_GOOGLE_MAPS_BROWSER_KEY:-}"
+    assert build_args["VITE_GOOGLE_MAP_ID"] == "${GOOGLE_MAP_ID:-}"
+    assert "GOOGLE_MAPS_API_KEY" not in str(web_service)
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.VITE_GOOGLE_MAPS_BROWSER_KEY }}" in workflow
+    assert "GOOGLE_MAP_ID: ${{ secrets.GOOGLE_MAP_ID }}" in workflow
+    assert REQUIRED_PROVIDER_SECRETS == PRODUCTION_REQUIRED_PROVIDER_SECRETS
+    required_provider_line = f"for name in {' '.join(REQUIRED_PROVIDER_SECRETS)}; do"
+    assert required_provider_line in workflow
+    assert "GOOGLE_MAP_ID" not in required_provider_line
+    assert "VITE_GOOGLE_MAPS_BROWSER_KEY" not in required_provider_line
+    assert '\"VITE_GOOGLE_MAPS_BROWSER_KEY\": os.environ.get(\"VITE_GOOGLE_MAPS_BROWSER_KEY\", \"\")' in workflow
+    assert '\"GOOGLE_MAP_ID\": os.environ.get(\"GOOGLE_MAP_ID\", \"\")' in workflow
+    assert 'value=$(printenv "$name")' not in workflow
+    assert workflow.count('value=$(printenv "$name" || true)') >= 2
+    for text in (environment, frontend, compose, workflow):
+        assert text.endswith("\n")
+    assert Path(__file__).read_bytes().endswith(b"\n")
 
 
 def test_gitignore_blocks_populated_environments_and_private_keys() -> None:
