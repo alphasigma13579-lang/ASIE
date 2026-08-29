@@ -19,83 +19,842 @@
     "breaking_policy": "do not rename active paths, sealed output keys, or public projection keys in place; add a versioned migration"
   },
   "frontend_routes": [
-    {"route_id":"AUTH_LOGIN","method":"POST","path":"/api/auth/login","frontend_functions":["login"],"backend_evidence":["if path == \"/api/auth/login\":"],"response":"LoginResponse"},
-    {"route_id":"AUTH_LOCAL_BOOTSTRAP","method":"POST","path":"/api/auth/local-bootstrap","frontend_functions":["localBootstrap"],"backend_evidence":["if path == \"/api/auth/local-bootstrap\":"],"response":"LoginResponse + organization"},
-    {"route_id":"AUTH_LOGOUT","method":"POST","path":"/api/auth/logout","frontend_functions":["logout"],"backend_evidence":["if path == \"/api/auth/logout\":"],"response":"ok"},
-    {"route_id":"AUTH_ME","method":"GET","path":"/api/auth/me","frontend_functions":["fetchMe"],"backend_evidence":["if path == \"/api/auth/me\":"],"response":"MeResponse"},
-    {"route_id":"AUTH_RECOVERY_REQUEST","method":"POST","path":"/api/auth/password-recovery/request","frontend_functions":["requestPasswordRecovery"],"backend_evidence":["if path == \"/api/auth/password-recovery/request\":"],"response":"recovery request"},
-    {"route_id":"AUTH_RECOVERY_COMPLETE","method":"POST","path":"/api/auth/password-recovery/complete","frontend_functions":["completePasswordRecovery"],"backend_evidence":["if path == \"/api/auth/password-recovery/complete\":"],"response":"ok"},
-    {"route_id":"ORGANIZATION_CREATE","method":"POST","path":"/api/organizations","frontend_functions":["createOrganization"],"backend_evidence":["if path == \"/api/organizations\":"],"response":"organization"},
-    {"route_id":"MEMBERSHIP_CREATE","method":"POST","path":"/api/organizations/{organization_id}/memberships","frontend_functions":["addMembership"],"backend_evidence":["path.startswith(\"/api/organizations/\") and path.endswith(\"/memberships\")"],"response":"membership"},
-    {"route_id":"FUNDING_PROFILES","method":"GET","path":"/api/funding-profiles","frontend_functions":["fetchFundingProfiles"],"backend_evidence":["if path == \"/api/funding-profiles\":"],"response":"profiles"},
-    {"route_id":"SECTOR_PROFILES","method":"GET","path":"/api/sector-profiles","frontend_functions":["fetchSectorProfiles"],"backend_evidence":["if path == \"/api/sector-profiles\":"],"response":"profiles"},
-    {"route_id":"ARCHITECTURE_RUNTIME_STATUS","method":"GET","path":"/api/architecture/runtime-status","frontend_functions":["fetchArchitectureRuntimeStatus"],"backend_evidence":["if path == \"/api/architecture/runtime-status\":"],"response":"ArchitectureRuntimeStatus"},
-    {"route_id":"SOURCE_POLICY","method":"GET","path":"/api/source-policy","frontend_functions":["fetchSourcePolicy"],"backend_evidence":["if path == \"/api/source-policy\":"],"response":"SourcePolicy"},
-    {"route_id":"SOURCES","method":"GET","path":"/api/sources","frontend_functions":["fetchSources","fetchSourceWorkbench"],"backend_evidence":["if path == \"/api/sources\":"],"response":"sources + checklists"},
-    {"route_id":"SOURCE_REVIEW","method":"PATCH","path":"/api/sources/{source_id}/review","frontend_functions":["updateSourceReview"],"backend_evidence":["path.startswith(\"/api/sources/\") and path.endswith(\"/review\")"],"response":"source"},
-    {"route_id":"SECTOR_TAXONOMY","method":"GET","path":"/api/sector-taxonomy","frontend_functions":["fetchSectorTaxonomy"],"backend_evidence":["if path == \"/api/sector-taxonomy\":"],"response":"taxonomy"},
-    {"route_id":"DATASETS_LIST","method":"GET","path":"/api/datasets","frontend_functions":["fetchDatasets"],"backend_evidence":["if path == \"/api/datasets\":"],"response":"datasets"},
-    {"route_id":"DATASET_CREATE","method":"POST","path":"/api/datasets","frontend_functions":["createDataset"],"backend_evidence":["if path == \"/api/datasets\":"],"response":"dataset"},
-    {"route_id":"DATASET_MANUAL_IMPORT","method":"POST","path":"/api/datasets/manual-import","frontend_functions":["manualImportDataset"],"backend_evidence":["if path == \"/api/datasets/manual-import\":"],"response":"dataset"},
-    {"route_id":"DATASET_FILE_IMPORT","method":"POST","path":"/api/datasets/file-import","frontend_functions":["fileImportDataset"],"backend_evidence":["if path == \"/api/datasets/file-import\":"],"response":"dataset"},
-    {"route_id":"DATASET_REVIEW","method":"POST","path":"/api/datasets/{dataset_id}/review","frontend_functions":["reviewDataset"],"backend_evidence":["path.startswith(\"/api/datasets/\") and path.endswith(\"/review\")"],"response":"dataset"},
-    {"route_id":"DATASET_QUALITY_GATE","method":"GET","path":"/api/datasets/{dataset_id}/quality-gate","frontend_functions":["fetchDatasetQualityGate"],"backend_evidence":["parts[4] == \"quality-gate\""],"response":"DatasetQualityGate"},
-    {"route_id":"DATASET_TRANSFORMATIONS_LIST","method":"GET","path":"/api/datasets/{dataset_id}/transformations","frontend_functions":["fetchDatasetTransformations"],"backend_evidence":["parts[4] == \"transformations\""],"response":"transformations"},
-    {"route_id":"DATASET_TRANSFORMATION_CREATE","method":"POST","path":"/api/datasets/{dataset_id}/transformations","frontend_functions":["createDatasetTransformation"],"backend_evidence":["path.startswith(\"/api/datasets/\") and path.endswith(\"/transformations\")"],"response":"transformation"},
-    {"route_id":"PROJECTS_LIST","method":"GET","path":"/api/projects","frontend_functions":["fetchProjects"],"backend_evidence":["if path == \"/api/projects\":"],"response":"projects"},
-    {"route_id":"PROJECT_CREATE","method":"POST","path":"/api/projects","frontend_functions":["createProject"],"backend_evidence":["if path == \"/api/projects\":"],"response":"project"},
-    {"route_id":"PROJECT_UPDATE","method":"PATCH","path":"/api/projects/{project_id}","frontend_functions":["updateProject"],"backend_evidence":["if len(parts) == 4:"],"response":"project"},
-    {"route_id":"PROJECT_READINESS","method":"GET","path":"/api/projects/{project_id}/readiness","frontend_functions":["fetchProjectReadiness"],"backend_evidence":["parts[4] == \"readiness\""],"response":"ProjectReadiness"},
-    {"route_id":"PROJECT_ASSUMPTIONS_LIST","method":"GET","path":"/api/projects/{project_id}/assumptions","frontend_functions":["fetchProjectAssumptions"],"backend_evidence":["parts[4] == \"assumptions\""],"response":"assumptions"},
-    {"route_id":"PROJECT_ASSUMPTION_CREATE","method":"POST","path":"/api/projects/{project_id}/assumptions","frontend_functions":["createProjectAssumption"],"backend_evidence":["path.startswith(\"/api/projects/\") and path.endswith(\"/assumptions\")"],"response":"assumption"},
-    {"route_id":"PROJECT_RUN_CREATE","method":"POST","path":"/api/projects/{project_id}/runs","frontend_functions":["runProject"],"backend_evidence":["path.startswith(\"/api/projects/\") and path.endswith(\"/runs\")"],"response":"ProjectRunWorkflowResult"},
-    {"route_id":"PROJECT_RUNS_LIST","method":"GET","path":"/api/projects/{project_id}/runs","frontend_functions":["fetchProjectRuns"],"backend_evidence":["parts[4] == \"runs\""],"response":"runs"},
-    {"route_id":"PROJECT_WORKSPACE","method":"GET","path":"/api/projects/{project_id}/workspace","frontend_functions":["fetchProjectWorkspace"],"backend_evidence":["parts[4] == \"workspace\""],"response":"ProjectWorkspace"},
-    {"route_id":"PROJECT_EVIDENCE_REGISTER","method":"GET","path":"/api/projects/{project_id}/evidence-register","frontend_functions":["fetchProjectEvidenceRegister"],"backend_evidence":["parts[4] == \"evidence-register\""],"response":"EvidenceRegister"},
-    {"route_id":"PROJECT_EVIDENCE_LEDGER","method":"GET","path":"/api/projects/{project_id}/evidence-ledger","frontend_functions":["fetchProjectEvidenceLedger"],"backend_evidence":["parts[4] == \"evidence-ledger\""],"response":"evidence state"},
-    {"route_id":"PROJECT_TRANSFORMATION_LINEAGE","method":"GET","path":"/api/projects/{project_id}/transformation-lineage","frontend_functions":["fetchProjectTransformationLineage"],"backend_evidence":["parts[4] == \"transformation-lineage\""],"response":"transformation lineage"},
-    {"route_id":"PROJECT_EVIDENCE_COVERAGE","method":"GET","path":"/api/projects/{project_id}/evidence-coverage","frontend_functions":["fetchProjectEvidenceCoverage"],"backend_evidence":["parts[4] == \"evidence-coverage\""],"response":"EvidenceCoverageMatrix"},
-    {"route_id":"PROJECT_EVIDENCE_LINK_CREATE","method":"POST","path":"/api/projects/{project_id}/evidence-links","frontend_functions":["createEvidenceLink"],"backend_evidence":["path.startswith(\"/api/projects/\") and path.endswith(\"/evidence-links\")"],"response":"evidence_link"},
-    {"route_id":"PROJECT_REMEDIATION","method":"GET","path":"/api/projects/{project_id}/remediation","frontend_functions":["fetchProjectRemediation"],"backend_evidence":["parts[4] == \"remediation\""],"response":"ProjectRemediation"},
-    {"route_id":"PROJECT_ACTION_ITEMS","method":"GET","path":"/api/projects/{project_id}/action-items","frontend_functions":["fetchProjectActionItems"],"backend_evidence":["parts[4] == \"action-items\""],"response":"action_items"},
-    {"route_id":"PROJECT_ACTION_ITEM_UPDATE","method":"PATCH","path":"/api/projects/{project_id}/action-items/{action_item_id}","frontend_functions":["updateProjectActionItem"],"backend_evidence":["parts[4] == \"action-items\""],"response":"action_item"},
-    {"route_id":"RUN_OVERVIEW","method":"GET","path":"/api/runs/{run_id}/overview","frontend_functions":["fetchRunOverview"],"backend_evidence":["path.endswith(\"/overview\")"],"response":"ProjectOverview"},
-    {"route_id":"RUN_AUDIT","method":"GET","path":"/api/runs/{run_id}/audit","frontend_functions":["fetchRunAudit"],"backend_evidence":["path.endswith(\"/audit\")"],"response":"RunAudit"},
-    {"route_id":"RUN_ACCEPTANCE","method":"GET","path":"/api/runs/{run_id}/acceptance","frontend_functions":["fetchRunAcceptance"],"backend_evidence":["path.endswith(\"/acceptance\")"],"response":"AcceptancePack"},
-    {"route_id":"SNAPSHOT_READ","method":"GET","path":"/api/snapshots/{snapshot_id}","frontend_functions":["fetchSnapshot"],"backend_evidence":["len(path.split(\"/\")) == 4"],"response":"ProjectOverview"},
-    {"route_id":"SNAPSHOT_REPORT","method":"GET","path":"/api/snapshots/{snapshot_id}/report","frontend_functions":["fetchSnapshotReport"],"backend_evidence":["path.endswith(\"/report\")"],"response":"SnapshotReport"},
-    {"route_id":"SNAPSHOT_COMPARE","method":"POST","path":"/api/snapshots/compare","frontend_functions":["compareSnapshots"],"backend_evidence":["if path == \"/api/snapshots/compare\":"],"response":"SnapshotComparison"},
-    {"route_id":"SNAPSHOT_REPORT_VIEW","method":"GET","path":"/api/snapshots/{snapshot_id}/report-view","frontend_functions":["fetchSnapshotReportView"],"backend_evidence":["path.endswith(\"/report-view\")"],"response":"SnapshotReportView"},
-    {"route_id":"SNAPSHOT_DECISION_PACK","method":"GET","path":"/api/snapshots/{snapshot_id}/decision-pack","frontend_functions":["fetchDecisionPack"],"backend_evidence":["path.endswith(\"/decision-pack\")"],"response":"DecisionPack"},
-    {"route_id":"SNAPSHOT_REVIEWS_LIST","method":"GET","path":"/api/snapshots/{snapshot_id}/reviews","frontend_functions":["fetchSnapshotReviews"],"backend_evidence":["path.endswith(\"/reviews\")"],"response":"reviews"},
-    {"route_id":"SNAPSHOT_REVIEW_CREATE","method":"POST","path":"/api/snapshots/{snapshot_id}/reviews","frontend_functions":["createSnapshotReview"],"backend_evidence":["path.startswith(\"/api/snapshots/\") and path.endswith(\"/reviews\")"],"response":"review"},
-    {"route_id":"SNAPSHOT_RELEASE","method":"GET","path":"/api/snapshots/{snapshot_id}/release","frontend_functions":["fetchReleaseRecord"],"backend_evidence":["path.endswith(\"/release\")"],"response":"ReleaseRecord"},
-    {"route_id":"SNAPSHOT_DOCUMENT","method":"GET","path":"/api/snapshots/{snapshot_id}/{document_suffix}","frontend_functions":["openSnapshotDocument"],"backend_evidence":["path.endswith(\"/report.html\")","path.endswith(\"/decision-pack.html\")","path.endswith(\"/funder-report.pdf\")","path.endswith(\"/funder-report.docx\")","path.endswith(\"/funder-report.pptx\")"],"response":"HTML or binary document"}
+    {
+      "route_id": "AUTH_LOGIN",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "frontend_functions": [
+        "login"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/login\":"
+      ],
+      "response": "LoginResponse"
+    },
+    {
+      "route_id": "AUTH_LOCAL_BOOTSTRAP",
+      "method": "POST",
+      "path": "/api/auth/local-bootstrap",
+      "frontend_functions": [
+        "localBootstrap"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/local-bootstrap\":"
+      ],
+      "response": "LoginResponse + organization"
+    },
+    {
+      "route_id": "AUTH_LOGOUT",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "frontend_functions": [
+        "logout"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/logout\":"
+      ],
+      "response": "ok"
+    },
+    {
+      "route_id": "AUTH_ME",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "frontend_functions": [
+        "fetchMe"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/me\":"
+      ],
+      "response": "MeResponse"
+    },
+    {
+      "route_id": "AUTH_RECOVERY_REQUEST",
+      "method": "POST",
+      "path": "/api/auth/password-recovery/request",
+      "frontend_functions": [
+        "requestPasswordRecovery"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/password-recovery/request\":"
+      ],
+      "response": "recovery request"
+    },
+    {
+      "route_id": "AUTH_RECOVERY_COMPLETE",
+      "method": "POST",
+      "path": "/api/auth/password-recovery/complete",
+      "frontend_functions": [
+        "completePasswordRecovery"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/password-recovery/complete\":"
+      ],
+      "response": "ok"
+    },
+    {
+      "route_id": "ORGANIZATION_CREATE",
+      "method": "POST",
+      "path": "/api/organizations",
+      "frontend_functions": [
+        "createOrganization"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/organizations\":"
+      ],
+      "response": "organization"
+    },
+    {
+      "route_id": "MEMBERSHIP_CREATE",
+      "method": "POST",
+      "path": "/api/organizations/{organization_id}/memberships",
+      "frontend_functions": [
+        "addMembership"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/organizations/\") and path.endswith(\"/memberships\")"
+      ],
+      "response": "membership"
+    },
+    {
+      "route_id": "FUNDING_PROFILES",
+      "method": "GET",
+      "path": "/api/funding-profiles",
+      "frontend_functions": [
+        "fetchFundingProfiles"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/funding-profiles\":"
+      ],
+      "response": "profiles"
+    },
+    {
+      "route_id": "SECTOR_PROFILES",
+      "method": "GET",
+      "path": "/api/sector-profiles",
+      "frontend_functions": [
+        "fetchSectorProfiles"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/sector-profiles\":"
+      ],
+      "response": "profiles"
+    },
+    {
+      "route_id": "ARCHITECTURE_RUNTIME_STATUS",
+      "method": "GET",
+      "path": "/api/architecture/runtime-status",
+      "frontend_functions": [
+        "fetchArchitectureRuntimeStatus"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/architecture/runtime-status\":"
+      ],
+      "response": "ArchitectureRuntimeStatus"
+    },
+    {
+      "route_id": "SOURCE_POLICY",
+      "method": "GET",
+      "path": "/api/source-policy",
+      "frontend_functions": [
+        "fetchSourcePolicy"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/source-policy\":"
+      ],
+      "response": "SourcePolicy"
+    },
+    {
+      "route_id": "SOURCES",
+      "method": "GET",
+      "path": "/api/sources",
+      "frontend_functions": [
+        "fetchSources",
+        "fetchSourceWorkbench"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/sources\":"
+      ],
+      "response": "sources + checklists"
+    },
+    {
+      "route_id": "SOURCE_REVIEW",
+      "method": "PATCH",
+      "path": "/api/sources/{source_id}/review",
+      "frontend_functions": [
+        "updateSourceReview"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/sources/\") and path.endswith(\"/review\")"
+      ],
+      "response": "source"
+    },
+    {
+      "route_id": "SECTOR_TAXONOMY",
+      "method": "GET",
+      "path": "/api/sector-taxonomy",
+      "frontend_functions": [
+        "fetchSectorTaxonomy"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/sector-taxonomy\":"
+      ],
+      "response": "taxonomy"
+    },
+    {
+      "route_id": "DATASETS_LIST",
+      "method": "GET",
+      "path": "/api/datasets",
+      "frontend_functions": [
+        "fetchDatasets"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/datasets\":"
+      ],
+      "response": "datasets"
+    },
+    {
+      "route_id": "DATASET_CREATE",
+      "method": "POST",
+      "path": "/api/datasets",
+      "frontend_functions": [
+        "createDataset"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/datasets\":"
+      ],
+      "response": "dataset"
+    },
+    {
+      "route_id": "DATASET_MANUAL_IMPORT",
+      "method": "POST",
+      "path": "/api/datasets/manual-import",
+      "frontend_functions": [
+        "manualImportDataset"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/datasets/manual-import\":"
+      ],
+      "response": "dataset"
+    },
+    {
+      "route_id": "DATASET_FILE_IMPORT",
+      "method": "POST",
+      "path": "/api/datasets/file-import",
+      "frontend_functions": [
+        "fileImportDataset"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/datasets/file-import\":"
+      ],
+      "response": "dataset"
+    },
+    {
+      "route_id": "DATASET_REVIEW",
+      "method": "POST",
+      "path": "/api/datasets/{dataset_id}/review",
+      "frontend_functions": [
+        "reviewDataset"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/datasets/\") and path.endswith(\"/review\")"
+      ],
+      "response": "dataset"
+    },
+    {
+      "route_id": "DATASET_QUALITY_GATE",
+      "method": "GET",
+      "path": "/api/datasets/{dataset_id}/quality-gate",
+      "frontend_functions": [
+        "fetchDatasetQualityGate"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"quality-gate\""
+      ],
+      "response": "DatasetQualityGate"
+    },
+    {
+      "route_id": "DATASET_TRANSFORMATIONS_LIST",
+      "method": "GET",
+      "path": "/api/datasets/{dataset_id}/transformations",
+      "frontend_functions": [
+        "fetchDatasetTransformations"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"transformations\""
+      ],
+      "response": "transformations"
+    },
+    {
+      "route_id": "DATASET_TRANSFORMATION_CREATE",
+      "method": "POST",
+      "path": "/api/datasets/{dataset_id}/transformations",
+      "frontend_functions": [
+        "createDatasetTransformation"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/datasets/\") and path.endswith(\"/transformations\")"
+      ],
+      "response": "transformation"
+    },
+    {
+      "route_id": "PROJECTS_LIST",
+      "method": "GET",
+      "path": "/api/projects",
+      "frontend_functions": [
+        "fetchProjects"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/projects\":"
+      ],
+      "response": "projects"
+    },
+    {
+      "route_id": "PROJECT_CREATE",
+      "method": "POST",
+      "path": "/api/projects",
+      "frontend_functions": [
+        "createProject"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/projects\":"
+      ],
+      "response": "project"
+    },
+    {
+      "route_id": "PROJECT_UPDATE",
+      "method": "PATCH",
+      "path": "/api/projects/{project_id}",
+      "frontend_functions": [
+        "updateProject"
+      ],
+      "backend_evidence": [
+        "if len(parts) == 4:"
+      ],
+      "response": "project"
+    },
+    {
+      "route_id": "PROJECT_READINESS",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/readiness",
+      "frontend_functions": [
+        "fetchProjectReadiness"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"readiness\""
+      ],
+      "response": "ProjectReadiness"
+    },
+    {
+      "route_id": "PROJECT_ASSUMPTIONS_LIST",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/assumptions",
+      "frontend_functions": [
+        "fetchProjectAssumptions"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"assumptions\""
+      ],
+      "response": "assumptions"
+    },
+    {
+      "route_id": "PROJECT_ASSUMPTION_CREATE",
+      "method": "POST",
+      "path": "/api/projects/{project_id}/assumptions",
+      "frontend_functions": [
+        "createProjectAssumption"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/projects/\") and path.endswith(\"/assumptions\")"
+      ],
+      "response": "assumption"
+    },
+    {
+      "route_id": "PROJECT_RUN_CREATE",
+      "method": "POST",
+      "path": "/api/projects/{project_id}/runs",
+      "frontend_functions": [
+        "runProject"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/projects/\") and path.endswith(\"/runs\")"
+      ],
+      "response": "ProjectRunWorkflowResult"
+    },
+    {
+      "route_id": "PROJECT_RUNS_LIST",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/runs",
+      "frontend_functions": [
+        "fetchProjectRuns"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"runs\""
+      ],
+      "response": "runs"
+    },
+    {
+      "route_id": "PROJECT_WORKSPACE",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/workspace",
+      "frontend_functions": [
+        "fetchProjectWorkspace"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"workspace\""
+      ],
+      "response": "ProjectWorkspace"
+    },
+    {
+      "route_id": "PROJECT_EVIDENCE_REGISTER",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/evidence-register",
+      "frontend_functions": [
+        "fetchProjectEvidenceRegister"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"evidence-register\""
+      ],
+      "response": "EvidenceRegister"
+    },
+    {
+      "route_id": "PROJECT_EVIDENCE_LEDGER",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/evidence-ledger",
+      "frontend_functions": [
+        "fetchProjectEvidenceLedger"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"evidence-ledger\""
+      ],
+      "response": "evidence state"
+    },
+    {
+      "route_id": "PROJECT_TRANSFORMATION_LINEAGE",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/transformation-lineage",
+      "frontend_functions": [
+        "fetchProjectTransformationLineage"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"transformation-lineage\""
+      ],
+      "response": "transformation lineage"
+    },
+    {
+      "route_id": "PROJECT_EVIDENCE_COVERAGE",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/evidence-coverage",
+      "frontend_functions": [
+        "fetchProjectEvidenceCoverage"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"evidence-coverage\""
+      ],
+      "response": "EvidenceCoverageMatrix"
+    },
+    {
+      "route_id": "PROJECT_EVIDENCE_LINK_CREATE",
+      "method": "POST",
+      "path": "/api/projects/{project_id}/evidence-links",
+      "frontend_functions": [
+        "createEvidenceLink"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/projects/\") and path.endswith(\"/evidence-links\")"
+      ],
+      "response": "evidence_link"
+    },
+    {
+      "route_id": "PROJECT_REMEDIATION",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/remediation",
+      "frontend_functions": [
+        "fetchProjectRemediation"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"remediation\""
+      ],
+      "response": "ProjectRemediation"
+    },
+    {
+      "route_id": "PROJECT_ACTION_ITEMS",
+      "method": "GET",
+      "path": "/api/projects/{project_id}/action-items",
+      "frontend_functions": [
+        "fetchProjectActionItems"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"action-items\""
+      ],
+      "response": "action_items"
+    },
+    {
+      "route_id": "PROJECT_ACTION_ITEM_UPDATE",
+      "method": "PATCH",
+      "path": "/api/projects/{project_id}/action-items/{action_item_id}",
+      "frontend_functions": [
+        "updateProjectActionItem"
+      ],
+      "backend_evidence": [
+        "parts[4] == \"action-items\""
+      ],
+      "response": "action_item"
+    },
+    {
+      "route_id": "RUN_OVERVIEW",
+      "method": "GET",
+      "path": "/api/runs/{run_id}/overview",
+      "frontend_functions": [
+        "fetchRunOverview"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/overview\")"
+      ],
+      "response": "ProjectOverview"
+    },
+    {
+      "route_id": "RUN_AUDIT",
+      "method": "GET",
+      "path": "/api/runs/{run_id}/audit",
+      "frontend_functions": [
+        "fetchRunAudit"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/audit\")"
+      ],
+      "response": "RunAudit"
+    },
+    {
+      "route_id": "RUN_ACCEPTANCE",
+      "method": "GET",
+      "path": "/api/runs/{run_id}/acceptance",
+      "frontend_functions": [
+        "fetchRunAcceptance"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/acceptance\")"
+      ],
+      "response": "AcceptancePack"
+    },
+    {
+      "route_id": "SNAPSHOT_READ",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}",
+      "frontend_functions": [
+        "fetchSnapshot"
+      ],
+      "backend_evidence": [
+        "len(path.split(\"/\")) == 4"
+      ],
+      "response": "ProjectOverview"
+    },
+    {
+      "route_id": "SNAPSHOT_REPORT",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/report",
+      "frontend_functions": [
+        "fetchSnapshotReport"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/report\")"
+      ],
+      "response": "SnapshotReport"
+    },
+    {
+      "route_id": "SNAPSHOT_COMPARE",
+      "method": "POST",
+      "path": "/api/snapshots/compare",
+      "frontend_functions": [
+        "compareSnapshots"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/snapshots/compare\":"
+      ],
+      "response": "SnapshotComparison"
+    },
+    {
+      "route_id": "SNAPSHOT_REPORT_VIEW",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/report-view",
+      "frontend_functions": [
+        "fetchSnapshotReportView"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/report-view\")"
+      ],
+      "response": "SnapshotReportView"
+    },
+    {
+      "route_id": "SNAPSHOT_DECISION_PACK",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/decision-pack",
+      "frontend_functions": [
+        "fetchDecisionPack"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/decision-pack\")"
+      ],
+      "response": "DecisionPack"
+    },
+    {
+      "route_id": "SNAPSHOT_REVIEWS_LIST",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/reviews",
+      "frontend_functions": [
+        "fetchSnapshotReviews"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/reviews\")"
+      ],
+      "response": "reviews"
+    },
+    {
+      "route_id": "SNAPSHOT_REVIEW_CREATE",
+      "method": "POST",
+      "path": "/api/snapshots/{snapshot_id}/reviews",
+      "frontend_functions": [
+        "createSnapshotReview"
+      ],
+      "backend_evidence": [
+        "path.startswith(\"/api/snapshots/\") and path.endswith(\"/reviews\")"
+      ],
+      "response": "review"
+    },
+    {
+      "route_id": "SNAPSHOT_RELEASE",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/release",
+      "frontend_functions": [
+        "fetchReleaseRecord"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/release\")"
+      ],
+      "response": "ReleaseRecord"
+    },
+    {
+      "route_id": "SNAPSHOT_DOCUMENT",
+      "method": "GET",
+      "path": "/api/snapshots/{snapshot_id}/{document_suffix}",
+      "frontend_functions": [
+        "openSnapshotDocument"
+      ],
+      "backend_evidence": [
+        "path.endswith(\"/report.html\")",
+        "path.endswith(\"/decision-pack.html\")",
+        "path.endswith(\"/funder-report.pdf\")",
+        "path.endswith(\"/funder-report.docx\")",
+        "path.endswith(\"/funder-report.pptx\")"
+      ],
+      "response": "HTML or binary document"
+    }
   ],
   "backend_only_routes": [
-    {"route_id":"HEALTH","method":"GET","path":"/api/health","backend_evidence":["if path == \"/api/health\":"]},
-    {"route_id":"OPERATIONS_HEALTH","method":"GET","path":"/api/operations/health","backend_evidence":["if path == \"/api/operations/health\":"]},
-    {"route_id":"OPERATIONS_AUDIT_EVENTS","method":"GET","path":"/api/operations/audit-events","backend_evidence":["if path == \"/api/operations/audit-events\":"]},
-    {"route_id":"OPERATIONS_RELEASE_INFO","method":"GET","path":"/api/operations/release-info","backend_evidence":["if path == \"/api/operations/release-info\":"]},
-    {"route_id":"ADMIN_OVERVIEW","method":"GET","path":"/api/admin/overview","backend_evidence":["if path == \"/api/admin/overview\":"]},
-    {"route_id":"INTELLIGENCE_CONTEXT_READ","method":"GET","path":"/api/intelligence/contexts/{context_id}","backend_evidence":["path.startswith(\"/api/intelligence/contexts/\")"]},
-    {"route_id":"INTELLIGENCE_CONTEXT_CREATE","method":"POST","path":"/api/intelligence/contexts","backend_evidence":["if path == \"/api/intelligence/contexts\":"]},
-    {"route_id":"INTELLIGENCE_PRE_RUN_CREATE","method":"POST","path":"/api/intelligence/pre-runs","backend_evidence":["if path == \"/api/intelligence/pre-runs\":"]},
-    {"route_id":"SOURCE_REVIEW_RECORD","method":"POST","path":"/api/sources/review-record","backend_evidence":["if path == \"/api/sources/review-record\":"]},
-    {"route_id":"ORGANIZATION_DATA_REQUEST","method":"POST","path":"/api/organizations/{organization_id}/data-requests","backend_evidence":["path.startswith(\"/api/organizations/\") and path.endswith(\"/data-requests\")"]}
+    {
+      "route_id": "HEALTH",
+      "method": "GET",
+      "path": "/api/health",
+      "backend_evidence": [
+        "if path == \"/api/health\":"
+      ]
+    },
+    {
+      "route_id": "OPERATIONS_HEALTH",
+      "method": "GET",
+      "path": "/api/operations/health",
+      "backend_evidence": [
+        "if path == \"/api/operations/health\":"
+      ]
+    },
+    {
+      "route_id": "OPERATIONS_AUDIT_EVENTS",
+      "method": "GET",
+      "path": "/api/operations/audit-events",
+      "backend_evidence": [
+        "if path == \"/api/operations/audit-events\":"
+      ]
+    },
+    {
+      "route_id": "OPERATIONS_RELEASE_INFO",
+      "method": "GET",
+      "path": "/api/operations/release-info",
+      "backend_evidence": [
+        "if path == \"/api/operations/release-info\":"
+      ]
+    },
+    {
+      "route_id": "ADMIN_OVERVIEW",
+      "method": "GET",
+      "path": "/api/admin/overview",
+      "backend_evidence": [
+        "if path == \"/api/admin/overview\":"
+      ]
+    },
+    {
+      "route_id": "INTELLIGENCE_CONTEXT_READ",
+      "method": "GET",
+      "path": "/api/intelligence/contexts/{context_id}",
+      "backend_evidence": [
+        "path.startswith(\"/api/intelligence/contexts/\")"
+      ]
+    },
+    {
+      "route_id": "INTELLIGENCE_CONTEXT_CREATE",
+      "method": "POST",
+      "path": "/api/intelligence/contexts",
+      "backend_evidence": [
+        "if path == \"/api/intelligence/contexts\":"
+      ]
+    },
+    {
+      "route_id": "INTELLIGENCE_PRE_RUN_CREATE",
+      "method": "POST",
+      "path": "/api/intelligence/pre-runs",
+      "backend_evidence": [
+        "if path == \"/api/intelligence/pre-runs\":"
+      ]
+    },
+    {
+      "route_id": "SOURCE_REVIEW_RECORD",
+      "method": "POST",
+      "path": "/api/sources/review-record",
+      "backend_evidence": [
+        "if path == \"/api/sources/review-record\":"
+      ]
+    },
+    {
+      "route_id": "ORGANIZATION_DATA_REQUEST",
+      "method": "POST",
+      "path": "/api/organizations/{organization_id}/data-requests",
+      "backend_evidence": [
+        "path.startswith(\"/api/organizations/\") and path.endswith(\"/data-requests\")"
+      ]
+    },
+    {
+      "route_id": "LIVE_INTELLIGENCE_PROVIDER_READINESS",
+      "method": "GET",
+      "path": "/api/v1/providers/readiness",
+      "backend_evidence": [
+        "if path == \"/api/v1/providers/readiness\":"
+      ],
+      "response": "live.intelligence.provider.readiness.v1"
+    },
+    {
+      "route_id": "LOCATION_GEOCODE",
+      "method": "POST",
+      "path": "/api/v1/location/geocode",
+      "backend_evidence": [
+        "if path == \"/api/v1/location/geocode\":"
+      ],
+      "response": "location.geocode.v1"
+    },
+    {
+      "route_id": "LOCATION_REVERSE_GEOCODE",
+      "method": "POST",
+      "path": "/api/v1/location/reverse-geocode",
+      "backend_evidence": [
+        "if path == \"/api/v1/location/reverse-geocode\":"
+      ],
+      "response": "location.reverse-geocode.v1"
+    },
+    {
+      "route_id": "MARKET_COMPETITOR_SEARCH",
+      "method": "POST",
+      "path": "/api/v1/market/competitors/search",
+      "backend_evidence": [
+        "if path == \"/api/v1/market/competitors/search\":"
+      ],
+      "response": "market.competitors.search.v1"
+    }
   ],
   "sealed_output_mappings": [
-    {"sealed_output_key":"finance_result","module_id":"module.finance","result_contract":"finance.result.v1","module_payload_keys":["finance","blockers"],"public_projection_keys":["finance","blockers","monte_carlo","kpis"]},
-    {"sealed_output_key":"evidence_ledger","module_id":"module.evidence_ledger","result_contract":"evidence.ledger.v1","module_payload_keys":["evidence_ledger"],"public_projection_keys":["evidence_ledger"]},
-    {"sealed_output_key":"sector_intelligence","module_id":"module.sector_intelligence","result_contract":"sector.intelligence.v1","module_payload_keys":["sector_intelligence"],"public_projection_keys":["sector_intelligence"]},
-    {"sealed_output_key":"decision_result","module_id":"module.decision_council","result_contract":"decision.council.v1","module_payload_keys":["decision_council"],"public_projection_keys":["decision_council","decision","personas"]},
-    {"sealed_output_key":"risk_result","module_id":"module.risk_engine","result_contract":"risk.register.v1","module_payload_keys":["risk_register","risk_advisory_summary"],"public_projection_keys":["risk_register","risk_advisory_summary"]},
-    {"sealed_output_key":"execution_result","module_id":"module.execution_engine","result_contract":"execution.plan.v1","module_payload_keys":["execution_plan"],"public_projection_keys":["execution_plan"]}
+    {
+      "sealed_output_key": "finance_result",
+      "module_id": "module.finance",
+      "result_contract": "finance.result.v1",
+      "module_payload_keys": [
+        "finance",
+        "blockers"
+      ],
+      "public_projection_keys": [
+        "finance",
+        "blockers",
+        "monte_carlo",
+        "kpis"
+      ]
+    },
+    {
+      "sealed_output_key": "evidence_ledger",
+      "module_id": "module.evidence_ledger",
+      "result_contract": "evidence.ledger.v1",
+      "module_payload_keys": [
+        "evidence_ledger"
+      ],
+      "public_projection_keys": [
+        "evidence_ledger"
+      ]
+    },
+    {
+      "sealed_output_key": "sector_intelligence",
+      "module_id": "module.sector_intelligence",
+      "result_contract": "sector.intelligence.v1",
+      "module_payload_keys": [
+        "sector_intelligence"
+      ],
+      "public_projection_keys": [
+        "sector_intelligence"
+      ]
+    },
+    {
+      "sealed_output_key": "decision_result",
+      "module_id": "module.decision_council",
+      "result_contract": "decision.council.v1",
+      "module_payload_keys": [
+        "decision_council"
+      ],
+      "public_projection_keys": [
+        "decision_council",
+        "decision",
+        "personas"
+      ]
+    },
+    {
+      "sealed_output_key": "risk_result",
+      "module_id": "module.risk_engine",
+      "result_contract": "risk.register.v1",
+      "module_payload_keys": [
+        "risk_register",
+        "risk_advisory_summary"
+      ],
+      "public_projection_keys": [
+        "risk_register",
+        "risk_advisory_summary"
+      ]
+    },
+    {
+      "sealed_output_key": "execution_result",
+      "module_id": "module.execution_engine",
+      "result_contract": "execution.plan.v1",
+      "module_payload_keys": [
+        "execution_plan"
+      ],
+      "public_projection_keys": [
+        "execution_plan"
+      ]
+    }
   ],
   "public_type_requirements": {
-    "ProjectOverview": ["risk_advisory_summary"],
-    "SnapshotReport": ["risk_advisory_summary","funder_report"],
-    "SnapshotReportView": ["risk_advisory_summary","funder_report"]
+    "ProjectOverview": [
+      "risk_advisory_summary"
+    ],
+    "SnapshotReport": [
+      "risk_advisory_summary",
+      "funder_report"
+    ],
+    "SnapshotReportView": [
+      "risk_advisory_summary",
+      "funder_report"
+    ]
   },
   "surface_scan": {
     "files": [
@@ -108,6 +867,17 @@
       "src/Dashboard.tsx",
       "src/LiveCockpit.tsx"
     ],
-    "prohibited_aliases": ["Financial Engine","Financial Module","Finance Service","Decision Engine","AI Decision Engine","Risk Module","Risk Service","Execution Module","Execution Service","Snapshot Builder"]
+    "prohibited_aliases": [
+      "Financial Engine",
+      "Financial Module",
+      "Finance Service",
+      "Decision Engine",
+      "AI Decision Engine",
+      "Risk Module",
+      "Risk Service",
+      "Execution Module",
+      "Execution Service",
+      "Snapshot Builder"
+    ]
   }
 }

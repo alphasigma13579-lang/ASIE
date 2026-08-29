@@ -230,6 +230,24 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual(403, status)
         self.assertEqual("permission_denied", body["error"])
 
+    def test_location_routes_are_registered_with_their_response_contracts(self) -> None:
+        registry_path = Path(__file__).resolve().parents[1] / "registry" / "asie-canonical-api-output.v1.json"
+        register = json.loads(registry_path.read_text(encoding="utf-8"))
+        routes = {
+            (item["method"], item["path"]): item
+            for item in register["backend_only_routes"]
+        }
+        expected = {
+            ("GET", "/api/v1/providers/readiness"): "live.intelligence.provider.readiness.v1",
+            ("POST", "/api/v1/location/geocode"): "location.geocode.v1",
+            ("POST", "/api/v1/location/reverse-geocode"): "location.reverse-geocode.v1",
+            ("POST", "/api/v1/market/competitors/search"): "market.competitors.search.v1",
+        }
+        for route, response_contract in expected.items():
+            with self.subTest(route=route):
+                self.assertIn(route, routes)
+                self.assertEqual(response_contract, routes[route]["response"])
+
     def test_readiness_requires_authentication_and_hides_secret_presence(self) -> None:
         status, body = self.request("GET", "/api/v1/providers/readiness")
         self.assertEqual(401, status)

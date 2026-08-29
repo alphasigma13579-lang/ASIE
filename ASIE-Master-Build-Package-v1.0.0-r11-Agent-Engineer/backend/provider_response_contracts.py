@@ -160,6 +160,52 @@ def _validate_location(value: Any, provider: str, operation: str, field: str) ->
         _fail(provider, operation, field)
 
 
+def _validate_google_address_components(value: Any, provider: str, operation: str, field: str) -> None:
+    components = _list(value, provider, operation, field)
+    if len(components) > 100:
+        _fail(provider, operation, f"{field}.count")
+    for index, item in enumerate(components):
+        component = _object(item, provider, operation, f"{field}[{index}]")
+        _text(component.get("longText"), provider, operation, f"{field}[{index}].longText", maximum=500)
+        _text(component.get("shortText"), provider, operation, f"{field}[{index}].shortText", maximum=500)
+        types = _list(component.get("types"), provider, operation, f"{field}[{index}].types")
+        if not types or len(types) > 30:
+            _fail(provider, operation, f"{field}[{index}].types.count")
+        for type_index, item_type in enumerate(types):
+            _text(item_type, provider, operation, f"{field}[{index}].types[{type_index}]", maximum=120)
+
+
+def _validate_google_viewport(value: Any, provider: str, operation: str, field: str) -> None:
+    viewport = _object(value, provider, operation, field)
+    _validate_location(viewport.get("low"), provider, operation, f"{field}.low")
+    _validate_location(viewport.get("high"), provider, operation, f"{field}.high")
+
+
+def _validate_google_geocode_result(record: Mapping[str, Any], provider: str, operation: str, field: str) -> None:
+    _text(record.get("placeId"), provider, operation, f"{field}.placeId", maximum=512)
+    _validate_location(record.get("location"), provider, operation, f"{field}.location")
+    _text(record.get("formattedAddress"), provider, operation, f"{field}.formattedAddress", maximum=2_000)
+    _validate_google_address_components(record.get("addressComponents"), provider, operation, f"{field}.addressComponents")
+    _validate_google_viewport(record.get("viewport"), provider, operation, f"{field}.viewport")
+    _text(record.get("granularity"), provider, operation, f"{field}.granularity", maximum=120)
+    if "plusCode" in record:
+        plus_code = _object(record.get("plusCode"), provider, operation, f"{field}.plusCode")
+        _text(plus_code.get("globalCode"), provider, operation, f"{field}.plusCode.globalCode", maximum=120)
+        if "compoundCode" in plus_code:
+            _text(plus_code.get("compoundCode"), provider, operation, f"{field}.plusCode.compoundCode", maximum=500)
+
+
+def _validate_google_place(record: Mapping[str, Any], provider: str, operation: str, field: str) -> None:
+    _text(record.get("id"), provider, operation, f"{field}.id", maximum=512)
+    display_name = _object(record.get("displayName"), provider, operation, f"{field}.displayName")
+    _text(display_name.get("text"), provider, operation, f"{field}.displayName.text", maximum=500)
+    _text(record.get("formattedAddress"), provider, operation, f"{field}.formattedAddress", maximum=2_000)
+    _validate_location(record.get("location"), provider, operation, f"{field}.location")
+    _text(record.get("primaryType"), provider, operation, f"{field}.primaryType", maximum=160)
+    _text(record.get("businessStatus"), provider, operation, f"{field}.businessStatus", maximum=160)
+    _https_url(record.get("googleMapsUri"), provider, operation, f"{field}.googleMapsUri")
+
+
 def validate_google(payload: Any, operation: str) -> Mapping[str, Any]:
     provider = "google_maps_platform"
     body = _object(payload, provider, operation, "payload")
@@ -171,9 +217,10 @@ def validate_google(payload: Any, operation: str) -> Mapping[str, Any]:
         _fail(provider, operation, f"{key}.count")
     for index, item in enumerate(items):
         record = _object(item, provider, operation, f"{key}[{index}]")
-        id_field = "id" if operation == "search_places_text" else "placeId"
-        _text(record.get(id_field), provider, operation, f"{key}[{index}].{id_field}", maximum=512)
-        _validate_location(record.get("location"), provider, operation, f"{key}[{index}].location")
+        if operation == "search_places_text":
+            _validate_google_place(record, provider, operation, f"{key}[{index}]")
+        else:
+            _validate_google_geocode_result(record, provider, operation, f"{key}[{index}]")
     return body
 
 
