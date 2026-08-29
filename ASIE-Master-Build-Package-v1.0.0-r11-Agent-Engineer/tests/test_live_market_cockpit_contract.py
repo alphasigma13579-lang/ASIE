@@ -29,10 +29,12 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
 
     def test_browser_map_never_receives_the_server_key_or_loads_on_mount(self) -> None:
         self.assertIn("VITE_GOOGLE_MAPS_BROWSER_KEY", self.map)
+        self.assertIn('VITE_ASIE_LIVE_BROWSER_MAPS_ENABLED === "true"', self.map)
         self.assertIn('state !== "ready"', self.map)
         self.assertNotIn("GOOGLE_MAPS_API_KEY", self.map)
         self.assertNotIn("localStorage", self.map)
         self.assertIn("VITE_GOOGLE_MAPS_BROWSER_KEY", self.vite_types)
+        self.assertIn("VITE_ASIE_LIVE_BROWSER_MAPS_ENABLED", self.vite_types)
 
     def test_api_contract_keeps_the_location_and_market_boundaries_explicit(self) -> None:
         self.assertIn('"/api/v1/location/reverse-geocode"', self.api)

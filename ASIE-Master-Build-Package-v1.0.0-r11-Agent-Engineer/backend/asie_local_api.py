@@ -1276,6 +1276,20 @@ class Handler(BaseHTTPRequestHandler):
             write_error(self, "permission_denied", 403)
             return None
 
+    def _confirmed_project_coordinates(self, project_id: str) -> tuple[float, float] | None:
+        """Read only the project location that the customer has already confirmed."""
+        project = REPO.get_project(project_id)
+        if project is None:
+            write_error(self, "project_not_found", 404)
+            return None
+        try:
+            latitude = _request_coordinate(project.inputs, "location_latitude", minimum=-90, maximum=90)
+            longitude = _request_coordinate(project.inputs, "location_longitude", minimum=-180, maximum=180)
+        except RequestError:
+            write_error(self, "confirmed_project_location_required", 409)
+            return None
+        return latitude, longitude
+
     def _write_provider_unavailable(self, provider_id: str) -> None:
         incident = beta_provider_incident(provider_id=provider_id, correlation_id=self.request_id)
         incident["external_fetch_enabled"] = False
@@ -1991,6 +2005,13 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     latitude = _request_coordinate(payload, "latitude", minimum=-90, maximum=90)
                     longitude = _request_coordinate(payload, "longitude", minimum=-180, maximum=180)
+                    confirmed_coordinates = self._confirmed_project_coordinates(project_id)
+                    if confirmed_coordinates is None:
+                        return
+                    confirmed_latitude, confirmed_longitude = confirmed_coordinates
+                    if abs(latitude - confirmed_latitude) > 0.00001 or abs(longitude - confirmed_longitude) > 0.00001:
+                        write_error(self, "project_location_mismatch", 409)
+                        return
                     if path == "/api/v1/market/competitors/search":
                         query = _request_text(payload, "query", maximum=500)
                         radius_meters = _request_coordinate(payload, "radius_meters", minimum=1, maximum=50_000)

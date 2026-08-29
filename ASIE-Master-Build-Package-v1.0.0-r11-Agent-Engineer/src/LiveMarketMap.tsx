@@ -28,7 +28,8 @@ let browserMapsPromise: Promise<BrowserMapsApi | null> | null = null;
 
 function loadBrowserMaps(): Promise<BrowserMapsApi | null> {
   const browserKey = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY as string | undefined;
-  if (!browserKey) return Promise.resolve(null);
+  const browserMapsEnabled = import.meta.env.VITE_ASIE_LIVE_BROWSER_MAPS_ENABLED === "true";
+  if (!browserMapsEnabled || !browserKey) return Promise.resolve(null);
   if (browserMapsPromise) return browserMapsPromise;
 
   browserMapsPromise = new Promise((resolve) => {
