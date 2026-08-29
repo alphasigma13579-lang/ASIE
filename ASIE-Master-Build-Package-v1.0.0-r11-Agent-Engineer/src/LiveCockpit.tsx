@@ -13,7 +13,8 @@ import {
   Telescope,
   Users,
 } from "lucide-react";
-import { useState } from "react";\nimport { LiveMarketMap } from "./LiveMarketMap";
+import { useState } from "react";
+import { LiveMarketMap } from "./LiveMarketMap";
 
 type LiveCockpitProps = {
   projectName?: string;
