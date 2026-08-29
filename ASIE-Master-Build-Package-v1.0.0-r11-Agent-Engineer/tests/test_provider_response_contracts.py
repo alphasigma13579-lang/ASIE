@@ -45,13 +45,38 @@ def test_tavily_contracts_are_operation_specific(operation: str, payload: dict) 
         validate_tavily(payload, operation)
 
 
-def test_google_contract_separates_geocoding_and_places_shapes() -> None:
-    geocode = {"results": [{"placeId": "g-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
-    places = {"places": [{"id": "p-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+def test_google_contract_separates_geocoding_reverse_geocoding_and_places_shapes() -> None:
+    geocode_result = {
+        "placeId": "g-1",
+        "formattedAddress": "الرياض",
+        "location": {"latitude": 24.7, "longitude": 46.7},
+        "addressComponents": [{"longText": "الرياض", "shortText": "الرياض", "types": ["locality", "political"]}],
+        "viewport": {"low": {"latitude": 24.6, "longitude": 46.6}, "high": {"latitude": 24.8, "longitude": 46.8}},
+        "granularity": "ROOFTOP",
+    }
+    geocode = {"results": [geocode_result]}
+    reverse_geocode = {"results": [{**geocode_result, "plusCode": {"globalCode": "7HMPQMGF+P4"}}]}
+    places = {
+        "places": [
+            {
+                "id": "p-1",
+                "displayName": {"text": "منافس"},
+                "formattedAddress": "الرياض",
+                "location": {"latitude": 24.7, "longitude": 46.7},
+                "primaryType": "restaurant",
+                "businessStatus": "OPERATIONAL",
+                "googleMapsUri": "https://www.google.com/maps/place/?q=place_id:p-1",
+            }
+        ]
+    }
     assert validate_google(geocode, "geocode_address") is geocode
+    assert validate_google(reverse_geocode, "reverse_geocode") is reverse_geocode
     assert validate_google(places, "search_places_text") is places
     with pytest.raises(ProviderResponseContractError, match="places"):
         validate_google(geocode, "search_places_text")
+    geocode_result.pop("formattedAddress")
+    with pytest.raises(ProviderResponseContractError, match="formattedAddress"):
+        validate_google(geocode, "geocode_address")
 
 
 def test_pinecone_contracts_validate_index_identity_and_search_hits() -> None:
