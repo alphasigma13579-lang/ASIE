@@ -87,7 +87,7 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
       new google.maps.Marker({ map, position: center, title: "موقع المشروع المؤكد" });
       competitors.forEach((competitor) => {
         const competitorLocation = competitor.location;
-        if (!confirmedCoordinate(competitorLocation?.latitude, -90, 90) || !confirmedCoordinate(competitorLocation?.longitude, -180, 180)) return;
+        if (!competitorLocation || !confirmedCoordinate(competitorLocation.latitude, -90, 90) || !confirmedCoordinate(competitorLocation.longitude, -180, 180)) return;
         new google.maps.Marker({
           map,
           position: { lat: competitorLocation.latitude, lng: competitorLocation.longitude },
