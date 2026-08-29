@@ -73,7 +73,7 @@ def run(network: bool) -> dict[str, Any]:
         "live_checks": {
             "deepseek": {"status": "not_checked", "operation": "create_narrative"},
             "tavily": {"status": "not_checked", "operation": "search"},
-            "google_maps_platform": {"status": "not_checked", "operation": "geocode_address"},
+            "google_maps_platform": {"status": "not_checked", "operation": "geocode_preflight"},
             "pinecone": {"status": "not_checked", "operation": "describe_index"},
         },
         "provider_security": control_status,

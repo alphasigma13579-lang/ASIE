@@ -129,7 +129,7 @@ def _probe_google_maps(transport: GovernedProviderTransport, scope: TrustedProvi
         provider_id="google_maps_platform",
         method="GET",
         url=f"https://geocode.googleapis.com/v4/geocode/address/{address}",
-        security_context=scope.request_context("geocode_address", cost_units=1),
+        security_context=scope.request_context("geocode_preflight", cost_units=1),
         headers={
             "X-Goog-Api-Key": _required_secret("GOOGLE_MAPS_API_KEY"),
             "X-Goog-FieldMask": "results.placeId,results.location",
@@ -140,7 +140,7 @@ def _probe_google_maps(transport: GovernedProviderTransport, scope: TrustedProvi
     payload = response.get("payload") if isinstance(response.get("payload"), dict) else {}
     results = payload.get("results") if isinstance(payload.get("results"), list) else []
     return {
-        **_base_summary("google_maps_platform", "geocode_address", response),
+        **_base_summary("google_maps_platform", "geocode_preflight", response),
         "status": "passed" if results else "failed",
         "result_count": len(results),
         "public_test_address_only": True,

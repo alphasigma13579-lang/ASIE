@@ -181,9 +181,13 @@ def _validate_google_viewport(value: Any, provider: str, operation: str, field: 
     _validate_location(viewport.get("high"), provider, operation, f"{field}.high")
 
 
-def _validate_google_geocode_result(record: Mapping[str, Any], provider: str, operation: str, field: str) -> None:
+def _validate_google_preflight_result(record: Mapping[str, Any], provider: str, operation: str, field: str) -> None:
     _text(record.get("placeId"), provider, operation, f"{field}.placeId", maximum=512)
     _validate_location(record.get("location"), provider, operation, f"{field}.location")
+
+
+def _validate_google_geocode_result(record: Mapping[str, Any], provider: str, operation: str, field: str) -> None:
+    _validate_google_preflight_result(record, provider, operation, field)
     _text(record.get("formattedAddress"), provider, operation, f"{field}.formattedAddress", maximum=2_000)
     _validate_google_address_components(record.get("addressComponents"), provider, operation, f"{field}.addressComponents")
     _validate_google_viewport(record.get("viewport"), provider, operation, f"{field}.viewport")
@@ -209,7 +213,7 @@ def _validate_google_place(record: Mapping[str, Any], provider: str, operation: 
 def validate_google(payload: Any, operation: str) -> Mapping[str, Any]:
     provider = "google_maps_platform"
     body = _object(payload, provider, operation, "payload")
-    if operation not in {"geocode_address", "reverse_geocode", "search_places_text"}:
+    if operation not in {"geocode_address", "geocode_preflight", "reverse_geocode", "search_places_text"}:
         _fail(provider, operation, "operation")
     key = "places" if operation == "search_places_text" else "results"
     items = _list(body.get(key), provider, operation, key)
@@ -219,6 +223,8 @@ def validate_google(payload: Any, operation: str) -> Mapping[str, Any]:
         record = _object(item, provider, operation, f"{key}[{index}]")
         if operation == "search_places_text":
             _validate_google_place(record, provider, operation, f"{key}[{index}]")
+        elif operation == "geocode_preflight":
+            _validate_google_preflight_result(record, provider, operation, f"{key}[{index}]")
         else:
             _validate_google_geocode_result(record, provider, operation, f"{key}[{index}]")
     return body
@@ -266,6 +272,7 @@ VALIDATORS: Mapping[tuple[str, str], Callable[[Any], Mapping[str, Any]]] = {
     ("tavily", "crawl"): lambda payload: validate_tavily(payload, "crawl"),
     ("tavily", "map"): lambda payload: validate_tavily(payload, "map"),
     ("google_maps_platform", "geocode_address"): lambda payload: validate_google(payload, "geocode_address"),
+    ("google_maps_platform", "geocode_preflight"): lambda payload: validate_google(payload, "geocode_preflight"),
     ("google_maps_platform", "reverse_geocode"): lambda payload: validate_google(payload, "reverse_geocode"),
     ("google_maps_platform", "search_places_text"): lambda payload: validate_google(payload, "search_places_text"),
     ("pinecone", "describe_index"): lambda payload: validate_pinecone(payload, "describe_index"),

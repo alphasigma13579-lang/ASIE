@@ -9,7 +9,11 @@ from backend.live_provider_bounded_preflight import PROVIDERS, run, run_probe
 
 
 class FakeTransport:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
     def request_json(self, *, provider_id: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append({"provider_id": provider_id, **kwargs})
         payloads = {
             "deepseek": {
                 "id": "chatcmpl-preflight",
@@ -112,3 +116,13 @@ def test_unknown_exception_message_is_redacted() -> None:
     assert result["error"] == "provider_preflight_failed_redacted"
     assert "secret-value-must-not-appear" not in json.dumps(result)
 
+
+
+def test_google_preflight_uses_its_own_minimal_operation() -> None:
+    transport = FakeTransport()
+    result = run_probe("google_maps_platform", transport)  # type: ignore[arg-type]
+    assert result["operation"] == "geocode_preflight"
+    assert len(transport.calls) == 1
+    call = transport.calls[0]
+    assert call["security_context"].operation == "geocode_preflight"
+    assert call["headers"]["X-Goog-FieldMask"] == "results.placeId,results.location"

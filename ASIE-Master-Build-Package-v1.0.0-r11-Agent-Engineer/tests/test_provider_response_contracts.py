@@ -69,11 +69,16 @@ def test_google_contract_separates_geocoding_reverse_geocoding_and_places_shapes
             }
         ]
     }
+    preflight = {"results": [{"placeId": "g-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+    assert validate_google(preflight, "geocode_preflight") is preflight
     assert validate_google(geocode, "geocode_address") is geocode
     assert validate_google(reverse_geocode, "reverse_geocode") is reverse_geocode
     assert validate_google(places, "search_places_text") is places
     with pytest.raises(ProviderResponseContractError, match="places"):
         validate_google(geocode, "search_places_text")
+    preflight["results"][0]["location"]["latitude"] = "not-a-number"
+    with pytest.raises(ProviderResponseContractError, match="location.latitude"):
+        validate_google(preflight, "geocode_preflight")
     geocode_result.pop("formattedAddress")
     with pytest.raises(ProviderResponseContractError, match="formattedAddress"):
         validate_google(geocode, "geocode_address")
