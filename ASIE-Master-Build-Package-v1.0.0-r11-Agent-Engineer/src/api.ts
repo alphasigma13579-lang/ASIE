@@ -510,3 +510,65 @@ export async function updateSourceReview(
   });
   return response.source;
 }
+
+
+export type GoogleLocationResult = {
+  placeId?: string;
+  formattedAddress?: string;
+  location?: { latitude: number; longitude: number };
+};
+
+export type GoogleLocationResponse = {
+  contract_id: "location.reverse-geocode.v1";
+  project_id: string;
+  result: { results: GoogleLocationResult[] };
+  location_confirmation_required: true;
+  device_location_persisted: false;
+  finance_mutated: false;
+  snapshot_mutated: false;
+};
+
+export type MarketCompetitor = {
+  id: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  location?: { latitude: number; longitude: number };
+  primaryType?: string;
+  businessStatus?: string;
+  googleMapsUri?: string;
+};
+
+export type MarketCompetitorResponse = {
+  contract_id: "market.competitors.search.v1";
+  project_id: string;
+  competitors: MarketCompetitor[];
+  source: "google_places";
+  persistence_policy?: string;
+  eligible_for_pinecone: false;
+  finance_mutated: false;
+  snapshot_mutated: false;
+};
+
+export function reverseGeocode(payload: {
+  project_id: string;
+  latitude: number;
+  longitude: number;
+}): Promise<GoogleLocationResponse> {
+  return requestJson<GoogleLocationResponse>("/api/v1/location/reverse-geocode", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function searchMarketCompetitors(payload: {
+  project_id: string;
+  query: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+}): Promise<MarketCompetitorResponse> {
+  return requestJson<MarketCompetitorResponse>("/api/v1/market/competitors/search", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
