@@ -742,6 +742,29 @@ class GoogleLocationClient:
             region_code=os.getenv("GOOGLE_MAPS_REGION", "SA").strip() or "SA",
         )
 
+    def preflight_geocode(
+        self,
+        address: str,
+        *,
+        scope: TrustedProviderScope,
+    ) -> dict[str, Any]:
+        if not scope.preflight or scope.organization_id != "__platform__":
+            raise ProviderSecurityError("google_preflight_platform_scope_required")
+        encoded = quote(_bounded_text(address, field="address", maximum=1_500), safe="")
+        response = self.transport.request_json(
+            provider_id="google_maps_platform",
+            method="GET",
+            url=f"https://geocode.googleapis.com/v4/geocode/address/{encoded}",
+            security_context=_provider_security_context(scope, "geocode_preflight", preflight=True),
+            headers={
+                "X-Goog-Api-Key": self.api_key,
+                "X-Goog-FieldMask": "results.placeId,results.location",
+                "Accept-Language": self.language_code,
+            },
+            body=None,
+        )
+        return _validated_response(response, "google_maps_platform", "geocode_preflight")
+
     def geocode_address(
         self,
         address: str,

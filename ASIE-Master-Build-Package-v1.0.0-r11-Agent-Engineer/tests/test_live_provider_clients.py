@@ -17,7 +17,7 @@ from backend.live_provider_clients import (
     TavilyResearchClient,
     tenant_project_namespace,
 )
-from backend.provider_security_control_plane import ProviderRequestContext, TrustedProviderScope
+from backend.provider_security_control_plane import ProviderRequestContext, ProviderSecurityError, TrustedProviderScope
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -331,13 +331,17 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     client = GoogleLocationClient(transport=transport, api_key="google-secret")
 
     preflight_scope = TrustedProviderScope.for_platform_preflight()
-    client.geocode_address(
+    client.preflight_geocode(
         "الرياض، المملكة العربية السعودية",
         scope=preflight_scope,
     )
     preflight_call = transport.calls[-1]
     assert preflight_call["security_context"]["preflight"] is True
     assert preflight_call["security_context"]["organization_id"] == "__platform__"
+    assert preflight_call["security_context"]["operation"] == "geocode_preflight"
+    assert preflight_call["headers"]["X-Goog-FieldMask"] == "results.placeId,results.location"
+    with pytest.raises(ProviderSecurityError, match="google_preflight_platform_scope_required"):
+        client.preflight_geocode("الرياض", scope=trusted_scope())
 
     client.geocode_address(
         "حي العليا، الرياض",
