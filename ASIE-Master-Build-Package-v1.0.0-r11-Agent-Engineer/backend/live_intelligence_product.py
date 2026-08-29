@@ -95,7 +95,7 @@ class LiveIntelligenceProductService:
         for provider_id, operation in {
             "pinecone": lambda: self.pinecone.describe_index(),
             "tavily": lambda: self.tavily.search(query="Saudi Vision 2030 official portal", include_domains=["vision2030.gov.sa"], max_results=1),
-            "google_maps_platform": lambda: self.google.geocode_address(
+            "google_maps_platform": lambda: self.google.preflight_geocode(
                 "الرياض، المملكة العربية السعودية",
                 scope=TrustedProviderScope.for_platform_preflight(),
             ),

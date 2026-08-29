@@ -16,7 +16,17 @@ def test_preflight_configuration_mode_exposes_no_secrets(monkeypatch) -> None:
     assert result["network_policy"]["enabled"] is False
     assert result["provider_security"]["enabled"] is False
     assert result["provider_security"]["network_authorized"] is False
-    assert result["response_contracts"]["operation_count"] == 13
+    assert result["response_contracts"]["operation_count"] == 15
+    assert {
+        "provider_id": "google_maps_platform",
+        "operation": "geocode_preflight",
+        "fail_closed": True,
+    } in result["response_contracts"]["operations"]
+    assert {
+        "provider_id": "google_maps_platform",
+        "operation": "reverse_geocode",
+        "fail_closed": True,
+    } in result["response_contracts"]["operations"]
     assert {
         "provider_id": "pinecone",
         "operation": "delete_public_knowledge",
@@ -31,6 +41,7 @@ def test_preflight_configuration_mode_exposes_no_secrets(monkeypatch) -> None:
         "pinecone",
     }
     assert all(item["status"] == "not_checked" for item in result["live_checks"].values())
+    assert result["live_checks"]["google_maps_platform"]["operation"] == "geocode_preflight"
 
 
 def test_network_preflight_fails_closed_when_external_fetch_is_disabled(monkeypatch) -> None:

@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 
 import pytest
 
+from backend.external_acquisition import ExternalAcquisitionError
 from backend.live_provider_catalog import LIVE_PROVIDER_CATALOG, provider_catalog_snapshot
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 from backend.live_provider_clients import (
@@ -16,7 +17,7 @@ from backend.live_provider_clients import (
     TavilyResearchClient,
     tenant_project_namespace,
 )
-from backend.provider_security_control_plane import ProviderRequestContext, TrustedProviderScope
+from backend.provider_security_control_plane import ProviderRequestContext, ProviderSecurityError, TrustedProviderScope
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -119,9 +120,42 @@ class FakeTransport:
                 }
         elif provider_id == "google_maps_platform":
             if "places:searchText" in url:
-                payload = {"places": [{"id": "place-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+                payload = {
+                    "places": [
+                        {
+                            "id": "place-1",
+                            "displayName": {"text": "منافس تجريبي"},
+                            "formattedAddress": "الرياض",
+                            "location": {"latitude": 24.7, "longitude": 46.7},
+                            "primaryType": "restaurant",
+                            "businessStatus": "OPERATIONAL",
+                            "googleMapsUri": "https://www.google.com/maps/place/?q=place_id:place-1",
+                        }
+                    ]
+                }
             else:
-                payload = {"results": [{"placeId": "place-1", "location": {"latitude": 24.7, "longitude": 46.7}}]}
+                payload = {
+                    "results": [
+                        {
+                            "placeId": "place-1",
+                            "formattedAddress": "الرياض",
+                            "location": {"latitude": 24.7, "longitude": 46.7},
+                            "addressComponents": [
+                                {
+                                    "longText": "الرياض",
+                                    "shortText": "الرياض",
+                                    "types": ["locality", "political"],
+                                }
+                            ],
+                            "viewport": {
+                                "low": {"latitude": 24.6, "longitude": 46.6},
+                                "high": {"latitude": 24.8, "longitude": 46.8},
+                            },
+                            "granularity": "ROOFTOP",
+                            "plusCode": {"globalCode": "7HMPQMGF+P4"},
+                        }
+                    ]
+                }
         elif provider_id == "pinecone" and url.endswith("/search"):
             payload = {"result": {"hits": [{"_id": "doc-1", "_score": 0.9, "fields": {"review_status": "approved"}}]}}
         else:
@@ -184,6 +218,9 @@ def test_provider_catalog_contains_only_approved_initial_providers() -> None:
     assert snapshot["tavily_results_require_source_review"] is True
     assert snapshot["google_places_persistence_requires_terms_review"] is True
     assert snapshot["secrets_stored"] is False
+    google = next(provider for provider in LIVE_PROVIDER_CATALOG if provider.provider_id == "google_maps_platform")
+    assert google.allowed_operations == ("geocode_address", "geocode_preflight", "reverse_geocode", "search_places_text")
+    assert google.preflight_operations == ("geocode_preflight",)
 
 
 def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> None:
@@ -294,13 +331,17 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     client = GoogleLocationClient(transport=transport, api_key="google-secret")
 
     preflight_scope = TrustedProviderScope.for_platform_preflight()
-    client.geocode_address(
+    client.preflight_geocode(
         "الرياض، المملكة العربية السعودية",
         scope=preflight_scope,
     )
     preflight_call = transport.calls[-1]
     assert preflight_call["security_context"]["preflight"] is True
     assert preflight_call["security_context"]["organization_id"] == "__platform__"
+    assert preflight_call["security_context"]["operation"] == "geocode_preflight"
+    assert preflight_call["headers"]["X-Goog-FieldMask"] == "results.placeId,results.location"
+    with pytest.raises(ProviderSecurityError, match="google_preflight_platform_scope_required"):
+        client.preflight_geocode("الرياض", scope=trusted_scope())
 
     client.geocode_address(
         "حي العليا، الرياض",
@@ -310,6 +351,17 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     assert "google-secret" not in call["url"]
     assert call["headers"]["X-Goog-Api-Key"] == "google-secret"
     assert call["method"] == "GET"
+
+    client.reverse_geocode(
+        24.7136,
+        46.6753,
+        scope=trusted_scope(),
+    )
+    call = transport.calls[-1]
+    assert call["url"] == "https://geocode.googleapis.com/v4/geocode/location/24.7136,46.6753"
+    assert "google-secret" not in call["url"]
+    assert call["headers"]["X-Goog-Api-Key"] == "google-secret"
+    assert call["security_context"]["operation"] == "reverse_geocode"
 
     result = client.search_places_text(
         scope=trusted_scope(),
@@ -324,6 +376,29 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     assert result["eligible_for_pinecone"] is False
     assert result["persistence_policy"] == "place_id_and_project_location_only_until_terms_review"
     assert call["security_context"]["operation"] == "search_places_text"
+
+
+def test_google_response_contract_rejects_unvalidated_echoed_fields() -> None:
+    class IncompleteGoogleTransport(FakeTransport):
+        def request_json(self, **kwargs: Any) -> dict[str, Any]:
+            response = super().request_json(**kwargs)
+            payload = response["payload"]
+            if "places:searchText" in str(kwargs["url"]):
+                payload["places"][0].pop("googleMapsUri")
+            else:
+                payload["results"][0].pop("formattedAddress")
+            return response
+
+    client = GoogleLocationClient(transport=IncompleteGoogleTransport(), api_key="google-secret")
+    with pytest.raises(ExternalAcquisitionError, match="formattedAddress"):
+        client.geocode_address("الرياض", scope=trusted_scope())
+    with pytest.raises(ExternalAcquisitionError, match="googleMapsUri"):
+        client.search_places_text(
+            scope=trusted_scope(),
+            text_query="مطاعم شاورما",
+            latitude=24.7136,
+            longitude=46.6753,
+        )
 
 
 def test_pinecone_uses_existing_vision2030_index_and_tenant_project_namespace() -> None:

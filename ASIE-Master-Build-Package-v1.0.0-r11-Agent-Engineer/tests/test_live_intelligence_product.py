@@ -25,6 +25,7 @@ class FakeGoogle:
     def __init__(self) -> None:
         self.search_scopes: list[object] = []
         self.geocode_scopes: list[TrustedProviderScope] = []
+        self.preflight_scopes: list[TrustedProviderScope] = []
 
     def search_places_text(self, **kwargs: object) -> dict[str, object]:
         self.search_scopes.append(kwargs.get("scope"))
@@ -43,6 +44,17 @@ class FakeGoogle:
                 ]
             }
         }
+
+    def preflight_geocode(
+        self,
+        address: str,
+        *,
+        scope: TrustedProviderScope,
+    ) -> dict[str, object]:
+        if not address:
+            raise AssertionError("address_required")
+        self.preflight_scopes.append(scope)
+        return {"payload": {"results": []}, "network_attempted": True, "review_status": "review_required"}
 
     def geocode_address(
         self,
@@ -149,9 +161,10 @@ def test_preflight_forwards_platform_scope_to_google(monkeypatch):
     result = product.preflight()
 
     assert result["checks"]["google_maps_platform"]["status"] == "live"
-    assert len(product.google.geocode_scopes) == 1
-    assert product.google.geocode_scopes[0].preflight is True
-    assert product.google.geocode_scopes[0].organization_id == "__platform__"
+    assert product.google.geocode_scopes == []
+    assert len(product.google.preflight_scopes) == 1
+    assert product.google.preflight_scopes[0].preflight is True
+    assert product.google.preflight_scopes[0].organization_id == "__platform__"
 
 
 def test_market_context_combines_sources_places_and_knowledge_without_finance_mutation():
