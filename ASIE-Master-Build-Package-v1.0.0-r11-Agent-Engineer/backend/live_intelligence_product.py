@@ -242,17 +242,22 @@ class LiveIntelligenceProductService:
     def create_reviewed_narrative(
         self,
         *,
+        scope: TrustedProviderScope,
         request_id: str,
         prompt_template_id: str,
         approved_context: Mapping[str, Any],
         user_instruction: str,
     ) -> dict[str, Any]:
+        if scope.preflight or scope.organization_id == "__platform__":
+            raise LiveIntelligenceProductError("authenticated_tenant_scope_required")
+        scope.request_context("create_narrative")
         if approved_context.get("review_status") != "approved":
             raise LiveIntelligenceProductError("approved_context_required")
         if approved_context.get("eligible_for_narrative") is not True:
             raise LiveIntelligenceProductError("context_not_eligible_for_narrative")
         context_hash = _sha256_json(approved_context)
         response = self.deepseek.create_narrative(
+            scope=scope,
             request_id=request_id,
             prompt_template_id=prompt_template_id,
             prompt_hash=context_hash,
