@@ -11,10 +11,12 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.cockpit = (SRC / "LiveCockpit.tsx").read_text(encoding="utf-8")
         self.map = (SRC / "LiveMarketMap.tsx").read_text(encoding="utf-8")
         self.api = (SRC / "api.ts").read_text(encoding="utf-8")
+        self.vite_types = (SRC / "vite-env.d.ts").read_text(encoding="utf-8")
 
     def test_cockpit_replaces_static_competitors_with_the_provider_boundary(self) -> None:
         self.assertIn('import { LiveMarketMap } from "./LiveMarketMap";', self.cockpit)
         self.assertIn("<LiveMarketMap", self.cockpit)
+        self.assertIn("projectId?: string", self.cockpit)
         self.assertNotIn("منشأة مماثلة", self.cockpit)
         self.assertNotIn("local-map--demo", self.cockpit)
 
@@ -30,6 +32,7 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertIn('state !== "ready"', self.map)
         self.assertNotIn("GOOGLE_MAPS_API_KEY", self.map)
         self.assertNotIn("localStorage", self.map)
+        self.assertIn("VITE_GOOGLE_MAPS_BROWSER_KEY", self.vite_types)
 
     def test_api_contract_keeps_the_location_and_market_boundaries_explicit(self) -> None:
         self.assertIn('"/api/v1/location/reverse-geocode"', self.api)

@@ -20,6 +20,10 @@ type LiveCockpitProps = {
   projectName?: string;
   sector?: string;
   location?: string;
+  locationLabel?: string;
+  projectId?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   snapshotId?: string | null;
   signals?: StudySignals;
   onContinue?: () => void;
