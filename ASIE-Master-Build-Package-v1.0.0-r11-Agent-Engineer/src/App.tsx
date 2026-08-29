@@ -1940,8 +1940,12 @@ function SessionWorkspace() {
             </header>
             <LiveCockpit
               projectName={project?.name}
+              projectId={project?.project_id}
               sector={project?.sector}
               location={project?.inputs.location_scope}
+              locationLabel={[project?.inputs.location_city, project?.inputs.location_district].filter(Boolean).join(" · ") || project?.inputs.location_scope}
+              latitude={project?.inputs.location_latitude ?? null}
+              longitude={project?.inputs.location_longitude ?? null}
               snapshotId={snapshotOverview?.snapshot.snapshot_id}
               signals={{
                 monthlyProfit: snapshotMetricValue("monthly-profit"),

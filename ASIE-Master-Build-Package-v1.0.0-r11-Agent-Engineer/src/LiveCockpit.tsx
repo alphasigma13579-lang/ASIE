@@ -13,12 +13,17 @@ import {
   Telescope,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { LiveMarketMap } from "./LiveMarketMap";
 
 type LiveCockpitProps = {
   projectName?: string;
   sector?: string;
   location?: string;
+  locationLabel?: string;
+  projectId?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   snapshotId?: string | null;
   signals?: StudySignals;
   onContinue?: () => void;
@@ -124,21 +129,13 @@ function deriveTeamSize(monthlyUnits?: number | null) {
   return "٧–١٠ أفراد كبداية";
 }
 
-export function LiveCockpit({ projectName, sector, location, snapshotId, signals, onContinue }: LiveCockpitProps) {
+export function LiveCockpit({ projectName, sector, location, locationLabel, projectId, latitude, longitude, snapshotId, signals, onContinue }: LiveCockpitProps) {
   const [scope, setScope] = useState<ComparisonScope>("السعودية");
   const context = `${sector || "قطاع المشروع"} · ${location || "الموقع المحدد"}`;
   const studyAdvice = deriveStudyAdvice(signals);
   const projectType = classifyProject(sector);
   const vision = visionHypothesis(sector);
   const teamSize = deriveTeamSize(signals?.monthlyUnits);
-  const competitors = useMemo(
-    () => ["١", "٢", "٣"].map((number, index) => ({
-      name: `${location || "النطاق المحدد"} · منشأة مماثلة ${number}`,
-      signal: ["عرض قريب من العميل", "سعر يحتاج مقارنة", "خدمة أو موقع بديل"][index],
-      pressure: ["متوسط", "مرتفع", "منخفض"][index],
-    })),
-    [location]
-  );
   const profile = comparisonProfiles[scope];
 
   return <section className="live-cockpit live-cockpit--r3" aria-label="ذكاء السوق والفرص التجريبي">
@@ -146,7 +143,7 @@ export function LiveCockpit({ projectName, sector, location, snapshotId, signals
       <div>
         <p className="eyebrow"><Sparkles size={15} aria-hidden="true" /> مرحلة ما بعد الدراسة المالية</p>
         <h2>ذكاء السوق والفرص</h2>
-        <p>هذه المرحلة تقرأ سياق المشروع واللقطة الناتجة من الدراسة، ثم تعرض محاكاة واضحة للمنافسة والفرص والتوصيات. لا توجد مصادر حية أو حكم استثماري في بيئة التطوير.</p>
+        <p>تظل المقارنات والاقتراحات التالية محاكاة تطويرية واضحة. أما المنافسون فلا يظهرون إلا من المصدر المسموح بعد طلبك الصريح للموقع المؤكد؛ ولا تصدر المنصة حكمًا استثماريًا.</p>
       </div>
       <DemoTag />
     </header>
@@ -159,20 +156,13 @@ export function LiveCockpit({ projectName, sector, location, snapshotId, signals
     </section>
 
     <div className="cockpit-grid cockpit-grid--r3">
-      <article className="market-map-widget">
-        <div className="widget-heading"><div><MapPinned size={20} /><div><span>المنافسة في النطاق</span><strong>إشارات تجريبية حول الموقع</strong></div></div><small>ليست خريطة فعلية</small></div>
-        <div className="local-map local-map--demo" role="img" aria-label="خريطة تجريبية لمنافسين محتملين">
-          <span className="map-road map-road--one" /><span className="map-road map-road--two" /><span className="map-zone map-zone--one">منطقة حركة</span><span className="map-zone map-zone--two">نطاق المشروع</span>
-          {competitors.map((competitor, index) => <div className={`map-marker map-marker--static map-marker--${index + 1}`} key={competitor.name}><Building2 size={14} /></div>)}
-          <div className="site-marker" style={{ left: "52%", top: "41%" }}><Target size={15} /><span>موقع مرشح</span></div>
-        </div>
-        <div className="market-signal-list">
-          {competitors.map((competitor) => <div key={competitor.name}><strong>{competitor.name}</strong><span>{competitor.signal} · ضغط {competitor.pressure}</span></div>)}
-        </div>
-        <DemoTag compact />
-      </article>
-
-      <article className="cockpit-kpis-widget">
+      <LiveMarketMap
+        projectId={projectId}
+        sector={sector}
+        locationLabel={locationLabel || location}
+        latitude={latitude}
+        longitude={longitude}
+      />\n\n      <article className="cockpit-kpis-widget">
         <div className="widget-heading"><div><Compass size={20} /><div><span>قراءة الفرصة</span><strong>مؤشرات محاكاة مشتقة من الدراسة</strong></div></div><small>ليست نتائج سوق</small></div>
         <div className="cockpit-kpis">
           <div className="cockpit-kpi cockpit-kpi--mint"><span>درجة التشبع</span><strong>{studyAdvice.saturation}</strong><small>قالب تطوير، لا يستند إلى تعداد منشآت حقيقي.</small></div>

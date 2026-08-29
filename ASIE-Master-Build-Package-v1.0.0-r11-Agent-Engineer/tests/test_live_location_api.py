@@ -98,8 +98,20 @@ class LiveLocationApiTests(unittest.TestCase):
         self.org_b = self.repo.create_organization(name="Location Org B", owner_user_id=self.user_b["user_id"])
         self.org_a_id = self.org_a["organization_id"]
         self.org_b_id = self.org_b["organization_id"]
-        self.project_a = self.repo.create_project({"name": "Location A", "organization_id": self.org_a_id})
-        self.project_b = self.repo.create_project({"name": "Location B", "organization_id": self.org_b_id})
+        self.project_a = self.repo.create_project(
+            {
+                "name": "Location A",
+                "organization_id": self.org_a_id,
+                "inputs": {"location_latitude": 24.7136, "location_longitude": 46.6753},
+            }
+        )
+        self.project_b = self.repo.create_project(
+            {
+                "name": "Location B",
+                "organization_id": self.org_b_id,
+                "inputs": {"location_latitude": 21.4858, "location_longitude": 39.1925},
+            }
+        )
         self.token_a, _ = self.repo.create_session(email=self.user_a["email"], password="location-password-a1")
 
         previous_repo = api.REPO
@@ -211,6 +223,54 @@ class LiveLocationApiTests(unittest.TestCase):
             self.assertEqual(self.org_a_id, scope.organization_id)
             self.assertEqual(self.project_a.project_id, scope.project_id)
             self.assertFalse(scope.preflight)
+
+    def test_market_routes_reject_coordinates_that_do_not_match_the_confirmed_project_location(self) -> None:
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_google_client", side_effect=AssertionError("mismatched coordinates must not reach Google")),
+        ):
+            for path, payload in (
+                (
+                    "/api/v1/location/reverse-geocode",
+                    {"project_id": self.project_a.project_id, "latitude": 21.4858, "longitude": 39.1925},
+                ),
+                (
+                    "/api/v1/market/competitors/search",
+                    {
+                        "project_id": self.project_a.project_id,
+                        "query": "مطاعم شاورما",
+                        "latitude": 21.4858,
+                        "longitude": 39.1925,
+                        "radius_meters": 3000,
+                    },
+                ),
+            ):
+                with self.subTest(path=path):
+                    status, body = self.request(
+                        "POST",
+                        path,
+                        token=self.token_a,
+                        organization_id=self.org_a_id,
+                        payload=payload,
+                    )
+                    self.assertEqual(409, status)
+                    self.assertEqual("project_location_mismatch", body["error"])
+
+    def test_market_routes_require_a_confirmed_project_location_before_provider_admission(self) -> None:
+        unlocated = self.repo.create_project({"name": "Unlocated", "organization_id": self.org_a_id})
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_google_client", side_effect=AssertionError("unconfirmed location must not reach Google")),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/location/reverse-geocode",
+                token=self.token_a,
+                organization_id=self.org_a_id,
+                payload={"project_id": unlocated.project_id, "latitude": 24.7136, "longitude": 46.6753},
+            )
+        self.assertEqual(409, status)
+        self.assertEqual("confirmed_project_location_required", body["error"])
 
     def test_selected_organization_blocks_a_multi_member_from_foreign_project_provider_scope(self) -> None:
         self.repo.add_membership(
