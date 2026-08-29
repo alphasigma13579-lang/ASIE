@@ -120,7 +120,11 @@ class FakePinecone:
 
 
 class FakeDeepSeek:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
     def create_narrative(self, **kwargs):
+        self.calls.append(kwargs)
         return {
             "provider_id": "deepseek",
             "payload": {"choices": [{"message": {"content": "Reviewed narrative"}}]},
@@ -295,6 +299,7 @@ def test_market_context_preserves_complete_evidence_contract_when_pinecone_fails
 def test_narrative_requires_approved_context():
     try:
         service().create_reviewed_narrative(
+            scope=tenant_scope(),
             request_id="request-1",
             prompt_template_id="template:market-explanation:v1",
             approved_context={"review_status": "review_required", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
@@ -306,14 +311,33 @@ def test_narrative_requires_approved_context():
         raise AssertionError("unapproved context must be rejected")
 
 
+def test_reviewed_narrative_rejects_platform_preflight_scope():
+    try:
+        service().create_reviewed_narrative(
+            scope=TrustedProviderScope.for_platform_preflight(),
+            request_id="request-1",
+            prompt_template_id="template:market-explanation:v1",
+            approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
+            user_instruction="Explain the approved evidence",
+        )
+    except LiveIntelligenceProductError as exc:
+        assert str(exc) == "authenticated_tenant_scope_required"
+    else:
+        raise AssertionError("platform preflight scope must not invoke DeepSeek")
+
+
 def test_reviewed_narrative_preserves_provider_boundaries():
-    result = service().create_reviewed_narrative(
+    product = service()
+    scope = tenant_scope()
+    result = product.create_reviewed_narrative(
+        scope=scope,
         request_id="request-1",
         prompt_template_id="template:market-explanation:v1",
         approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
         user_instruction="Explain the approved evidence",
     )
     assert result["contract_id"] == "live.intelligence.narrative.v1"
+    assert product.deepseek.calls[0]["scope"] is scope
     assert result["controlled_numbers"] == []
     assert result["sovereign_verdict"] is None
     assert result["human_review_status"] == "required_pending"
