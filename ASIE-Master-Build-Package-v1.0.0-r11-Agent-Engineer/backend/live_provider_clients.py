@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -765,6 +766,47 @@ class GoogleLocationClient:
             body=None,
         )
         return _validated_response(response, "google_maps_platform", "geocode_address")
+
+    def reverse_geocode(
+        self,
+        latitude: float,
+        longitude: float,
+        *,
+        scope: TrustedProviderScope,
+    ) -> dict[str, Any]:
+        if isinstance(latitude, bool) or isinstance(longitude, bool):
+            raise ProviderConfigurationError("invalid_coordinates")
+        try:
+            normalized_latitude = float(latitude)
+            normalized_longitude = float(longitude)
+        except (TypeError, ValueError) as exc:
+            raise ProviderConfigurationError("invalid_coordinates") from exc
+        if (
+            not math.isfinite(normalized_latitude)
+            or not math.isfinite(normalized_longitude)
+            or not (-90 <= normalized_latitude <= 90 and -180 <= normalized_longitude <= 180)
+        ):
+            raise ProviderConfigurationError("invalid_coordinates")
+        response = self.transport.request_json(
+            provider_id="google_maps_platform",
+            method="GET",
+            url=(
+                "https://geocode.googleapis.com/v4/geocode/location/"
+                f"{normalized_latitude},{normalized_longitude}"
+            ),
+            security_context=_provider_security_context(
+                scope,
+                "reverse_geocode",
+                preflight=scope.preflight,
+            ),
+            headers={
+                "X-Goog-Api-Key": self.api_key,
+                "X-Goog-FieldMask": "results.placeId,results.location,results.formattedAddress,results.addressComponents,results.viewport,results.granularity,results.plusCode",
+                "Accept-Language": self.language_code,
+            },
+            body=None,
+        )
+        return _validated_response(response, "google_maps_platform", "reverse_geocode")
 
     def search_places_text(
         self,

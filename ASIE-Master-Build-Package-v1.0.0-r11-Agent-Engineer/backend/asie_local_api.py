@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -12,20 +13,23 @@ from copy import deepcopy
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from urllib.parse import parse_qs, urlparse
 from warnings import deprecated
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.acceptance import build_acceptance_pack
-from backend.beta_access import beta_access_status, beta_billing_mutation_blocked
+from backend.beta_access import beta_access_status, beta_billing_mutation_blocked, beta_provider_incident
 from backend.bootstrap_security import authorize_local_bootstrap, legacy_local_operator_allowed
 from backend.aas_kernel import AASKernel
 from backend.architecture_status import build_architecture_runtime_status
 from backend.bus_controller import BusController
 from backend.contracts import HOST, PORT, PROFILE_ID, SCENARIO_ID, envelope, json_dumps, new_id, now_iso
 from backend.intelligence_prerun_service import IntelligencePreRunService
+from backend.live_intelligence_product import provider_status_snapshot
+from backend.live_provider_clients import GoogleLocationClient
+from backend.provider_security_control_plane import ProviderSecurityError, TrustedProviderScope
 from backend.datasets import dataset_quality_gate, normalize_file_import_payload
 from backend.decision_pack import apply_review_overlay, build_action_items_from_overview, render_decision_pack_html
 from backend.evidence_ledger import build_evidence_coverage
@@ -1123,6 +1127,36 @@ def write_error(handler: BaseHTTPRequestHandler, message: str, status: int) -> N
     write_json(handler, {"error": message, "status": status, "request_id": getattr(handler, "request_id", None)}, status)
 
 
+def _request_text(payload: Mapping[str, Any], field: str, *, maximum: int) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str):
+        raise RequestError(f"{field}_required")
+    normalized = value.strip()
+    if not normalized:
+        raise RequestError(f"{field}_required")
+    if len(normalized) > maximum:
+        raise RequestError(f"{field}_too_long")
+    return normalized
+
+
+def _request_coordinate(payload: Mapping[str, Any], field: str, *, minimum: float, maximum: float) -> float:
+    raw = payload.get(field)
+    if isinstance(raw, bool) or raw is None:
+        raise RequestError(f"invalid_{field}")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise RequestError(f"invalid_{field}") from exc
+    if not math.isfinite(value) or not minimum <= value <= maximum:
+        raise RequestError(f"invalid_{field}")
+    return value
+
+
+def _live_google_client() -> GoogleLocationClient:
+    """Create the server-only client only after the external policy admits a request."""
+    return GoogleLocationClient.from_env()
+
+
 def reject_architecture_status_mutation(handler: BaseHTTPRequestHandler) -> None:
     write_json(
         handler,
@@ -1202,6 +1236,51 @@ class Handler(BaseHTTPRequestHandler):
         if self._require_organization_permission(project.organization_id, permission) is None:
             return None
         return project
+
+    def _tenant_provider_scope_for_project(self, project_id: str) -> TrustedProviderScope | None:
+        """Bind a provider request to the selected organization and authoritative project owner."""
+        project = REPO.get_project(project_id)
+        if project is None:
+            write_error(self, "project_not_found", 404)
+            return None
+        selected_organization_id = self._organization_from_request()
+        if selected_organization_id is None:
+            return None
+        principal = self._require_organization_permission(selected_organization_id, "project.edit")
+        if principal is None:
+            return None
+        if project.organization_id != selected_organization_id:
+            REPO.audit(
+                actor_user_id=principal.user_id,
+                organization_id=selected_organization_id,
+                action="provider_scope.authorization",
+                target_type="project",
+                target_id=project_id,
+                result="denied",
+                reason="selected_organization_project_mismatch",
+                correlation_id=self.request_id,
+            )
+            write_error(self, "permission_denied", 403)
+            return None
+        try:
+            return TrustedProviderScope.for_tenant(
+                principal=principal,
+                project_id=project_id,
+                project_organization_resolver=lambda candidate_id: (
+                    REPO.get_project(candidate_id).organization_id
+                    if REPO.get_project(candidate_id) is not None
+                    else None
+                ),
+            )
+        except ProviderSecurityError:
+            write_error(self, "permission_denied", 403)
+            return None
+
+    def _write_provider_unavailable(self, provider_id: str) -> None:
+        incident = beta_provider_incident(provider_id=provider_id, correlation_id=self.request_id)
+        incident["external_fetch_enabled"] = False
+        incident["network_attempted"] = False
+        write_json(self, incident, 503)
 
     def _require_snapshot_permission(self, snapshot_id: str, permission: str = "snapshot.read") -> str | None:
         project_id = REPO.snapshot_project_id(snapshot_id)
@@ -1341,6 +1420,28 @@ class Handler(BaseHTTPRequestHandler):
                 write_error(self, "authentication_required", 401)
                 return
             write_json(self, beta_access_status())
+            return
+        if path == "/api/v1/providers/readiness":
+            if self._principal() is None:
+                return
+            status = provider_status_snapshot()
+            write_json(
+                self,
+                {
+                    "contract_id": "live.intelligence.provider.readiness.v1",
+                    "external_fetch_enabled": status["external_fetch_enabled"],
+                    "providers": {
+                        provider_id: {
+                            "status": details["status"],
+                            "capability": details["capability"],
+                        }
+                        for provider_id, details in status["providers"].items()
+                    },
+                    "secrets_exposed": False,
+                    "finance_mutated": False,
+                    "snapshot_mutated": False,
+                },
+            )
             return
         if path == "/api/funding-profiles":
             write_json(self, {"profiles": profile_catalog(), "external_fetch_enabled": False, "reference_only": True})
@@ -1871,6 +1972,98 @@ class Handler(BaseHTTPRequestHandler):
                 REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="organization.data_request", target_type="data_request", target_id=request["request_id"], result="queued", reason=request["request_type"], correlation_id=self.request_id)
                 write_json(self, {"data_request": request, "snapshot_mutation": False, "automatic_deletion": False}, 202)
                 return
+            if path in {
+                "/api/v1/location/geocode",
+                "/api/v1/location/reverse-geocode",
+                "/api/v1/market/competitors/search",
+            }:
+                project_id = _request_text(payload, "project_id", maximum=160)
+                scope = self._tenant_provider_scope_for_project(project_id)
+                if scope is None:
+                    return
+                address: str | None = None
+                latitude: float | None = None
+                longitude: float | None = None
+                query: str | None = None
+                radius_meters: float | None = None
+                if path == "/api/v1/location/geocode":
+                    address = _request_text(payload, "address", maximum=1_500)
+                else:
+                    latitude = _request_coordinate(payload, "latitude", minimum=-90, maximum=90)
+                    longitude = _request_coordinate(payload, "longitude", minimum=-180, maximum=180)
+                    if path == "/api/v1/market/competitors/search":
+                        query = _request_text(payload, "query", maximum=500)
+                        radius_meters = _request_coordinate(payload, "radius_meters", minimum=1, maximum=50_000)
+                if not provider_status_snapshot()["external_fetch_enabled"]:
+                    self._write_provider_unavailable("google_maps_platform")
+                    return
+                try:
+                    client = _live_google_client()
+                    if path == "/api/v1/location/geocode":
+                        response = client.geocode_address(address or "", scope=scope)
+                        write_json(
+                            self,
+                            {
+                                "contract_id": "location.geocode.v1",
+                                "project_id": project_id,
+                                "result": response.get("payload", {}),
+                                "location_confirmation_required": True,
+                                "device_location_persisted": False,
+                                "finance_mutated": False,
+                                "snapshot_mutated": False,
+                            },
+                        )
+                        return
+                    if path == "/api/v1/location/reverse-geocode":
+                        response = client.reverse_geocode(latitude, longitude, scope=scope)
+                        write_json(
+                            self,
+                            {
+                                "contract_id": "location.reverse-geocode.v1",
+                                "project_id": project_id,
+                                "result": response.get("payload", {}),
+                                "location_confirmation_required": True,
+                                "device_location_persisted": False,
+                                "finance_mutated": False,
+                                "snapshot_mutated": False,
+                            },
+                        )
+                        return
+                    response = client.search_places_text(
+                        scope=scope,
+                        text_query=query or "",
+                        latitude=latitude,
+                        longitude=longitude,
+                        radius_meters=radius_meters or 1,
+                        page_size=10,
+                    )
+                    write_json(
+                        self,
+                        {
+                            "contract_id": "market.competitors.search.v1",
+                            "project_id": project_id,
+                            "competitors": (response.get("payload") or {}).get("places", []),
+                            "source": "google_places",
+                            "persistence_policy": response.get("persistence_policy"),
+                            "eligible_for_pinecone": False,
+                            "finance_mutated": False,
+                            "snapshot_mutated": False,
+                        },
+                    )
+                    return
+                except Exception as exc:
+                    REPO.audit(
+                        actor_user_id=None,
+                        organization_id=scope.organization_id,
+                        action="provider.request",
+                        target_type="provider",
+                        target_id="google_maps_platform",
+                        result="failed",
+                        reason=type(exc).__name__,
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("google_maps_platform")
+                    return
             if path == "/api/intelligence/contexts":
                 organization_id = self.headers.get("X-ASIE-Organization-Id", "")
                 principal = self._principal(organization_id)

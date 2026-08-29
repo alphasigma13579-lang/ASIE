@@ -163,15 +163,15 @@ def _validate_location(value: Any, provider: str, operation: str, field: str) ->
 def validate_google(payload: Any, operation: str) -> Mapping[str, Any]:
     provider = "google_maps_platform"
     body = _object(payload, provider, operation, "payload")
-    key = "results" if operation == "geocode_address" else "places" if operation == "search_places_text" else ""
-    if not key:
+    if operation not in {"geocode_address", "reverse_geocode", "search_places_text"}:
         _fail(provider, operation, "operation")
+    key = "places" if operation == "search_places_text" else "results"
     items = _list(body.get(key), provider, operation, key)
     if len(items) > (20 if operation == "search_places_text" else 10):
         _fail(provider, operation, f"{key}.count")
     for index, item in enumerate(items):
         record = _object(item, provider, operation, f"{key}[{index}]")
-        id_field = "placeId" if operation == "geocode_address" else "id"
+        id_field = "id" if operation == "search_places_text" else "placeId"
         _text(record.get(id_field), provider, operation, f"{key}[{index}].{id_field}", maximum=512)
         _validate_location(record.get("location"), provider, operation, f"{key}[{index}].location")
     return body
@@ -219,6 +219,7 @@ VALIDATORS: Mapping[tuple[str, str], Callable[[Any], Mapping[str, Any]]] = {
     ("tavily", "crawl"): lambda payload: validate_tavily(payload, "crawl"),
     ("tavily", "map"): lambda payload: validate_tavily(payload, "map"),
     ("google_maps_platform", "geocode_address"): lambda payload: validate_google(payload, "geocode_address"),
+    ("google_maps_platform", "reverse_geocode"): lambda payload: validate_google(payload, "reverse_geocode"),
     ("google_maps_platform", "search_places_text"): lambda payload: validate_google(payload, "search_places_text"),
     ("pinecone", "describe_index"): lambda payload: validate_pinecone(payload, "describe_index"),
     ("pinecone", "upsert_approved_text"): lambda payload: validate_pinecone(payload, "upsert_approved_text"),

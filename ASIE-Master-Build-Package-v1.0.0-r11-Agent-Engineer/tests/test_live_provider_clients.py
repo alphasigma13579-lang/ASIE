@@ -311,6 +311,17 @@ def test_google_key_stays_in_header_and_places_are_not_pinecone_eligible() -> No
     assert call["headers"]["X-Goog-Api-Key"] == "google-secret"
     assert call["method"] == "GET"
 
+    client.reverse_geocode(
+        24.7136,
+        46.6753,
+        scope=trusted_scope(),
+    )
+    call = transport.calls[-1]
+    assert call["url"] == "https://geocode.googleapis.com/v4/geocode/location/24.7136,46.6753"
+    assert "google-secret" not in call["url"]
+    assert call["headers"]["X-Goog-Api-Key"] == "google-secret"
+    assert call["security_context"]["operation"] == "reverse_geocode"
+
     result = client.search_places_text(
         scope=trusted_scope(),
         text_query="مطاعم شاورما",
