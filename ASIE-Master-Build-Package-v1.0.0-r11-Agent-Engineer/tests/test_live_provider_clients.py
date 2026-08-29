@@ -218,6 +218,9 @@ def test_provider_catalog_contains_only_approved_initial_providers() -> None:
     assert snapshot["tavily_results_require_source_review"] is True
     assert snapshot["google_places_persistence_requires_terms_review"] is True
     assert snapshot["secrets_stored"] is False
+    google = next(provider for provider in LIVE_PROVIDER_CATALOG if provider.provider_id == "google_maps_platform")
+    assert google.allowed_operations == ("geocode_address", "geocode_preflight", "reverse_geocode", "search_places_text")
+    assert google.preflight_operations == ("geocode_preflight",)
 
 
 def test_deepseek_is_narrative_only_and_requires_governed_prompt_metadata() -> None:
