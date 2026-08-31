@@ -127,6 +127,27 @@ class BetaPasswordRegistrationTests(unittest.TestCase):
         replacement = self.repo.create_beta_registration_invite(email="again@example.test", organization_name="Replacement")
         self.assertNotEqual(invite["invite_token"], replacement["invite_token"])
         self.assertEqual(invite["invite_id"], replacement["invite_id"])
+        self.assertEqual(
+            replacement["invite_id"],
+            next(event for event in self.repo.security_audit_events(limit=10) if event["action"] == "beta.invite.create")["target_id"],
+        )
+
+    def test_registered_email_is_reported_without_consuming_a_reissued_invite(self) -> None:
+        invite = self.repo.create_beta_registration_invite(email="existing@example.test", organization_name="Existing")
+        self.assertEqual(
+            201,
+            self.post(
+                "/api/auth/registrations/password",
+                {"email": "existing@example.test", "display_name": "Existing", "password": "beta-pass05", "invite_token": invite["invite_token"]},
+            )[0],
+        )
+        replacement = self.repo.create_beta_registration_invite(email="existing@example.test", organization_name="Existing")
+        status, body = self.post(
+            "/api/auth/registrations/password",
+            {"email": "existing@example.test", "display_name": "Existing", "password": "beta-pass05", "invite_token": replacement["invite_token"]},
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("email_already_registered", body["error"])
 
     def test_operator_cli_requires_explicit_confirmation_and_never_creates_a_session(self) -> None:
         directory = tempfile.TemporaryDirectory()

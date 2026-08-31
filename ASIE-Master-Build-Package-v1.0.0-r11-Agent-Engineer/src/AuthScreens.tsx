@@ -127,7 +127,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               </label>
               <label>
                 رمز الدعوة
-                <input required autoComplete="one-time-code" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} />
+                <input type="password" required autoComplete="one-time-code" spellCheck={false} autoCorrect="off" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} />
               </label>
             </>
           ) : null}

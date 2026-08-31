@@ -864,8 +864,9 @@ class Repository:
                     invite | {"existing_invite_id": existing["invite_id"]},
                 )
             conn.commit()
-        self.audit(actor_user_id=issued_by_user_id, organization_id=None, action="beta.invite.create", target_type="beta_registration_invite", target_id=invite["invite_id"], result="allowed")
-        return {"invite_id": existing["invite_id"] if existing is not None else invite["invite_id"], "email": normalized_email, "organization_name": invite["organization_name"], "expires_at": invite["expires_at"], "invite_token": token}
+        persisted_invite_id = existing["invite_id"] if existing is not None else invite["invite_id"]
+        self.audit(actor_user_id=issued_by_user_id, organization_id=None, action="beta.invite.create", target_type="beta_registration_invite", target_id=persisted_invite_id, result="allowed")
+        return {"invite_id": persisted_invite_id, "email": normalized_email, "organization_name": invite["organization_name"], "expires_at": invite["expires_at"], "invite_token": token}
 
     def register_beta_user(self, *, email: str, display_name: str, password: str, invite_token: str) -> tuple[dict[str, Any], dict[str, Any]]:
         """Atomically consume an invite, create an owner and assign beta access."""
@@ -899,7 +900,7 @@ class Repository:
                 )
             except sqlite3.IntegrityError as exc:
                 conn.rollback()
-                raise ValueError("registration_invite_invalid") from exc
+                raise ValueError("email_already_registered") from exc
             organization = {"organization_id": new_id("org"), "name": invite["organization_name"], "lifecycle_status": "active", "created_at": now, "updated_at": now}
             membership = {"membership_id": new_id("mbr"), "user_id": user["user_id"], "organization_id": organization["organization_id"], "role": "organization_owner", "status": "active", "invited_at": now, "accepted_at": now, "created_at": now, "updated_at": now}
             conn.execute("INSERT INTO organizations (organization_id, name, lifecycle_status, created_at, updated_at) VALUES (:organization_id, :name, :lifecycle_status, :created_at, :updated_at)", organization)

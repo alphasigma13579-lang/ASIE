@@ -1888,7 +1888,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 except ValueError as exc:
                     code = str(exc)
-                    write_error(self, code if code in {"registration_invite_invalid", "password_length_must_be_between_6_and_12_characters"} else "invalid_registration_request", 400)
+                    write_error(self, code if code in {"registration_invite_invalid", "email_already_registered", "password_length_must_be_between_6_and_12_characters"} else "invalid_registration_request", 400)
                     return
                 token, _authenticated_user = REPO.create_session(email=user["email"], password=str(payload.get("password") or ""))
                 write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "organization": organization, "memberships": REPO.memberships_for_user(user["user_id"]), "external_access_enabled": False, "entitlement_profile": "beta_full_access"}, 201)

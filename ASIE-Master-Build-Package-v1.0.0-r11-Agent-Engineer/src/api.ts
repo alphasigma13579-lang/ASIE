@@ -79,6 +79,11 @@ export interface LoginResponse {
   external_access_enabled: boolean;
 }
 
+export interface BetaPasswordRegistrationResponse extends LoginResponse {
+  organization: { organization_id: string; name: string };
+  entitlement_profile: "beta_full_access";
+}
+
 export interface MeResponse {
   user_id: string;
   platform_role: string | null;
@@ -113,8 +118,8 @@ export async function registerWithPassword(payload: {
   display_name: string;
   password: string;
   invite_token: string;
-}): Promise<LoginResponse & { organization: { organization_id: string; name: string } }> {
-  return requestJson("/api/auth/registrations/password", {
+}): Promise<BetaPasswordRegistrationResponse> {
+  return requestJson<BetaPasswordRegistrationResponse>("/api/auth/registrations/password", {
     method: "POST",
     body: JSON.stringify(payload),
   });

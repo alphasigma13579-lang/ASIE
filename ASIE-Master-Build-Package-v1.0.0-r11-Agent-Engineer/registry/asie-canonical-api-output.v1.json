@@ -41,7 +41,7 @@
       "backend_evidence": [
         "if path == \"/api/auth/registrations/password\":"
       ],
-      "response": "LoginResponse + organization + beta_full_access"
+      "response": "LoginResponse + organization + entitlement_profile=beta_full_access"
     },
     {
       "route_id": "AUTH_LOGOUT",

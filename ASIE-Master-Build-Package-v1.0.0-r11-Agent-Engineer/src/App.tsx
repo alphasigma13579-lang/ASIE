@@ -844,6 +844,7 @@ function SessionWorkspace() {
   useEffect(
     () =>
       onSessionExpired(() => {
+        setAuthInitialMode("login");
         setAuthState("anonymous");
         setAuthUser(null);
         setMemberships([]);
@@ -865,7 +866,10 @@ function SessionWorkspace() {
       // Local cleanup is still required if the current session cannot log out.
     }
     // A delayed logout must never clear a newer identity/organization lifetime.
-    if (revision === getSessionRevision()) clearSession();
+    if (revision === getSessionRevision()) {
+      setAuthInitialMode("login");
+      clearSession();
+    }
   }
 
   function switchOrganization(organizationId: string) {
@@ -1683,7 +1687,7 @@ function SessionWorkspace() {
         {authState === "legacy" ? (
           <section className="status-banner" role="status">
             <ShieldCheck size={18} aria-hidden="true" />
-            <span>وضع التشغيل الأول: لا توجد حسابات بعد. أنشئ حساب مدير المنصة من «الحساب والفريق» لتفعيل الجلسات المؤمّنة والعزل بين المنظمات.</span>
+            <span>وضع التشغيل الأول: استخدم دعوة بيتا مرتبطة بالبريد لإنشاء حساب ومنظمة معزولين.</span>
           </section>
         ) : null}
 
