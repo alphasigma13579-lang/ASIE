@@ -140,14 +140,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
           {mode === "login" || mode === "register" ? (
             <label>
               كلمة المرور
-              <input
-                type="password"
-                required
-                minLength={mode === "register" ? 6 : undefined}
-                maxLength={mode === "register" ? 12 : undefined}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+              <input type="password" required minLength={6} maxLength={12} value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
           ) : null}
           {mode === "recover-complete" ? (
