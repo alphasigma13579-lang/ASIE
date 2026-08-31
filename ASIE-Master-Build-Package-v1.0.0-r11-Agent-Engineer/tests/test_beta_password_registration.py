@@ -50,7 +50,7 @@ class BetaPasswordRegistrationTests(unittest.TestCase):
             {
                 "email": "beta-owner@example.test",
                 "display_name": "Beta Owner",
-                "password": "strong-beta-password-01",
+                "password": "beta-pass01",
                 "invite_token": invite["invite_token"],
             },
         )
@@ -61,22 +61,56 @@ class BetaPasswordRegistrationTests(unittest.TestCase):
         self.assertEqual("organization_owner", memberships[0]["role"])
         self.assertEqual("beta_full_access", self.repo.subscription_for_organization(body["organization"]["organization_id"])["plan_code"])
 
+    def test_password_length_is_limited_to_six_through_twelve_characters(self) -> None:
+        for password in ("short", "thirteenchars"):
+            invite = self.repo.create_beta_registration_invite(
+                email=f"{len(password)}@example.test",
+                organization_name="Password bounds",
+            )
+            status, body = self.post(
+                "/api/auth/registrations/password",
+                {
+                    "email": invite["email"],
+                    "display_name": "Beta Owner",
+                    "password": password,
+                    "invite_token": invite["invite_token"],
+                },
+            )
+            self.assertEqual(400, status)
+            self.assertEqual("password_length_must_be_between_6_and_12_characters", body["error"])
+
+        for password in ("six-01", "twelve-char!"):
+            invite = self.repo.create_beta_registration_invite(
+                email=f"valid-{len(password)}@example.test",
+                organization_name="Password bounds",
+            )
+            status, _body = self.post(
+                "/api/auth/registrations/password",
+                {
+                    "email": invite["email"],
+                    "display_name": "Beta Owner",
+                    "password": password,
+                    "invite_token": invite["invite_token"],
+                },
+            )
+            self.assertEqual(201, status)
+
     def test_invite_cannot_be_used_by_a_different_email_or_reused(self) -> None:
         invite = self.repo.create_beta_registration_invite(email="bound@example.test", organization_name="Bound")
         wrong_status, wrong_body = self.post(
             "/api/auth/registrations/password",
-            {"email": "other@example.test", "display_name": "Other", "password": "strong-beta-password-02", "invite_token": invite["invite_token"]},
+            {"email": "other@example.test", "display_name": "Other", "password": "beta-pass02", "invite_token": invite["invite_token"]},
         )
         self.assertEqual(400, wrong_status)
         self.assertEqual("registration_invite_invalid", wrong_body["error"])
         first_status, _first_body = self.post(
             "/api/auth/registrations/password",
-            {"email": "bound@example.test", "display_name": "Bound", "password": "strong-beta-password-03", "invite_token": invite["invite_token"]},
+            {"email": "bound@example.test", "display_name": "Bound", "password": "beta-pass03", "invite_token": invite["invite_token"]},
         )
         self.assertEqual(201, first_status)
         reused_status, reused_body = self.post(
             "/api/auth/registrations/password",
-            {"email": "bound@example.test", "display_name": "Bound", "password": "strong-beta-password-03", "invite_token": invite["invite_token"]},
+            {"email": "bound@example.test", "display_name": "Bound", "password": "beta-pass03", "invite_token": invite["invite_token"]},
         )
         self.assertEqual(400, reused_status)
         self.assertEqual("registration_invite_invalid", reused_body["error"])
@@ -87,7 +121,7 @@ class BetaPasswordRegistrationTests(unittest.TestCase):
             201,
             self.post(
                 "/api/auth/registrations/password",
-                {"email": "again@example.test", "display_name": "Again", "password": "strong-beta-password-04", "invite_token": invite["invite_token"]},
+                {"email": "again@example.test", "display_name": "Again", "password": "beta-pass04", "invite_token": invite["invite_token"]},
             )[0],
         )
         replacement = self.repo.create_beta_registration_invite(email="again@example.test", organization_name="Replacement")

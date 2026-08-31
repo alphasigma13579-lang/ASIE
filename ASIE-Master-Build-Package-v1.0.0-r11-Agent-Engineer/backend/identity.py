@@ -45,11 +45,17 @@ class Principal:
 
 
 def hash_password(password: str, *, salt: str | None = None) -> str:
-    if not isinstance(password, str) or len(password) < 12:
-        raise ValueError("password_must_be_at_least_12_characters")
+    if not isinstance(password, str) or len(password) < 6:
+        raise ValueError("password_must_be_at_least_6_characters")
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("ascii"), 310_000)
     return f"pbkdf2_sha256$310000${salt}${digest.hex()}"
+
+
+def validate_beta_password(password: str) -> None:
+    """Keep closed-beta end-user passwords within the agreed 6–12 character range."""
+    if not isinstance(password, str) or not 6 <= len(password) <= 12:
+        raise ValueError("password_length_must_be_between_6_and_12_characters")
 
 
 def verify_password(password: str, encoded: str) -> bool:

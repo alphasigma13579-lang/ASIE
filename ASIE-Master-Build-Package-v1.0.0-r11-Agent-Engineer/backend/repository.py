@@ -13,7 +13,7 @@ from backend.decision_pack import normalize_action_item_patch, normalize_review
 from backend.source_registry import normalize_source_review, seed_source_records
 from backend.snapshot_assembly import canonical_hash
 from backend.transformations import normalize_transformation_payload
-from backend.identity import Principal, VALID_ROLES, hash_password, new_session_token, token_hash, verify_password
+from backend.identity import Principal, VALID_ROLES, hash_password, new_session_token, token_hash, validate_beta_password, verify_password
 from backend.intelligence_authorization import authorize_intelligence_action
 from backend.intelligence_context import idempotency_fingerprint
 
@@ -874,6 +874,7 @@ class Repository:
             raise ValueError("registration_invite_invalid")
         if not invite_token:
             raise ValueError("registration_invite_invalid")
+        validate_beta_password(password)
         password_hash = hash_password(password)
         now = now_iso()
         user = {

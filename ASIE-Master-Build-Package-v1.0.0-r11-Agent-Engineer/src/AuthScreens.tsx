@@ -76,6 +76,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
       const message = reason instanceof Error ? reason.message : "تعذر إتمام الطلب";
       if (message.includes("invalid_credentials")) setError("بيانات الدخول غير صحيحة.");
       else if (message.includes("registration_invite_invalid")) setError("رمز الدعوة غير صالح أو لا يطابق هذا البريد.");
+      else if (message.includes("password_length_must_be_between_6_and_12_characters")) setError("يجب أن تتكون كلمة المرور من 6 إلى 12 حرفًا.");
       else if (message.includes("email_already_registered")) setError("هذا البريد مسجل بالفعل. استخدم تسجيل الدخول.");
       else if (message.includes("invalid_or_expired_recovery_token")) setError("رمز الاستعادة غير صالح أو منتهي. اطلب رمزاً جديداً.");
       else setError(message);
@@ -139,7 +140,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
           {mode === "login" || mode === "register" ? (
             <label>
               كلمة المرور
-              <input type="password" required minLength={10} value={password} onChange={(event) => setPassword(event.target.value)} />
+              <input type="password" required minLength={6} maxLength={12} value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
           ) : null}
           {mode === "recover-complete" ? (
@@ -150,7 +151,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               </label>
               <label>
                 كلمة المرور الجديدة
-                <input type="password" required minLength={10} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                <input type="password" required minLength={6} maxLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
               </label>
             </>
           ) : null}
