@@ -1,15 +1,15 @@
 import { FormEvent, useState, type ReactElement } from "react";
-import { KeyRound, LogIn, MailQuestion, Rocket, ShieldCheck } from "lucide-react";
+import { KeyRound, LogIn, MailQuestion, ShieldCheck, UserPlus } from "lucide-react";
 import {
   completePasswordRecovery,
-  localBootstrap,
+  registerWithPassword,
   login,
   requestPasswordRecovery,
   type LoginResponse,
 } from "./api";
 import { BrandMark } from "./BrandMark";
 
-export type AuthMode = "login" | "bootstrap" | "recover-request" | "recover-complete";
+export type AuthMode = "login" | "register" | "recover-request" | "recover-complete";
 
 interface AuthScreenProps {
   initialMode?: AuthMode;
@@ -18,17 +18,16 @@ interface AuthScreenProps {
 
 /**
  * Sign-in surface for the client workspace. Three flows, all served by the
- * local API only: first-run bootstrap (zero users), returning-user login,
- * and the local password-recovery record (no external email delivery).
+ * local API only: invitation-bound password registration, returning-user
+ * login, and the local password-recovery record (no external email delivery).
  */
 export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
   const [recoveryToken, setRecoveryToken] = useState("");
-  const [issuedToken, setIssuedToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,19 +47,18 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
     try {
       if (mode === "login") {
         onAuthenticated(await login(email, password));
-      } else if (mode === "bootstrap") {
+      } else if (mode === "register") {
         onAuthenticated(
-          await localBootstrap({
+          await registerWithPassword({
             email,
             password,
             display_name: displayName,
-            organization_name: organizationName,
+            invite_token: inviteToken,
           })
         );
       } else if (mode === "recover-request") {
         const result = await requestPasswordRecovery(email);
         if (result.recovery_token) {
-          setIssuedToken(result.recovery_token);
           setRecoveryToken(result.recovery_token);
           setNotice("أُنشئ رمز استعادة محلي (صالح 15 دقيقة). لا يوجد إرسال بريدي خارجي في هذه النسخة.");
           switchMode("recover-complete");
@@ -77,7 +75,8 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "تعذر إتمام الطلب";
       if (message.includes("invalid_credentials")) setError("بيانات الدخول غير صحيحة.");
-      else if (message.includes("local_bootstrap_already_completed")) setError("اكتملت التهيئة الأولى سابقاً. سجّل الدخول بحسابك.");
+      else if (message.includes("registration_invite_invalid")) setError("رمز الدعوة غير صالح أو لا يطابق هذا البريد.");
+      else if (message.includes("email_already_registered")) setError("هذا البريد مسجل بالفعل. استخدم تسجيل الدخول.");
       else if (message.includes("invalid_or_expired_recovery_token")) setError("رمز الاستعادة غير صالح أو منتهي. اطلب رمزاً جديداً.");
       else setError(message);
     } finally {
@@ -91,10 +90,10 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
       title: "تسجيل الدخول إلى مساحة العمل",
       body: "جلسات محلية موقّتة (8 ساعات) بتخزين هاش فقط على الخادم.",
     },
-    bootstrap: {
-      icon: <Rocket size={20} aria-hidden="true" />,
-      title: "التهيئة الأولى للمنصة",
-      body: "ينشئ حساب مدير المنصة ومنظمتك الأولى. يعمل مرة واحدة فقط.",
+    register: {
+      icon: <UserPlus size={20} aria-hidden="true" />,
+      title: "إنشاء حساب بيتا",
+      body: "التسجيل متاح للمستخدمين المدعوين فقط. ينشئ حسابك ومنظمتك الخاصة.",
     },
     "recover-request": {
       icon: <MailQuestion size={20} aria-hidden="true" />,
@@ -119,15 +118,15 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
         <h1>{current.title}</h1>
         <p>{current.body}</p>
         <form onSubmit={submit}>
-          {mode === "bootstrap" ? (
+          {mode === "register" ? (
             <>
               <label>
                 الاسم المعروض
                 <input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
               </label>
               <label>
-                اسم المنظمة
-                <input required maxLength={80} value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
+                رمز الدعوة
+                <input required autoComplete="one-time-code" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} />
               </label>
             </>
           ) : null}
@@ -137,7 +136,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
           ) : null}
-          {mode === "login" || mode === "bootstrap" ? (
+          {mode === "login" || mode === "register" ? (
             <label>
               كلمة المرور
               <input type="password" required minLength={10} value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -155,11 +154,6 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               </label>
             </>
           ) : null}
-          {issuedToken && mode === "recover-complete" ? (
-            <p className="muted" style={{ wordBreak: "break-all" }}>
-              الرمز المحلي الصادر: <code>{issuedToken}</code>
-            </p>
-          ) : null}
           {error ? (
             <p className="admin-error" role="alert">
               {error}
@@ -167,7 +161,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
           ) : null}
           {notice ? <p className="muted">{notice}</p> : null}
           <button className="primary-button" disabled={busy}>
-            {busy ? "جارٍ المعالجة" : mode === "login" ? "دخول" : mode === "bootstrap" ? "إنشاء الحساب والمنظمة" : mode === "recover-request" ? "إصدار رمز الاستعادة" : "تعيين كلمة المرور"}
+            {busy ? "جارٍ المعالجة" : mode === "login" ? "دخول" : mode === "register" ? "إنشاء الحساب" : mode === "recover-request" ? "إصدار رمز الاستعادة" : "تعيين كلمة المرور"}
           </button>
         </form>
         <div className="auth-links">
@@ -176,9 +170,9 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               تسجيل الدخول
             </button>
           ) : null}
-          {mode !== "bootstrap" ? (
-            <button type="button" className="landing-text-link" onClick={() => switchMode("bootstrap")}>
-              التهيئة الأولى
+          {mode !== "register" ? (
+            <button type="button" className="landing-text-link" onClick={() => switchMode("register")}>
+              إنشاء حساب بيتا
             </button>
           ) : null}
           {mode !== "recover-request" ? (
@@ -187,6 +181,11 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
             </button>
           ) : null}
         </div>
+        {mode === "register" ? (
+          <p className="muted" role="status">
+            في البيتا المغلقة، التسجيل العادي بالدعوة فقط. تسجيل Google مؤجل لنسخة لاحقة بعد اعتماده واختباره.
+          </p>
+        ) : null}
         <p className="muted auth-security-note">
           <ShieldCheck size={14} aria-hidden="true" /> كلمات المرور بـ PBKDF2-SHA256 (310 ألف تكرار) والجلسات هاش فقط — لا تُخزّن الأسرار بصيغة صريحة.
         </p>

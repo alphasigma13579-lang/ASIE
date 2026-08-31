@@ -32,16 +32,16 @@
       "response": "LoginResponse"
     },
     {
-      "route_id": "AUTH_LOCAL_BOOTSTRAP",
+      "route_id": "AUTH_BETA_PASSWORD_REGISTRATION",
       "method": "POST",
-      "path": "/api/auth/local-bootstrap",
+      "path": "/api/auth/registrations/password",
       "frontend_functions": [
-        "localBootstrap"
+        "registerWithPassword"
       ],
       "backend_evidence": [
-        "if path == \"/api/auth/local-bootstrap\":"
+        "if path == \"/api/auth/registrations/password\":"
       ],
-      "response": "LoginResponse + organization"
+      "response": "LoginResponse + organization + beta_full_access"
     },
     {
       "route_id": "AUTH_LOGOUT",
@@ -650,6 +650,15 @@
     }
   ],
   "backend_only_routes": [
+    {
+      "route_id": "AUTH_REGISTRATION_OPTIONS",
+      "method": "GET",
+      "path": "/api/auth/registration-options",
+      "backend_evidence": [
+        "if path == \"/api/auth/registration-options\":"
+      ],
+      "response": "closed-beta registration capability status"
+    },
     {
       "route_id": "HEALTH",
       "method": "GET",

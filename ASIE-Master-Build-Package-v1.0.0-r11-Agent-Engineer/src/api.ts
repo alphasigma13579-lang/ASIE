@@ -108,13 +108,13 @@ export async function login(email: string, password: string): Promise<LoginRespo
   });
 }
 
-export async function localBootstrap(payload: {
+export async function registerWithPassword(payload: {
   email: string;
   display_name: string;
   password: string;
-  organization_name: string;
+  invite_token: string;
 }): Promise<LoginResponse & { organization: { organization_id: string; name: string } }> {
-  return requestJson("/api/auth/local-bootstrap", {
+  return requestJson("/api/auth/registrations/password", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -665,7 +665,7 @@ function SessionWorkspace() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>("probing");
-  const [authInitialMode, setAuthInitialMode] = useState<"login" | "bootstrap">("login");
+  const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">("login");
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeOrganizationId, setActiveOrganizationState] = useState<string>(() => getActiveOrganizationId());
@@ -3333,9 +3333,9 @@ function SessionWorkspace() {
                 {authState === "legacy" ? (
                   <article className="admin-panel">
                     <h3>التهيئة الأولى</h3>
-                    <p className="muted">لا توجد حسابات على هذه النسخة بعد. أنشئ حساب مدير المنصة ومنظمتك الأولى؛ بعدها تُغلق الصلاحيات على الجلسات المؤمّنة.</p>
-                    <button className="primary-button" onClick={() => { setAuthInitialMode("bootstrap"); setAuthState("anonymous"); }}>
-                      <Rocket size={17} aria-hidden="true" /> بدء التهيئة الأولى
+                    <p className="muted">لا توجد جلسة مستخدم في هذه النسخة. استخدم دعوة بيتا مرتبطة بالبريد لإنشاء حساب ومنظمة معزولين.</p>
+                    <button className="primary-button" onClick={() => { setAuthInitialMode("register"); setAuthState("anonymous"); }}>
+                      <Rocket size={17} aria-hidden="true" /> إنشاء حساب بيتا بدعوة
                     </button>
                   </article>
                 ) : null}
