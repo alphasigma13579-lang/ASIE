@@ -216,6 +216,19 @@ pre {
   align-items: center;
 }
 
+/* The legacy generic .landing-hero rule caps every hero at 900px.  The
+   immersive landing uses a two-column decision map, so it must own a desktop
+   width that can satisfy its 460px visual column without crushing the copy. */
+.landing-page .landing-hero--immersive {
+  width: min(1380px, calc(100% - 48px));
+  margin-inline: auto;
+  text-align: start;
+}
+
+.landing-page .landing-hero--immersive .landing-actions {
+  justify-content: flex-start;
+}
+
 .landing-copy {
   max-width: 680px;
 }
@@ -1384,6 +1397,10 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 
+  .landing-page .landing-hero--immersive {
+    width: calc(100% - 32px);
+  }
+
   .decision-orbit {
     min-height: 420px;
   }
@@ -1452,6 +1469,15 @@ tr:hover td {
 
   .landing-hero {
     padding-inline: 18px;
+  }
+
+  /* .landing-page already supplies the small-screen side gutter. */
+  .landing-page .landing-hero--immersive {
+    width: 100%;
+  }
+
+  .landing-page .landing-hero--immersive .landing-actions {
+    justify-content: stretch;
   }
 
   .service-ribbon,

@@ -67,6 +67,16 @@ class CompleteFrontendSurfacePackageTests(unittest.TestCase):
         for selector in required_selectors:
             self.assertIn(selector, source)
 
+    def test_immersive_landing_owns_a_two_column_desktop_width(self) -> None:
+        source = SURFACE_CSS.read_text(encoding="utf-8")
+        desktop_rule = ".landing-page .landing-hero--immersive {\n  width: min(1380px, calc(100% - 48px));"
+        mobile_rule = ".landing-page .landing-hero--immersive {\n    width: calc(100% - 32px);"
+        narrow_mobile_rule = ".landing-page .landing-hero--immersive {\n    width: 100%;"
+        self.assertIn(desktop_rule, source)
+        self.assertIn(mobile_rule, source)
+        self.assertIn(narrow_mobile_rule, source)
+        self.assertIn(".landing-page .landing-hero--immersive .landing-actions {\n  justify-content: flex-start;", source)
+
     def test_page_map_matches_approved_asie_information_architecture(self) -> None:
         source = MOUNT.read_text(encoding="utf-8")
         required_pages = (
