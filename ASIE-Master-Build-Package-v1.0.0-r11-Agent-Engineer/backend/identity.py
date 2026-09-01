@@ -44,12 +44,30 @@ class Principal:
         return permission in ROLE_PERMISSIONS.get(self.platform_role or "", frozenset()) or permission in ROLE_PERMISSIONS.get(self.role or "", frozenset())
 
 
-def hash_password(password: str, *, salt: str | None = None) -> str:
-    if not isinstance(password, str) or len(password) < 12:
-        raise ValueError("password_must_be_at_least_12_characters")
+def _encode_password(password: str, *, salt: str | None = None) -> str:
+    """Encode a password only after its caller has applied its own policy."""
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("ascii"), 310_000)
     return f"pbkdf2_sha256$310000${salt}${digest.hex()}"
+
+
+def hash_password(password: str, *, salt: str | None = None) -> str:
+    """Hash control-plane credentials under the platform's stronger policy."""
+    if not isinstance(password, str) or len(password) < 12:
+        raise ValueError("password_must_be_at_least_12_characters")
+    return _encode_password(password, salt=salt)
+
+
+def validate_beta_password(password: str) -> None:
+    """Keep closed-beta end-user passwords within the agreed 6–12 character range."""
+    if not isinstance(password, str) or not 6 <= len(password) <= 12:
+        raise ValueError("password_length_must_be_between_6_and_12_characters")
+
+
+def hash_beta_password(password: str, *, salt: str | None = None) -> str:
+    """Hash a closed-beta end-user credential after its explicit 6–12 policy."""
+    validate_beta_password(password)
+    return _encode_password(password, salt=salt)
 
 
 def verify_password(password: str, encoded: str) -> bool:

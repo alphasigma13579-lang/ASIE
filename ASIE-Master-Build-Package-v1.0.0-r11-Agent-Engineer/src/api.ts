@@ -79,6 +79,11 @@ export interface LoginResponse {
   external_access_enabled: boolean;
 }
 
+export interface BetaPasswordRegistrationResponse extends LoginResponse {
+  organization: { organization_id: string; name: string };
+  entitlement_profile: "beta_full_access";
+}
+
 export interface MeResponse {
   user_id: string;
   platform_role: string | null;
@@ -108,13 +113,13 @@ export async function login(email: string, password: string): Promise<LoginRespo
   });
 }
 
-export async function localBootstrap(payload: {
+export async function registerWithPassword(payload: {
   email: string;
   display_name: string;
   password: string;
-  organization_name: string;
-}): Promise<LoginResponse & { organization: { organization_id: string; name: string } }> {
-  return requestJson("/api/auth/local-bootstrap", {
+  invite_token: string;
+}): Promise<BetaPasswordRegistrationResponse> {
+  return requestJson<BetaPasswordRegistrationResponse>("/api/auth/registrations/password", {
     method: "POST",
     body: JSON.stringify(payload),
   });

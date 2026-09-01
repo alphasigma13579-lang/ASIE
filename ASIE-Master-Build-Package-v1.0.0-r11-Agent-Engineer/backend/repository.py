@@ -13,7 +13,7 @@ from backend.decision_pack import normalize_action_item_patch, normalize_review
 from backend.source_registry import normalize_source_review, seed_source_records
 from backend.snapshot_assembly import canonical_hash
 from backend.transformations import normalize_transformation_payload
-from backend.identity import Principal, VALID_ROLES, hash_password, new_session_token, token_hash, verify_password
+from backend.identity import Principal, VALID_ROLES, hash_beta_password, hash_password, new_session_token, token_hash, verify_password
 from backend.intelligence_authorization import authorize_intelligence_action
 from backend.intelligence_context import idempotency_fingerprint
 
@@ -232,6 +232,19 @@ class Repository:
                     expires_at TEXT NOT NULL,
                     consumed_at TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(user_id)
+                );
+                CREATE TABLE IF NOT EXISTS beta_registration_invites (
+                    invite_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    organization_name TEXT NOT NULL,
+                    issued_by_user_id TEXT,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    consumed_at TEXT,
+                    consumed_by_user_id TEXT,
+                    FOREIGN KEY(issued_by_user_id) REFERENCES users(user_id),
+                    FOREIGN KEY(consumed_by_user_id) REFERENCES users(user_id)
                 );
                 CREATE TABLE IF NOT EXISTS security_audit_events (
                     event_id TEXT PRIMARY KEY,
@@ -799,6 +812,106 @@ class Repository:
                 raise ValueError("email_already_registered") from exc
             conn.commit()
         return self.public_user(user)
+
+    def create_beta_registration_invite(
+        self,
+        *,
+        email: str,
+        organization_name: str,
+        issued_by_user_id: str | None = None,
+        expires_in_hours: int = 168,
+    ) -> dict[str, Any]:
+        """Create one email-bound, single-use beta invitation.
+
+        The bearer token is returned once to the trusted issuer; only its hash
+        is persisted.  A leaked token cannot register a different email.
+        """
+        normalized_email = email.strip().lower()
+        if "@" not in normalized_email or len(normalized_email) > 254:
+            raise ValueError("invalid_email")
+        if not organization_name.strip():
+            raise ValueError("organization_name_required")
+        if not 1 <= expires_in_hours <= 24 * 30:
+            raise ValueError("invalid_invite_expiry")
+        token, now = new_session_token(), now_iso()
+        invite = {
+            "invite_id": new_id("inv"),
+            "email": normalized_email,
+            "token_hash": token_hash(token),
+            "organization_name": organization_name.strip(),
+            "issued_by_user_id": issued_by_user_id,
+            "created_at": now,
+            "expires_at": (datetime.fromisoformat(now) + timedelta(hours=expires_in_hours)).isoformat(),
+        }
+        with closing(self.connect()) as conn:
+            existing = conn.execute(
+                "SELECT invite_id, consumed_at, expires_at FROM beta_registration_invites WHERE email = ? COLLATE NOCASE",
+                (normalized_email,),
+            ).fetchone()
+            if existing is not None and existing["consumed_at"] is None and existing["expires_at"] > now:
+                raise ValueError("beta_invite_already_exists")
+            if existing is None:
+                try:
+                    conn.execute(
+                        "INSERT INTO beta_registration_invites (invite_id, email, token_hash, organization_name, issued_by_user_id, created_at, expires_at, consumed_at, consumed_by_user_id) VALUES (:invite_id, :email, :token_hash, :organization_name, :issued_by_user_id, :created_at, :expires_at, NULL, NULL)",
+                        invite,
+                    )
+                except sqlite3.IntegrityError as exc:
+                    raise ValueError("beta_invite_already_exists") from exc
+            else:
+                conn.execute(
+                    "UPDATE beta_registration_invites SET token_hash = :token_hash, organization_name = :organization_name, issued_by_user_id = :issued_by_user_id, created_at = :created_at, expires_at = :expires_at, consumed_at = NULL, consumed_by_user_id = NULL WHERE invite_id = :existing_invite_id",
+                    invite | {"existing_invite_id": existing["invite_id"]},
+                )
+            conn.commit()
+        persisted_invite_id = existing["invite_id"] if existing is not None else invite["invite_id"]
+        self.audit(actor_user_id=issued_by_user_id, organization_id=None, action="beta.invite.create", target_type="beta_registration_invite", target_id=persisted_invite_id, result="allowed")
+        return {"invite_id": persisted_invite_id, "email": normalized_email, "organization_name": invite["organization_name"], "expires_at": invite["expires_at"], "invite_token": token}
+
+    def register_beta_user(self, *, email: str, display_name: str, password: str, invite_token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Atomically consume an invite, create an owner and assign beta access."""
+        normalized_email = email.strip().lower()
+        if "@" not in normalized_email or len(normalized_email) > 254:
+            raise ValueError("registration_invite_invalid")
+        if not invite_token:
+            raise ValueError("registration_invite_invalid")
+        password_hash = hash_beta_password(password)
+        now = now_iso()
+        user = {
+            "user_id": new_id("usr"), "email": normalized_email,
+            "display_name": display_name.strip() or normalized_email,
+            "password_hash": password_hash, "status": "active", "platform_role": None,
+            "created_at": now, "updated_at": now,
+        }
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            invite = conn.execute(
+                "SELECT * FROM beta_registration_invites WHERE token_hash = ? AND email = ? COLLATE NOCASE AND consumed_at IS NULL AND expires_at > ?",
+                (token_hash(invite_token), normalized_email, now),
+            ).fetchone()
+            if invite is None:
+                conn.rollback()
+                raise ValueError("registration_invite_invalid")
+            try:
+                conn.execute(
+                    "INSERT INTO users (user_id, email, display_name, password_hash, status, platform_role, created_at, updated_at) VALUES (:user_id, :email, :display_name, :password_hash, :status, :platform_role, :created_at, :updated_at)",
+                    user,
+                )
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                raise ValueError("email_already_registered") from exc
+            organization = {"organization_id": new_id("org"), "name": invite["organization_name"], "lifecycle_status": "active", "created_at": now, "updated_at": now}
+            membership = {"membership_id": new_id("mbr"), "user_id": user["user_id"], "organization_id": organization["organization_id"], "role": "organization_owner", "status": "active", "invited_at": now, "accepted_at": now, "created_at": now, "updated_at": now}
+            conn.execute("INSERT INTO organizations (organization_id, name, lifecycle_status, created_at, updated_at) VALUES (:organization_id, :name, :lifecycle_status, :created_at, :updated_at)", organization)
+            conn.execute("INSERT INTO memberships (membership_id, user_id, organization_id, role, status, invited_at, accepted_at, created_at, updated_at) VALUES (:membership_id, :user_id, :organization_id, :role, :status, :invited_at, :accepted_at, :created_at, :updated_at)", membership)
+            conn.execute("INSERT INTO organization_entitlements (organization_id, plan_code, lifecycle_status, quota_json, updated_at) VALUES (?, ?, ?, ?, ?)", (organization["organization_id"], "beta_full_access", "active", json_dumps({"billing_status": "not_applicable_during_beta", "upgrade_required": False, "payment_method_required": False, "feature_restrictions": []}), now))
+            consumed = conn.execute("UPDATE beta_registration_invites SET consumed_at = ?, consumed_by_user_id = ? WHERE invite_id = ? AND consumed_at IS NULL", (now, user["user_id"], invite["invite_id"])).rowcount
+            if consumed != 1:
+                conn.rollback()
+                raise ValueError("registration_invite_invalid")
+            conn.commit()
+        self.audit(actor_user_id=user["user_id"], organization_id=organization["organization_id"], action="beta.registration.password", target_type="beta_registration_invite", target_id=invite["invite_id"], result="allowed")
+        return self.public_user(user), organization
 
     def user_count(self) -> int:
         with closing(self.connect()) as conn:

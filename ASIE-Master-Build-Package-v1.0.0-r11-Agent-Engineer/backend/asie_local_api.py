@@ -1515,6 +1515,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "external_access_enabled": False})
             return
+        if path == "/api/auth/registration-options":
+            write_json(
+                self,
+                {
+                    "invite_only": True,
+                    "password_registration": {"available": True, "email_verification_delivery": "not_configured"},
+                    "google_registration": {"available": False, "reason": "out_of_scope_for_closed_beta"},
+                },
+            )
+            return
         if path.startswith("/api/intelligence/contexts/"):
             context_id = path.split("/")[4]
             organization_id = self.headers.get("X-ASIE-Organization-Id", "")
@@ -1867,6 +1877,21 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/auth/login":
                 token, user = REPO.create_session(email=str(payload.get("email") or ""), password=str(payload.get("password") or ""))
                 write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "memberships": REPO.memberships_for_user(user["user_id"]), "external_access_enabled": False})
+                return
+            if path == "/api/auth/registrations/password":
+                try:
+                    user, organization = REPO.register_beta_user(
+                        email=str(payload.get("email") or ""),
+                        display_name=str(payload.get("display_name") or ""),
+                        password=str(payload.get("password") or ""),
+                        invite_token=str(payload.get("invite_token") or ""),
+                    )
+                except ValueError as exc:
+                    code = str(exc)
+                    write_error(self, code if code in {"registration_invite_invalid", "email_already_registered", "password_length_must_be_between_6_and_12_characters"} else "invalid_registration_request", 400)
+                    return
+                token, _authenticated_user = REPO.create_session(email=user["email"], password=str(payload.get("password") or ""))
+                write_json(self, {"access_token": token, "token_type": "Bearer", "user": user, "organization": organization, "memberships": REPO.memberships_for_user(user["user_id"]), "external_access_enabled": False, "entitlement_profile": "beta_full_access"}, 201)
                 return
             if path == "/api/auth/password-recovery/request":
                 write_json(
