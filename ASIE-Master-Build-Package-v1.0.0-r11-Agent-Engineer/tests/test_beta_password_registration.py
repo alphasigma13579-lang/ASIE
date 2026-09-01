@@ -10,6 +10,7 @@ from http.client import HTTPConnection
 from pathlib import Path
 
 from backend import asie_local_api as api
+from backend.identity import hash_password
 from backend.repository import Repository
 
 
@@ -94,6 +95,11 @@ class BetaPasswordRegistrationTests(unittest.TestCase):
                 },
             )
             self.assertEqual(201, status)
+
+    def test_beta_password_policy_does_not_weaken_control_plane_passwords(self) -> None:
+        with self.assertRaisesRegex(ValueError, "password_must_be_at_least_12_characters"):
+            hash_password("beta-01")
+        self.assertTrue(hash_password("control-plane-01").startswith("pbkdf2_sha256$310000$"))
 
     def test_invite_cannot_be_used_by_a_different_email_or_reused(self) -> None:
         invite = self.repo.create_beta_registration_invite(email="bound@example.test", organization_name="Bound")

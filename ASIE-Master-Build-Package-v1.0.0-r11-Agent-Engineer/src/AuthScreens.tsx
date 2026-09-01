@@ -151,7 +151,7 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
               </label>
               <label>
                 كلمة المرور الجديدة
-                <input type="password" required minLength={6} maxLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                <input type="password" required minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
               </label>
             </>
           ) : null}
