@@ -128,7 +128,13 @@ def _scopes(record: Mapping[str, Any], field: str) -> frozenset[str]:
     raw = _record_value(record, field)
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return frozenset()
-    return frozenset(_normalized_context(str(item), field=field) for item in raw)
+    # A wildcard is valid only in a server-owned source record.  It is never
+    # accepted from the request context, which still passes through
+    # _normalized_context() in build_search_plan().
+    return frozenset(
+        "*" if str(item).strip() == "*" else _normalized_context(str(item), field=field)
+        for item in raw
+    )
 
 
 def _path_within(path: str, root: str) -> bool:

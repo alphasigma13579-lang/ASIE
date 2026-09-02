@@ -13,7 +13,7 @@ import {
   Telescope,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildLiveMarketContext, type LiveMarketContext } from "./api";
 import { LiveIntelligenceWorkspace } from "./LiveIntelligenceWorkspace";
 import { LiveMarketMap } from "./LiveMarketMap";
@@ -21,6 +21,7 @@ import { LiveMarketMap } from "./LiveMarketMap";
 type LiveCockpitProps = {
   projectName?: string;
   sector?: string;
+  primarySectorId?: string;
   location?: string;
   locationLabel?: string;
   projectId?: string;
@@ -131,11 +132,12 @@ function deriveTeamSize(monthlyUnits?: number | null) {
   return "٧–١٠ أفراد كبداية";
 }
 
-export function LiveCockpit({ projectName, sector, location, locationLabel, projectId, latitude, longitude, snapshotId, signals, onContinue }: LiveCockpitProps) {
+export function LiveCockpit({ projectName, sector, primarySectorId, location, locationLabel, projectId, latitude, longitude, snapshotId, signals, onContinue }: LiveCockpitProps) {
   const [scope, setScope] = useState<ComparisonScope>("السعودية");
   const [liveContext, setLiveContext] = useState<LiveMarketContext | null>(null);
   const [liveResearchLoading, setLiveResearchLoading] = useState(false);
   const [liveResearchUnavailable, setLiveResearchUnavailable] = useState(false);
+  const contextRevisionRef = useRef(0);
   const context = `${sector || "قطاع المشروع"} · ${location || "الموقع المحدد"}`;
   const studyAdvice = deriveStudyAdvice(signals);
   const projectType = classifyProject(sector);
@@ -147,9 +149,18 @@ export function LiveCockpit({ projectName, sector, location, locationLabel, proj
       && typeof latitude === "number" && Number.isFinite(latitude)
       && typeof longitude === "number" && Number.isFinite(longitude),
   );
+  const marketContextKey = [projectId ?? "", primarySectorId ?? "", latitude ?? "", longitude ?? ""].join("|");
+
+  useEffect(() => {
+    contextRevisionRef.current += 1;
+    setLiveContext(null);
+    setLiveResearchUnavailable(false);
+    setLiveResearchLoading(false);
+  }, [marketContextKey]);
 
   async function searchLiveMarket(payload: { query: string; location_query: string }) {
     if (!projectId || liveResearchLoading) return;
+    const requestRevision = contextRevisionRef.current;
     setLiveResearchUnavailable(false);
     setLiveResearchLoading(true);
     try {
@@ -157,14 +168,16 @@ export function LiveCockpit({ projectName, sector, location, locationLabel, proj
         project_id: projectId,
         query: payload.query,
         location_query: payload.location_query,
-        sector_id: sector || "general",
+        sector_id: primarySectorId || "general",
       });
-      setLiveContext(result);
+      if (contextRevisionRef.current === requestRevision) setLiveContext(result);
     } catch {
-      setLiveContext(null);
-      setLiveResearchUnavailable(true);
+      if (contextRevisionRef.current === requestRevision) {
+        setLiveContext(null);
+        setLiveResearchUnavailable(true);
+      }
     } finally {
-      setLiveResearchLoading(false);
+      if (contextRevisionRef.current === requestRevision) setLiveResearchLoading(false);
     }
   }
 

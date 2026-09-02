@@ -1167,17 +1167,16 @@ def _official_discovery_policy(scope: TrustedProviderScope) -> TavilySourceAdmis
     """
     candidates: list[dict[str, Any]] = []
     for record in REPO.source_records():
-        if record.get("route") != "official_open_dataset_or_api" or not record.get("url"):
+        if (
+            record.get("route") != "official_open_dataset_or_api"
+            or record.get("state") not in {"candidate", "enabled"}
+            or not record.get("url")
+        ):
             continue
-        candidates.append(
-            {
-                **record,
-                "state": "candidate",
-                "discovery_allowed": True,
-                "discovery_sectors": ["*"],
-                "discovery_geographies": ["*"],
-            }
-        )
+        notes = record.get("notes") if isinstance(record.get("notes"), Mapping) else {}
+        if notes.get("discovery_allowed") is not True:
+            continue
+        candidates.append(dict(record))
     return TavilySourceAdmissionPolicy.from_records(
         organization_id=scope.organization_id,
         project_id=scope.project_id,
@@ -2133,6 +2132,10 @@ class Handler(BaseHTTPRequestHandler):
                 scope = self._tenant_provider_scope_for_project(project_id)
                 if scope is None:
                     return
+                project = REPO.get_project(project_id)
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
                 principal = self._principal()
                 if principal is None:
                     return
@@ -2144,8 +2147,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 query = _request_text(payload, "query", maximum=500)
                 location_query = _request_text(payload, "location_query", maximum=500)
-                sector_id = str(payload.get("sector_id") or "general").strip()[:120] or "general"
-                geography = str(payload.get("geography") or "saudi_arabia").strip()[:120] or "saudi_arabia"
+                sector_id = str(project.inputs.get("primary_sector_id") or "general").strip()[:120] or "general"
+                geography = str(project.inputs.get("location_country") or "saudi_arabia").strip()[:120] or "saudi_arabia"
                 try:
                     context = _live_market_context_service(scope).build_market_context(
                         scope=scope,
@@ -2172,14 +2175,15 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     self._write_provider_unavailable("live_market_context")
                     return
+                market_status = str(context.get("status") or "failed")
                 REPO.audit(
                     actor_user_id=principal.user_id,
                     organization_id=scope.organization_id,
                     action="live_market_context",
                     target_type="project",
                     target_id=project_id,
-                    result="allowed",
-                    reason="review_required",
+                    result="allowed" if market_status == "review_required" else "failed",
+                    reason="review_required" if market_status == "review_required" else "no_reviewable_results",
                     correlation_id=self.request_id,
                 )
                 write_json(self, _customer_market_context(context))

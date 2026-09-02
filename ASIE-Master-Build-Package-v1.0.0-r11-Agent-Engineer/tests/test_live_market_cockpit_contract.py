@@ -57,6 +57,12 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertNotIn("Google Maps", self.workspace)
         self.assertNotIn("failure.provider", self.workspace)
 
+    def test_live_research_resets_with_project_context_and_never_claims_unsaved_retry_data(self) -> None:
+        self.assertIn('useEffect', self.cockpit)
+        self.assertIn('contextRevisionRef', self.cockpit)
+        self.assertIn('primarySectorId', self.cockpit)
+        self.assertNotIn("حُفظت مدخلاتك", self.workspace)
+
 
 if __name__ == "__main__":
     unittest.main()

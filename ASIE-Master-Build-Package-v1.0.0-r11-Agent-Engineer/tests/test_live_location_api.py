@@ -13,6 +13,7 @@ import threading
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import backend.asie_local_api as api
@@ -80,8 +81,9 @@ class FakeGoogle:
 
 
 class FakeMarketContextService:
-    def __init__(self) -> None:
+    def __init__(self, *, status: str = "review_required") -> None:
         self.calls: list[dict] = []
+        self.status = status
 
     def build_market_context(self, **kwargs: object) -> dict:
         self.calls.append(kwargs)
@@ -90,7 +92,7 @@ class FakeMarketContextService:
             "contract_id": "live.intelligence.context.v1",
             "project_id": scope.project_id,
             "organization_id": scope.organization_id,
-            "status": "review_required",
+            "status": self.status,
             "source_candidates": [],
             "places": [],
             "knowledge_hits": [],
@@ -128,7 +130,12 @@ class LiveLocationApiTests(unittest.TestCase):
             {
                 "name": "Location A",
                 "organization_id": self.org_a_id,
-                "inputs": {"location_latitude": 24.7136, "location_longitude": 46.6753},
+                "inputs": {
+                    "location_latitude": 24.7136,
+                    "location_longitude": 46.6753,
+                    "primary_sector_id": "SEC-11",
+                    "location_country": "Saudi Arabia",
+                },
             }
         )
         self.project_b = self.repo.create_project(
@@ -331,7 +338,8 @@ class LiveLocationApiTests(unittest.TestCase):
                     "project_id": self.project_a.project_id,
                     "query": "سوق المطاعم في الرياض",
                     "location_query": "مطاعم قرب العليا",
-                    "sector_id": "food_service",
+                    "sector_id": "untrusted-client-sector",
+                    "geography": "untrusted-client-geography",
                 },
             )
 
@@ -346,6 +354,8 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual(self.org_a_id, call["scope"].organization_id)
         self.assertEqual(self.project_a.project_id, call["scope"].project_id)
         self.assertEqual((24.7136, 46.6753), (call["latitude"], call["longitude"]))
+        self.assertEqual("SEC-11", call["sector_id"])
+        self.assertEqual("Saudi Arabia", call["geography"])
         self.assertFalse(body["finance_mutated"])
         self.assertFalse(body["snapshot_mutated"])
         matching_events = [
@@ -354,6 +364,62 @@ class LiveLocationApiTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(matching_events))
         self.assertEqual(self.user_a["user_id"], matching_events[0]["actor_user_id"])
+
+    def test_live_market_context_records_an_empty_provider_response_as_a_failure(self) -> None:
+        service = FakeMarketContextService(status="failed")
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_market_context_service", return_value=service),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/intelligence/market-context",
+                token=self.token_a,
+                organization_id=self.org_a_id,
+                payload={
+                    "project_id": self.project_a.project_id,
+                    "query": "سوق المطاعم في الرياض",
+                    "location_query": "مطاعم قرب العليا",
+                },
+            )
+
+        self.assertEqual(200, status)
+        self.assertEqual("failed", body["status"])
+        events = [
+            event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
+            if event["action"] == "live_market_context"
+        ]
+        self.assertEqual("failed", events[-1]["result"])
+        self.assertEqual("no_reviewable_results", events[-1]["reason"])
+
+    def test_official_discovery_policy_preserves_source_block_and_existing_scopes(self) -> None:
+        scope = SimpleNamespace(organization_id=self.org_a_id, project_id=self.project_a.project_id)
+        blocked = {
+            "source_id": "blocked-source",
+            "route": "official_open_dataset_or_api",
+            "state": "blocked",
+            "url": "https://blocked.example.test/data",
+            "notes": {
+                "discovery_allowed": True,
+                "discovery_sectors": ["food_service"],
+                "discovery_geographies": ["saudi_arabia"],
+            },
+        }
+        enabled = {
+            "source_id": "enabled-source",
+            "route": "official_open_dataset_or_api",
+            "state": "enabled",
+            "url": "https://enabled.example.test/data",
+            "notes": {
+                "discovery_allowed": True,
+                "discovery_sectors": ["food_service"],
+                "discovery_geographies": ["saudi_arabia"],
+            },
+        }
+        with patch.object(api.REPO, "source_records", return_value=[blocked, enabled]):
+            policy = api._official_discovery_policy(scope)
+
+        self.assertEqual([enabled], list(policy.records))
 
     def test_customer_market_context_normalizes_optional_display_values(self) -> None:
         view = api._customer_market_context(
