@@ -85,7 +85,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
           <section aria-labelledby="public-evidence-title">
             <h3 id="public-evidence-title">الأدلة الاقتصادية العامة</h3>
             <p>
-              {context.knowledge_hits.length} دليل موثق حتى {context.public_evidence_context.as_of}.
+              {context.knowledge_hits.length} دليل موثق حتى {context.public_evidence_context.as_of || "تاريخ غير متاح"}.
               هذه الأدلة إرشادية وتحتاج مراجعة بشرية، ولا تضمن نجاح المشروع أو قبول التمويل.
             </p>
             {context.knowledge_hits.length === 0 ? (
@@ -99,7 +99,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
                     <p><strong>المنطقة:</strong> {evidence.geography}</p>
                     <p><strong>القطاع:</strong> {evidence.sector}</p>
                     <p><strong>الوحدة:</strong> {evidence.unit}</p>
-                    <p><strong>الثقة:</strong> {(evidence.confidence * 100).toFixed(0)}%</p>
+                    <p><strong>الثقة:</strong> {evidence.confidence === null ? "غير متاح" : `${(evidence.confidence * 100).toFixed(0)}%`}</p>
                     <p><strong>تاريخ الجلب:</strong> {evidence.retrieved_at}</p>
                     <p><strong>صالح حتى:</strong> {evidence.fresh_until}</p>
                     <a href={evidence.source_url} target="_blank" rel="noreferrer">
@@ -122,7 +122,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
 
       {error ? (
         <p role="alert" className="capability-notice">
-          الخدمة الخارجية متوقفة مؤقتًا. حُفظت مدخلاتك، ويمكنك إعادة المحاولة لاحقًا.
+          الاتصال الخارجي معطّل مؤقتًا. حُفظت مدخلاتك، ويمكنك إعادة المحاولة لاحقًا.
         </p>
       ) : null}
     </section>

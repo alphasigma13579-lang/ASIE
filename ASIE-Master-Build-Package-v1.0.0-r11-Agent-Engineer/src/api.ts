@@ -577,11 +577,11 @@ export type LiveMarketContext = {
     geography: string;
     sector: string;
     unit: string;
-    confidence: number;
+    confidence: number | null;
     retrieved_at: string;
     fresh_until: string;
   }>;
-  public_evidence_context: { as_of?: string };
+  public_evidence_context: { as_of?: string | null };
   partial_results_available: boolean;
   human_review_required: true;
   finance_mutated: false;

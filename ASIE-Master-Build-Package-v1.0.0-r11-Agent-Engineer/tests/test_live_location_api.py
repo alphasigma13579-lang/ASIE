@@ -340,6 +340,7 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertNotIn("organization_id", body)
         self.assertNotIn("project_id", body)
         self.assertNotIn("failures", body)
+        self.assertIsNone(body["public_evidence_context"]["as_of"])
         self.assertEqual(1, len(service.calls))
         call = service.calls[0]
         self.assertEqual(self.org_a_id, call["scope"].organization_id)
@@ -347,6 +348,27 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual((24.7136, 46.6753), (call["latitude"], call["longitude"]))
         self.assertFalse(body["finance_mutated"])
         self.assertFalse(body["snapshot_mutated"])
+        matching_events = [
+            event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
+            if event["action"] == "live_market_context" and event["result"] == "allowed"
+        ]
+        self.assertEqual(1, len(matching_events))
+        self.assertEqual(self.user_a["user_id"], matching_events[0]["actor_user_id"])
+
+    def test_customer_market_context_normalizes_optional_display_values(self) -> None:
+        view = api._customer_market_context(
+            {
+                "status": "review_required",
+                "knowledge_hits": [
+                    {"confidence": "0.8"},
+                    {"confidence": 2},
+                    {"confidence": True},
+                ],
+                "public_evidence_context": {"as_of": 20260902},
+            }
+        )
+        self.assertEqual([0.8, None, None], [row["confidence"] for row in view["knowledge_hits"]])
+        self.assertEqual("20260902", view["public_evidence_context"]["as_of"])
 
     def test_live_market_context_stays_disabled_without_network_authorization(self) -> None:
         with (

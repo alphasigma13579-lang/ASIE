@@ -1231,6 +1231,15 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
         for row in context.get("places") or []
         if isinstance(row, Mapping)
     ]
+    def normalized_confidence(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            return None
+        return confidence if 0 <= confidence <= 1 else None
+
     knowledge_hits = [
         {
             "display_id": f"evidence-{index}",
@@ -1240,7 +1249,7 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
             "geography": str(row.get("geography") or "")[:240],
             "sector": str(row.get("sector") or "")[:240],
             "unit": str(row.get("unit") or "")[:120],
-            "confidence": row.get("confidence"),
+            "confidence": normalized_confidence(row.get("confidence")),
             "retrieved_at": str(row.get("retrieved_at") or "")[:80],
             "fresh_until": str(row.get("fresh_until") or "")[:80],
         }
@@ -1248,6 +1257,7 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(row, Mapping)
     ]
     evidence_context = context.get("public_evidence_context")
+    as_of = evidence_context.get("as_of") if isinstance(evidence_context, Mapping) else None
     return {
         "contract_id": "live.intelligence.context.v1",
         "status": str(context.get("status") or "failed"),
@@ -1255,7 +1265,7 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
         "places": places,
         "knowledge_hits": knowledge_hits,
         "public_evidence_context": {
-            "as_of": evidence_context.get("as_of") if isinstance(evidence_context, Mapping) else None,
+            "as_of": str(as_of).strip()[:80] if as_of else None,
         },
         "partial_results_available": bool(context.get("failures")),
         "human_review_required": True,
@@ -2123,6 +2133,9 @@ class Handler(BaseHTTPRequestHandler):
                 scope = self._tenant_provider_scope_for_project(project_id)
                 if scope is None:
                     return
+                principal = self._principal()
+                if principal is None:
+                    return
                 if not provider_status_snapshot()["external_fetch_enabled"]:
                     self._write_provider_unavailable("live_market_context")
                     return
@@ -2148,7 +2161,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 except Exception as exc:
                     REPO.audit(
-                        actor_user_id=None,
+                        actor_user_id=principal.user_id,
                         organization_id=scope.organization_id,
                         action="live_market_context",
                         target_type="project",
@@ -2160,7 +2173,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._write_provider_unavailable("live_market_context")
                     return
                 REPO.audit(
-                    actor_user_id=None,
+                    actor_user_id=principal.user_id,
                     organization_id=scope.organization_id,
                     action="live_market_context",
                     target_type="project",
