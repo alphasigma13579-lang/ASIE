@@ -79,6 +79,32 @@ class FakeGoogle:
         }
 
 
+class FakeMarketContextService:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def build_market_context(self, **kwargs: object) -> dict:
+        self.calls.append(kwargs)
+        scope = kwargs["scope"]
+        return {
+            "contract_id": "live.intelligence.context.v1",
+            "project_id": scope.project_id,
+            "organization_id": scope.organization_id,
+            "status": "review_required",
+            "source_candidates": [],
+            "places": [],
+            "knowledge_hits": [],
+            "public_evidence_context": {"status": "not_ready", "evidence": [], "gaps": []},
+            "failures": [],
+            "human_review_required": True,
+            "eligible_for_controlled_assumptions": False,
+            "controlled_numbers": [],
+            "finance_mutated": False,
+            "snapshot_mutated": False,
+            "context_hash": "a" * 64,
+        }
+
+
 class LiveLocationApiTests(unittest.TestCase):
     def setUp(self) -> None:
         directory = tempfile.TemporaryDirectory()
@@ -290,6 +316,59 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual(403, status)
         self.assertEqual("permission_denied", body["error"])
 
+    def test_live_market_context_is_tenant_bound_and_requires_confirmed_location(self) -> None:
+        service = FakeMarketContextService()
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_market_context_service", return_value=service),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/intelligence/market-context",
+                token=self.token_a,
+                organization_id=self.org_a_id,
+                payload={
+                    "project_id": self.project_a.project_id,
+                    "query": "سوق المطاعم في الرياض",
+                    "location_query": "مطاعم قرب العليا",
+                    "sector_id": "food_service",
+                },
+            )
+
+        self.assertEqual(200, status)
+        self.assertEqual("live.intelligence.context.v1", body["contract_id"])
+        self.assertNotIn("organization_id", body)
+        self.assertNotIn("project_id", body)
+        self.assertNotIn("failures", body)
+        self.assertEqual(1, len(service.calls))
+        call = service.calls[0]
+        self.assertEqual(self.org_a_id, call["scope"].organization_id)
+        self.assertEqual(self.project_a.project_id, call["scope"].project_id)
+        self.assertEqual((24.7136, 46.6753), (call["latitude"], call["longitude"]))
+        self.assertFalse(body["finance_mutated"])
+        self.assertFalse(body["snapshot_mutated"])
+
+    def test_live_market_context_stays_disabled_without_network_authorization(self) -> None:
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "false"}, clear=False),
+            patch.object(api, "_live_market_context_service", side_effect=AssertionError("service must not be created")),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/intelligence/market-context",
+                token=self.token_a,
+                organization_id=self.org_a_id,
+                payload={
+                    "project_id": self.project_a.project_id,
+                    "query": "سوق المطاعم في الرياض",
+                    "location_query": "مطاعم قرب العليا",
+                },
+            )
+
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        self.assertFalse(body["network_attempted"])
+
     def test_location_routes_are_registered_with_their_response_contracts(self) -> None:
         registry_path = Path(__file__).resolve().parents[1] / "registry" / "asie-canonical-api-output.v1.json"
         register = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -302,6 +381,7 @@ class LiveLocationApiTests(unittest.TestCase):
             ("POST", "/api/v1/location/geocode"): "location.geocode.v1",
             ("POST", "/api/v1/location/reverse-geocode"): "location.reverse-geocode.v1",
             ("POST", "/api/v1/market/competitors/search"): "market.competitors.search.v1",
+            ("POST", "/api/v1/intelligence/market-context"): "live.intelligence.context.v1",
         }
         for route, response_contract in expected.items():
             with self.subTest(route=route):
