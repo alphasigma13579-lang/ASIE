@@ -122,7 +122,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
 
       {error ? (
         <p role="alert" className="capability-notice">
-          تعذر إكمال البحث مؤقتًا بسبب توقف خدمة خارجية. يمكنك إعادة المحاولة ما دمت في هذه الصفحة.
+          تعذر إكمال البحث مؤقتًا لأن الاتصال الخارجي معطّل. يمكنك إعادة المحاولة ما دمت في هذه الصفحة.
         </p>
       ) : null}
     </section>
