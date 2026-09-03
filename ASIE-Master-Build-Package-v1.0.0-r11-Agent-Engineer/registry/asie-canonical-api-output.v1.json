@@ -774,6 +774,15 @@
         "if path == \"/api/v1/market/competitors/search\":"
       ],
       "response": "market.competitors.search.v1"
+    },
+    {
+      "route_id": "LIVE_INTELLIGENCE_MARKET_CONTEXT",
+      "method": "POST",
+      "path": "/api/v1/intelligence/market-context",
+      "backend_evidence": [
+        "if path == \"/api/v1/intelligence/market-context\":"
+      ],
+      "response": "live.intelligence.customer-context.v1"
     }
   ],
   "sealed_output_mappings": [

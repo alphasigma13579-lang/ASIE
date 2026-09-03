@@ -1946,6 +1946,7 @@ function SessionWorkspace() {
               projectName={project?.name}
               projectId={project?.project_id}
               sector={project?.sector}
+              primarySectorId={project?.inputs.primary_sector_id}
               location={project?.inputs.location_scope}
               locationLabel={[project?.inputs.location_city, project?.inputs.location_district].filter(Boolean).join(" · ") || project?.inputs.location_scope}
               latitude={project?.inputs.location_latitude ?? null}

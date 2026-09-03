@@ -554,6 +554,39 @@ export type MarketCompetitorResponse = {
   snapshot_mutated: false;
 };
 
+export type LiveMarketContext = {
+  status: "review_required" | "failed";
+  source_candidates: Array<{
+    candidate_id: string;
+    title: string;
+    url: string;
+    summary: string;
+    review_status: "review_required";
+  }>;
+  places: Array<{
+    display_name?: { text?: string } | null;
+    formatted_address?: string | null;
+    google_maps_uri?: string | null;
+  }>;
+  knowledge_hits: Array<{
+    display_id: string;
+    publisher: string;
+    chunk_text: string;
+    source_url: string;
+    geography: string;
+    sector: string;
+    unit: string;
+    confidence: number | null;
+    retrieved_at: string;
+    fresh_until: string;
+  }>;
+  public_evidence_context: { as_of?: string | null };
+  partial_results_available: boolean;
+  human_review_required: true;
+  finance_mutated: false;
+  snapshot_mutated: false;
+};
+
 export function reverseGeocode(payload: {
   project_id: string;
   latitude: number;
@@ -573,6 +606,19 @@ export function searchMarketCompetitors(payload: {
   radius_meters: number;
 }): Promise<MarketCompetitorResponse> {
   return requestJson<MarketCompetitorResponse>("/api/v1/market/competitors/search", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function buildLiveMarketContext(payload: {
+  project_id: string;
+  query: string;
+  location_query: string;
+  sector_id?: string;
+  geography?: string;
+}): Promise<LiveMarketContext> {
+  return requestJson<LiveMarketContext>("/api/v1/intelligence/market-context", {
     method: "POST",
     body: JSON.stringify(payload),
   });

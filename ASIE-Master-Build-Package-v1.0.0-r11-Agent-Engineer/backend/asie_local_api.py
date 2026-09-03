@@ -27,9 +27,10 @@ from backend.architecture_status import build_architecture_runtime_status
 from backend.bus_controller import BusController
 from backend.contracts import HOST, PORT, PROFILE_ID, SCENARIO_ID, envelope, json_dumps, new_id, now_iso
 from backend.intelligence_prerun_service import IntelligencePreRunService
-from backend.live_intelligence_product import provider_status_snapshot
-from backend.live_provider_clients import GoogleLocationClient
+from backend.live_intelligence_product import LiveIntelligenceProductError, LiveIntelligenceProductService, provider_status_snapshot
+from backend.live_provider_clients import GoogleLocationClient, PineconeKnowledgeClient, TavilyResearchClient
 from backend.provider_security_control_plane import ProviderSecurityError, TrustedProviderScope
+from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 from backend.datasets import dataset_quality_gate, normalize_file_import_payload
 from backend.decision_pack import apply_review_overlay, build_action_items_from_overview, render_decision_pack_html
 from backend.evidence_ledger import build_evidence_coverage
@@ -1157,6 +1158,120 @@ def _live_google_client() -> GoogleLocationClient:
     return GoogleLocationClient.from_env()
 
 
+def _official_discovery_policy(scope: TrustedProviderScope) -> TavilySourceAdmissionPolicy:
+    """Allow discovery only through the server-owned official-source candidate list.
+
+    Discovery is deliberately narrower than evidence admission: a candidate can
+    help Tavily find a page, but cannot become a financial input, a Pinecone
+    record, or a Snapshot fact without the existing evidence-review path.
+    """
+    candidates: list[dict[str, Any]] = []
+    for record in REPO.source_records():
+        if (
+            record.get("route") != "official_open_dataset_or_api"
+            or record.get("state") not in {"candidate", "enabled"}
+            or not record.get("url")
+        ):
+            continue
+        notes = record.get("notes") if isinstance(record.get("notes"), Mapping) else {}
+        if notes.get("discovery_allowed") is not True:
+            continue
+        candidates.append(dict(record))
+    return TavilySourceAdmissionPolicy.from_records(
+        organization_id=scope.organization_id,
+        project_id=scope.project_id,
+        records=candidates,
+    )
+
+
+def _live_market_context_service(scope: TrustedProviderScope) -> LiveIntelligenceProductService:
+    """Build the bounded retrieval service lazily, after tenant authorization.
+
+    DeepSeek is intentionally not constructed here.  Market retrieval must stay
+    usable while narrative generation is unavailable, and DeepSeek is invoked
+    only by the separate approved-context route.
+    """
+    return LiveIntelligenceProductService(
+        deepseek=None,
+        tavily=TavilyResearchClient.from_env(
+            scope=scope,
+            admission_policy=_official_discovery_policy(scope),
+        ),
+        google=GoogleLocationClient.from_env(),
+        pinecone=PineconeKnowledgeClient.from_env(),
+    )
+
+
+def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the governed retrieval result into a customer-safe view.
+
+    Provider identifiers, tenant identifiers, hashes, and detailed failure
+    reasons remain in the server audit trail.  The browser receives only the
+    evidence a project member needs to review; this deliberately does not
+    change the underlying retrieval contract or any frozen projection.
+    """
+    source_candidates = [
+        {
+            "candidate_id": f"source-{index}",
+            "title": str(row.get("title") or "")[:240],
+            "url": str(row.get("url") or "")[:2_000],
+            "summary": str(row.get("summary") or "")[:1_200],
+            "review_status": "review_required",
+        }
+        for index, row in enumerate(context.get("source_candidates") or [], 1)
+        if isinstance(row, Mapping)
+    ]
+    places = [
+        {
+            "display_name": row.get("display_name"),
+            "formatted_address": row.get("formatted_address"),
+            "google_maps_uri": row.get("google_maps_uri"),
+        }
+        for row in context.get("places") or []
+        if isinstance(row, Mapping)
+    ]
+    def normalized_confidence(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            return None
+        return confidence if 0 <= confidence <= 1 else None
+
+    knowledge_hits = [
+        {
+            "display_id": f"evidence-{index}",
+            "publisher": str(row.get("publisher") or "")[:240],
+            "chunk_text": str(row.get("chunk_text") or "")[:4_000],
+            "source_url": str(row.get("source_url") or "")[:2_000],
+            "geography": str(row.get("geography") or "")[:240],
+            "sector": str(row.get("sector") or "")[:240],
+            "unit": str(row.get("unit") or "")[:120],
+            "confidence": normalized_confidence(row.get("confidence")),
+            "retrieved_at": str(row.get("retrieved_at") or "")[:80],
+            "fresh_until": str(row.get("fresh_until") or "")[:80],
+        }
+        for index, row in enumerate(context.get("knowledge_hits") or [], 1)
+        if isinstance(row, Mapping)
+    ]
+    evidence_context = context.get("public_evidence_context")
+    as_of = evidence_context.get("as_of") if isinstance(evidence_context, Mapping) else None
+    return {
+        "status": str(context.get("status") or "failed"),
+        "source_candidates": source_candidates,
+        "places": places,
+        "knowledge_hits": knowledge_hits,
+        "public_evidence_context": {
+            "as_of": str(as_of).strip()[:80] if as_of else None,
+        },
+        "partial_results_available": bool(context.get("failures")),
+        "human_review_required": True,
+        "finance_mutated": False,
+        "snapshot_mutated": False,
+    }
+
+
 def reject_architecture_status_mutation(handler: BaseHTTPRequestHandler) -> None:
     write_json(
         handler,
@@ -1436,7 +1551,7 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, beta_access_status())
             return
         if path == "/api/v1/providers/readiness":
-            if self._principal() is None:
+            if self._require_platform_permission("platform.manage") is None:
                 return
             status = provider_status_snapshot()
             write_json(
@@ -2011,12 +2126,96 @@ class Handler(BaseHTTPRequestHandler):
                 REPO.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="organization.data_request", target_type="data_request", target_id=request["request_id"], result="queued", reason=request["request_type"], correlation_id=self.request_id)
                 write_json(self, {"data_request": request, "snapshot_mutation": False, "automatic_deletion": False}, 202)
                 return
+            if path == "/api/v1/intelligence/market-context":
+                project_id = _request_text(payload, "project_id", maximum=160)
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
+                scope = self._tenant_provider_scope_for_project(project_id)
+                if scope is None:
+                    return
+                project = REPO.get_project(project_id)
+                if project is None:
+                    write_error(self, "project_not_found", 404)
+                    return
+                if not provider_status_snapshot()["external_fetch_enabled"]:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_market_context",
+                        target_type="project",
+                        target_id=project_id,
+                        result="denied",
+                        reason="external_fetch_disabled",
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_market_context")
+                    return
+                coordinates = self._confirmed_project_coordinates(project_id)
+                if coordinates is None:
+                    return
+                query = _request_text(payload, "query", maximum=500)
+                location_query = _request_text(payload, "location_query", maximum=500)
+                sector_id = str(project.inputs.get("primary_sector_id") or "general").strip()[:120] or "general"
+                geography = str(project.inputs.get("location_country") or "saudi_arabia").strip()[:120] or "saudi_arabia"
+                try:
+                    context = _live_market_context_service(scope).build_market_context(
+                        scope=scope,
+                        query=query,
+                        location_query=location_query,
+                        sector_id=sector_id,
+                        geography=geography,
+                        latitude=coordinates[0],
+                        longitude=coordinates[1],
+                    )
+                except (LiveIntelligenceProductError, ProviderSecurityError, ValueError):
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_market_context",
+                        target_type="project",
+                        target_id=project_id,
+                        result="failed",
+                        reason="provider_unavailable",
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_market_context")
+                    return
+                except Exception as exc:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_market_context",
+                        target_type="project",
+                        target_id=project_id,
+                        result="failed",
+                        reason=type(exc).__name__,
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_market_context")
+                    return
+                market_status = str(context.get("status") or "failed")
+                REPO.audit(
+                    actor_user_id=principal.user_id,
+                    organization_id=scope.organization_id,
+                    action="live_market_context",
+                    target_type="project",
+                    target_id=project_id,
+                    result="allowed" if market_status == "review_required" else "failed",
+                    reason="review_required" if market_status == "review_required" else "no_reviewable_results",
+                    correlation_id=self.request_id,
+                )
+                write_json(self, _customer_market_context(context))
+                return
             if path in {
                 "/api/v1/location/geocode",
                 "/api/v1/location/reverse-geocode",
                 "/api/v1/market/competitors/search",
             }:
                 project_id = _request_text(payload, "project_id", maximum=160)
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
                 scope = self._tenant_provider_scope_for_project(project_id)
                 if scope is None:
                     return
@@ -2041,6 +2240,16 @@ class Handler(BaseHTTPRequestHandler):
                         query = _request_text(payload, "query", maximum=500)
                         radius_meters = _request_coordinate(payload, "radius_meters", minimum=1, maximum=50_000)
                 if not provider_status_snapshot()["external_fetch_enabled"]:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="provider.request",
+                        target_type="provider",
+                        target_id="google_maps_platform",
+                        result="denied",
+                        reason="external_fetch_disabled",
+                        correlation_id=self.request_id,
+                    )
                     self._write_provider_unavailable("google_maps_platform")
                     return
                 try:
@@ -2099,7 +2308,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 except Exception as exc:
                     REPO.audit(
-                        actor_user_id=None,
+                        actor_user_id=principal.user_id,
                         organization_id=scope.organization_id,
                         action="provider.request",
                         target_type="provider",

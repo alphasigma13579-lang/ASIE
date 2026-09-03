@@ -13,12 +13,15 @@ import {
   Telescope,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { buildLiveMarketContext, type LiveMarketContext } from "./api";
+import { LiveIntelligenceWorkspace } from "./LiveIntelligenceWorkspace";
 import { LiveMarketMap } from "./LiveMarketMap";
 
 type LiveCockpitProps = {
   projectName?: string;
   sector?: string;
+  primarySectorId?: string;
   location?: string;
   locationLabel?: string;
   projectId?: string;
@@ -129,14 +132,54 @@ function deriveTeamSize(monthlyUnits?: number | null) {
   return "٧–١٠ أفراد كبداية";
 }
 
-export function LiveCockpit({ projectName, sector, location, locationLabel, projectId, latitude, longitude, snapshotId, signals, onContinue }: LiveCockpitProps) {
+export function LiveCockpit({ projectName, sector, primarySectorId, location, locationLabel, projectId, latitude, longitude, snapshotId, signals, onContinue }: LiveCockpitProps) {
   const [scope, setScope] = useState<ComparisonScope>("السعودية");
+  const [liveContext, setLiveContext] = useState<LiveMarketContext | null>(null);
+  const [liveResearchLoading, setLiveResearchLoading] = useState(false);
+  const [liveResearchUnavailable, setLiveResearchUnavailable] = useState(false);
+  const contextRevisionRef = useRef(0);
   const context = `${sector || "قطاع المشروع"} · ${location || "الموقع المحدد"}`;
   const studyAdvice = deriveStudyAdvice(signals);
   const projectType = classifyProject(sector);
   const vision = visionHypothesis(sector);
   const teamSize = deriveTeamSize(signals?.monthlyUnits);
   const profile = comparisonProfiles[scope];
+  const liveResearchReady = Boolean(
+    projectId
+      && typeof latitude === "number" && Number.isFinite(latitude)
+      && typeof longitude === "number" && Number.isFinite(longitude),
+  );
+  const marketContextKey = [projectId ?? "", primarySectorId ?? "", latitude ?? "", longitude ?? ""].join("|");
+
+  useEffect(() => {
+    contextRevisionRef.current += 1;
+    setLiveContext(null);
+    setLiveResearchUnavailable(false);
+    setLiveResearchLoading(false);
+  }, [marketContextKey]);
+
+  async function searchLiveMarket(payload: { query: string; location_query: string }) {
+    if (!projectId || liveResearchLoading) return;
+    const requestRevision = contextRevisionRef.current;
+    setLiveResearchUnavailable(false);
+    setLiveResearchLoading(true);
+    try {
+      const result = await buildLiveMarketContext({
+        project_id: projectId,
+        query: payload.query,
+        location_query: payload.location_query,
+        sector_id: primarySectorId || "general",
+      });
+      if (contextRevisionRef.current === requestRevision) setLiveContext(result);
+    } catch {
+      if (contextRevisionRef.current === requestRevision) {
+        setLiveContext(null);
+        setLiveResearchUnavailable(true);
+      }
+    } finally {
+      if (contextRevisionRef.current === requestRevision) setLiveResearchLoading(false);
+    }
+  }
 
   return <section className="live-cockpit live-cockpit--r3" aria-label="ذكاء السوق والفرص التجريبي">
     <header className="cockpit-intro">
@@ -162,7 +205,16 @@ export function LiveCockpit({ projectName, sector, location, locationLabel, proj
         locationLabel={locationLabel || location}
         latitude={latitude}
         longitude={longitude}
-      />\n\n      <article className="cockpit-kpis-widget">
+      />
+      <LiveIntelligenceWorkspace
+        context={liveContext}
+        loading={liveResearchLoading}
+        error={liveResearchUnavailable}
+        locationReady={liveResearchReady}
+        onSearch={searchLiveMarket}
+      />
+
+      <article className="cockpit-kpis-widget">
         <div className="widget-heading"><div><Compass size={20} /><div><span>قراءة الفرصة</span><strong>مؤشرات محاكاة مشتقة من الدراسة</strong></div></div><small>ليست نتائج سوق</small></div>
         <div className="cockpit-kpis">
           <div className="cockpit-kpi cockpit-kpi--mint"><span>درجة التشبع</span><strong>{studyAdvice.saturation}</strong><small>قالب تطوير، لا يستند إلى تعداد منشآت حقيقي.</small></div>

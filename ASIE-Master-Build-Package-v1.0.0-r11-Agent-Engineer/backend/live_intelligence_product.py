@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol, Sequence
+from urllib.parse import urlparse
 
 from backend.live_provider_clients import (
     DeepSeekNarrativeClient,
@@ -51,6 +52,28 @@ def _stable_context_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
             key: value for key, value in evidence_context.items() if key != "as_of"
         }
     return stable
+
+
+def _admitted_tavily_domains(search: Mapping[str, Any]) -> frozenset[str]:
+    """Read only the server-derived discovery domains returned with a search."""
+    admission = search.get("source_admission")
+    raw_domains = admission.get("include_domains") if isinstance(admission, Mapping) else ()
+    if not isinstance(raw_domains, Sequence) or isinstance(raw_domains, (str, bytes)):
+        return frozenset()
+    return frozenset(
+        domain
+        for value in raw_domains
+        if isinstance(value, str)
+        for domain in [value.strip().casefold().rstrip(".")]
+        if domain
+    )
+
+
+def _is_admitted_tavily_result_url(value: Any, domains: frozenset[str]) -> bool:
+    if not isinstance(value, str) or not domains:
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and bool(parsed.hostname) and parsed.hostname.casefold().rstrip(".") in domains
 
 
 def provider_status_snapshot() -> dict[str, Any]:
@@ -155,8 +178,12 @@ class LiveIntelligenceProductService:
             )
             payload = search.get("payload") if isinstance(search, Mapping) else None
             results = payload.get("results", []) if isinstance(payload, Mapping) else []
+            admitted_domains = _admitted_tavily_domains(search) if isinstance(search, Mapping) else frozenset()
             for index, row in enumerate(results[:8], 1):
                 if not isinstance(row, Mapping):
+                    continue
+                if not _is_admitted_tavily_result_url(row.get("url"), admitted_domains):
+                    failures.append({"provider": "tavily", "error_type": "SourceAdmissionError", "reason": "result_domain_not_admitted"})
                     continue
                 source_candidates.append(
                     {

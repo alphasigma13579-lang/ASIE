@@ -18,6 +18,7 @@ class FakeTavily:
             },
             "network_attempted": True,
             "review_status": "review_required",
+            "source_admission": {"include_domains": ["example.com"]},
         }
 
 
@@ -193,6 +194,28 @@ def test_market_context_combines_sources_places_and_knowledge_without_finance_mu
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
     assert len(result["context_hash"]) == 64
+
+
+def test_market_context_rejects_tavily_results_outside_the_admitted_domains():
+    class OutOfScopeTavily(FakeTavily):
+        def search(self, **kwargs):
+            response = super().search(**kwargs)
+            response["payload"]["results"].append(
+                {"title": "Unadmitted source", "url": "https://outside.example/evidence", "content": "Must not reach users"}
+            )
+            return response
+
+    product = service()
+    product.tavily = OutOfScopeTavily()
+
+    result = product.build_market_context(
+        scope=tenant_scope(),
+        query="shawarma market Riyadh",
+        location_query="shawarma restaurants Riyadh",
+    )
+
+    assert [candidate["url"] for candidate in result["source_candidates"]] == ["https://example.com/source"]
+    assert any(failure["reason"] == "result_domain_not_admitted" for failure in result["failures"])
 
 
 def test_context_hash_excludes_only_the_volatile_evidence_clock(monkeypatch):

@@ -11,6 +11,7 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.cockpit = (SRC / "LiveCockpit.tsx").read_text(encoding="utf-8")
         self.map = (SRC / "LiveMarketMap.tsx").read_text(encoding="utf-8")
         self.api = (SRC / "api.ts").read_text(encoding="utf-8")
+        self.workspace = (SRC / "LiveIntelligenceWorkspace.tsx").read_text(encoding="utf-8")
         self.vite_types = (SRC / "vite-env.d.ts").read_text(encoding="utf-8")
 
     def test_cockpit_replaces_static_competitors_with_the_provider_boundary(self) -> None:
@@ -43,6 +44,24 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertIn("eligible_for_pinecone: false", self.api)
         self.assertIn("finance_mutated: false", self.api)
         self.assertIn("snapshot_mutated: false", self.api)
+
+    def test_live_research_is_mounted_without_exposing_provider_diagnostics(self) -> None:
+        self.assertIn("buildLiveMarketContext", self.cockpit)
+        self.assertIn("<LiveIntelligenceWorkspace", self.cockpit)
+        self.assertIn("locationReady={liveResearchReady}", self.cockpit)
+        self.assertIn("أكّد موقع المشروع أولًا", self.workspace)
+        self.assertIn('"/api/v1/intelligence/market-context"', self.api)
+        self.assertNotIn("DeepSeek", self.workspace)
+        self.assertNotIn("Tavily", self.workspace)
+        self.assertNotIn("Pinecone", self.workspace)
+        self.assertNotIn("Google Maps", self.workspace)
+        self.assertNotIn("failure.provider", self.workspace)
+
+    def test_live_research_resets_with_project_context_and_never_claims_unsaved_retry_data(self) -> None:
+        self.assertIn('useEffect', self.cockpit)
+        self.assertIn('contextRevisionRef', self.cockpit)
+        self.assertIn('primarySectorId', self.cockpit)
+        self.assertNotIn("حُفظت مدخلاتك", self.workspace)
 
 
 if __name__ == "__main__":
