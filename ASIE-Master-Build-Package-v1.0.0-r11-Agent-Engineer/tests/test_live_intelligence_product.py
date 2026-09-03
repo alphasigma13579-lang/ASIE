@@ -324,9 +324,8 @@ def test_narrative_requires_approved_context():
         service().create_reviewed_narrative(
             scope=tenant_scope(),
             request_id="request-1",
-            prompt_template_id="template:market-explanation:v1",
-            approved_context={"review_status": "review_required", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
-            user_instruction="Explain the evidence",
+            approved_context={"review_status": "review_required", "eligible_for_narrative": True, "evidence_refs": ["e:1"], "evidence_metadata": [{"source": "Official"}]},
+            locale="en",
         )
     except LiveIntelligenceProductError as exc:
         assert str(exc) == "approved_context_required"
@@ -339,9 +338,8 @@ def test_reviewed_narrative_rejects_platform_preflight_scope():
         service().create_reviewed_narrative(
             scope=TrustedProviderScope.for_platform_preflight(),
             request_id="request-1",
-            prompt_template_id="template:market-explanation:v1",
-            approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
-            user_instruction="Explain the approved evidence",
+            approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"], "evidence_metadata": [{"source": "Official"}]},
+            locale="en",
         )
     except LiveIntelligenceProductError as exc:
         assert str(exc) == "authenticated_tenant_scope_required"
@@ -355,9 +353,8 @@ def test_reviewed_narrative_preserves_provider_boundaries():
     result = product.create_reviewed_narrative(
         scope=scope,
         request_id="request-1",
-        prompt_template_id="template:market-explanation:v1",
-        approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"]},
-        user_instruction="Explain the approved evidence",
+        approved_context={"review_status": "approved", "eligible_for_narrative": True, "evidence_refs": ["e:1"], "evidence_metadata": [{"source": "Official", "confidence": "high"}]},
+        locale="ar",
     )
     assert result["contract_id"] == "live.intelligence.narrative.v1"
     assert product.deepseek.calls[0]["scope"] is scope
@@ -366,3 +363,7 @@ def test_reviewed_narrative_preserves_provider_boundaries():
     assert result["human_review_status"] == "required_pending"
     assert result["finance_mutated"] is False
     assert result["snapshot_mutated"] is False
+    assert product.deepseek.calls[0]["prompt_template_id"] == "asie.approved-evidence-explanation.ar.v1"
+    assert "أرقامًا مالية" in product.deepseek.calls[0]["messages"][0]["content"]
+    assert "Explain the approved evidence" not in product.deepseek.calls[0]["messages"][1]["content"]
+    assert product.deepseek.calls[0]["max_tokens"] == 1800

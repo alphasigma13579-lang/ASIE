@@ -11,6 +11,7 @@ import time
 from collections import defaultdict, deque
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -28,7 +29,7 @@ from backend.bus_controller import BusController
 from backend.contracts import HOST, PORT, PROFILE_ID, SCENARIO_ID, envelope, json_dumps, new_id, now_iso
 from backend.intelligence_prerun_service import IntelligencePreRunService
 from backend.live_intelligence_product import LiveIntelligenceProductError, LiveIntelligenceProductService, provider_status_snapshot
-from backend.live_provider_clients import GoogleLocationClient, PineconeKnowledgeClient, TavilyResearchClient
+from backend.live_provider_clients import DeepSeekNarrativeClient, GoogleLocationClient, PineconeKnowledgeClient, TavilyResearchClient
 from backend.provider_security_control_plane import ProviderSecurityError, TrustedProviderScope
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
 from backend.datasets import dataset_quality_gate, normalize_file_import_payload
@@ -1202,6 +1203,101 @@ def _live_market_context_service(scope: TrustedProviderScope) -> LiveIntelligenc
     )
 
 
+def _live_narrative_service() -> LiveIntelligenceProductService:
+    """Create the narrative-only provider after approved evidence is authorized."""
+    return LiveIntelligenceProductService(
+        deepseek=DeepSeekNarrativeClient.from_env(),
+        tavily=None,
+        google=None,
+        pinecone=None,
+    )
+
+
+def _narrative_locale(payload: Mapping[str, Any]) -> str:
+    """Accept only the two customer languages supported by the server-owned templates."""
+    requested = str(payload.get("locale") or "ar").strip().lower()
+    if requested in {"ar", "ar-sa"}:
+        return "ar"
+    if requested in {"en", "en-us", "en-gb"}:
+        return "en"
+    raise RequestError("unsupported_narrative_locale")
+
+
+def _approval_is_current(receipt: Mapping[str, Any]) -> bool:
+    """Require a parseable, unexpired human approval before an external narrative call."""
+    raw = receipt.get("valid_until")
+    if not isinstance(raw, str) or not raw.strip():
+        return False
+    try:
+        expires_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expires_at.tzinfo is None:
+        return False
+    return expires_at > datetime.now(timezone.utc)
+
+
+def _approved_narrative_context(context: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Derive bounded, reviewable evidence metadata from a persisted context only."""
+    components = context.get("component_manifest")
+    if not isinstance(components, list) or not components:
+        return None
+    evidence_refs: list[str] = []
+    evidence_metadata: list[dict[str, str]] = []
+    for component in components[:25]:
+        if not isinstance(component, Mapping):
+            continue
+        lineage = component.get("lineage")
+        refs = [
+            value.strip()[:240]
+            for value in lineage if isinstance(value, str) and value.strip()
+        ] if isinstance(lineage, list) else []
+        if not refs:
+            continue
+        evidence_refs.extend(refs)
+        evidence_metadata.append(
+            {
+                "source": str(component.get("source") or "").strip()[:240],
+                "freshness": str(component.get("freshness") or "").strip()[:120],
+                "geography": str(component.get("geography") or "").strip()[:120],
+                "sector": str(component.get("sector") or "").strip()[:120],
+                "confidence": str(component.get("confidence") or "").strip()[:80],
+                "evidence_refs": ", ".join(refs[:10]),
+            }
+        )
+    unique_refs = list(dict.fromkeys(evidence_refs))[:100]
+    if not unique_refs or not evidence_metadata:
+        return None
+    return {
+        "review_status": "approved",
+        "eligible_for_narrative": True,
+        "evidence_refs": unique_refs,
+        "evidence_metadata": evidence_metadata,
+    }
+
+
+def _customer_narrative(narrative: Mapping[str, Any], *, locale: str, evidence_count: int) -> dict[str, Any]:
+    """Expose only the customer explanation and evidence limits, never provider diagnostics."""
+    payload = narrative.get("payload")
+    choices = payload.get("choices") if isinstance(payload, Mapping) else None
+    first_choice = choices[0] if isinstance(choices, list) and choices else {}
+    message = first_choice.get("message") if isinstance(first_choice, Mapping) else {}
+    content = message.get("content") if isinstance(message, Mapping) else ""
+    if not isinstance(content, str) or not content.strip():
+        raise LiveIntelligenceProductError("narrative_content_unavailable")
+    return {
+        "status": "review_required",
+        "locale": locale,
+        "narrative": content.strip()[:20_000],
+        "evidence_count": evidence_count,
+        "human_review_required": True,
+        "financial_numbers_created": False,
+        "funding_decision_created": False,
+        "finance_mutated": False,
+        "snapshot_mutated": False,
+    }
+
+
 def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
     """Project the governed retrieval result into a customer-safe view.
 
@@ -2206,6 +2302,119 @@ class Handler(BaseHTTPRequestHandler):
                     correlation_id=self.request_id,
                 )
                 write_json(self, _customer_market_context(context))
+                return
+            if path == "/api/v1/intelligence/narrative":
+                project_id = _request_text(payload, "project_id", maximum=160)
+                context_build_id = _request_text(payload, "context_build_id", maximum=160)
+                approval_receipt_id = _request_text(payload, "approval_receipt_id", maximum=160)
+                locale = _narrative_locale(payload)
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
+                scope = self._tenant_provider_scope_for_project(project_id)
+                if scope is None:
+                    return
+                tenant_principal = self._principal(scope.organization_id)
+                if tenant_principal is None:
+                    return
+                context = REPO.get_intelligence_context(
+                    context_build_id=context_build_id,
+                    organization_id=scope.organization_id,
+                    project_id=project_id,
+                    principal=tenant_principal,
+                )
+                receipt = REPO.get_intelligence_approval_receipt(
+                    receipt_id=approval_receipt_id,
+                    organization_id=scope.organization_id,
+                    project_id=project_id,
+                    principal=tenant_principal,
+                )
+                if context is None or receipt is None:
+                    write_error(self, "approved_evidence_context_required", 409)
+                    return
+                context_hash = str(context.get("context_hash") or "")
+                if (
+                    receipt.get("intelligence_context_id") != context_build_id
+                    or receipt.get("intelligence_context_hash") != context_hash
+                    or receipt.get("approved_for_contract_version") != "live.intelligence.narrative.v1"
+                    or not _approval_is_current(receipt)
+                ):
+                    write_error(self, "approved_evidence_context_required", 409)
+                    return
+                approved_context = _approved_narrative_context(context)
+                if approved_context is None:
+                    write_error(self, "approved_evidence_context_required", 409)
+                    return
+                if not provider_status_snapshot()["external_fetch_enabled"]:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_narrative",
+                        target_type="project",
+                        target_id=project_id,
+                        result="denied",
+                        reason="external_fetch_disabled",
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_narrative")
+                    return
+                try:
+                    REPO.consume_intelligence_approval(
+                        receipt_id=approval_receipt_id,
+                        organization_id=scope.organization_id,
+                        project_id=project_id,
+                        context_hash=context_hash,
+                        contract_version="live.intelligence.narrative.v1",
+                        principal=tenant_principal,
+                    )
+                    narrative = _live_narrative_service().create_reviewed_narrative(
+                        scope=scope,
+                        request_id=self.request_id,
+                        approved_context=approved_context,
+                        locale=locale,
+                    )
+                    customer_narrative = _customer_narrative(
+                        narrative,
+                        locale=locale,
+                        evidence_count=len(approved_context["evidence_refs"]),
+                    )
+                except (LiveIntelligenceProductError, ProviderSecurityError, ValueError):
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_narrative",
+                        target_type="project",
+                        target_id=project_id,
+                        result="failed",
+                        reason="provider_unavailable",
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_narrative")
+                    return
+                except Exception as exc:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_narrative",
+                        target_type="project",
+                        target_id=project_id,
+                        result="failed",
+                        reason=type(exc).__name__,
+                        correlation_id=self.request_id,
+                    )
+                    self._write_provider_unavailable("live_narrative")
+                    return
+                REPO.audit(
+                    actor_user_id=principal.user_id,
+                    organization_id=scope.organization_id,
+                    action="live_narrative",
+                    target_type="project",
+                    target_id=project_id,
+                    result="allowed",
+                    reason="approved_evidence_only",
+                    correlation_id=self.request_id,
+                )
+                write_json(self, customer_narrative)
                 return
             if path in {
                 "/api/v1/location/geocode",

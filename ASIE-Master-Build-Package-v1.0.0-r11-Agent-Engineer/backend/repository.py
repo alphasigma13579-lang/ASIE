@@ -1509,6 +1509,23 @@ class Repository:
             conn.commit()
         return record
 
+    def get_intelligence_approval_receipt(self, *, receipt_id: str, organization_id: str, project_id: str, principal: Principal | None) -> dict[str, Any] | None:
+        """Read one approval receipt inside its tenant and project authorization boundary."""
+        self._authorize_intelligence(
+            principal=principal,
+            organization_id=organization_id,
+            project_id=project_id,
+            permission="project.run",
+            action="aia.approval.read",
+            target_id=receipt_id,
+        )
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?",
+                (receipt_id, organization_id, project_id),
+            ).fetchone()
+        return None if row is None else json_loads(row["payload_json"], {})
+
     def save_intelligence_market_record(self, *, organization_id: str, project_id: str, record: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
         record_id = str(record.get("record_id") or new_id("market"))
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.market.save", target_id=record_id, correlation_id=correlation_id)

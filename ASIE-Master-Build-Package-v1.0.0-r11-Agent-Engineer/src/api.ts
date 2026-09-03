@@ -587,6 +587,18 @@ export type LiveMarketContext = {
   snapshot_mutated: false;
 };
 
+export type LiveNarrative = {
+  status: "review_required";
+  locale: "ar" | "en";
+  narrative: string;
+  evidence_count: number;
+  human_review_required: true;
+  financial_numbers_created: false;
+  funding_decision_created: false;
+  finance_mutated: false;
+  snapshot_mutated: false;
+};
+
 export function reverseGeocode(payload: {
   project_id: string;
   latitude: number;
@@ -619,6 +631,18 @@ export function buildLiveMarketContext(payload: {
   geography?: string;
 }): Promise<LiveMarketContext> {
   return requestJson<LiveMarketContext>("/api/v1/intelligence/market-context", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createLiveNarrative(payload: {
+  project_id: string;
+  context_build_id: string;
+  approval_receipt_id: string;
+  locale?: "ar" | "en";
+}): Promise<LiveNarrative> {
+  return requestJson<LiveNarrative>("/api/v1/intelligence/narrative", {
     method: "POST",
     body: JSON.stringify(payload),
   });
