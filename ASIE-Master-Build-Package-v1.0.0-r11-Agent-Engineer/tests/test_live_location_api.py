@@ -352,7 +352,7 @@ class LiveLocationApiTests(unittest.TestCase):
             )
 
         self.assertEqual(200, status)
-        self.assertEqual("live.intelligence.customer-context.v1", body["contract_id"])
+        self.assertNotIn("contract_id", body)
         self.assertNotIn("organization_id", body)
         self.assertNotIn("project_id", body)
         self.assertNotIn("failures", body)
@@ -438,10 +438,15 @@ class LiveLocationApiTests(unittest.TestCase):
                     {"confidence": 2},
                     {"confidence": True},
                 ],
+                "places": [{}],
                 "public_evidence_context": {"as_of": 20260902},
             }
         )
         self.assertEqual([0.8, None, None], [row["confidence"] for row in view["knowledge_hits"]])
+        self.assertEqual(
+            [{"display_name": None, "formatted_address": None, "google_maps_uri": None}],
+            view["places"],
+        )
         self.assertEqual("20260902", view["public_evidence_context"]["as_of"])
 
     def test_live_market_context_stays_disabled_without_network_authorization(self) -> None:
@@ -508,16 +513,37 @@ class LiveLocationApiTests(unittest.TestCase):
             patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
             patch.object(api, "_live_google_client", side_effect=AssertionError("non-owner must not construct providers")),
         ):
-            status, body = self.request(
-                "POST",
-                "/api/v1/location/geocode",
-                token=self.token_b,
-                organization_id=self.org_a_id,
-                payload={"project_id": self.project_a.project_id, "address": "حي العليا، الرياض"},
-            )
+            for path, payload in (
+                (
+                    "/api/v1/location/geocode",
+                    {"project_id": self.project_a.project_id, "address": "حي العليا، الرياض"},
+                ),
+                (
+                    "/api/v1/location/reverse-geocode",
+                    {"project_id": self.project_a.project_id, "latitude": 24.7136, "longitude": 46.6753},
+                ),
+                (
+                    "/api/v1/market/competitors/search",
+                    {
+                        "project_id": self.project_a.project_id,
+                        "query": "مطاعم شاورما",
+                        "latitude": 24.7136,
+                        "longitude": 46.6753,
+                        "radius_meters": 3000,
+                    },
+                ),
+            ):
+                with self.subTest(path=path):
+                    status, body = self.request(
+                        "POST",
+                        path,
+                        token=self.token_b,
+                        organization_id=self.org_a_id,
+                        payload=payload,
+                    )
 
-        self.assertEqual(403, status)
-        self.assertEqual("permission_denied", body["error"])
+                    self.assertEqual(403, status)
+                    self.assertEqual("permission_denied", body["error"])
 
     def test_live_market_context_audits_provider_configuration_failure(self) -> None:
         class UnavailableMarketContextService:
@@ -542,6 +568,7 @@ class LiveLocationApiTests(unittest.TestCase):
 
         self.assertEqual(503, status)
         self.assertEqual("temporarily_unavailable", body["status"])
+        self.assertNotIn("missing_provider_secret", json.dumps(body, ensure_ascii=False))
         events = [
             event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
             if event["action"] == "live_market_context"

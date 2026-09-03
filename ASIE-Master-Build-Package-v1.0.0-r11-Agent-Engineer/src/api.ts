@@ -555,7 +555,6 @@ export type MarketCompetitorResponse = {
 };
 
 export type LiveMarketContext = {
-  contract_id: "live.intelligence.customer-context.v1";
   status: "review_required" | "failed";
   source_candidates: Array<{
     candidate_id: string;
@@ -565,9 +564,9 @@ export type LiveMarketContext = {
     review_status: "review_required";
   }>;
   places: Array<{
-    display_name?: { text?: string };
-    formatted_address?: string;
-    google_maps_uri?: string;
+    display_name?: { text?: string } | null;
+    formatted_address?: string | null;
+    google_maps_uri?: string | null;
   }>;
   knowledge_hits: Array<{
     display_id: string;

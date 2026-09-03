@@ -1258,7 +1258,6 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
     evidence_context = context.get("public_evidence_context")
     as_of = evidence_context.get("as_of") if isinstance(evidence_context, Mapping) else None
     return {
-        "contract_id": "live.intelligence.customer-context.v1",
         "status": str(context.get("status") or "failed"),
         "source_candidates": source_candidates,
         "places": places,
