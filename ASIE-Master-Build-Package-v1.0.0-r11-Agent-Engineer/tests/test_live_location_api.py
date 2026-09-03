@@ -116,6 +116,7 @@ class LiveLocationApiTests(unittest.TestCase):
             email="location-a@example.test",
             display_name="Location owner A",
             password="location-password-a1",
+            platform_role="platform_admin",
         )
         self.user_b = self.repo.create_user(
             email="location-b@example.test",
@@ -146,6 +147,7 @@ class LiveLocationApiTests(unittest.TestCase):
             }
         )
         self.token_a, _ = self.repo.create_session(email=self.user_a["email"], password="location-password-a1")
+        self.token_b, _ = self.repo.create_session(email=self.user_b["email"], password="location-password-b1")
 
         previous_repo = api.REPO
         api.REPO = self.repo
@@ -198,6 +200,12 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertFalse(body["network_attempted"])
         self.assertFalse(body["payment_required"])
         self.assertFalse(body["upgrade_required"])
+        events = [
+            event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
+            if event["action"] == "provider.request" and event["target_id"] == "google_maps_platform"
+        ]
+        self.assertEqual("denied", events[-1]["result"])
+        self.assertEqual("external_fetch_disabled", events[-1]["reason"])
 
     def test_location_routes_bind_selected_tenant_and_never_persist_device_coordinates(self) -> None:
         fake_google = FakeGoogle()
@@ -344,7 +352,7 @@ class LiveLocationApiTests(unittest.TestCase):
             )
 
         self.assertEqual(200, status)
-        self.assertEqual("live.intelligence.context.v1", body["contract_id"])
+        self.assertEqual("live.intelligence.customer-context.v1", body["contract_id"])
         self.assertNotIn("organization_id", body)
         self.assertNotIn("project_id", body)
         self.assertNotIn("failures", body)
@@ -456,6 +464,90 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual(503, status)
         self.assertEqual("temporarily_unavailable", body["status"])
         self.assertFalse(body["network_attempted"])
+        events = [
+            event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
+            if event["action"] == "live_market_context"
+        ]
+        self.assertEqual("denied", events[-1]["result"])
+        self.assertEqual("external_fetch_disabled", events[-1]["reason"])
+
+    def test_live_market_context_restricts_live_providers_to_platform_admin(self) -> None:
+        self.repo.add_membership(
+            organization_id=self.org_a_id,
+            user_id=self.user_b["user_id"],
+            role="analyst",
+            actor_user_id=self.user_a["user_id"],
+        )
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_market_context_service", side_effect=AssertionError("non-owner must not construct providers")),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/intelligence/market-context",
+                token=self.token_b,
+                organization_id=self.org_a_id,
+                payload={
+                    "project_id": self.project_a.project_id,
+                    "query": "سوق المطاعم في الرياض",
+                    "location_query": "مطاعم قرب العليا",
+                },
+            )
+
+        self.assertEqual(403, status)
+        self.assertEqual("permission_denied", body["error"])
+
+    def test_google_live_routes_restrict_providers_to_platform_admin(self) -> None:
+        self.repo.add_membership(
+            organization_id=self.org_a_id,
+            user_id=self.user_b["user_id"],
+            role="analyst",
+            actor_user_id=self.user_a["user_id"],
+        )
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_google_client", side_effect=AssertionError("non-owner must not construct providers")),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/location/geocode",
+                token=self.token_b,
+                organization_id=self.org_a_id,
+                payload={"project_id": self.project_a.project_id, "address": "حي العليا، الرياض"},
+            )
+
+        self.assertEqual(403, status)
+        self.assertEqual("permission_denied", body["error"])
+
+    def test_live_market_context_audits_provider_configuration_failure(self) -> None:
+        class UnavailableMarketContextService:
+            def build_market_context(self, **_: object) -> dict:
+                raise ValueError("missing_provider_secret")
+
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(api, "_live_market_context_service", return_value=UnavailableMarketContextService()),
+        ):
+            status, body = self.request(
+                "POST",
+                "/api/v1/intelligence/market-context",
+                token=self.token_a,
+                organization_id=self.org_a_id,
+                payload={
+                    "project_id": self.project_a.project_id,
+                    "query": "سوق المطاعم في الرياض",
+                    "location_query": "مطاعم قرب العليا",
+                },
+            )
+
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        events = [
+            event for event in self.repo.security_audit_events(organization_id=self.org_a_id)
+            if event["action"] == "live_market_context"
+        ]
+        self.assertEqual("failed", events[-1]["result"])
+        self.assertEqual("provider_unavailable", events[-1]["reason"])
 
     def test_location_routes_are_registered_with_their_response_contracts(self) -> None:
         registry_path = Path(__file__).resolve().parents[1] / "registry" / "asie-canonical-api-output.v1.json"
@@ -469,7 +561,7 @@ class LiveLocationApiTests(unittest.TestCase):
             ("POST", "/api/v1/location/geocode"): "location.geocode.v1",
             ("POST", "/api/v1/location/reverse-geocode"): "location.reverse-geocode.v1",
             ("POST", "/api/v1/market/competitors/search"): "market.competitors.search.v1",
-            ("POST", "/api/v1/intelligence/market-context"): "live.intelligence.context.v1",
+            ("POST", "/api/v1/intelligence/market-context"): "live.intelligence.customer-context.v1",
         }
         for route, response_contract in expected.items():
             with self.subTest(route=route):
@@ -485,6 +577,10 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual("live.intelligence.provider.readiness.v1", body["contract_id"])
         self.assertNotIn("secret_present", json.dumps(body, ensure_ascii=False))
+
+        status, body = self.request("GET", "/api/v1/providers/readiness", token=self.token_b)
+        self.assertEqual(403, status)
+        self.assertEqual("permission_denied", body["error"])
 
 
 if __name__ == "__main__":

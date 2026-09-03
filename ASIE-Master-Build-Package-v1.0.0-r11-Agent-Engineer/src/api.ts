@@ -555,7 +555,7 @@ export type MarketCompetitorResponse = {
 };
 
 export type LiveMarketContext = {
-  contract_id: "live.intelligence.context.v1";
+  contract_id: "live.intelligence.customer-context.v1";
   status: "review_required" | "failed";
   source_candidates: Array<{
     candidate_id: string;

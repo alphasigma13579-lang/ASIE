@@ -1258,7 +1258,7 @@ def _customer_market_context(context: Mapping[str, Any]) -> dict[str, Any]:
     evidence_context = context.get("public_evidence_context")
     as_of = evidence_context.get("as_of") if isinstance(evidence_context, Mapping) else None
     return {
-        "contract_id": "live.intelligence.context.v1",
+        "contract_id": "live.intelligence.customer-context.v1",
         "status": str(context.get("status") or "failed"),
         "source_candidates": source_candidates,
         "places": places,
@@ -1552,7 +1552,7 @@ class Handler(BaseHTTPRequestHandler):
             write_json(self, beta_access_status())
             return
         if path == "/api/v1/providers/readiness":
-            if self._principal() is None:
+            if self._require_platform_permission("platform.manage") is None:
                 return
             status = provider_status_snapshot()
             write_json(
@@ -2129,6 +2129,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/intelligence/market-context":
                 project_id = _request_text(payload, "project_id", maximum=160)
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
                 scope = self._tenant_provider_scope_for_project(project_id)
                 if scope is None:
                     return
@@ -2136,10 +2139,17 @@ class Handler(BaseHTTPRequestHandler):
                 if project is None:
                     write_error(self, "project_not_found", 404)
                     return
-                principal = self._principal()
-                if principal is None:
-                    return
                 if not provider_status_snapshot()["external_fetch_enabled"]:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_market_context",
+                        target_type="project",
+                        target_id=project_id,
+                        result="denied",
+                        reason="external_fetch_disabled",
+                        correlation_id=self.request_id,
+                    )
                     self._write_provider_unavailable("live_market_context")
                     return
                 coordinates = self._confirmed_project_coordinates(project_id)
@@ -2160,6 +2170,16 @@ class Handler(BaseHTTPRequestHandler):
                         longitude=coordinates[1],
                     )
                 except (LiveIntelligenceProductError, ProviderSecurityError, ValueError):
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="live_market_context",
+                        target_type="project",
+                        target_id=project_id,
+                        result="failed",
+                        reason="provider_unavailable",
+                        correlation_id=self.request_id,
+                    )
                     self._write_provider_unavailable("live_market_context")
                     return
                 except Exception as exc:
@@ -2194,6 +2214,9 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/v1/market/competitors/search",
             }:
                 project_id = _request_text(payload, "project_id", maximum=160)
+                principal = self._require_platform_permission("platform.manage")
+                if principal is None:
+                    return
                 scope = self._tenant_provider_scope_for_project(project_id)
                 if scope is None:
                     return
@@ -2218,6 +2241,16 @@ class Handler(BaseHTTPRequestHandler):
                         query = _request_text(payload, "query", maximum=500)
                         radius_meters = _request_coordinate(payload, "radius_meters", minimum=1, maximum=50_000)
                 if not provider_status_snapshot()["external_fetch_enabled"]:
+                    REPO.audit(
+                        actor_user_id=principal.user_id,
+                        organization_id=scope.organization_id,
+                        action="provider.request",
+                        target_type="provider",
+                        target_id="google_maps_platform",
+                        result="denied",
+                        reason="external_fetch_disabled",
+                        correlation_id=self.request_id,
+                    )
                     self._write_provider_unavailable("google_maps_platform")
                     return
                 try:
@@ -2276,7 +2309,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 except Exception as exc:
                     REPO.audit(
-                        actor_user_id=None,
+                        actor_user_id=principal.user_id,
                         organization_id=scope.organization_id,
                         action="provider.request",
                         target_type="provider",

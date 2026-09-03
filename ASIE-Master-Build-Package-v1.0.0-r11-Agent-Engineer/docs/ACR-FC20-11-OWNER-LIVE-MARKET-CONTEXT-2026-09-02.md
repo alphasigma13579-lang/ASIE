@@ -22,6 +22,10 @@ confirmed project sector and location
   -> evidence-backed customer presentation
 ```
 
+The location, reverse-geocoding, and competitor-discovery routes that support
+this path inherit the same platform-owner authorization. The protected provider
+readiness endpoint is also owner-only.
+
 DeepSeek may explain accepted evidence in the selected customer language only. It
 does not calculate financial outputs, decide funding, or execute an action.
 
