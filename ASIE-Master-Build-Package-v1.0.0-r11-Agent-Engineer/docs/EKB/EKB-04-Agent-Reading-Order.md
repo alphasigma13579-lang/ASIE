@@ -8,6 +8,7 @@
 | API | Canonical API Register | `src/api.ts`, backend handler, tests | Route غير مسجل. |
 | Finance | Finance Engine domain | code/tests + MC domain | AI يولد أرقامًا نهائية. |
 | Dashboard | Dashboard Command Center domain | `src/CommandCenter.tsx`, API register | بيانات وهمية كأنها حية. |
+| واجهة العميل / التعريب / التقارير / التصدير | EKB-08 Customer Language and Presentation Contract | المسار المتأثر، طبقة العرض، الاختبارات، والتصدير | عرض رمز داخلي أو نص غير مترجم أو تشخيص تقني للعميل. |
 | Market | Market Intelligence + Source Policy | DIB item state | أسعار بلا مصادر أو اعتماد. |
 | Security | Security/Tenant domain | tests + API handlers | فتح endpoints دون صلاحيات. |
 | Repository Surgery / Cleanup | PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md + EKB-06 Repository Surgery Inventory | EKB-07 Quarantine Map + AGENTS archive lockdown | نسخ أو دمج ملفات archive/reference في المسارات الحية، أو الحذف دون PR مستقل ودليل. |
