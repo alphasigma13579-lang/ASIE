@@ -4,7 +4,7 @@ Read this file before changing the repository. It is the shortest path to the cu
 
 ## Start here
 
-> **بوابة إلزامية قبل أي تنفيذ أو مراجعة:** اقرأ [عقد لغة العميل وعرضه](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-08-Customer-Language-and-Presentation-Contract.md). يحكم كل أثر ظاهر للعميل، ولو كان التغيير خلفيًا أو في تصدير.
+> **بوابتان إلزاميتان قبل أي هدف هندسي حقيقي:** اقرأ [عقد لغة العميل وعرضه](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-08-Customer-Language-and-Presentation-Contract.md) لكل أثر ظاهر للعميل، و[عقد تخطيط الأهداف والهندسة الصادقة](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-09-Goal-Planning-and-Truthful-Engineering-Contract.md) قبل أي بناء أو تغيير أو مراجعة أو تحقيق. لا يبدأ التنفيذ بلا خطة وهدف نشط ودليل قابل للتحقق.
 
 1. Read [README.md](README.md).
 2. Read [the canonical package guide](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md).

@@ -61,6 +61,7 @@
 | `docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md` | `CONTROLLED BASELINE` | يحكم API والمخرجات |
 | `registry/asie-canonical-api-output.v1.json` | `CONTROLLED BASELINE` | سجل آلي لـAPI وSnapshot outputs |
 | `docs/EKB/EKB-08-Customer-Language-and-Presentation-Contract.md` | `BINDING / REMEDIATION OPEN` | يحكم لغة العميل، إخفاء التفاصيل الداخلية، والتقارير والتصديرات |
+| `docs/EKB/EKB-09-Goal-Planning-and-Truthful-Engineering-Contract.md` | `BINDING` | يحكم الخطط والأهداف الهندسية ودليل الإغلاق والاستقلال المهني الصادق |
 
 ---
 
