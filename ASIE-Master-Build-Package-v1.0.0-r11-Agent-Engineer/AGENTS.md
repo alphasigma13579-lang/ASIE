@@ -6,6 +6,8 @@ This directory is the buildable ASIE workspace. Run commands from here.
 
 Before implementation, read:
 
+0. docs/EKB/EKB-08-Customer-Language-and-Presentation-Contract.md
+
 1. docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md
 2. docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md and `/FOUNDATION-COMPLETE-20.json`
 3. docs/EKB/README-AR.md

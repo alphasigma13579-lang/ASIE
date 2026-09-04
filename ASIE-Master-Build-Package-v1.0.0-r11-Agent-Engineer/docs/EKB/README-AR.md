@@ -8,6 +8,8 @@
 
 لا يبدأ أي Agent أو مهندس مهمة تنفيذية قبل قراءة:
 
+0. `EKB-08-Customer-Language-and-Presentation-Contract.md`
+
 1. `EKB-00-Knowledge-Map.md`
 2. `EKB-01-Verified-Document-Inventory.md`
 3. `EKB-02-Source-of-Truth-Matrix.md`

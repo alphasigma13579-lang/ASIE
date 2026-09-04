@@ -4,6 +4,8 @@ Read this file before changing the repository. It is the shortest path to the cu
 
 ## Start here
 
+> **بوابة إلزامية قبل أي تنفيذ أو مراجعة:** اقرأ [عقد لغة العميل وعرضه](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-08-Customer-Language-and-Presentation-Contract.md). يحكم كل أثر ظاهر للعميل، ولو كان التغيير خلفيًا أو في تصدير.
+
 1. Read [README.md](README.md).
 2. Read [the canonical package guide](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/AGENTS.md).
 3. Read the release/remediation authority: [PROGRAM-CLOSE-10](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md).
