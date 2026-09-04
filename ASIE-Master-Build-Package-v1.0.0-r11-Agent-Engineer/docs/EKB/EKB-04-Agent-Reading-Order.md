@@ -2,6 +2,7 @@
 
 | نوع المهمة | يجب أن يقرأ أولًا | ثم يقرأ | ممنوع |
 |---|---|---|---|
+| هدف هندسي حقيقي: بناء أو تغيير أو مراجعة أو تحقيق أو اختبار أو نشر | EKB-09 Goal Planning and Truthful Engineering Contract | الخطة المعتمدة، المجال المتأثر، والعقود ذات الصلة | بدء التنفيذ بلا خطة وهدف نشط، أو الموافقة بلا دليل، أو وصف حالة بلا إثبات. |
 | Runtime / AAS | AAS Freeze | Canonical Terminology + affected code | تعديل frozen files دون ACR. |
 | AI / Sanad / AIA | AIA-01 | AIA-02 + domain file | تفعيل AI Provider أو network fetch. |
 | DIB | ACR-DIB-001 | DIB Live Plan + DIB domain files | Finance من raw inputs. |

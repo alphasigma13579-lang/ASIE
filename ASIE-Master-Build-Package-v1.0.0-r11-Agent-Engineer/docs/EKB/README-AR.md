@@ -8,14 +8,15 @@
 
 لا يبدأ أي Agent أو مهندس مهمة تنفيذية قبل قراءة:
 
-0. `EKB-08-Customer-Language-and-Presentation-Contract.md`
+0. `EKB-09-Goal-Planning-and-Truthful-Engineering-Contract.md`
+1. `EKB-08-Customer-Language-and-Presentation-Contract.md` لكل أثر ظاهر للعميل
 
-1. `EKB-00-Knowledge-Map.md`
-2. `EKB-01-Verified-Document-Inventory.md`
-3. `EKB-02-Source-of-Truth-Matrix.md`
-4. `EKB-04-Agent-Reading-Order.md`
-5. `EKB-05-Prompt-Policy.md`
-6. ملف المجال المناسب داخل `domains/`
+2. `EKB-00-Knowledge-Map.md`
+3. `EKB-01-Verified-Document-Inventory.md`
+4. `EKB-02-Source-of-Truth-Matrix.md`
+5. `EKB-04-Agent-Reading-Order.md`
+6. `EKB-05-Prompt-Policy.md`
+7. ملف المجال المناسب داخل `domains/`
 
 ## ما لا يدخل البرومبت
 
