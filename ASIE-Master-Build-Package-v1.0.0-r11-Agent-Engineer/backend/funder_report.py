@@ -12,6 +12,7 @@ from typing import Any
 
 from backend.snapshot_assembly import canonical_hash
 from backend.funding_readiness import evaluate_funding_readiness
+from backend.customer_presentation import business_text, normalize_locale, section_title, status_text, text
 
 
 FUNDER_REPORT_CONTRACT = "funder.report.projection.v1"
@@ -190,56 +191,79 @@ def build_funder_report_projection(overview: dict[str, Any], profile_id: str = B
     return projection
 
 
-def render_funder_report_html(projection: dict[str, Any]) -> str:
-    """Render the read-only Arabic review view for a funder projection."""
+def render_funder_report_html(projection: dict[str, Any], locale: str = "ar") -> str:
+    """Render a customer-safe localized view without internal identifiers."""
+    locale = normalize_locale(locale)
+    direction = "rtl" if locale == "ar" else "ltr"
+    align = "right" if locale == "ar" else "left"
     sections = projection.get("sections", [])
     section_cards = "".join(
-        f"<article class='section-card status-{escape(str(section.get('status', 'unknown')))}'>"
-        f"<div class='section-number'>{escape(section.get('section_id', '').split('-')[0])}</div>"
-        f"<div><h3>{escape(section.get('title', ''))}</h3>"
-        f"<span class='status'>{escape(section.get('status', 'unknown'))}</span></div></article>"
-        for section in sections
+        f"<article class='section-card'><div class='section-number'>{escape(str(index + 1))}</div>"
+        f"<div><h3>{escape(section_title(section, locale))}</h3>"
+        f"<span class='status'>{escape(status_text(section.get('status'), locale))}</span></div></article>"
+        for index, section in enumerate(sections)
     )
     financial = next((row for row in sections if row.get("section_id") == "14-financial-expectations"), {})
     statements = (financial.get("payload") or {}).get("statements") or {}
     income_years = ((statements.get("income_statement") or {}).get("years") or [])
     income_rows = "".join(
-        "<tr>" + "".join(f"<td>{escape(str(row.get(key, '—')))}</td>" for key in ["year", "revenue", "gross_profit", "ebitda", "ebit", "net_operating_cashflow"]) + "</tr>"
+        "<tr>" + "".join(
+            f"<td>{escape(str(row.get(key, '—') if row.get(key) is not None else '—'))}</td>"
+            for key in ["year", "revenue", "gross_profit", "ebitda", "ebit", "net_operating_cashflow"]
+        ) + "</tr>"
         for row in income_years
     )
-    gaps = "".join(f"<li>{escape(str(gap))}</li>" for gap in projection.get("gaps", [])) or "<li>لا توجد فجوات مسجلة</li>"
+    gaps = "".join(f"<li>{escape(business_text(gap, locale))}</li>" for gap in projection.get("gaps", []))
+    if not gaps:
+        gaps = f"<li>{escape(text('none', locale))}</li>"
     profile = projection.get("profile_readiness") or {}
     profile_rows = "".join(
-        f"<tr><td>{escape(str(row.get('label', '')))}</td><td>{escape(str(row.get('status', '')))}</td><td>{escape(str(row.get('reason', '')) or '—')}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('label'), locale))}</td>"
+        f"<td>{escape(status_text(row.get('status'), locale))}</td>"
+        f"<td>{escape(business_text(row.get('reason'), locale))}</td></tr>"
         for row in profile.get("checks", [])
-    ) or "<tr><td colspan='3'>لا يوجد ملف تحقق</td></tr>"
+    )
+    if not profile_rows:
+        profile_rows = f"<tr><td colspan='3'>{escape(text('no_checks', locale))}</td></tr>"
+    general = next((row for row in sections if row.get("section_id") == "01-general-information"), {})
+    project = ((general.get("payload") or {}).get("project") or {})
+    project_name = str(project.get("name") or text("report_title", locale))
+    headers = [
+        text("year", locale),
+        text("revenue", locale),
+        text("gross_profit", locale),
+        text("operating_profit", locale),
+        text("operating_profit", locale),
+        text("operating_cashflow", locale),
+    ]
+    header_html = "".join(f"<th>{escape(label)}</th>" for label in headers)
     return f"""<!doctype html>
-<html lang='ar' dir='rtl'>
+<html lang='{locale}' dir='{direction}'>
 <head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>حزمة التقرير التمويلي — {escape(str(projection.get('project_id', '')))}</title>
+<title>{escape(text('report_title', locale))} — {escape(project_name)}</title>
 <style>
-:root {{ --ink:#172554; --muted:#64748b; --line:#dbe4ef; --blue:#2563eb; --soft:#f8fafc; --warn:#fff7ed; }}
-* {{ box-sizing:border-box; }} body {{ margin:0; background:#eef3f8; color:#172033; font-family:Tahoma,Arial,sans-serif; line-height:1.65; }}
-.page {{ max-width:1120px; margin:28px auto; background:#fff; border:1px solid var(--line); box-shadow:0 12px 36px #1e3a8a18; }}
-.hero {{ padding:38px 44px; color:#fff; background:linear-gradient(135deg,#172554,#1d4ed8); }} h1 {{ margin:0 0 8px; font-size:32px; }} h2 {{ margin:28px 0 12px; color:var(--ink); }} h3 {{ margin:0; color:var(--ink); font-size:17px; }}
-.meta {{ color:#dbeafe; font-size:13px; }} .badge {{ display:inline-block; padding:6px 12px; border-radius:999px; background:#dbeafe; color:#1e3a8a; font-weight:700; }}
-.content {{ padding:30px 44px 46px; }} .notice {{ padding:16px; background:var(--warn); border:1px solid #fed7aa; border-radius:12px; color:#7c2d12; }}
+:root {{ --ink:#0f3328; --muted:#6b7d76; --line:#dce7e0; --green:#138a66; --soft:#f5f9f6; --warn:#fff8e8; }}
+* {{ box-sizing:border-box; }} body {{ margin:0; background:#f1f5f2; color:var(--ink); font-family:Tahoma,Arial,sans-serif; line-height:1.65; }}
+.page {{ max-width:1120px; margin:28px auto; background:#fff; border:1px solid var(--line); box-shadow:0 12px 36px #12382a14; }}
+.hero {{ padding:38px 44px; color:#fff; background:linear-gradient(135deg,#0b3d2e,#138a66); }} h1 {{ margin:0 0 8px; font-size:32px; }} h2 {{ margin:28px 0 12px; color:var(--ink); }} h3 {{ margin:0; color:var(--ink); font-size:17px; }}
+.meta {{ color:#d8f2e8; font-size:14px; }} .badge {{ display:inline-block; padding:6px 12px; border-radius:999px; background:#d8f2e8; color:#0b3d2e; font-weight:700; }}
+.content {{ padding:30px 44px 46px; }} .notice {{ padding:16px; background:var(--warn); border:1px solid #f2d28a; border-radius:12px; color:#6f4d00; }}
 .section-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }} .section-card {{ display:flex; gap:12px; align-items:center; min-height:76px; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--soft); }}
-.section-number {{ width:38px; height:38px; display:grid; place-items:center; border-radius:10px; background:#dbeafe; color:var(--blue); font-weight:700; }} .status {{ color:var(--muted); font-size:12px; }}
-table {{ width:100%; border-collapse:collapse; margin:12px 0 24px; font-size:13px; }} th,td {{ border:1px solid var(--line); padding:9px; text-align:right; }} th {{ background:#eff6ff; color:var(--ink); }}
+.section-number {{ width:38px; height:38px; display:grid; place-items:center; border-radius:10px; background:#d8f2e8; color:var(--green); font-weight:700; }} .status {{ color:var(--muted); font-size:12px; }}
+table {{ width:100%; border-collapse:collapse; margin:12px 0 24px; font-size:13px; }} th,td {{ border:1px solid var(--line); padding:9px; text-align:{align}; }} th {{ background:#edf7f2; color:var(--ink); }}
 ul {{ margin-top:8px; }} footer {{ padding:18px 44px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }}
 @media(max-width:760px) {{ .hero,.content,footer {{ padding-left:18px; padding-right:18px; }} .section-grid {{ grid-template-columns:1fr; }} h1 {{ font-size:25px; }} }}
 @media print {{ body {{ background:#fff; }} .page {{ margin:0; border:0; box-shadow:none; max-width:none; }} }}
 </style></head>
 <body><main class='page'>
-<header class='hero'><h1>حزمة التقرير الجاهز للتمويل</h1><div class='meta'>Snapshot: {escape(str(projection.get('snapshot_id', '')))} · Run: {escape(str(projection.get('run_id', '')))} · Profile: {escape(str(projection.get('profile_id', '')))}</div><p><span class='badge'>{escape(str(projection.get('readiness_status', 'unknown')))}</span></p></header>
+<header class='hero'><h1>{escape(text('report_title', locale))}</h1><div class='meta'>{escape(project_name)}</div><p><span class='badge'>{escape(status_text(projection.get('readiness_status'), locale))}</span></p></header>
 <section class='content'>
-<div class='notice'>هذه معاينة قراءة مبنية على Snapshot محفوظ. لا يعيد العرض الحساب، ولا يمثل قبولاً أو ضماناً من أي جهة تمويل.</div>
-<h2>ملف الجاهزية التمويلية</h2><p><span class='badge'>{escape(str(profile.get('profile_id', '')))} · {escape(str(profile.get('status', 'unknown')))}</span></p>
-<table><thead><tr><th>المتطلب</th><th>الحالة</th><th>السبب أو الفجوة</th></tr></thead><tbody>{profile_rows}</tbody></table>
-<h2>هيكل الدراسة</h2><div class='section-grid'>{section_cards}</div>
-<h2>التوقعات المالية</h2>
-<table><thead><tr><th>السنة</th><th>الإيرادات</th><th>إجمالي الربح</th><th>EBITDA</th><th>EBIT</th><th>التدفق التشغيلي</th></tr></thead><tbody>{income_rows or '<tr><td colspan="6">لا توجد توقعات مالية جاهزة</td></tr>'}</tbody></table>
-<h2>الفجوات قبل الإصدار التمويلي</h2><ul>{gaps}</ul>
-</section><footer>عقد التقرير: {escape(str(projection.get('contract_id', '')))} · Hash الإسقاط: {escape(str(projection.get('projection_hash', '')))}</footer>
+<div class='notice'>{escape(text('notice', locale))}</div>
+<h2>{escape(text('readiness', locale))}</h2>
+<table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(text('status', locale))}</th><th>{escape(text('reason', locale))}</th></tr></thead><tbody>{profile_rows}</tbody></table>
+<h2>{escape(text('study_structure', locale))}</h2><div class='section-grid'>{section_cards}</div>
+<h2>{escape(text('financial_outlook', locale))}</h2>
+<table><thead><tr>{header_html}</tr></thead><tbody>{income_rows or f"<tr><td colspan='6'>{escape(text('no_financials', locale))}</td></tr>"}</tbody></table>
+<h2>{escape(text('missing_items', locale))}</h2><ul>{gaps}</ul>
+</section><footer>{escape(text('report_status', locale))}: {escape(text('saved', locale))}</footer>
 </main></body></html>"""
