@@ -58,6 +58,16 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('identity.platform_role === "platform_admin"', gate)
         self.assertIn("customerErrorText(failure, locale)", gate)
 
+    def test_sanad_opens_exact_missing_input_and_preserves_return_stage(self) -> None:
+        app = (SRC / "App.tsx").read_text(encoding="utf-8")
+        surface = (SRC / "ASIECompleteSurfaceMount.tsx").read_text(encoding="utf-8")
+        self.assertIn('window.addEventListener("asie:navigate-missing-input"', app)
+        self.assertIn('"data-asie-missing-label": firstMissingInputLabel', app)
+        self.assertIn('window.dispatchEvent(new CustomEvent("asie:navigate-missing-input"))', surface)
+        self.assertIn('sessionStorage.setItem("asie.sanad.return_stage"', surface)
+        self.assertIn('sessionStorage.removeItem("asie.sanad.return_stage")', surface)
+        self.assertIn('text("أكمل هذا المدخل", "Complete this input")', surface)
+
 
 if __name__ == "__main__":
     unittest.main()
