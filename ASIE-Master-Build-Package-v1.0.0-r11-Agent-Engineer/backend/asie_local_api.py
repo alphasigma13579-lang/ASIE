@@ -1975,7 +1975,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             base_pack = decision_pack_via_module_runtime(overview, report)
             pack = apply_review_overlay(base_pack, REPO.snapshot_reviews(snapshot_id))
-            write_html(self, render_decision_pack_html(pack))
+            write_html(self, render_decision_pack_html(pack, locale=locale))
             return
         if path.startswith("/api/snapshots/") and path.endswith("/reviews"):
             snapshot_id = path.split("/")[3]
@@ -2006,7 +2006,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            write_html(self, render_report_html(report, REPO.latest_snapshot_review(snapshot_id)))
+            write_html(self, render_report_html(report, REPO.latest_snapshot_review(snapshot_id), locale=locale))
             return
         if path.startswith("/api/snapshots/") and path.endswith("/funder-report.html"):
             snapshot_id = path.split("/")[3]
