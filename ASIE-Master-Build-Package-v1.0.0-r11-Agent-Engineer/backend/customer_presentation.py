@@ -163,7 +163,7 @@ _SECTIONS = {
 
 _FORBIDDEN = re.compile(
     r"(?:\b(?:project|run|snapshot|profile|contract|review|projection|release|algorithm|engine|session|manifest|payload|hash)_id\b|"
-    r"\b(?:not_ready|review_required|demo_or_user_input_only|blocked_not_ready|decision[_ ]pack|monte[_ ]carlo)\b|_{1,})",
+    r"\b(?:not_ready|review_required|demo_or_user_input_only|blocked_not_ready|decision[_ ]pack|monte[_ ]carlo|finance[_ ]engine|runtime)\b|_{1,})",
     re.IGNORECASE,
 )
 

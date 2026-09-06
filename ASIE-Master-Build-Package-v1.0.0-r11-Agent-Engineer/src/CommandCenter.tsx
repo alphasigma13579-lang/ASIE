@@ -161,7 +161,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
   const { locale, text } = useCustomerLanguage();
   const [section, setSection] = useState<CCSection>("dashboard");
   const [bundles, setBundles] = useState<Bundle[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(async () => {
@@ -186,7 +186,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       setBundles(next);
     } catch (err) {
       setBundles(null);
-      setLoadError(customerErrorText(err, locale));
+      setLoadError(err);
     }
   }, []);
 
@@ -210,7 +210,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       <div className="cc">
         <div className="cc-error" role="alert">
           <AlertTriangle size={26} aria-hidden="true" />
-          <div><strong>{text("تعذر تحميل لوحة القيادة", "Unable to load dashboard")}</strong><p>{loadError}</p></div>
+          <div><strong>{text("تعذر تحميل لوحة القيادة", "Unable to load dashboard")}</strong><p>{customerErrorText(loadError, locale)}</p></div>
           <button className="cc-btn cc-btn--ghost" onClick={() => setReloadKey((k) => k + 1)}>
             <RefreshCw size={15} aria-hidden="true" /> {text("إعادة المحاولة", "Try again")}
           </button>

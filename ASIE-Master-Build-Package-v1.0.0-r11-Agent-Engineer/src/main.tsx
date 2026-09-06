@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { AdminConsole } from "./AdminConsole";
@@ -16,29 +16,45 @@ import "./styles.css";
 import "./asie-reference-theme.css";
 import "./asie-complete-surface.css";
 
-const currentHash = window.location.hash;
-const routedApp = currentHash === "#admin"
-  ? <AdminConsole />
-  : currentHash.startsWith("#dib-e2e-scenario")
-    ? <EngineeringSurfaceGate><DIBE2EScenario /></EngineeringSurfaceGate>
-    : currentHash.startsWith("#dib-snapshot-handoff")
-      ? <EngineeringSurfaceGate><DIBSnapshotProjectionHandoff /></EngineeringSurfaceGate>
-      : currentHash.startsWith("#dib-finance-wiring")
-        ? <EngineeringSurfaceGate><DIBControlledFinanceWiring /></EngineeringSurfaceGate>
-        : currentHash.startsWith("#dib-run-readiness")
-          ? <EngineeringSurfaceGate><DIBManifestRunReadiness /></EngineeringSurfaceGate>
-          : currentHash.startsWith("#dib-governance")
-            ? <EngineeringSurfaceGate><DIBIntakeItemGovernance /></EngineeringSurfaceGate>
-            : currentHash.startsWith("#dib-entry")
-              ? <EngineeringSurfaceGate><DIBProjectEntryPoint /></EngineeringSurfaceGate>
-              : currentHash.startsWith("#dib")
-                ? <EngineeringSurfaceGate><DIBWorkspace /></EngineeringSurfaceGate>
-                : <App />;
+function RoutedApplication() {
+  const [currentHash, setCurrentHash] = useState(() => window.location.hash);
+
+  useEffect(() => {
+    const syncHash = () => setCurrentHash(window.location.hash);
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  const routedApp = currentHash === "#admin"
+    ? <AdminConsole />
+    : currentHash.startsWith("#dib-e2e-scenario")
+      ? <EngineeringSurfaceGate><DIBE2EScenario /></EngineeringSurfaceGate>
+      : currentHash.startsWith("#dib-snapshot-handoff")
+        ? <EngineeringSurfaceGate><DIBSnapshotProjectionHandoff /></EngineeringSurfaceGate>
+        : currentHash.startsWith("#dib-finance-wiring")
+          ? <EngineeringSurfaceGate><DIBControlledFinanceWiring /></EngineeringSurfaceGate>
+          : currentHash.startsWith("#dib-run-readiness")
+            ? <EngineeringSurfaceGate><DIBManifestRunReadiness /></EngineeringSurfaceGate>
+            : currentHash.startsWith("#dib-governance")
+              ? <EngineeringSurfaceGate><DIBIntakeItemGovernance /></EngineeringSurfaceGate>
+              : currentHash.startsWith("#dib-entry")
+                ? <EngineeringSurfaceGate><DIBProjectEntryPoint /></EngineeringSurfaceGate>
+                : currentHash.startsWith("#dib")
+                  ? <EngineeringSurfaceGate><DIBWorkspace /></EngineeringSurfaceGate>
+                  : <App />;
+
+  return (
+    <>
+      {routedApp}
+      <ASIECompleteSurfaceMount />
+    </>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <CustomerLanguageProvider>
-      {routedApp}
-      <ASIECompleteSurfaceMount />
+      <RoutedApplication />
     </CustomerLanguageProvider>
   </React.StrictMode>
 );

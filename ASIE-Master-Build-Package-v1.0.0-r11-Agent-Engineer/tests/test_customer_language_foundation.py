@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from backend.customer_presentation import safe_narrative
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -30,6 +32,8 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('"تعذر إتمام الطلب.', source)
         self.assertIn('"The request could not be completed.', source)
         self.assertNotIn("return raw;", source)
+        self.assertEqual("تفصيل يحتاج مراجعة قبل عرضه", safe_narrative("finance engine failed", "ar"))
+        self.assertEqual("Detail requires review before display", safe_narrative("runtime failure", "en"))
 
     def test_customer_auth_never_renders_raw_provider_errors(self) -> None:
         source = (SRC / "AuthScreens.tsx").read_text(encoding="utf-8")
@@ -57,6 +61,16 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
             )
         self.assertIn('identity.platform_role === "platform_admin"', gate)
         self.assertIn("customerErrorText(failure, locale)", gate)
+        self.assertIn('window.addEventListener("hashchange", syncHash)', main)
+        self.assertIn('window.removeEventListener("hashchange", syncHash)', main)
+        self.assertIn("<RoutedApplication />", main)
+
+    def test_command_center_errors_follow_the_selected_language(self) -> None:
+        command_center = (SRC / "CommandCenter.tsx").read_text(encoding="utf-8")
+        self.assertIn("useState<unknown>(null)", command_center)
+        self.assertIn("setLoadError(err)", command_center)
+        self.assertIn("customerErrorText(loadError, locale)", command_center)
+        self.assertNotIn("setLoadError(customerErrorText(err, locale))", command_center)
 
     def test_customer_overlays_hide_internal_profile_and_user_identifiers(self) -> None:
         app = (SRC / "App.tsx").read_text(encoding="utf-8")
