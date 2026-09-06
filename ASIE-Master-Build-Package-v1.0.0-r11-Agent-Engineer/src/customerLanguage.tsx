@@ -148,6 +148,30 @@ export function customerErrorText(reason: unknown, locale: CustomerLocale): stri
     : "The request could not be completed. Try again, and contact the beta administrator if the problem continues.";
 }
 
+
+const customerSourceNames: Record<string, { ar: string; en: string }> = {
+  gastat_candidate: { ar: "الهيئة العامة للإحصاء", en: "General Authority for Statistics" },
+  general_authority_for_statistics: { ar: "الهيئة العامة للإحصاء", en: "General Authority for Statistics" },
+  sama_candidate: { ar: "البنك المركزي السعودي", en: "Saudi Central Bank" },
+  saudi_central_bank: { ar: "البنك المركزي السعودي", en: "Saudi Central Bank" },
+  mof_candidate: { ar: "وزارة المالية", en: "Ministry of Finance" },
+  ministry_of_finance: { ar: "وزارة المالية", en: "Ministry of Finance" },
+  vision_2030_reference: { ar: "رؤية السعودية 2030", en: "Saudi Vision 2030" },
+  monshaat: { ar: "الهيئة العامة للمنشآت الصغيرة والمتوسطة", en: "Small and Medium Enterprises General Authority" },
+};
+
+export function customerSourceName(value: unknown, locale: CustomerLocale): string {
+  if (typeof value !== "string" || !value.trim()) return locale === "ar" ? "مصدر قيد المراجعة" : "Source under review";
+  const normalized = normalizeStatus(value);
+  const mapped = customerSourceNames[normalized];
+  if (mapped) return mapped[locale];
+  const clean = value.trim();
+  const hasArabic = /[\u0600-\u06ff]/.test(clean);
+  const looksInternal = /(?:candidate|reference|source|[_]{1,})/i.test(clean);
+  if (!looksInternal && ((locale === "ar" && hasArabic) || (locale === "en" && !hasArabic))) return clean;
+  return locale === "ar" ? "مصدر قيد المراجعة" : "Source under review";
+}
+
 const forbiddenCustomerToken = /(?:\b(?:project|run|snapshot|profile|contract|review|projection|release|algorithm|engine|session|manifest|validation_gate|payload|hash)_id\b|\b(?:not_ready|review_required|demo_or_user_input_only|blocked_not_ready|no_evidence_links)\b)/i;
 
 export function containsForbiddenCustomerToken(value: string): boolean {
