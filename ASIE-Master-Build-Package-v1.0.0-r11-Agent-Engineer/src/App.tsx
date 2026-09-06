@@ -692,6 +692,10 @@ function SessionWorkspace() {
   const commandMetrics = ["npv", "irr", "payback-months", "funding-need-after-equity", "mc-feasibility-gate-probability"]
     .map((metricId) => snapshotOverview?.kpis.find((item) => item.output_id === metricId))
     .filter((item): item is OutputEnvelope => Boolean(item));
+  const firstIncompleteWizardStep = wizardJourney.findIndex((_, index) => Boolean(validateWizardStepAt(index)));
+  const firstMissingInputLabel = firstIncompleteWizardStep >= 0
+    ? validateWizardStepAt(firstIncompleteWizardStep)
+    : readinessBlocked[0]?.message ?? null;
   const commandAction = !project
     ? { label: "ابدأ تعريف المشروع", detail: "لم تُنشأ مسودة مشروع بعد.", stage: "wizard" as AppStage, action: "navigate" as const }
     : !readiness
@@ -772,6 +776,20 @@ function SessionWorkspace() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useEffect(() => {
+    const handleNavigateToMissingInput = () => {
+      const incompleteStep = wizardJourney.findIndex((_, index) => Boolean(validateWizardStepAt(index)));
+      if (incompleteStep >= 0) {
+        unlockAndOpenWizardStep(incompleteStep);
+        setStage("wizard");
+        return;
+      }
+      setStage("readiness");
+    };
+    window.addEventListener("asie:navigate-missing-input", handleNavigateToMissingInput);
+    return () => window.removeEventListener("asie:navigate-missing-input", handleNavigateToMissingInput);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -1619,7 +1637,7 @@ function SessionWorkspace() {
         </div>
       </aside>
 
-      <section className="workspace">
+      <section className="workspace" data-asie-missing-label={firstMissingInputLabel ?? ""} data-asie-missing-count={readinessBlocked.length}>
         <header className="topbar">
           <div>
             <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
