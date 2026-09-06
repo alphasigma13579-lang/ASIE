@@ -605,17 +605,17 @@ function StrategySection({ overview }: { overview: ProjectOverview | null }) {
   const { locale, text } = useCustomerLanguage();
   const sector = overview?.sector_intelligence;
   return (
-    <SectionShell title="التوافق الاستراتيجي" crumb="التوافق الاستراتيجي">
+    <SectionShell title={text("التوافق الاستراتيجي", "Strategic alignment")} crumb={text("التوافق الاستراتيجي", "Strategic alignment")}>
       {sector ? (
         <article className="cc-card">
-          <h3><Target size={17} aria-hidden="true" /> موقع المشروع قطاعياً</h3>
-          <p className="cc-why">من تحليل القطاع في لقطتك المحفوظة.</p>
-          <div className="cc-row"><div className="cc-row__body"><b>القطاع</b><span>{overview!.project.sector}</span></div></div>
+          <h3><Target size={17} aria-hidden="true" /> {text("موقع المشروع في قطاعه", "Project position in its sector")}</h3>
+          <p className="cc-why">{text("مستخلص من تحليل القطاع في نتيجتك المحفوظة.", "Derived from the sector analysis in your saved result.")}</p>
+          <div className="cc-row"><div className="cc-row__body"><b>{text("القطاع", "Sector")}</b><span>{customerBusinessText(overview!.project.sector, locale)}</span></div></div>
         </article>
-      ) : <NeedData text="شغّل التحليل لعرض التوافق القطاعي." />}
+      ) : <NeedData text={text("شغّل التحليل لعرض التوافق القطاعي.", "Run the analysis to view sector alignment.")} />}
       <div className="cc-grid-2">
-        <Soon title="توافق رؤية 2030" icon={<Target size={20} />} note="درجة توافق مع مستهدفات الرؤية — تتطلب مصفوفة المستهدفات الرسمية." />
-        <Soon title="برامج الدعم والمبادرات" icon={<BadgeCheck size={20} />} note="منشآت، بنك التنمية، الصناديق — تتطلب دليل البرامج الرسمي." />
+        <Soon title={text("التوافق مع رؤية 2030", "Vision 2030 alignment")} icon={<Target size={20} />} note={text("يتطلب ربط المستهدفات الرسمية المعتمدة.", "Requires approved official targets.")} />
+        <Soon title={text("برامج الدعم والمبادرات", "Support programs and initiatives")} icon={<BadgeCheck size={20} />} note={text("تتطلب دليل البرامج الرسمي المعتمد.", "Requires an approved official programs guide.")} />
       </div>
     </SectionShell>
   );
@@ -628,17 +628,17 @@ function StrategySection({ overview }: { overview: ProjectOverview | null }) {
 function OpportunitiesSection({ overview }: { overview: ProjectOverview | null }) {
   const { locale, text } = useCustomerLanguage();
   return (
-    <SectionShell title="الفرص الذكية" crumb="الفرص الذكية">
+    <SectionShell title={text("الفرص", "Opportunities")} crumb={text("الفرص", "Opportunities")}>
       {overview ? (
         <article className="cc-card">
-          <h3><Lightbulb size={17} aria-hidden="true" /> من قراءة لقطتك</h3>
-          <p className="cc-why">مؤشرات مستمدة من بياناتك المحفوظة — ليست توصية نهائية.</p>
-          <div className="cc-row"><div className="cc-row__body"><b>احتمال الاجتياز {fmtPct(overview.monte_carlo.p_pass, locale)}</b><span>كلما ارتفع، اتسع هامش المناورة أمام الفرص.</span></div></div>
+          <h3><Lightbulb size={17} aria-hidden="true" /> {text("من قراءة النتيجة المحفوظة", "From the saved result")}</h3>
+          <p className="cc-why">{text("مؤشرات مستمدة من بياناتك المحفوظة وليست توصية نهائية.", "Indicators derived from your saved data; they are not a final recommendation.")}</p>
+          <div className="cc-row"><div className="cc-row__body"><b>{text("احتمال الاستيفاء", "Pass probability")} {fmtPct(overview.monte_carlo.p_pass, locale)}</b><span>{text("كلما ارتفع، اتسع هامش التعامل مع الفرص.", "A higher value provides more room to pursue opportunities.")}</span></div></div>
         </article>
-      ) : <NeedData text="شغّل التحليل لتظهر مؤشرات الفرص." />}
+      ) : <NeedData text={text("شغّل التحليل لتظهر مؤشرات الفرص.", "Run the analysis to view opportunity indicators.")} />}
       <div className="cc-grid-2">
-        <Soon title="اقتراح موقع/حي أفضل" icon={<MapPin size={20} />} note="يتطلب بيانات جغرافية وسوقية." />
-        <Soon title="منتج/خدمة إضافية وتوسّع" icon={<Lightbulb size={20} />} note="يتطلب محرك توصيات مرتبط ببيانات القطاع." />
+        <Soon title={text("اقتراح موقع أفضل", "Suggest a better location")} icon={<MapPin size={20} />} note={text("يتطلب بيانات جغرافية وسوقية معتمدة.", "Requires approved geographic and market data.")} />
+        <Soon title={text("فرص منتج أو خدمة إضافية", "Additional product or service opportunities")} icon={<Lightbulb size={20} />} note={text("يتطلب بيانات قطاعية معتمدة قبل التفعيل.", "Requires approved sector data before activation.")} />
       </div>
     </SectionShell>
   );
@@ -652,20 +652,20 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
   const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
-      <SectionShell title="فهم القرار" crumb="فهم القرار">
-        <NeedData text="لا يوجد قرار محفوظ لتفسيره بعد." />
+      <SectionShell title={text("فهم القرار", "Understand the decision")} crumb={text("فهم القرار", "Understand the decision")}>
+        <NeedData text={text("لا يوجد قرار محفوظ لتفسيره بعد.", "There is no saved decision to explain yet.")} />
       </SectionShell>
     );
   }
   return (
-    <SectionShell title="فهم القرار" crumb="فهم القرار">
+    <SectionShell title={text("فهم القرار", "Understand the decision")} crumb={text("فهم القرار", "Understand the decision")}>
       <article className="cc-card">
-        <h3><FileText size={17} aria-hidden="true" /> لماذا هذا القرار؟</h3>
+        <h3><FileText size={17} aria-hidden="true" /> {text("لماذا هذا القرار؟", "Why this decision?")}</h3>
         <p className="cc-reason">{customerNarrativeText(overview.decision.reason, locale)}</p>
-        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict, locale).label}</b><span>{text("قرار محفوظ وقابل للمراجعة", "Saved and reviewable decision")}</span></div></div>
+        <div className="cc-row"><Chip tone="dim">{text("القرار", "Decision")}</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict, locale).label}</b><span>{text("قرار محفوظ وقابل للمراجعة", "Saved and reviewable decision")}</span></div></div>
       </article>
       <article className="cc-card">
-        <h3><BarChart3 size={17} aria-hidden="true" /> المؤشرات المؤثرة</h3>
+        <h3><BarChart3 size={17} aria-hidden="true" /> {text("المؤشرات المؤثرة", "Decision drivers")}</h3>
         <div className="cc-kpi-grid">
           {overview.kpis.slice(0, 8).map((k: OutputEnvelope) => (
             <div className="cc-kpi-cell" key={k.output_id}>
@@ -676,14 +676,14 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
         </div>
       </article>
       <article className="cc-card">
-        <h3><Sparkles size={17} aria-hidden="true" /> تصويت الشخصيات السيادية الخمس</h3>
+        <h3><Sparkles size={17} aria-hidden="true" /> {text("زوايا التقييم الخمس", "Five assessment perspectives")}</h3>
         {overview.personas.map((p) => (
           <div className="cc-row" key={p.persona_id}>
             <div className="cc-row__body"><b>{customerBusinessText(p.metric, locale)}</b><span>{customerNarrativeText(p.note, locale)}</span></div>
             <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value, locale)}</strong>
           </div>
         ))}
-        <p className="cc-why">الشخصيات تفسّر ولا تصوّت على الحكم — الحكم السيادي هو المرجع.</p>
+        <p className="cc-why">{text("زوايا التقييم تشرح النتيجة ولا تغيّر القرار المحفوظ.", "Assessment perspectives explain the result without changing the saved decision.")}</p>
       </article>
     </SectionShell>
   );
@@ -697,20 +697,20 @@ function ReportsSection({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenSta
   const { text } = useCustomerLanguage();
   const withRuns = bundles.filter((b) => b.overview);
   return (
-    <SectionShell title="تقاريري" crumb="تقاريري">
-      <p className="cc-why">مكتبة المشروع — كل تقرير مرتبط بلقطة ثابتة. تُفتح المخرجات من غرفة التقارير لكل مشروع.</p>
+    <SectionShell title={text("تقاريري", "Reports")} crumb={text("تقاريري", "Reports")}>
+      <p className="cc-why">{text("مكتبة المشروع: كل تقرير مرتبط بنتيجة محفوظة ويُفتح من صفحة تقارير المشروع.", "Project library: each report is linked to a saved result and opens from the project reports page.")}</p>
       {withRuns.length ? withRuns.map((b) => (
         <div className="cc-row" key={b.project.project_id}>
           <Chip tone="go">{text("محفوظ", "Saved")}</Chip>
           <div className="cc-row__body">
             <b>{b.project.name}</b>
-            <span>تقرير تنفيذي · دراسة جدوى · Decision Pack · PDF/DOCX/PPTX</span>
+            <span>{text("تقرير تنفيذي · دراسة جدوى · مذكرة قرار · ملفات قابلة للتنزيل", "Executive report · Feasibility study · Decision memo · Downloadable files")}</span>
           </div>
           <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(b.project.project_id, "snapshots")}>
-            فتح المخرجات <ArrowLeft size={13} aria-hidden="true" />
+            {text("فتح التقارير", "Open reports")} <ArrowLeft size={13} aria-hidden="true" />
           </button>
         </div>
-      )) : <NeedData text="لا توجد لقطات محفوظة بعد. شغّل التحليل في أحد مشاريعك لإنشاء أول تقرير." />}
+      )) : <NeedData text={text("لا توجد نتائج محفوظة بعد. شغّل التحليل في أحد مشاريعك لإنشاء أول تقرير.", "No saved results yet. Run the analysis in a project to create the first report.")} />}
     </SectionShell>
   );
 }
