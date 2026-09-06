@@ -210,9 +210,9 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       <div className="cc">
         <div className="cc-error" role="alert">
           <AlertTriangle size={26} aria-hidden="true" />
-          <div><strong>تعذر تحميل لوحة القيادة</strong><p>{loadError}</p></div>
+          <div><strong>{text("تعذر تحميل لوحة القيادة", "Unable to load dashboard")}</strong><p>{loadError}</p></div>
           <button className="cc-btn cc-btn--ghost" onClick={() => setReloadKey((k) => k + 1)}>
-            <RefreshCw size={15} aria-hidden="true" /> إعادة المحاولة
+            <RefreshCw size={15} aria-hidden="true" /> {text("إعادة المحاولة", "Try again")}
           </button>
         </div>
       </div>
@@ -232,11 +232,11 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       <div className="cc">
         <TopNav section={section} onNavigate={setSection} />
         <div className="cc-empty">
-          <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
-          <h1>{timeGreeting(locale)} — ابدأ أول مشروع لك</h1>
-          <p className="cc-sub">من فكرة إلى قرار موثق خلال جلسة واحدة. عرّف مشروعك، اربط الأدلة، افحص الجاهزية، واستلم القرار.</p>
+          <p className="cc-crumb">ASIE / <b>{text("لوحة القيادة", "Dashboard")}</b></p>
+          <h1>{timeGreeting(locale)} — {text("ابدأ أول مشروع لك", "start your first project")}</h1>
+          <p className="cc-sub">{text("من فكرة إلى قرار موثق خلال جلسة واحدة. عرّف مشروعك، اربط الأدلة، افحص الجاهزية، واستلم القرار.", "Move from an idea to a documented decision in one guided session: set up the project, link evidence, check readiness, and review the decision.")}</p>
           <button className="cc-btn cc-btn--main cc-btn--lg" onClick={onNewProject}>
-            <Plus size={19} aria-hidden="true" /> ابدأ مشروعك الأول
+            <Plus size={19} aria-hidden="true" /> {text("ابدأ مشروعك الأول", "Start your first project")}
           </button>
         </div>
       </div>
@@ -258,15 +258,15 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       {section === "dashboard" ? (
         <>
           <header className="cc-hero">
-            <Dial percent={readinessPercent} label="جاهزية مشروعك" caption="نحو قرار واثق" />
+            <Dial percent={readinessPercent} label={text("جاهزية مشروعك", "Project readiness")} caption={text("نحو قرار واثق", "Toward a confident decision")} />
             <div className="cc-hero__text">
-              <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
+              <p className="cc-crumb">ASIE / <b>{text("لوحة القيادة", "Dashboard")}</b></p>
               <h1>
                 {timeGreeting(locale)} —<br />
-                مشاريعك بخير، وواحد منها <em>ينتظر قرارك</em>
+                {text("مشاريعك بخير، وواحد منها", "Your projects are on track, and one")} <em>{text("ينتظر قرارك", "needs your decision")}</em>
               </h1>
               <p className="cc-sub">
-                هذه غرفة القيادة فقط: وضع المشاريع وما يحتاج انتباهاً. التفاصيل والأدلة تعيش في غرفها الخاصة.
+                {text("هذه غرفة القيادة: تعرض وضع المشاريع وما يحتاج انتباهك، بينما تبقى التفاصيل والأدلة في صفحاتها.", "This dashboard shows project status and what needs your attention; details and evidence remain in their dedicated pages.")}
               </p>
             </div>
           </header>
@@ -276,59 +276,58 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
             <article className="cc-kpi">
               <strong>{verdict.label}</strong>
               <span>{text("آخر قرار محفوظ", "Latest saved decision")}</span>
-              <button className="cc-link" onClick={() => setSection("decision")}>افتح تفسير القرار ←</button>
+              <button className="cc-link" onClick={() => setSection("decision")}>{text("افتح تفسير القرار", "Open decision explanation")} ←</button>
             </article>
             <article className="cc-kpi">
               <strong>{fmtPct(confidence, locale)}</strong>
               <span>{text("احتمال اجتياز اختبار السيناريوهات", "Scenario test pass probability")}</span>
-              <button className="cc-link" onClick={() => setSection("reality")}>حفر في السيناريوهات ←</button>
+              <button className="cc-link" onClick={() => setSection("reality")}>{text("استعرض السيناريوهات", "Review scenarios")} ←</button>
             </article>
             <article className="cc-kpi">
               <strong>{bundles.filter((b) => !b.readiness?.ready_to_run).length}</strong>
-              <span>عائق تنفيذ نشط يحتاج انتباهاً</span>
-              <button className="cc-link" onClick={() => primary && onOpenStage(primary.project.project_id, "readiness")}>افتح العائق ←</button>
+              <span>{text("عائق نشط يحتاج انتباهك", "Active blocker needs your attention")}</span>
+              <button className="cc-link" onClick={() => primary && onOpenStage(primary.project.project_id, "readiness")}>{text("افتح العائق", "Open blocker")} ←</button>
             </article>
           </div>
 
           <div className="cc-grid-2">
             {/* مشاريعي */}
             <article className="cc-card">
-              <h3><Layers3 size={18} aria-hidden="true" /> مشاريعي</h3>
-              <p className="cc-why">افتح مشروعاً لمتابعة مساره، أو ابدأ مشروعاً جديداً.</p>
+              <h3><Layers3 size={18} aria-hidden="true" /> {text("مشاريعي", "My projects")}</h3>
+              <p className="cc-why">{text("افتح مشروعًا لمتابعة مساره، أو ابدأ مشروعًا جديدًا.", "Open a project to continue its journey, or start a new one.")}</p>
               {bundles.map((b) => {
                 const steps = b.readiness?.steps ?? [];
                 const done = steps.filter((s) => s.status === "ready").length;
                 const total = steps.length || 9;
                 const v = verdictMeta(b.overview?.decision?.sovereign_verdict, locale);
-                const state = b.overview ? v.label : b.readiness?.ready_to_run ? "جاهز للتشغيل" : "مسودة";
+                const state = b.overview ? v.label : b.readiness?.ready_to_run ? text("جاهز للتشغيل", "Ready to run") : text("مسودة", "Draft");
                 const tone = b.overview ? v.tone : b.readiness?.ready_to_run ? "go" : "dim";
                 return (
                   <div className="cc-row" key={b.project.project_id}>
                     <Chip tone={tone}>{state}</Chip>
                     <div className="cc-row__body">
                       <b>{b.project.name}</b>
-                      <span>الخطوة {done} من {total} · آخر تحديث: {formatRelative(b.project.updated_at, locale)}</span>
+                      <span>{text("الخطوة", "Step")} {done} {text("من", "of")} {total} · {text("آخر تحديث", "Last updated")}: {formatRelative(b.project.updated_at, locale)}</span>
                     </div>
                     <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenProject(b.project.project_id)}>
-                      {b.overview ? "فتح" : "إكمال"} <ArrowLeft size={13} aria-hidden="true" />
+                      {b.overview ? text("فتح", "Open") : text("إكمال", "Continue")} <ArrowLeft size={13} aria-hidden="true" />
                     </button>
                   </div>
                 );
               })}
               <button className="cc-btn cc-btn--main" onClick={onNewProject}>
-                <Plus size={16} aria-hidden="true" /> ابدأ مشروعاً جديداً
+                <Plus size={16} aria-hidden="true" /> {text("ابدأ مشروعًا جديدًا", "Start a new project")}
               </button>
             </article>
 
             {/* ينتبه له اليوم */}
             <article className="cc-card">
-              <h3><AlertTriangle size={18} aria-hidden="true" /> ينتبه له اليوم</h3>
-              <p className="cc-why">تنبيهات السياق — لا تغيّر الحكم، فقط تلفت نظرك.</p>
+              <h3><AlertTriangle size={18} aria-hidden="true" /> {text("ما يحتاج انتباهك اليوم", "Needs attention today")}</h3>
+              <p className="cc-why">{text("تنبيهات سياقية لا تغيّر القرار، بل توضح ما يحتاج إجراءً.", "Context alerts do not change the decision; they highlight what needs action.")}</p>
               <AttentionList bundles={bundles} onOpenStage={onOpenStage} />
               <div className="cc-datafoot">
-                <span>data_mode: live_local</span>
-                <span>source: لقطات محفوظة + جاهزية حية</span>
-                <span>confidence: تتبع السياق</span>
+                <span>{text("البيانات من مشروعك المحفوظ", "Data comes from your saved project")}</span>
+                <span>{text("الحالة محدثة من فحص الجاهزية", "Status is updated from the readiness check")}</span>
               </div>
             </article>
           </div>
@@ -336,10 +335,10 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
           {/* principles */}
           <div className="cc-principles">
             {[
-              [ShieldCheck, "لا أرقام بلا مصدر", "كل قيمة مرتبطة بلقطة محفوظة أو مدخل موثق."],
-              [Database, "بياناتك محلية", "لا جلب خارجي ولا مفاتيح داخل الحزمة."],
-              [FileText, "قرار قابل للرجوع", "كل حكم يحمل مرجع لقطة ثابت."],
-              [BadgeCheck, "المراجعة لك", "المنصة تقترح وتوضح — القرار لك دائماً."],
+              [ShieldCheck, text("لا أرقام بلا مصدر", "No figures without a source"), text("كل قيمة مرتبطة بنتيجة محفوظة أو مدخل موثق.", "Every value is linked to a saved result or documented input.")],
+              [Database, text("بياناتك محلية", "Your data stays local"), text("لا يوجد جلب خارجي في الوضع الحالي.", "External retrieval is disabled in the current mode.")],
+              [FileText, text("قرار قابل للمراجعة", "Reviewable decision"), text("كل قرار يعود إلى نتيجة محفوظة ثابتة.", "Every decision links back to a fixed saved result.")],
+              [BadgeCheck, text("المراجعة لك", "You control the review"), text("المنصة تشرح وتقترح، والقرار لك دائمًا.", "The platform explains and suggests; the decision remains yours.")],
             ].map(([Icon, t, b]) => {
               const I = Icon as typeof ShieldCheck;
               return (
@@ -366,17 +365,17 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
 
       {/* ============ MARKET ============ */}
       {section === "market" ? (
-        <SectionShell title="السوق والاتجاهات" crumb="السوق والاتجاهات">
-          <Soon title="حجم السوق ومعدل النمو" icon={<Globe size={20} />} note="يتطلب ربط مصدر بيانات سوق سعودي معتمد (GASTAT / تقارير قطاعية)." />
-          <Soon title="الطلب والعرض والفجوة السوقية" icon={<BarChart3 size={20} />} note="يُفعَّل بعد ربط مؤشرات الطلب القطاعية." />
-          <Soon title="اتجاهات البحث وسلوك العملاء" icon={<TrendingUp size={20} />} note="يتطلب تكامل مصدر اتجاهات خارجي." />
+        <SectionShell title={text("السوق والاتجاهات", "Market and trends")} crumb={text("السوق والاتجاهات", "Market and trends")}>
+          <Soon title={text("حجم السوق ومعدل النمو", "Market size and growth")} icon={<Globe size={20} />} note={text("يتطلب ربط مصدر سوق سعودي معتمد.", "Requires an approved Saudi market source.")} />
+          <Soon title={text("الطلب والعرض والفجوة السوقية", "Demand, supply, and market gap")} icon={<BarChart3 size={20} />} note={text("يُفعّل بعد ربط مؤشرات طلب قطاعية معتمدة.", "Enabled after approved sector demand indicators are connected.")} />
+          <Soon title={text("اتجاهات البحث وسلوك العملاء", "Search trends and customer behavior")} icon={<TrendingUp size={20} />} note={text("يتطلب مصدر اتجاهات خارجيًا معتمدًا.", "Requires an approved external trends source.")} />
         </SectionShell>
       ) : null}
 
       {/* ============ NEWS ============ */}
       {section === "news" ? (
-        <SectionShell title="الأخبار الذكية" crumb="الأخبار الذكية">
-          <Soon title="أخبار مفلترة حسب قطاع مشروعك" icon={<Newspaper size={20} />} note="تُفعَّل بعد ربط مصدر أخبار مع تقييم تأثير كل خبر." />
+        <SectionShell title={text("الأخبار الذكية", "Relevant news")} crumb={text("الأخبار الذكية", "Relevant news")}>
+          <Soon title={text("أخبار مرتبطة بقطاع مشروعك", "News relevant to your project sector")} icon={<Newspaper size={20} />} note={text("تُفعّل بعد ربط مصدر أخبار معتمد وتقييم أثر كل خبر.", "Enabled after an approved news source and impact review are connected.")} />
         </SectionShell>
       ) : null}
 
