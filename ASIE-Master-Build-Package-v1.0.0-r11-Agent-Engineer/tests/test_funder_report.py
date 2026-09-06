@@ -7,6 +7,7 @@ from pathlib import Path
 from backend import asie_local_api as api
 from backend.funder_report import build_funder_report_projection
 from backend.funder_report import render_funder_report_html
+from backend.customer_presentation import business_text, safe_narrative, text
 from backend.funding_readiness import evaluate_funding_readiness, profile_ids, sector_profile_catalog
 from backend.report_release import build_release_record, validate_release_record
 from backend.report_exports import export_funder_report_docx, export_funder_report_pdf, export_funder_report_pptx
@@ -104,6 +105,18 @@ class FunderReportProjectionTests(unittest.TestCase):
             self.assertNotIn(overview["snapshot"]["snapshot_id"], output)
             self.assertNotIn(report["funder_report"]["contract_id"], output)
             self.assertNotIn(report["funder_report"]["projection_hash"], output)
+
+    def test_customer_vocabulary_explains_known_codes_and_actions_in_both_languages(self) -> None:
+        self.assertEqual("المصروفات التشغيلية مرتفعة مقارنة بالإيراد", business_text("opex_above_60_percent_of_revenue", "ar"))
+        self.assertEqual("Operating costs are high relative to revenue", business_text("opex_above_60_percent_of_revenue", "en"))
+        self.assertEqual(
+            "خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.",
+            safe_narrative("Reduce fixed OPEX or increase validated revenue capacity.", "ar"),
+        )
+        self.assertEqual(
+            "Earnings before interest, tax, depreciation, and amortisation",
+            text("ebitda", "en"),
+        )
 
     def test_docx_export_hides_snapshot_and_contains_customer_sections(self) -> None:
         try:

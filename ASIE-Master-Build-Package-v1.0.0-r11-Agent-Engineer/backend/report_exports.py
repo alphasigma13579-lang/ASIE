@@ -204,7 +204,7 @@ def export_funder_report_docx(projection: dict[str, Any], output_path: str | Pat
     financial = next((row for row in projection.get("sections", []) if row.get("section_id") == "14-financial-expectations"), {})
     statements = (financial.get("payload") or {}).get("statements") or {}
     years = ((statements.get("income_statement") or {}).get("years") or [])
-    _table(doc, [text("year", locale), text("revenue", locale), text("gross_profit", locale), text("operating_profit", locale), text("operating_profit", locale), text("operating_cashflow", locale)], [[row.get("year"), row.get("revenue"), row.get("gross_profit"), row.get("ebitda"), row.get("ebit"), row.get("net_operating_cashflow")] for row in years] or [["—", text("no_financials", locale), "—", "—", "—", "—"]], locale=locale)
+    _table(doc, [text("year", locale), text("revenue", locale), text("gross_profit", locale), text("ebitda", locale), text("ebit", locale), text("operating_cashflow", locale)], [[row.get("year"), row.get("revenue"), row.get("gross_profit"), row.get("ebitda"), row.get("ebit"), row.get("net_operating_cashflow")] for row in years] or [["—", text("no_financials", locale), "—", "—", "—", "—"]], locale=locale)
 
     h = doc.add_heading(text("missing_items", locale), level=1)
     _set_paragraph_direction(h, locale)

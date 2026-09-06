@@ -22,7 +22,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { LocationConsentInput } from "./LocationConsentInput";
 import { BrandLockup } from "./BrandMark";
@@ -496,42 +496,6 @@ function MetricCard({ output }: { output: OutputEnvelope }) {
       <div className="metric-card__value">{formatValue(output, locale)}</div>
       <p className="metric-card__status">{statusText(output.status, locale)}</p>
     </article>
-  );
-}
-
-function SnapshotAnalytics({ overview }: { overview: ProjectOverview | null }) {
-  const baseline = overview?.finance.baseline;
-  const bars = baseline
-    ? [
-        ["الإيراد الشهري", baseline.revenue, "#168259"],
-        ["التكاليف المتغيرة", baseline.variable_total, "#e29b45"],
-        ["المصاريف التشغيلية", baseline.opex_breakdown.total_monthly_opex, "#7f8da3"],
-        ["الربح الشهري", baseline.monthly_profit, baseline.monthly_profit >= 0 ? "#7ccf75" : "#d66a6a"],
-      ] as Array<[string, number, string]>
-    : [];
-  const max = Math.max(...bars.map(([, value]) => Math.abs(value)), 1);
-  const probability = overview?.monte_carlo.p_pass;
-  return (
-    <div className="dashboard-analytics-grid">
-      <article className="panel analytics-panel analytics-panel--financial">
-        <div className="section-title"><BarChart3 size={20} aria-hidden="true" /><h2>صورة الأداء المالي</h2><small>{baseline ? "من Finance Snapshot · شهري" : "تظهر بعد Snapshot"}</small></div>
-        {bars.length ? (
-          <div className="comparison-chart" role="img" aria-label="مقارنة الإيرادات والتكاليف والربح الشهري">
-            {bars.map(([label, value, color]) => <div className="comparison-chart__row" key={label}><span>{label}</span><div className="comparison-chart__track"><i style={{ width: `${Math.max(3, Math.min(100, Math.abs(value) / max * 100))}%`, background: color }} /></div><strong>{new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(value)} ر.س</strong></div>)}
-          </div>
-        ) : <p className="empty-state">لا توجد أرقام عرضية قبل إنشاء Snapshot. ستظهر المقارنة من مخرجات Finance المحفوظة فقط.</p>}
-        <small className="chart-caption">المقارنة بين بنود متجانسة زمنياً؛ لا تعيد الواجهة الحساب.</small>
-      </article>
-      <article className="panel analytics-panel analytics-panel--decision">
-        <div className="section-title"><Target size={20} aria-hidden="true" /><h2>قوة القرار</h2><small>{overview ? "Monte Carlo من Snapshot" : "غير متاح قبل التشغيل"}</small></div>
-        {probability !== undefined && probability !== null ? (
-          <div className="decision-gauge" role="img" aria-label={`احتمال اجتياز البوابات ${Math.round(probability * 100)} بالمئة`}>
-            <div className="decision-gauge__ring" style={{ "--gauge": `${Math.round(probability * 100)}%` } as CSSProperties}><strong>{Math.round(probability * 100)}%</strong><span>احتمال الاجتياز</span></div>
-            <div className="decision-gauge__meta"><span>التشغيلات</span><strong>{overview!.monte_carlo.iterations.toLocaleString("ar-SA")}</strong><small>{statusText(overview!.decision.sovereign_verdict)}</small></div>
-          </div>
-        ) : <p className="empty-state">ستظهر قوة القرار واحتمال الاجتياز بعد تشغيل تحليل مرتبط بالمدخلات والأدلة.</p>}
-      </article>
-    </div>
   );
 }
 

@@ -232,8 +232,8 @@ def render_funder_report_html(projection: dict[str, Any], locale: str = "ar") ->
         text("year", locale),
         text("revenue", locale),
         text("gross_profit", locale),
-        text("operating_profit", locale),
-        text("operating_profit", locale),
+        text("ebitda", locale),
+        text("ebit", locale),
         text("operating_cashflow", locale),
     ]
     header_html = "".join(f"<th>{escape(label)}</th>" for label in headers)

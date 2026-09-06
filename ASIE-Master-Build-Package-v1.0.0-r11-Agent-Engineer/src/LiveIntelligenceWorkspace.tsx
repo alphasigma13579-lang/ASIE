@@ -28,20 +28,31 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
   return (
     <section dir={direction} aria-labelledby="live-intelligence-title" className="asie-live-intelligence">
       <header>
-        <p>ذكاء حي محكوم</p>
-        <h2 id="live-intelligence-title">البحث السوقي والموقع والتوافق الوطني</h2>
+        <p>{text("بحث حي محكوم", "Governed live research")}</p>
+        <h2 id="live-intelligence-title">
+          {text("البحث السوقي والموقع والسياق الوطني", "Market, location, and national-context research")}
+        </h2>
         <p>
-          النتائج أدلة مرشحة تحتاج مراجعة. لا تُستخدم تلقائيًا كأرقام مالية ولا تُعد قرارًا نهائيًا.
+          {text(
+            "النتائج أدلة مرشحة تحتاج مراجعة. لا تُستخدم تلقائيًا كأرقام مالية ولا تُعد قرارًا نهائيًا.",
+            "Results are evidence candidates that require review. They are never used automatically as financial figures or treated as a final decision.",
+          )}
         </p>
       </header>
 
       <div role="status" className="capability-notice">
-        لا يبدأ البحث إلا بطلبك، ويعرض الأدلة والمنافسين من المصادر المسموح بها فقط. لا يغيّر الحسابات المالية أو قرار المشروع.
+        {text(
+          "لا يبدأ البحث إلا بطلبك، ويعرض الأدلة والمنافسين من المصادر المسموح بها فقط. لا يغيّر الحسابات المالية أو قرار المشروع.",
+          "Research starts only when you request it and shows evidence and competitors from approved sources only. It does not change financial calculations or the project decision.",
+        )}
       </div>
 
       {!locationReady ? (
         <p role="status" className="capability-notice">
-          أكّد موقع المشروع أولًا من الخريطة أعلاه، ثم يمكنك بدء البحث السوقي للموقع نفسه.
+          {text(
+            "أكّد موقع المشروع أولًا من الخريطة أعلاه، ثم يمكنك بدء البحث السوقي للموقع نفسه.",
+            "Confirm the project location on the map above, then start market research for that same location.",
+          )}
         </p>
       ) : null}
 

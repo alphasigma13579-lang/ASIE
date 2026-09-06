@@ -30,6 +30,8 @@ _TEXT = {
     "revenue": ("الإيرادات", "Revenue"),
     "gross_profit": ("إجمالي الربح", "Gross profit"),
     "operating_profit": ("الربح التشغيلي", "Operating profit"),
+    "ebitda": ("الربح قبل الفوائد والضرائب والإهلاك والاستهلاك", "Earnings before interest, tax, depreciation, and amortisation"),
+    "ebit": ("الربح قبل الفوائد والضرائب", "Earnings before interest and tax"),
     "operating_cashflow": ("التدفق التشغيلي", "Operating cash flow"),
     "missing_items": ("ما الذي يحتاج استكمالاً؟", "What still needs completion?"),
     "none": ("لا توجد نواقص مسجلة", "No missing items are recorded"),
@@ -57,6 +59,18 @@ _STATUS = {
     "high": ("مرتفع", "High"),
     "medium": ("متوسط", "Medium"),
     "low": ("منخفض", "Low"),
+    "warning": ("يحتاج انتباهًا", "Needs attention"),
+    "ready_with_warnings": ("جاهز مع ملاحظات", "Ready with notes"),
+    "completed": ("مكتمل", "Completed"),
+    "insufficient_data": ("البيانات غير كافية", "Insufficient data"),
+    "preliminary_only": ("تقييم أولي", "Preliminary assessment"),
+    "revise_and_reassess": ("راجع المدخلات وأعد التقييم", "Review inputs and reassess"),
+    "blocked_not_ready": ("متوقف لمدخلات ناقصة", "Blocked by missing inputs"),
+    "approved_local": ("معتمد داخليًا", "Internally approved"),
+    "needs_changes": ("يحتاج تعديلات", "Changes required"),
+    "rejected_local": ("مرفوض داخليًا", "Internally rejected"),
+    "closed": ("مغلق", "Closed"),
+    "open": ("مفتوح", "Open"),
 }
 
 _BUSINESS = {
@@ -105,6 +119,27 @@ _BUSINESS = {
     "staffing_plan_ready": ("اعتماد خطة الفريق", "Approve team plan"),
     "operating_capacity_ready": ("تأكيد القدرة التشغيلية", "Confirm operating capacity"),
     "first_month_kpis_reviewed": ("مراجعة نتائج الشهر الأول", "Review first-month results"),
+    "execution_readiness_index": ("جاهزية التنفيذ", "Execution readiness"),
+    "commercial_acceptance_index": ("قابلية السوق", "Market acceptance"),
+    "technical_robustness_index": ("متانة التشغيل", "Operational robustness"),
+    "transition_readiness_index": ("جاهزية الانتقال", "Transition readiness"),
+    "pressure_survival_index": ("القدرة على تحمل الضغوط", "Pressure resilience"),
+    "financial_readiness": ("الجاهزية المالية", "Financial readiness"),
+    "evidence_readiness": ("جاهزية الأدلة", "Evidence readiness"),
+    "source_governance": ("اعتماد المصادر", "Source approval"),
+    "launch_readiness": ("جاهزية بدء التشغيل", "Launch readiness"),
+    "negative_npv": ("القيمة الحالية للمشروع سالبة", "The project's net present value is negative"),
+    "non_positive_monthly_profit": ("الربح الشهري المتوقع غير موجب", "Expected monthly profit is not positive"),
+    "no_enabled_open_data_source": ("لا يوجد مصدر سوق معتمد ومفعّل", "No approved market source is enabled"),
+    "no_enabled_open_data_sources": ("لا توجد مصادر سوق معتمدة ومفعّلة", "No approved market sources are enabled"),
+    "no_evidence_links": ("لا توجد أدلة مرتبطة بالافتراضات المهمة", "No evidence is linked to key assumptions"),
+    "no_assumption_evidence_links": ("الافتراضات المهمة غير مرتبطة بأدلة", "Key assumptions are not linked to evidence"),
+    "opex_above_60_percent_of_revenue": ("المصروفات التشغيلية مرتفعة مقارنة بالإيراد", "Operating costs are high relative to revenue"),
+    "assumption_support_gap": ("نقص في الأدلة الداعمة", "Supporting evidence is missing"),
+    "margin_pressure": ("ضغط على هامش الربح", "Profit margin pressure"),
+    "reduce_fixed_opex_or_increase_validated_revenue_capacity": ("خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.", "Reduce fixed costs or validate a higher revenue capacity."),
+    "complete_human_review_for_exact_open_datasets": ("أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.", "Complete human review of the selected open datasets."),
+    "link_approved_datasets_to_critical_assumptions": ("اربط المصادر المعتمدة بالافتراضات المؤثرة في القرار.", "Link approved sources to the assumptions that affect the decision."),
 }
 
 _SECTIONS = {
@@ -137,19 +172,23 @@ def normalize_locale(value: Any) -> Locale:
     return "en" if str(value).lower() == "en" else "ar"
 
 
+def _normalize_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9\u0600-\u06ff]+", "_", str(value or "").strip().lower()).strip("_")
+
+
 def text(key: str, locale: Locale) -> str:
     pair = _TEXT[key]
     return pair[1] if normalize_locale(locale) == "en" else pair[0]
 
 
 def status_text(value: Any, locale: Locale) -> str:
-    key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    key = _normalize_key(value)
     pair = _STATUS.get(key)
     return (pair[1] if normalize_locale(locale) == "en" else pair[0]) if pair else text("unknown_detail", locale)
 
 
 def business_text(value: Any, locale: Locale) -> str:
-    key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    key = _normalize_key(value)
     pair = _BUSINESS.get(key)
     return (pair[1] if normalize_locale(locale) == "en" else pair[0]) if pair else status_text(value, locale)
 

@@ -119,7 +119,7 @@ const customerStatuses: Record<string, { ar: string; en: string }> = {
 };
 
 function normalizeStatus(value: string): string {
-  return value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return value.trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/gi, "_").replace(/^_+|_+$/g, "");
 }
 
 export function customerStatusText(value: unknown, locale: CustomerLocale): string {
@@ -222,6 +222,12 @@ const customerBusinessTerms: Record<string, { ar: string; en: string }> = {
   sector_manufacturing_v1: { ar: "قطاع التصنيع", en: "Manufacturing sector" },
   sector_food_service_v1: { ar: "قطاع الأغذية والمطاعم", en: "Food service sector" },
   sector_digital_services_v1: { ar: "قطاع الخدمات الرقمية", en: "Digital services sector" },
+  negative_npv: { ar: "القيمة الحالية للمشروع سالبة", en: "The project's net present value is negative" },
+  non_positive_monthly_profit: { ar: "الربح الشهري المتوقع غير موجب", en: "Expected monthly profit is not positive" },
+  reduce_fixed_opex_or_increase_validated_revenue_capacity: { ar: "خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.", en: "Reduce fixed costs or validate a higher revenue capacity." },
+  complete_human_review_for_exact_open_datasets: { ar: "أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.", en: "Complete human review of the selected open datasets." },
+  link_approved_datasets_to_critical_assumptions: { ar: "اربط المصادر المعتمدة بالافتراضات المؤثرة في القرار.", en: "Link approved sources to the assumptions that affect the decision." },
+  deterministic_local_evaluator_reads_allowed_finance_readiness_sector_envelopes_only: { ar: "تقييم منضبط يعتمد فقط على بيانات المشروع والجاهزية والقطاع المسموح بها.", en: "A controlled assessment based only on permitted project, readiness, and sector data." },
 };
 
 export function customerBusinessText(value: unknown, locale: CustomerLocale): string {
