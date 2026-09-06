@@ -2093,22 +2093,22 @@ function SessionWorkspace() {
                       <small>{text("حالة التحليل", "Analysis status")}: {statusText(run.status, locale)}</small>
                     </div>
                     <div className="snapshot-card__decision">
-                      <span>حالة الحكم</span>
+                      <span>{text("حالة القرار", "Decision status")}</span>
                       <strong>{run.sovereign_verdict ? statusText(run.sovereign_verdict, locale) : text("غير متاح", "Not available")}</strong>
                       <small>{run.acceptance_status ? `${text("المراجعة", "Review")}: ${statusText(run.acceptance_status, locale)}` : text("المراجعة لم تُسجل بعد", "No review has been recorded yet")}</small>
                     </div>
                     <div className="button-row snapshot-card__actions">
                       {run.snapshot_id ? (
                         <>
-                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "report.html", "open")}>فتح التقرير</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "report.html", "open")}>{text("فتح التقرير", "Open report")}</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "decision-pack.html", "open")}>{text("فتح مذكرة القرار", "Open decision memo")}</button>
-                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.html", "open")}>تقرير الممول</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.html", "open")}>{text("تقرير الممول", "Funder report")}</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pdf", "download")}>PDF</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.docx", "download")}>DOCX</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pptx", "download")}>PPTX</button>
                           <button className="secondary-action" onClick={() => void handleShowRelease(run.snapshot_id!)}>{text("حالة التقرير", "Report status")}</button>
                         </>
-                      ) : <span className="muted">لا توجد مخرجات قابلة للفتح.</span>}
+                      ) : <span className="muted">{text("لا توجد تقارير قابلة للفتح.", "No reports are available to open.")}</span>}
                     </div>
                   </article>
                 ))}
@@ -2117,21 +2117,21 @@ function SessionWorkspace() {
               <article className="panel snapshots-empty-state">
                 <Layers3 size={26} aria-hidden="true" />
                 <div>
-                  <h3>{project ? "لا توجد لقطة لهذا المشروع بعد" : "اختر مشروعاً أو ابدأ مشروعاً جديداً"}</h3>
-                  <p>{project ? "بعد اجتياز الجاهزية شغّل التحليل لإنشاء أول Snapshot ثابت." : "التقارير لا تظهر من دون مشروع محدد؛ هذه الصفحة لا تنشئ بيانات تجريبية."}</p>
+                  <h3>{project ? text("لا توجد نتيجة محفوظة لهذا المشروع بعد", "This project has no saved result yet") : text("اختر مشروعًا أو ابدأ مشروعًا جديدًا", "Choose a project or start a new one")}</h3>
+                  <p>{project ? text("بعد استكمال المدخلات المطلوبة، شغّل التحليل لإنشاء أول نتيجة محفوظة.", "After completing required inputs, run the analysis to create the first saved result.") : text("لا تظهر التقارير دون مشروع محدد، ولا تنشئ هذه الصفحة بيانات تجريبية.", "Reports require a selected project; this page does not create demo data.")}</p>
                 </div>
                 <div className="button-row">
                   <button className="primary-button" onClick={() => setStage(project ? "run" : "wizard")}>
-                    {project ? "الانتقال إلى التشغيل" : "ابدأ تعريف المشروع"}
+                    {project ? text("الانتقال إلى التشغيل", "Go to analysis") : text("ابدأ تعريف المشروع", "Set up a project")}
                   </button>
-                  {projects.length ? <button onClick={() => openProject(projects[0])}>فتح آخر مشروع</button> : null}
+                  {projects.length ? <button onClick={() => openProject(projects[0])}>{text("فتح آخر مشروع", "Open latest project")}</button> : null}
                 </div>
               </article>
             )}
           </section>
         ) : null}
 
-        {stage === "architecture" ? (
+        {stage === "architecture" && authUser?.platform_role === "platform_admin" ? (
           <section className="panel architecture-board">
             <div className="section-title">
               <ShieldCheck size={20} aria-hidden="true" />
