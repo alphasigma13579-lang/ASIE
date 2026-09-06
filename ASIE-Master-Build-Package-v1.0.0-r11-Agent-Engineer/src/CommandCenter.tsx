@@ -471,9 +471,9 @@ function DecisionToday({
   const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
-      <SectionShell title="قراري اليوم" crumb="قراري اليوم">
-        <NeedData text="لا يوجد قرار محفوظ بعد. شغّل التحليل لإنشاء أول لقطة وحكم سيادي." />
-        <button className="cc-btn cc-btn--main" onClick={() => onOpenStage(projectId, "run")}>شغّل التحليل</button>
+      <SectionShell title={text("قراري اليوم", "Decision today")} crumb={text("قراري اليوم", "Decision today")}>
+        <NeedData text={text("لا يوجد قرار محفوظ بعد. شغّل التحليل لإنشاء أول نتيجة.", "No saved decision yet. Run the analysis to create the first result.")} />
+        <button className="cc-btn cc-btn--main" onClick={() => onOpenStage(projectId, "run")}>{text("شغّل التحليل", "Run analysis")}</button>
       </SectionShell>
     );
   }
@@ -481,32 +481,32 @@ function DecisionToday({
   const risks = overview.risk_register.top_risks.slice(0, 5);
   const personas = overview.personas;
   return (
-    <SectionShell title="قراري اليوم" crumb="قراري اليوم">
+    <SectionShell title={text("قراري اليوم", "Decision today")} crumb={text("قراري اليوم", "Decision today")}>
       <div className="cc-decision-hero">
         <div className={`cc-verdict cc-verdict--${verdict.tone}`}>
-          <span>القرار</span>
+          <span>{text("القرار", "Decision")}</span>
           <strong>{verdict.label}</strong>
           <small>{text("آخر تحديث", "Last updated")} · {formatRelative(overview.snapshot.created_at, locale)}</small>
         </div>
         <div className="cc-decision-metrics">
-          <article><span>درجة الثقة</span><strong>{fmtPct(conf, locale)}</strong></article>
-          <article><span>الربح الوسيط (P50)</span><strong>{fmtSAR(overview.monte_carlo.p50_profit, locale)}</strong></article>
-          <article><span>درجة المخاطرة</span><strong>{overview.monte_carlo.status === "ready" ? "محسوبة" : "—"}</strong></article>
+          <article><span>{text("درجة الثقة", "Confidence")}</span><strong>{fmtPct(conf, locale)}</strong></article>
+          <article><span>{text("الربح المتوقع في السيناريو الوسيط", "Expected profit in the midpoint scenario")}</span><strong>{fmtSAR(overview.monte_carlo.p50_profit, locale)}</strong></article>
+          <article><span>{text("حالة قياس المخاطر", "Risk measurement status")}</span><strong>{overview.monte_carlo.status === "ready" ? text("محسوبة", "Calculated") : "—"}</strong></article>
         </div>
       </div>
 
       <div className="cc-grid-2">
         <article className="cc-card">
-          <h3><AlertTriangle size={17} aria-hidden="true" /> أهم المخاطر</h3>
+          <h3><AlertTriangle size={17} aria-hidden="true" /> {text("أهم المخاطر", "Top risks")}</h3>
           {risks.length ? risks.map((r) => (
             <div className="cc-row" key={r.risk_id}>
-              <Chip tone={r.severity === "high" || r.severity === "critical" ? "stop" : "warn"}>{r.severity}</Chip>
+              <Chip tone={r.severity === "high" || r.severity === "critical" ? "stop" : "warn"}>{customerBusinessText(r.severity, locale)}</Chip>
               <div className="cc-row__body"><b>{customerBusinessText(r.trigger, locale)}</b><span>{customerNarrativeText(r.mitigation, locale)}</span></div>
             </div>
-          )) : <NeedData text="لا توجد مخاطر مسجلة في هذه اللقطة." />}
+          )) : <NeedData text={text("لا توجد مخاطر مسجلة في النتيجة الحالية.", "No risks are recorded in the current result.")} />}
         </article>
         <article className="cc-card">
-          <h3><Sparkles size={17} aria-hidden="true" /> زوايا التقييم الخمس</h3>
+          <h3><Sparkles size={17} aria-hidden="true" /> {text("زوايا التقييم الخمس", "Five assessment perspectives")}</h3>
           {personas.map((p) => (
             <div className="cc-row" key={p.persona_id}>
               <div className="cc-row__body"><b>{customerBusinessText(p.metric, locale)}</b><span>{customerNarrativeText(p.note, locale)}</span></div>
@@ -528,25 +528,25 @@ function GuideSection({ overview }: { overview: ProjectOverview | null }) {
   const { locale, text } = useCustomerLanguage();
   const milestones = overview?.execution_plan.milestones ?? [];
   return (
-    <SectionShell title="مرشد تأسيس المشروع" crumb="مرشد التأسيس">
+    <SectionShell title={text("مرشد تأسيس المشروع", "Project setup guide")} crumb={text("مرشد التأسيس", "Setup guide")}>
       <article className="cc-card">
-        <h3><CheckCircle2 size={17} aria-hidden="true" /> خطة التنفيذ</h3>
-        <p className="cc-why">من لقطتك المحفوظة — مراحل ومعايير خروج واضحة.</p>
+        <h3><CheckCircle2 size={17} aria-hidden="true" /> {text("خطة التنفيذ", "Execution plan")}</h3>
+        <p className="cc-why">{text("من نتيجتك المحفوظة: مراحل ومعايير إكمال واضحة.", "From your saved result: clear phases and completion criteria.")}</p>
         {milestones.length ? milestones.map((m) => (
           <div className="cc-row" key={m.phase_id}>
-            <Chip tone="go">{m.estimated_duration_days} يوم</Chip>
-            <div className="cc-row__body"><b>{m.phase_id}</b><span>{m.exit_criteria[0] ?? m.owner_role}</span></div>
+            <Chip tone="go">{m.estimated_duration_days} {text("يوم", "days")}</Chip>
+            <div className="cc-row__body"><b>{customerBusinessText(m.phase_id, locale)}</b><span>{customerNarrativeText(m.exit_criteria[0] ?? m.owner_role, locale)}</span></div>
           </div>
-        )) : <NeedData text="تظهر خطة التنفيذ بعد تشغيل التحليل." />}
+        )) : <NeedData text={text("تظهر خطة التنفيذ بعد تشغيل التحليل.", "The execution plan appears after the analysis runs.")} />}
       </article>
 
       <div className="cc-grid-2">
-        <Soon title="اختيار الموقع" icon={<MapPin size={20} />} note="أفضل المدن والأحياء، الإيجار، الكثافة — يتطلب بيانات جغرافية سعودية." />
-        <Soon title="خارطة المنافسين" icon={<Target size={20} />} note="المنافسون على الخريطة مع تقييماتهم — يتطلب مصدر أماكن/خرائط." />
-        <Soon title="المشاريع المشابهة" icon={<Layers3 size={20} />} note="قصص نجاح وتعثر وفشل — يتطلب قاعدة دراسات حالة." />
-        <Soon title="الموظفون والرواتب" icon={<BadgeCheck size={20} />} note="الهيكل ومتوسط الرواتب — يتطلب بيانات أجور قطاعية." />
-        <Soon title="المعدات والموردون" icon={<Database size={20} />} note="الأسعار والموردون — يتطلب بيانات موردين." />
-        <Soon title="التراخيص" icon={<FileText size={20} />} note="الجهات والرسوم والروابط الرسمية — يتطلب دليل التراخيص الرسمي." />
+        <Soon title={text("اختيار الموقع", "Location selection")} icon={<MapPin size={20} />} note={text("مقارنة المدن والأحياء والإيجار والكثافة تتطلب بيانات جغرافية سعودية معتمدة.", "Comparing cities, districts, rent, and density requires approved Saudi geographic data.")} />
+        <Soon title={text("خريطة المنافسين", "Competitor map")} icon={<Target size={20} />} note={text("عرض المنافسين والمسافات يتطلب مصدر أماكن وخرائط معتمدًا.", "Showing competitors and distances requires an approved places and maps source.")} />
+        <Soon title={text("المشاريع المشابهة", "Comparable projects")} icon={<Layers3 size={20} />} note={text("قصص النجاح والتعثر تتطلب قاعدة دراسات حالة معتمدة.", "Success and setback cases require an approved case-study source.")} />
+        <Soon title={text("الموظفون والرواتب", "Staff and salaries")} icon={<BadgeCheck size={20} />} note={text("الهيكل ومتوسط الرواتب يتطلبان بيانات أجور قطاعية معتمدة.", "Structure and salary averages require approved sector wage data.")} />
+        <Soon title={text("المعدات والموردون", "Equipment and suppliers")} icon={<Database size={20} />} note={text("الأسعار والموردون يتطلبون بيانات موردين معتمدة.", "Prices and suppliers require an approved supplier source.")} />
+        <Soon title={text("التراخيص", "Licenses")} icon={<FileText size={20} />} note={text("الجهات والرسوم والروابط تتطلب دليل التراخيص الرسمي.", "Authorities, fees, and links require an official licensing guide.")} />
       </div>
     </SectionShell>
   );
@@ -560,8 +560,8 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
   const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
-      <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
-        <NeedData text="شغّل التحليل أولاً لتظهر محاكاة السيناريوهات." />
+      <SectionShell title={text("اختبار الواقع", "Reality test")} crumb={text("اختبار الواقع", "Reality test")}>
+        <NeedData text={text("شغّل التحليل أولًا لتظهر محاكاة السيناريوهات.", "Run the analysis first to view scenario simulation.")} />
       </SectionShell>
     );
   }
@@ -571,12 +571,12 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
   const p90 = mc.p90_profit ?? 0;
   const max = Math.max(Math.abs(p10), Math.abs(p50), Math.abs(p90), 1);
   return (
-    <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
+    <SectionShell title={text("اختبار الواقع", "Reality test")} crumb={text("اختبار الواقع", "Reality test")}>
       <article className="cc-card">
         <h3><BarChart3 size={17} aria-hidden="true" /> {text("محاكاة السيناريوهات", "Scenario simulation")}</h3>
-        <p className="cc-why">{mc.iterations.toLocaleString("ar-SA")} تشغيل محفوظ — توزيع الربح الشهري تحت الضغط.</p>
+        <p className="cc-why">{mc.iterations.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {text("سيناريو محفوظ يوضح توزيع الربح الشهري تحت الضغط.", "saved scenarios show the monthly profit distribution under stress.")}</p>
         <div className="cc-bars">
-          {([["متشائم P10", p10, "#c0392b"], ["وسيط P50", p50, "#1f9d6c"], ["متفائل P90", p90, "#0b3b2d"]] as const).map(([label, v, color]) => (
+          {([[text("سيناريو حذر", "Cautious scenario"), p10, "#c0392b"], [text("سيناريو وسيط", "Midpoint scenario"), p50, "#1f9d6c"], [text("سيناريو متفائل", "Optimistic scenario"), p90, "#0b3b2d"]] as const).map(([label, v, color]) => (
             <div className="cc-bar" key={label}>
               <span>{label}</span>
               <div className="cc-bar__track"><i style={{ width: `${Math.max(4, (Math.abs(v) / max) * 100)}%`, background: color }} /></div>
@@ -585,13 +585,13 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
           ))}
         </div>
         <div className="cc-gate">
-          <span>احتمال اجتياز بوابات الجدوى</span>
+          <span>{text("احتمال استيفاء متطلبات الجدوى", "Probability of meeting feasibility requirements")}</span>
           <strong>{fmtPct(mc.p_pass, locale)}</strong>
         </div>
       </article>
       <div className="cc-grid-2">
-        <Soon title="سيناريوهات ضغط إضافية" icon={<TrendingUp size={20} />} note="انخفاض مبيعات، ارتفاع رواتب/إيجار، تضخم — تُفعَّل مع محرك السيناريوهات الموسّع." />
-        <Soon title="تحليل الحساسية" icon={<BarChart3 size={20} />} note="أثر كل افتراض على الربح ونقطة التعادل — يتطلب مصفوفة الحساسية." />
+        <Soon title={text("سيناريوهات ضغط إضافية", "Additional stress scenarios")} icon={<TrendingUp size={20} />} note={text("اختبار انخفاض المبيعات وارتفاع التكاليف ما زال قيد التفعيل.", "Sales decline and cost increase tests are pending activation.")} />
+        <Soon title={text("تحليل الحساسية", "Sensitivity analysis")} icon={<BarChart3 size={20} />} note={text("يوضح أثر كل افتراض على الربح ونقطة التعادل بعد تفعيله.", "Shows how each assumption affects profit and break-even after activation.")} />
       </div>
     </SectionShell>
   );
