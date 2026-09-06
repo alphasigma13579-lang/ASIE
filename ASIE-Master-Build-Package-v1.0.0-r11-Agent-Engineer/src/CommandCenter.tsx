@@ -25,7 +25,7 @@ import {
   fetchProjects,
   fetchRunOverview,
 } from "./api";
-import { customerErrorText, useCustomerLanguage } from "./customerLanguage";
+import { customerBusinessText, customerErrorText, customerNarrativeText, useCustomerLanguage } from "./customerLanguage";
 import type { OutputEnvelope, Project, ProjectOverview, ProjectReadiness } from "./contracts";
 
 /* ------------------------------------------------------------------ */
@@ -60,26 +60,26 @@ type Bundle = {
 /* Small helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-function timeGreeting(): string {
+type Locale = "ar" | "en";
+
+function timeGreeting(locale: Locale): string {
   const h = new Date().getHours();
-  if (h < 12) return "صباح الخير";
-  if (h < 18) return "مساء الخير";
-  return "مساء النور";
+  if (locale === "en") return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  return h < 12 ? "صباح الخير" : h < 18 ? "مساء الخير" : "مساء النور";
 }
 
-function formatRelative(iso: string | null | undefined): string {
+function formatRelative(iso: string | null | undefined, locale: Locale): string {
   if (!iso) return "—";
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "—";
-  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (m < 1) return "الآن";
-  if (m < 60) return `قبل ${m} دقيقة`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `قبل ${h} ساعة`;
-  const d = Math.round(h / 24);
-  if (d === 1) return "أمس";
-  if (d < 30) return `قبل ${d} يوم`;
-  return new Date(iso).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" });
+  const minutes = Math.max(0, Math.round((Date.now() - t) / 60000));
+  const formatter = new Intl.RelativeTimeFormat(locale === "ar" ? "ar-SA" : "en", { numeric: "auto" });
+  if (minutes < 60) return formatter.format(-minutes, "minute");
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return formatter.format(-hours, "hour");
+  const days = Math.round(hours / 24);
+  if (days < 30) return formatter.format(-days, "day");
+  return new Date(iso).toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function kpiValue(overview: ProjectOverview | null, id: string): number | null {
@@ -87,38 +87,28 @@ function kpiValue(overview: ProjectOverview | null, id: string): number | null {
   return typeof item?.value === "number" && Number.isFinite(item.value) ? item.value : null;
 }
 
-function fmtSAR(v: number | null): string {
+function fmtSAR(v: number | null, locale: Locale): string {
   if (v === null) return "—";
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(v) + " ر.س";
+  return new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", {
+    style: "currency",
+    currency: "SAR",
+    maximumFractionDigits: 0,
+  }).format(v);
 }
-function fmtPct(v: number | null): string {
+function fmtPct(v: number | null, locale: Locale): string {
   if (v === null) return "—";
-  return `${Math.round(v * 100)}%`;
-}
-function fmtMonths(v: number | null): string {
-  if (v === null) return "—";
-  return `${Math.round(v)} شهر`;
+  return new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(v);
 }
 
-function verdictMeta(verdict: string | null | undefined): { label: string; tone: "go" | "warn" | "stop" } {
-  if (verdict === "PRELIMINARY_ONLY") return { label: "ابدأ بحذر", tone: "go" };
-  if (verdict === "REVISE_AND_REASSESS") return { label: "عدّل وأعد التقييم", tone: "warn" };
-  if (verdict === "BLOCKED_NOT_READY") return { label: "لا تبدأ بعد", tone: "stop" };
-  return { label: "لم يُقيَّم بعد", tone: "warn" };
+function verdictMeta(verdict: string | null | undefined, locale: Locale): { label: string; tone: "go" | "warn" | "stop" } {
+  if (verdict === "PRELIMINARY_ONLY") return { label: locale === "ar" ? "ابدأ بحذر" : "Proceed carefully", tone: "go" };
+  if (verdict === "REVISE_AND_REASSESS") return { label: locale === "ar" ? "عدّل وأعد التقييم" : "Revise and reassess", tone: "warn" };
+  if (verdict === "BLOCKED_NOT_READY") return { label: locale === "ar" ? "لا تبدأ بعد" : "Do not start yet", tone: "stop" };
+  return { label: locale === "ar" ? "لم يُقيَّم بعد" : "Not evaluated yet", tone: "warn" };
 }
-
-const KPI_TITLES: Record<string, string> = {
-  npv: "صافي القيمة الحالية",
-  irr: "معدل العائد الداخلي",
-  "payback-months": "مدة الاسترداد",
-  "funding-need-after-equity": "احتياج التمويل",
-  "break-even-units": "نقطة التعادل",
-  "monthly-revenue": "الإيراد الشهري",
-  "monthly-profit": "الربح الشهري",
-  dscr: "تغطية خدمة الدين",
-  "contribution-margin": "هامش المساهمة",
-  "mc-feasibility-gate-probability": "احتمال الاجتياز",
-};
 
 /* ------------------------------------------------------------------ */
 /* Sub-components                                                       */
@@ -150,6 +140,7 @@ function Chip({ tone, children }: { tone: "go" | "warn" | "stop" | "dim"; childr
 }
 
 function Soon({ title, icon, note }: { title: string; icon: React.ReactNode; note: string }) {
+  const { text } = useCustomerLanguage();
   return (
     <div className="cc-soon">
       <div className="cc-soon__icon">{icon}</div>
@@ -157,7 +148,7 @@ function Soon({ title, icon, note }: { title: string; icon: React.ReactNode; not
         <strong>{title}</strong>
         <span>{note}</span>
       </div>
-      <Chip tone="dim">قيد التفعيل</Chip>
+      <Chip tone="dim">{text("قيد التفعيل", "Pending activation")}</Chip>
     </div>
   );
 }
@@ -410,22 +401,23 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
 /* Top navigation                                                       */
 /* ------------------------------------------------------------------ */
 
-const NAV: Array<{ id: CCSection; label: string }> = [
-  { id: "dashboard", label: "لوحة القيادة" },
-  { id: "today", label: "قراري اليوم" },
-  { id: "guide", label: "مرشد التأسيس" },
-  { id: "reality", label: "اختبار الواقع" },
-  { id: "market", label: "السوق والاتجاهات" },
-  { id: "decision", label: "فهم القرار" },
-  { id: "reports", label: "تقاريري" },
+const NAV: Array<{ id: CCSection; ar: string; en: string }> = [
+  { id: "dashboard", ar: "لوحة القيادة", en: "Dashboard" },
+  { id: "today", ar: "قراري اليوم", en: "Today's decision" },
+  { id: "guide", ar: "مرشد التأسيس", en: "Setup guide" },
+  { id: "reality", ar: "اختبار الواقع", en: "Reality test" },
+  { id: "market", ar: "السوق والاتجاهات", en: "Market and trends" },
+  { id: "decision", ar: "فهم القرار", en: "Understand decision" },
+  { id: "reports", ar: "تقاريري", en: "Reports" },
 ];
 
 function TopNav({ section, onNavigate }: { section: CCSection; onNavigate: (s: CCSection) => void }) {
+  const { locale, text } = useCustomerLanguage();
   return (
-    <nav className="cc-topnav" aria-label="أقسام لوحة القيادة">
+    <nav className="cc-topnav" aria-label={text("أقسام لوحة القيادة", "Dashboard sections")}>
       <div className="cc-topnav__brand">
         <strong>ASIE</strong>
-        <span>المستشار الاستراتيجي التفاعلي</span>
+        <span>{text("المستشار الاستراتيجي التفاعلي", "Interactive strategy advisor")}</span>
       </div>
       <div className="cc-topnav__links">
         {NAV.map((item) => (
@@ -435,12 +427,12 @@ function TopNav({ section, onNavigate }: { section: CCSection; onNavigate: (s: C
             onClick={() => onNavigate(item.id)}
             aria-current={section === item.id ? "page" : undefined}
           >
-            {item.label}
+            {locale === "ar" ? item.ar : item.en}
           </button>
         ))}
       </div>
       <div className="cc-topnav__mode">
-        <span className="cc-dot" /> محلي · LOCAL ONLY
+        <span className="cc-dot" /> {text("تشغيل محلي", "Local operation")}
       </div>
     </nav>
   );
@@ -451,9 +443,10 @@ function TopNav({ section, onNavigate }: { section: CCSection; onNavigate: (s: C
 /* ------------------------------------------------------------------ */
 
 function SectionShell({ title, crumb, children }: { title: string; crumb: string; children: React.ReactNode }) {
+  const { text } = useCustomerLanguage();
   return (
     <div className="cc-section">
-      <p className="cc-crumb">ASIE / لوحة القيادة / <b>{crumb}</b></p>
+      <p className="cc-crumb">ASIE / {text("لوحة القيادة", "Dashboard")} / <b>{crumb}</b></p>
       <h2 className="cc-section__title">{title}</h2>
       <div className="cc-stack">{children}</div>
     </div>
