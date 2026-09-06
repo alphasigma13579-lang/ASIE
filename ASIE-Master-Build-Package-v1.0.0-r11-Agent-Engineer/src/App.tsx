@@ -1535,66 +1535,66 @@ function SessionWorkspace() {
   if (!hasEnteredProduct) {
     return (
       <main id="main-content" className="landing-page">
-        <nav className="landing-nav" aria-label="تنقل صفحة ASIE">
-          <BrandLockup subtitle="مرصد القرار المحلي" />
-          <div className="landing-nav__status"><span /> وضع محلي محكوم</div>
-          <div className="landing-nav__actions"><button className="landing-nav__link" onClick={() => { writeLocalFlag(PRODUCT_ENTRY_STORAGE_KEY, true); setHasEnteredProduct(true); }}>دخول المساحة</button><a className="landing-nav__link" href="#admin" onClick={(event) => { event.preventDefault(); window.location.hash = "admin"; window.location.reload(); }}>لوحة المشغّل</a></div>
+        <nav className="landing-nav" aria-label={text("تنقل صفحة ASIE", "ASIE landing navigation")}>
+          <BrandLockup subtitle={text("مرصد القرار المحلي", "Local decision workspace")} />
+          <div className="landing-nav__status"><span /> {text("وضع محلي محكوم", "Governed local mode")}</div>
+          <div className="landing-nav__actions"><button className="landing-nav__link" onClick={() => { writeLocalFlag(PRODUCT_ENTRY_STORAGE_KEY, true); setHasEnteredProduct(true); }}>{text("دخول المساحة", "Enter workspace")}</button></div>
         </nav>
         <section className="landing-hero landing-hero--immersive">
           <div className="landing-copy">
-            <p className="landing-kicker"><Sparkles size={16} aria-hidden="true" /> من الدليل إلى قرار يمكن الرجوع إليه</p>
-            <h1>لا تبحث عن رقمٍ جميل.<br /><em>ابنِ قراراً تعرف لماذا تثق به.</em></h1>
+            <p className="landing-kicker"><Sparkles size={16} aria-hidden="true" /> {text("من الدليل إلى قرار يمكن الرجوع إليه", "From evidence to a decision you can revisit")}</p>
+            <h1>{text("لا تبحث عن رقمٍ جميل.", "Do not chase a flattering number.")}<br /><em>{text("ابنِ قرارًا تعرف لماذا تثق به.", "Build a decision you understand and trust.")}</em></h1>
             <p className="landing-lede">
-              مساحة عمل عربية تحول مشروعك إلى رحلة منظمة: مدخلات، أدلة، جاهزية، ثم نتيجة محفوظة تربط القرار بسببه.
+              {text("مساحة عمل تحول مشروعك إلى رحلة منظمة: مدخلات، أدلة، جاهزية، ثم نتيجة محفوظة تربط القرار بأسبابه.", "A workspace that turns your project into a structured journey: inputs, evidence, readiness, and a saved result linked to its reasons.")}
             </p>
             <div className="landing-actions">
               <button className="primary-button primary-button--large landing-cta" onClick={() => { writeLocalFlag(PRODUCT_ENTRY_STORAGE_KEY, true); setHasEnteredProduct(true); }}>
                 <Rocket size={20} aria-hidden="true" />
-                ابدأ مساحة قرار محلية
+                {text("ابدأ مساحة المشروع", "Open project workspace")}
               </button>
-              <a className="landing-text-link" href="#decision-flow">شاهد كيف تعمل المنصة <ArrowLeft size={17} aria-hidden="true" /></a>
+              <a className="landing-text-link" href="#decision-flow">{text("شاهد كيف تعمل المنصة", "See how the platform works")} <ArrowLeft size={17} aria-hidden="true" /></a>
             </div>
-            <div className="trust-row" aria-label="ضمانات ASIE">
-              <span><ShieldCheck size={16} aria-hidden="true" /> لا شبكة خارجية</span>
-              <span><Database size={16} aria-hidden="true" /> أدلة محلية</span>
-              <span><BadgeCheck size={16} aria-hidden="true" /> نتيجة محفوظة لا تتغير</span>
+            <div className="trust-row" aria-label={text("ضمانات ASIE", "ASIE safeguards")}>
+              <span><ShieldCheck size={16} aria-hidden="true" /> {text("لا اتصال خارجي في الوضع الحالي", "No external connection in the current mode")}</span>
+              <span><Database size={16} aria-hidden="true" /> {text("أدلة محلية", "Local evidence")}</span>
+              <span><BadgeCheck size={16} aria-hidden="true" /> {text("نتيجة محفوظة لا تتغير", "Saved result does not change")}</span>
             </div>
           </div>
-          <div className="decision-orbit" aria-label="تصور متحرك توضيحي لرحلة القرار">
+          <div className="decision-orbit" aria-label={text("تصور توضيحي لرحلة القرار", "Decision journey illustration")}>
             <div className="orbit-glow" />
             <div className="orbit-ring orbit-ring--one" />
             <div className="orbit-ring orbit-ring--two" />
             <div className="signal signal--one" /><div className="signal signal--two" /><div className="signal signal--three" />
             <article className="orbit-core">
-              <span className="orbit-core__label">قرار المشروع</span>
-              <strong>قيد البناء</strong>
-              <small>من بيانات المثال فقط</small>
+              <span className="orbit-core__label">{text("قرار المشروع", "Project decision")}</span>
+              <strong>{text("قيد البناء", "In progress")}</strong>
+              <small>{text("بيانات توضيحية فقط", "Illustrative data only")}</small>
             </article>
-            <article className="float-card float-card--evidence"><Database size={18} /><div><span>طبقة الأدلة</span><strong>مراجعة محلية</strong></div><i /></article>
-            <article className="float-card float-card--readiness"><CheckCircle2 size={18} /><div><span>الجاهزية</span><strong>تحقق قبل التشغيل</strong></div></article>
-            <article className="float-card float-card--snapshot"><Layers3 size={18} /><div><span>نتيجة محفوظة</span><strong>مرجع ثابت</strong></div></article>
-            <span className="orbit-caption">تصور توضيحي — لا يمثل بيانات مشروع حقيقية</span>
+            <article className="float-card float-card--evidence"><Database size={18} /><div><span>{text("الأدلة", "Evidence")}</span><strong>{text("مراجعة محلية", "Local review")}</strong></div><i /></article>
+            <article className="float-card float-card--readiness"><CheckCircle2 size={18} /><div><span>{text("الجاهزية", "Readiness")}</span><strong>{text("تحقق قبل التشغيل", "Check before analysis")}</strong></div></article>
+            <article className="float-card float-card--snapshot"><Layers3 size={18} /><div><span>{text("نتيجة محفوظة", "Saved result")}</span><strong>{text("مرجع ثابت", "Fixed reference")}</strong></div></article>
+            <span className="orbit-caption">{text("تصور توضيحي لا يمثل بيانات مشروع حقيقية", "Illustration only; it does not represent real project data")}</span>
           </div>
         </section>
-        <section className="service-ribbon" aria-label="خدمات المنصة">
+        <section className="service-ribbon" aria-label={text("خدمات المنصة", "Platform services")}>
           {[
-            ["إدخال موجّه", "اسأل عن ما يحتاجه القرار فقط", Target],
-            ["دليل قابل للتتبع", "اربط البيانات بتحويلها ومراجعتها", Database],
-            ["جاهزية صريحة", "اعرف النواقص قبل أن تشغّل", CheckCircle2],
-            ["مراجعة بشرية", "طبقة مستقلة لا تغير الحقيقة", Users],
+            [text("إدخال موجّه", "Guided input"), text("نسألك فقط عما يحتاجه القرار", "We ask only for what the decision needs"), Target],
+            [text("دليل قابل للتتبع", "Traceable evidence"), text("اربط البيانات بمصدرها ومراجعتها", "Link data to its source and review"), Database],
+            [text("جاهزية واضحة", "Clear readiness"), text("اعرف النواقص قبل تشغيل التحليل", "Know what is missing before analysis"), CheckCircle2],
+            [text("مراجعة بشرية", "Human review"), text("مراجعة مستقلة لا تغيّر الحقائق", "Independent review that does not change facts"), Users],
           ].map(([title, body, Icon]) => {
             const ServiceIcon = Icon as typeof Target;
             return <article key={title as string}><ServiceIcon size={20} aria-hidden="true" /><div><strong>{title as string}</strong><span>{body as string}</span></div></article>;
           })}
         </section>
         <section className="decision-flow" id="decision-flow">
-          <div className="decision-flow__intro"><p className="eyebrow">رحلة واحدة، لا مسارات خفية</p><h2>خدمة المنصة ليست “توليد جواب”؛ بل تنظيم سؤال القرار.</h2></div>
+          <div className="decision-flow__intro"><p className="eyebrow">{text("رحلة واحدة بلا مسارات خفية", "One journey with no hidden paths")}</p><h2>{text("تنظم المنصة سؤال القرار بدل توليد إجابة بلا تفسير.", "The platform structures the decision question instead of generating an unexplained answer.")}</h2></div>
           <div className="decision-flow__steps">
             {[
-              ["01", "عرّف المشروع", "النطاق، القطاع، والهدف قبل التفاصيل."],
-              ["02", "اربط ما تعرفه", "بيانات محلية وخط نسب واضح لكل إدخال."],
-              ["03", "تحقق من الجاهزية", "تظهر العوائق كما هي، لا تُخفى."],
-              ["04", "شغّل وراجع", "قرار وتفسيرات تعود إلى نتيجة محفوظة واحدة."],
+              ["01", text("عرّف المشروع", "Set up the project"), text("حدد النطاق والقطاع والهدف قبل التفاصيل.", "Define scope, sector, and purpose before details.")],
+              ["02", text("اربط ما تعرفه", "Link what you know"), text("أضف بيانات محلية ومصدرًا واضحًا لكل مدخل.", "Add local data and a clear source for every input.")],
+              ["03", text("تحقق من الجاهزية", "Check readiness"), text("تظهر العوائق كما هي دون إخفاء.", "See blockers clearly without concealment.")],
+              ["04", text("شغّل وراجع", "Run and review"), text("يرتبط القرار وتفسيره بنتيجة محفوظة واحدة.", "Decision and explanation link to one saved result.")],
             ].map(([number, title, body]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{body}</p></article>)}
           </div>
         </section>
@@ -1620,16 +1620,16 @@ function SessionWorkspace() {
     return (
       <main id="main-content" className="legal-page">
         <section className="legal-card">
-          <BrandLockup subtitle="خطوة أخيرة قبل البدء" landing />
-          <p className="eyebrow">موافقة محلية مؤقتة</p>
-          <h1>أكمل ملفك قبل استخدام المنصة</h1>
-          <p className="muted">هذه البوابة تحفظ مسار المستخدم فقط في هذه النسخة المحلية، ولا تضيف صلاحيات أو اشتراكًا فعليًا.</p>
+          <BrandLockup subtitle={text("خطوة أخيرة قبل البدء", "One final step before starting")} landing />
+          <p className="eyebrow">{text("موافقة استخدام النسخة التجريبية", "Beta use acknowledgement")}</p>
+          <h1>{text("راجع حدود النسخة قبل استخدام المنصة", "Review the beta limits before using the platform")}</h1>
+          <p className="muted">{text("تحفظ هذه الخطوة موافقتك داخل حسابك ولا تضيف اشتراكًا أو صلاحيات جديدة.", "This step stores your acknowledgement in your account; it does not add a subscription or new permissions.")}</p>
           <div className="legal-list">
             {[
-              ["سياسة الخصوصية", "لا نضع مفاتيح أو مزودين داخل الحزمة، ولا يتم الجلب الخارجي في هذه المرحلة."],
-              ["الملكية الفكرية", "المشروع والبيانات المحلية تبقى داخل بيئة التشغيل المحلية."],
-              ["حوكمة البيانات", "أي مصدر عام أو حكومي يبقى مرشحًا حتى تمر مراجعة الشروط والجودة."],
-              ["حدود القرار", "الاعتماد المحلي ليس ترخيصًا حكوميًا ولا وعدًا استثماريًا."],
+              [text("الخصوصية", "Privacy"), text("لا يجري اتصال خارجي في الوضع الحالي، وتبقى مفاتيح الخدمات خارج الواجهة.", "No external connection occurs in the current mode, and service credentials remain outside the interface.")],
+              [text("ملكية البيانات", "Data ownership"), text("يبقى مشروعك وبياناته داخل بيئة التشغيل المخصصة.", "Your project and its data remain inside the designated operating environment.")],
+              [text("حوكمة المصادر", "Source governance"), text("لا يُستخدم أي مصدر عام أو حكومي قبل مراجعة شروطه وجودته.", "No public or government source is used before its terms and quality are reviewed.")],
+              [text("حدود القرار", "Decision limits"), text("المراجعة المحلية ليست ترخيصًا حكوميًا ولا وعدًا استثماريًا.", "Local review is not a government license or an investment promise.")],
             ].map(([title, body]) => (
               <article key={title}>
                 <ShieldCheck size={20} aria-hidden="true" />
@@ -1642,7 +1642,7 @@ function SessionWorkspace() {
           </div>
           <button className="primary-button primary-button--large" onClick={() => { writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, true); setLegalAccepted(true); setStage("dashboard"); }}>
             <CheckCircle2 size={20} aria-hidden="true" />
-            أوافق وأبدأ
+            {text("أوافق وأبدأ", "Agree and start")}
           </button>
         </section>
       </main>
