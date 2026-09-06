@@ -1437,7 +1437,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .project-inputs-panel--wizard { display: block; }
 .project-inputs-panel__finance { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .project-inputs-panel--step-0 .project-inputs-panel__finance, .project-inputs-panel--step-1 .project-inputs-panel__finance, .project-inputs-panel--step-2 .project-inputs-panel__finance, .project-inputs-panel--step-3 .project-inputs-panel__finance, .project-inputs-panel--step-4 .project-inputs-panel__finance { display: none; }
-.legacy-projections { display: none; }.legacy-projections--snapshots { display: block; }
+.legacy-projections { display: none; }
 @media (prefers-reduced-motion: reduce) { .client-page-shell, .client-page-shell--forward, .client-page-shell--back { animation: none; } }
 @media (max-width: 850px) { .execution-page__grid, .builder-grid--wizard, .builder-grid--evidence, .project-inputs-panel__finance { grid-template-columns: 1fr; } }
 @media (max-width: 850px) { .location-fields, .choice-grid--sectors, .choice-grid--compact, .choice-grid--capital { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
