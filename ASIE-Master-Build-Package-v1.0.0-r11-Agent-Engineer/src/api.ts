@@ -187,14 +187,14 @@ export async function fetchReleaseRecord(snapshotId: string): Promise<ReleaseRec
  * document surface goes through this helper: HTML projections open in a new
  * tab from a blob URL, binary exports download as attachments.
  */
-export async function openSnapshotDocument(snapshotId: string, suffix: string, mode: "open" | "download"): Promise<void> {
+export async function openSnapshotDocument(snapshotId: string, suffix: string, mode: "open" | "download", locale: "ar" | "en" = "ar"): Promise<void> {
   const revision = getSessionRevision();
   const headers: Record<string, string> = {};
   const token = getSessionToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const organizationId = getActiveOrganizationId();
   if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
-  const response = await fetch(`/api/snapshots/${snapshotId}/${suffix}`, { headers });
+  const response = await fetch(`/api/snapshots/${snapshotId}/${suffix}?locale=${encodeURIComponent(locale)}`, { headers });
   assertSessionRevision(revision);
   if (!response.ok) {
     let message = `تعذر فتح المستند (${response.status})`;
@@ -213,7 +213,7 @@ export async function openSnapshotDocument(snapshotId: string, suffix: string, m
   if (mode === "download") {
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `asie-funder-report-${snapshotId}.${suffix.split(".").pop()}`;
+    anchor.download = `asie-report.${suffix.split(".").pop()}`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
