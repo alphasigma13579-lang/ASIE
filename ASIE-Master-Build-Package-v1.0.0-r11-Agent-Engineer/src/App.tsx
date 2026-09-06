@@ -71,7 +71,7 @@ import {
   type SectorProfile,
 } from "./api";
 import { AuthScreen } from "./AuthScreens";
-import { CustomerLanguageSwitcher, customerErrorText, customerStatusText, useCustomerLanguage } from "./customerLanguage";
+import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerStatusText, useCustomerLanguage } from "./customerLanguage";
 import {
   clearSession,
   getActiveOrganizationId,
@@ -387,46 +387,46 @@ const defaultInputs: ProjectFormInputs = {
   loan_years: 0,
 };
 
-function formatValue(output: OutputEnvelope): string {
+function formatValue(output: OutputEnvelope, locale: "ar" | "en" = "ar"): string {
   if (output.value === null) return "—";
   if (typeof output.value === "string") return output.value;
   if (output.unit === "percent") return `${Math.round(output.value * 1000) / 10}%`;
   if (output.unit === "SAR") {
-    return new Intl.NumberFormat("ar-SA", {
+    return new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", {
       style: "currency",
       currency: "SAR",
       maximumFractionDigits: 0,
     }).format(output.value);
   }
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 }).format(output.value);
+  return new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", { maximumFractionDigits: 2 }).format(output.value);
 }
 
 function statusText(status: string, locale: "ar" | "en" = "ar"): string {
   return customerStatusText(status, locale);
 }
 
-function metricTitle(id: string): string {
-  const titles: Record<string, string> = {
-    "startup-cost": "تكلفة التأسيس",
-    "monthly-revenue": "الإيراد الشهري",
-    "monthly-profit": "صافي شهري تقديري",
-    "break-even-units": "وحدات التعادل",
-    "funding-gap": "فجوة التمويل",
-    "working-capital-need": "احتياج رأس المال العامل",
-    ebitda: "EBITDA",
-    ebit: "EBIT",
-    "net-operating-cashflow": "التدفق التشغيلي الصافي",
-    "funding-need-after-equity": "احتياج التمويل بعد رأس المال",
-    "depreciation-monthly": "الإهلاك الشهري",
-    dscr: "DSCR",
-    npv: "صافي القيمة الحالية",
-    irr: "معدل العائد الداخلي",
-    "payback-months": "مدة الاسترداد",
-    "contribution-margin": "هامش المساهمة",
-    "debt-service-monthly": "خدمة الدين الشهرية",
-    "mc-feasibility-gate-probability": "احتمال اجتياز بوابات الجدوى",
+function metricTitle(id: string, locale: "ar" | "en"): string {
+  const titles: Record<string, { ar: string; en: string }> = {
+    "startup-cost": { ar: "تكلفة التأسيس", en: "Setup cost" },
+    "monthly-revenue": { ar: "الإيراد الشهري", en: "Monthly revenue" },
+    "monthly-profit": { ar: "صافي شهري تقديري", en: "Estimated monthly net" },
+    "break-even-units": { ar: "وحدات التعادل", en: "Break-even units" },
+    "funding-gap": { ar: "فجوة التمويل", en: "Funding gap" },
+    "working-capital-need": { ar: "احتياج رأس المال العامل", en: "Working capital need" },
+    ebitda: { ar: "الربح التشغيلي قبل الاستهلاك والفوائد والضرائب", en: "Operating earnings before depreciation, interest, and tax" },
+    ebit: { ar: "الربح التشغيلي قبل الفوائد والضرائب", en: "Operating earnings before interest and tax" },
+    "net-operating-cashflow": { ar: "التدفق التشغيلي الصافي", en: "Net operating cash flow" },
+    "funding-need-after-equity": { ar: "احتياج التمويل بعد رأس المال", en: "Funding need after owner capital" },
+    "depreciation-monthly": { ar: "الإهلاك الشهري", en: "Monthly depreciation" },
+    dscr: { ar: "قدرة المشروع على تغطية أقساط الدين", en: "Debt payment coverage" },
+    npv: { ar: "صافي القيمة الحالية", en: "Net present value" },
+    irr: { ar: "معدل العائد الداخلي", en: "Internal rate of return" },
+    "payback-months": { ar: "مدة الاسترداد", en: "Payback period" },
+    "contribution-margin": { ar: "هامش المساهمة", en: "Contribution margin" },
+    "debt-service-monthly": { ar: "خدمة الدين الشهرية", en: "Monthly debt payment" },
+    "mc-feasibility-gate-probability": { ar: "احتمال اجتياز متطلبات الجدوى", en: "Probability of meeting feasibility requirements" },
   };
-  return titles[id] ?? id;
+  return titles[id]?.[locale] ?? (locale === "ar" ? "مؤشر محسوب" : "Calculated metric");
 }
 
 function MetricCard({ output }: { output: OutputEnvelope }) {
@@ -437,8 +437,8 @@ function MetricCard({ output }: { output: OutputEnvelope }) {
         <span className="metric-card__owner">{text("مؤشر محسوب", "Calculated metric")}</span>
         <BadgeCheck size={18} aria-hidden="true" />
       </div>
-      <strong>{metricTitle(output.output_id)}</strong>
-      <div className="metric-card__value">{formatValue(output)}</div>
+      <strong>{metricTitle(output.output_id, locale)}</strong>
+      <div className="metric-card__value">{formatValue(output, locale)}</div>
       <p className="metric-card__status">{statusText(output.status, locale)}</p>
     </article>
   );
