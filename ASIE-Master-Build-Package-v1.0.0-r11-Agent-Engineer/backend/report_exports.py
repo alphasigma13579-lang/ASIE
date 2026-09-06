@@ -14,6 +14,8 @@ import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 from typing import Any
 
+from backend.customer_presentation import business_text, normalize_locale, section_title, status_text, text
+
 try:
     from docx.shared import RGBColor
 except ModuleNotFoundError:  # The bundled document runtime is loaded only for export.
@@ -25,21 +27,22 @@ BLUE = "2563EB"
 MUTED = "64748B"
 
 
-def export_funder_report_pptx(projection: dict[str, Any], output_path: str | Path) -> Path:
-    """Create a dependency-free Arabic PPTX from the persisted projection."""
+def export_funder_report_pptx(projection: dict[str, Any], output_path: str | Path, locale: str = "ar") -> Path:
+    """Create a dependency-free localized PPTX from the persisted projection."""
+    locale = normalize_locale(locale)
     from xml.sax.saxutils import escape
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     sections = projection.get("sections", [])
     slides = [
-        ("حزمة التقرير الجاهز للتمويل", f"Snapshot: {projection.get('snapshot_id', '')}"),
-        ("ملخص القرار", f"الحالة: {projection.get('readiness_status', '')}"),
-        ("الأقسام", "\n".join(f"{row.get('section_id')}: {row.get('title')}" for row in sections)),
-        ("الفجوات قبل الإصدار", "\n".join(str(gap) for gap in projection.get("gaps", [])) or "لا توجد فجوات مسجلة"),
-        ("سجل التتبع", f"مدخلات غير معتمدة: {(projection.get('input_traceability') or {}).get('unreviewed_count', 0)}"),
+        (text("report_title", locale), status_text(projection.get("readiness_status"), locale)),
+        (text("readiness", locale), text("notice", locale)),
+        (text("study_structure", locale), "\n".join(section_title(row, locale) for row in sections)),
+        (text("missing_items", locale), "\n".join(business_text(gap, locale) for gap in projection.get("gaps", [])) or text("none", locale)),
+        (text("report_status", locale), text("saved", locale)),
     ]
     def text_shape(name: str, text: str, y: int, size: int) -> str:
-        return f'<p:sp><p:nvSpPr><p:cNvPr id="{y}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="900000" y="{y}"/><a:ext cx="10300000" cy="4000000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr rtl="1"/><a:lstStyle/><a:p><a:r><a:rPr lang="ar-SA" sz="{size * 100}"/><a:t>{escape(str(text))}</a:t></a:r></a:p></p:txBody></p:sp>'
+        return f'<p:sp><p:nvSpPr><p:cNvPr id="{y}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="900000" y="{y}"/><a:ext cx="10300000" cy="4000000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr rtl="1"/><a:lstStyle/><a:p><a:r><a:rPr lang="{'ar-SA' if locale == 'ar' else 'en-US'}" sz="{size * 100}"/><a:t>{escape(str(text))}</a:t></a:r></a:p></p:txBody></p:sp>'
     def slide_xml(title: str, body: str) -> str:
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' + text_shape("Title", title, 700000, 28) + text_shape("Body", body, 2500000, 16) + '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>'
     content_types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>' + ''.join(f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>' for i in range(1, len(slides) + 1)) + '</Types>'
@@ -124,8 +127,9 @@ def _table(doc: Any, headers: list[str], rows: list[list[Any]]) -> Any:
     return table
 
 
-def export_funder_report_docx(projection: dict[str, Any], output_path: str | Path) -> Path:
-    """Create a read-only Arabic DOCX from a funder projection."""
+def export_funder_report_docx(projection: dict[str, Any], output_path: str | Path, locale: str = "ar") -> Path:
+    """Create a read-only localized DOCX from a funder projection."""
+    locale = normalize_locale(locale)
     try:
         from docx import Document
         from docx.oxml.ns import qn
@@ -151,70 +155,70 @@ def export_funder_report_docx(projection: dict[str, Any], output_path: str | Pat
 
     header = section.header.paragraphs[0]
     _set_rtl(header)
-    run = header.add_run("ASIE | حزمة التقرير الجاهز للتمويل")
+    run = header.add_run(f"ASIE | {text('report_title', locale)}")
     _set_font(run, size=9, color=MUTED, bold=True)
     footer = section.footer.paragraphs[0]
     _set_rtl(footer)
-    run = footer.add_run(f"Snapshot: {projection.get('snapshot_id', '')} | عقد {projection.get('contract_id', '')}")
+    run = footer.add_run(f"{text('report_status', locale)}: {text('saved', locale)}")
     _set_font(run, size=8, color=MUTED)
 
     title = doc.add_paragraph()
     _set_rtl(title)
     title.paragraph_format.space_after = Pt(4)
-    run = title.add_run("حزمة التقرير الجاهز للتمويل")
+    run = title.add_run(text("report_title", locale))
     _set_font(run, size=24, color=NAVY, bold=True)
     subtitle = doc.add_paragraph()
     _set_rtl(subtitle)
-    run = subtitle.add_run(f"حالة الحزمة: {projection.get('readiness_status', 'unknown')} | Profile: {projection.get('profile_id', '')}")
+    run = subtitle.add_run(f"{text('report_status', locale)}: {status_text(projection.get('readiness_status'), locale)}")
     _set_font(run, size=11, color=BLUE, bold=True)
 
     note = doc.add_paragraph()
     _set_rtl(note)
-    run = note.add_run("تنبيه: هذه الوثيقة إسقاط قراءة من Snapshot محفوظ. لا تعيد الحساب ولا تمثل قبولاً أو ضماناً من أي جهة تمويل.")
+    run = note.add_run(text("notice", locale))
     _set_font(run, size=10, color="7C2D12", bold=True)
 
-    h = doc.add_heading("ملخص الحزمة", level=1)
+    h = doc.add_heading(text("report_status", locale), level=1)
     _set_rtl(h)
     _set_font(h.runs[0], size=16, color=BLUE, bold=True)
     summary = next((row for row in projection.get("sections", []) if row.get("section_id") == "02-executive-summary"), {})
     payload = summary.get("payload") or {}
-    _table(doc, ["البند", "القيمة"], [["Snapshot", projection.get("snapshot_id")], ["Run", projection.get("run_id")], ["حالة الجاهزية", projection.get("readiness_status")], ["الحكم", (payload.get("decision") or {}).get("sovereign_verdict", "—")]])
+    _table(doc, [text("requirement", locale), text("status", locale)], [[text("readiness", locale), status_text(projection.get("readiness_status"), locale)], [text("report_status", locale), text("saved", locale)]])
 
-    h = doc.add_heading("ملف الجاهزية التمويلية", level=1)
+    h = doc.add_heading(text("readiness", locale), level=1)
     _set_rtl(h)
     profile = projection.get("profile_readiness") or {}
-    _table(doc, ["المتطلب", "الحالة", "السبب"], [[row.get("label"), row.get("status"), row.get("reason") or "—"] for row in profile.get("checks", [])] or [["—", "not_ready", "لا يوجد ملف تحقق"]])
+    _table(doc, [text("requirement", locale), text("status", locale), text("reason", locale)], [[business_text(row.get("label"), locale), status_text(row.get("status"), locale), business_text(row.get("reason"), locale)] for row in profile.get("checks", [])] or [["—", status_text("not_ready", locale), text("no_checks", locale)]])
 
-    h = doc.add_heading("الأقسام الستة عشر", level=1)
+    h = doc.add_heading(text("study_structure", locale), level=1)
     _set_rtl(h)
-    rows = [[row.get("section_id"), row.get("title"), row.get("status")] for row in projection.get("sections", [])]
-    _table(doc, ["المعرف", "القسم", "الحالة"], rows)
+    rows = [[section_title(row, locale), status_text(row.get("status"), locale)] for row in projection.get("sections", [])]
+    _table(doc, [text("requirement", locale), text("status", locale)], rows)
 
-    h = doc.add_heading("التوقعات المالية", level=1)
+    h = doc.add_heading(text("financial_outlook", locale), level=1)
     _set_rtl(h)
     financial = next((row for row in projection.get("sections", []) if row.get("section_id") == "14-financial-expectations"), {})
     statements = (financial.get("payload") or {}).get("statements") or {}
     years = ((statements.get("income_statement") or {}).get("years") or [])
-    _table(doc, ["السنة", "الإيرادات", "إجمالي الربح", "EBITDA", "EBIT", "التدفق التشغيلي"], [[row.get("year"), row.get("revenue"), row.get("gross_profit"), row.get("ebitda"), row.get("ebit"), row.get("net_operating_cashflow")] for row in years] or [["—", "لا توجد توقعات مالية جاهزة", "—", "—", "—", "—"]])
+    _table(doc, [text("year", locale), text("revenue", locale), text("gross_profit", locale), text("operating_profit", locale), text("operating_profit", locale), text("operating_cashflow", locale)], [[row.get("year"), row.get("revenue"), row.get("gross_profit"), row.get("ebitda"), row.get("ebit"), row.get("net_operating_cashflow")] for row in years] or [["—", text("no_financials", locale), "—", "—", "—", "—"]])
 
-    h = doc.add_heading("الفجوات قبل الإصدار", level=1)
+    h = doc.add_heading(text("missing_items", locale), level=1)
     _set_rtl(h)
     for gap in projection.get("gaps", []):
         paragraph = doc.add_paragraph(style="List Bullet")
         _set_rtl(paragraph)
-        run = paragraph.add_run(str(gap))
+        run = paragraph.add_run(business_text(gap, locale))
         _set_font(run, size=10)
 
-    h = doc.add_heading("سجل الأدلة والافتراضات", level=1)
+    h = doc.add_heading(text("report_status", locale), level=1)
     _set_rtl(h)
     evidence = projection.get("evidence") or {}
-    _table(doc, ["البند", "القيمة"], [["Evidence Register", evidence.get("evidence_register_id")], ["Assumption refs", ", ".join(evidence.get("assumption_refs") or [])], ["Lineage entries", len(evidence.get("transformation_lineage") or [])]])
+    _table(doc, [text("requirement", locale), text("status", locale)], [[text("readiness", locale), status_text(projection.get("readiness_status"), locale)], [text("report_status", locale), text("saved", locale)]])
     doc.save(output)
     return output
 
 
 def export_funder_report_pdf(
-    projection: dict[str, Any], output_path: str | Path, renderer_path: str | Path | None = None
+    projection: dict[str, Any], output_path: str | Path, renderer_path: str | Path | None = None, locale: str = "ar"
 ) -> Path:
     """Print the canonical Arabic HTML projection with a server-side renderer.
 
@@ -240,7 +244,7 @@ def export_funder_report_pdf(
         raise RuntimeError("PDF export requires a configured server-side PDF renderer")
     with tempfile.TemporaryDirectory(prefix="asie-funder-pdf-") as temp_dir:
         html_path = Path(temp_dir) / "funder-report.html"
-        html_path.write_text(render_funder_report_html(projection), encoding="utf-8")
+        html_path.write_text(render_funder_report_html(projection, locale=locale), encoding="utf-8")
         command = [
             browser,
             "--headless",
