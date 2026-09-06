@@ -878,7 +878,7 @@ function SessionWorkspace() {
   async function handleOpenDocument(snapshotId: string, suffix: string, mode: "open" | "download") {
     setError(null);
     try {
-      await openSnapshotDocument(snapshotId, suffix, mode);
+      await openSnapshotDocument(snapshotId, suffix, mode, locale);
     } catch (err) {
       setError(customerErrorText(err, locale));
     }
@@ -2061,29 +2061,24 @@ function SessionWorkspace() {
         ) : null}
 
         {stage === "snapshots" ? (
-          <section className="snapshots-page" aria-label="التقارير المحفوظة">
+          <section className="snapshots-page" aria-label={text("التقارير المحفوظة", "Saved reports")}>
             <header className="page-intro">
-              <p className="eyebrow">مخرجات محفوظة · لا إعادة حساب</p>
-              <h2>التقارير واللقطات المرجعية</h2>
-              <p>كل تقرير هنا مرتبط بـ Snapshot ثابت. إذا لم تُنشأ لقطة بعد، ستظهر الحالة بوضوح ولن تعرض المنصة أرقاماً بديلة.</p>
+              <p className="eyebrow">{text("مخرجات محفوظة · لا إعادة حساب", "Saved outputs · no recalculation")}</p>
+              <h2>{text("التقارير المرجعية", "Reference reports")}</h2>
+              <p>{text("كل تقرير مرتبط بنتيجة تحليل محفوظة. إذا لم تُنشأ نتيجة بعد، ستظهر الحالة بوضوح دون أرقام بديلة.", "Each report is linked to a saved analysis result. If no result exists yet, the status is shown clearly without substitute figures.")}</p>
             </header>
 
             {releaseRecord ? (
-              <section className="panel release-record-panel" aria-label="سجل الإصدار">
+              <section className="panel release-record-panel" aria-label={text("حالة التقرير", "Report status")}>
                 <div className="section-title">
                   <BadgeCheck size={20} aria-hidden="true" />
-                  <h2>سجل الإصدار</h2>
-                  <button className="secondary-action" onClick={() => setReleaseRecord(null)}>إغلاق</button>
+                  <h2>{text("حالة التقرير", "Report status")}</h2>
+                  <button className="secondary-action" onClick={() => setReleaseRecord(null)}>{text("إغلاق", "Close")}</button>
                 </div>
                 <dl className="release-record-grid">
-                  {Object.entries(releaseRecord)
-                    .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
-                    .map(([key, value]) => (
-                      <div key={key}>
-                        <dt>{key}</dt>
-                        <dd>{value === null ? "—" : String(value)}</dd>
-                      </div>
-                    ))}
+                  <div><dt>{text("حالة التقرير", "Report status")}</dt><dd>{statusText(String(releaseRecord.release_state ?? releaseRecord.status ?? "review_required"), locale)}</dd></div>
+                  <div><dt>{text("المراجعة", "Review")}</dt><dd>{statusText(String(releaseRecord.review_decision ?? "review_required"), locale)}</dd></div>
+                  <div><dt>{text("الاستخدام", "Use")}</dt><dd>{text("للمراجعة الداخلية حتى الاعتماد", "For internal review until approved")}</dd></div>
                 </dl>
               </section>
             ) : null}
@@ -2093,14 +2088,14 @@ function SessionWorkspace() {
                 {workspace.runs.map((run) => (
                   <article className="snapshot-card" key={run.run_id}>
                     <div className="snapshot-card__identity">
-                      <span>Snapshot مرجعي</span>
-                      <strong>{run.snapshot_id ?? "بدون Snapshot"}</strong>
-                      <small>{run.created_at} · التشغيل {statusText(run.status)}</small>
+                      <span>{text("تقرير مرجعي", "Reference report")}</span>
+                      <strong>{run.snapshot_id ? text("متاح", "Available") : text("غير متاح", "Not available")}</strong>
+                      <small>{text("حالة التحليل", "Analysis status")}: {statusText(run.status, locale)}</small>
                     </div>
                     <div className="snapshot-card__decision">
                       <span>حالة الحكم</span>
-                      <strong>{run.sovereign_verdict ? statusText(run.sovereign_verdict) : "غير متاح"}</strong>
-                      <small>{run.acceptance_status ? `المراجعة: ${statusText(run.acceptance_status)}` : "المراجعة لم تُسجل بعد"}</small>
+                      <strong>{run.sovereign_verdict ? statusText(run.sovereign_verdict, locale) : text("غير متاح", "Not available")}</strong>
+                      <small>{run.acceptance_status ? `${text("المراجعة", "Review")}: ${statusText(run.acceptance_status, locale)}` : text("المراجعة لم تُسجل بعد", "No review has been recorded yet")}</small>
                     </div>
                     <div className="button-row snapshot-card__actions">
                       {run.snapshot_id ? (
@@ -2111,7 +2106,7 @@ function SessionWorkspace() {
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pdf", "download")}>PDF</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.docx", "download")}>DOCX</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pptx", "download")}>PPTX</button>
-                          <button className="secondary-action" onClick={() => void handleShowRelease(run.snapshot_id!)}>سجل الإصدار</button>
+                          <button className="secondary-action" onClick={() => void handleShowRelease(run.snapshot_id!)}>{text("حالة التقرير", "Report status")}</button>
                         </>
                       ) : <span className="muted">لا توجد مخرجات قابلة للفتح.</span>}
                     </div>
