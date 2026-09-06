@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.contracts import new_id, now_iso
 from backend.snapshot_assembly import canonical_hash
+from backend.customer_presentation import business_text, normalize_locale, safe_narrative, status_text, text
 
 
 REVIEW_DECISIONS = {"draft_review", "needs_changes", "approved_local", "rejected_local"}
@@ -308,96 +309,70 @@ def action_item(
     }
 
 
-def render_decision_pack_html(pack: dict[str, Any]) -> str:
+def render_decision_pack_html(pack: dict[str, Any], locale: str = "ar") -> str:
+    """Render a localized customer memo without audit or internal identifiers."""
+    locale = normalize_locale(locale)
+    direction = "rtl" if locale == "ar" else "ltr"
+    align = "right" if locale == "ar" else "left"
+    memo = pack.get("memo", {})
     finance_rows = "".join(
-        f"<tr><td>{escape(key)}</td><td>{escape(str(value))}</td></tr>"
+        f"<tr><td>{escape(business_text(key, locale))}</td><td>{escape(str(value if value is not None else '—'))}</td></tr>"
         for key, value in pack.get("finance_highlights", {}).items()
     )
     gate_rows = "".join(
-        f"<tr><td>{escape(row.get('label', ''))}</td><td>{escape(row.get('status', ''))}</td>"
-        f"<td>{escape(', '.join(row.get('reasons') or []))}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('label'), locale))}</td>"
+        f"<td>{escape(status_text(row.get('status'), locale))}</td>"
+        f"<td>{escape(', '.join(business_text(reason, locale) for reason in row.get('reasons') or []) or text('none', locale))}</td></tr>"
         for row in pack.get("readiness_gates", {}).get("gates", [])
     )
     risk_rows = "".join(
-        f"<tr><td>{escape(row.get('risk_id', ''))}</td><td>{escape(row.get('severity', ''))}</td>"
-        f"<td>{escape(row.get('trigger', ''))}</td><td>{escape(row.get('mitigation', ''))}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('trigger'), locale))}</td>"
+        f"<td>{escape(status_text(row.get('severity'), locale))}</td>"
+        f"<td>{escape(safe_narrative(row.get('mitigation'), locale))}</td></tr>"
         for row in pack.get("top_risks", [])
     )
     milestone_rows = "".join(
-        f"<tr><td>{escape(row.get('phase_id', ''))}</td><td>{escape(row.get('owner_role', ''))}</td>"
-        f"<td>{escape(str(row.get('estimated_duration_days', '')))}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('phase_id'), locale))}</td>"
+        f"<td>{escape(business_text(row.get('owner_role'), locale))}</td>"
+        f"<td>{escape(str(row.get('estimated_duration_days') or '—'))}</td></tr>"
         for row in pack.get("execution_plan", {}).get("milestones", [])
     )
-    sector = pack.get("sector_intelligence", {})
-    taxonomy = sector.get("taxonomy_record") or {}
-    sector_rows = "".join(
-        f"<tr><td>{escape(row.get('label', ''))}</td><td>{escape(row.get('sector_value', ''))}</td>"
-        f"<td>{escape(row.get('evidence_status', ''))}</td></tr>"
-        for row in sector.get("sector_criteria", {}).get("criteria", [])
-    )
-    coverage = pack.get("evidence_coverage", {})
-    coverage_rows = "".join(
-        f"<tr><td>{escape(row.get('target_type', ''))}</td><td>{escape(row.get('label', ''))}</td>"
-        f"<td>{escape(row.get('coverage_status', ''))}</td></tr>"
-        for row in coverage.get("targets", [])[:20]
-    )
-    ledger_rows = "".join(
-        f"<tr><td>{escape(row.get('target_type', ''))}:{escape(row.get('target_id', ''))}</td>"
-        f"<td>{escape(row.get('data_quality_status', ''))}</td>"
-        f"<td>{escape(row.get('transformation_quality_status', ''))}</td>"
-        f"<td>{escape(str(row.get('evidence_confidence_score', '')))}</td>"
-        f"<td>{escape(row.get('evidence_confidence_status', ''))}</td></tr>"
-        for row in pack.get("evidence_ledger", [])
-    )
-    lineage_rows = "".join(
-        f"<tr><td>{escape(row.get('dataset_id', ''))}</td><td>{escape(row.get('transformation_id', ''))}</td>"
-        f"<td>{escape(row.get('target_type', ''))}:{escape(row.get('target_id', ''))}</td>"
-        f"<td>{escape(row.get('review_status', ''))}</td></tr>"
-        for row in pack.get("transformation_lineage", [])
-    )
-    audit = pack.get("audit_lineage", {})
-    memo = pack.get("memo", {})
+    labels = {
+        "title": ("مذكرة القرار", "Decision memo"),
+        "recommendation": ("التوصية", "Recommendation"),
+        "reason": ("لماذا هذه التوصية؟", "Why this recommendation?"),
+        "review": ("حالة المراجعة", "Review status"),
+        "finance": ("المؤشرات المالية المختصرة", "Financial highlights"),
+        "item": ("البند", "Item"),
+        "value": ("القيمة", "Value"),
+        "readiness": ("متطلبات الجاهزية", "Readiness requirements"),
+        "risk": ("المخاطر وخطة المعالجة", "Risks and mitigation"),
+        "severity": ("الأهمية", "Severity"),
+        "action": ("الإجراء المقترح", "Recommended action"),
+        "plan": ("خطة التنفيذ", "Execution plan"),
+        "phase": ("المرحلة", "Phase"),
+        "owner": ("المسؤول", "Owner"),
+        "days": ("الأيام", "Days"),
+        "private": ("سجل التدقيق والتفاصيل الفنية متاحان للمشرف فقط.", "The audit trail and technical details are available to administrators only."),
+    }
+    def label(key: str) -> str:
+        pair = labels[key]
+        return pair[1] if locale == "en" else pair[0]
     return f"""<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <title>{escape(memo.get('title', 'Decision Pack'))}</title>
-  <style>
-    body {{ font-family: Tahoma, Arial, sans-serif; margin: 32px; color: #17201b; }}
-    table {{ width: 100%; border-collapse: collapse; margin: 12px 0 24px; }}
-    th, td {{ border: 1px solid #dfe5e1; padding: 8px; text-align: right; }}
-    th {{ background: #f4f6f4; }}
-    .memo {{ padding: 12px; background: #f8fbec; border: 1px solid #d8e6a6; }}
-    .meta {{ color: #53645a; }}
-  </style>
-</head>
-<body>
-  <h1>{escape(memo.get('title', 'Decision Pack'))}</h1>
-  <p class="meta">Snapshot {escape(pack.get('snapshot_id', ''))} · Run {escape(pack.get('run_id', ''))}</p>
-  <section class="memo">
-    <h2>مذكرة القرار</h2>
-    <p><strong>{escape(memo.get('recommendation', ''))}</strong></p>
-    <p>{escape(memo.get('rationale', ''))}</p>
-    <p>حالة المراجعة: {escape(memo.get('review_status', 'draft_review'))}</p>
-  </section>
-  <h2>المؤشرات المالية المختصرة</h2>
-  <table><thead><tr><th>البند</th><th>القيمة</th></tr></thead><tbody>{finance_rows}</tbody></table>
-  <h2>بوابات الجاهزية</h2>
-  <table><thead><tr><th>البوابة</th><th>الحالة</th><th>الأسباب</th></tr></thead><tbody>{gate_rows}</tbody></table>
-  <h2>أعلى المخاطر</h2>
-  <table><thead><tr><th>الخطر</th><th>الشدة</th><th>المحفز</th><th>المعالجة</th></tr></thead><tbody>{risk_rows}</tbody></table>
-  <h2>خطة التنفيذ</h2>
-  <table><thead><tr><th>المرحلة</th><th>المالك</th><th>الأيام</th></tr></thead><tbody>{milestone_rows}</tbody></table>
-  <h2>القطاع ومؤشرات الاستثمار</h2>
-  <p>{escape(taxonomy.get('primary_sector_ar') or taxonomy.get('primary_sector') or 'غير مصنف')}</p>
-  <table><thead><tr><th>المعيار</th><th>قيمة القطاع</th><th>حالة الدليل</th></tr></thead><tbody>{sector_rows}</tbody></table>
-  <h2>سجل الأدلة والتغطية</h2>
-  <table><thead><tr><th>نوع الهدف</th><th>الهدف</th><th>حالة التغطية</th></tr></thead><tbody>{coverage_rows}</tbody></table>
-  <table><thead><tr><th>الهدف</th><th>جودة البيانات</th><th>جودة التحويل</th><th>درجة الثقة</th><th>حالة الثقة</th></tr></thead><tbody>{ledger_rows}</tbody></table>
-  <h2>مسار التحويلات</h2>
-  <table><thead><tr><th>Dataset</th><th>Transformation</th><th>Target</th><th>المراجعة</th></tr></thead><tbody>{lineage_rows}</tbody></table>
-  <h2>التدقيق</h2>
-  <p>Audit {escape(str(audit.get('audit_id') or ''))}</p>
-  <p>{escape(str(audit.get('owner_path') or ''))}</p>
-</body>
-</html>"""
+<html lang="{locale}" dir="{direction}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{escape(label('title'))}</title><style>
+:root{{--ink:#0f3328;--muted:#6b7d76;--line:#dce7e0;--green:#138a66;--soft:#f5f9f6}}
+*{{box-sizing:border-box}}body{{font-family:Tahoma,Arial,sans-serif;margin:0;background:#f1f5f2;color:var(--ink);line-height:1.65}}
+main{{max-width:1000px;margin:28px auto;background:#fff;border:1px solid var(--line);padding:38px 44px;box-shadow:0 12px 36px #12382a14}}
+.memo{{padding:24px;border-radius:16px;background:linear-gradient(135deg,#edf7f2,#fff);border:1px solid var(--line)}}table{{width:100%;border-collapse:collapse;margin:12px 0 24px}}th,td{{border:1px solid var(--line);padding:9px;text-align:{align}}}th{{background:#edf7f2}}
+footer{{margin-top:28px;color:var(--muted)}}@media(max-width:760px){{main{{margin:0;padding:18px}}table{{font-size:12px}}}}
+</style></head><body><main>
+<h1>{escape(label('title'))}</h1><div class="memo"><h2>{escape(label('recommendation'))}</h2>
+<p><strong>{escape(status_text(memo.get('recommendation'), locale))}</strong></p>
+<h3>{escape(label('reason'))}</h3><p>{escape(safe_narrative(memo.get('rationale'), locale))}</p>
+<p>{escape(label('review'))}: {escape(status_text(memo.get('review_status'), locale))}</p></div>
+<h2>{escape(label('finance'))}</h2><table><thead><tr><th>{escape(label('item'))}</th><th>{escape(label('value'))}</th></tr></thead><tbody>{finance_rows}</tbody></table>
+<h2>{escape(label('readiness'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(text('status', locale))}</th><th>{escape(text('reason', locale))}</th></tr></thead><tbody>{gate_rows}</tbody></table>
+<h2>{escape(label('risk'))}</h2><table><thead><tr><th>{escape(label('risk'))}</th><th>{escape(label('severity'))}</th><th>{escape(label('action'))}</th></tr></thead><tbody>{risk_rows}</tbody></table>
+<h2>{escape(label('plan'))}</h2><table><thead><tr><th>{escape(label('phase'))}</th><th>{escape(label('owner'))}</th><th>{escape(label('days'))}</th></tr></thead><tbody>{milestone_rows}</tbody></table>
+<footer>{escape(label('private'))}</footer></main></body></html>"""
