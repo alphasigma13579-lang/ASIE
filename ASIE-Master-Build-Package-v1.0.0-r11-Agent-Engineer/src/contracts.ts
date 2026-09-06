@@ -9,6 +9,49 @@ export type OutputStatus =
 
 export type SourceState = "candidate" | "blocked" | "enabled" | "reference_only";
 export type DatasetState = "draft" | "review_required" | "approved_for_use" | "rejected" | "archived";
+export type BlueprintItemState =
+  | "VALUE_ENTERED"
+  | "CLIENT_ESTIMATE"
+  | "INTENTIONAL_ZERO"
+  | "NOT_APPLICABLE"
+  | "UNKNOWN"
+  | "EXPERIMENTAL_ESTIMATE";
+export type BlueprintItemTreatment = "include" | "exclude" | "blocker";
+export type BlueprintSourceType =
+  | "user_input"
+  | "file_import"
+  | "market_evidence"
+  | "simulated_evidence"
+  | "reviewer_override";
+
+export interface BlueprintItem {
+  item_id?: string;
+  input_key: string;
+  label?: string;
+  category?: string;
+  value?: number | string | boolean | null;
+  unit?: string;
+  state: BlueprintItemState;
+  reason?: string;
+  source_type?: BlueprintSourceType | string;
+  treatment?: BlueprintItemTreatment;
+  approval_status?: "draft" | "approved" | "rejected";
+  confidence?: number;
+  evidence_refs?: string[];
+  assumption_refs?: string[];
+}
+
+export interface ApprovedInputManifest {
+  manifest_id: string;
+  project_id: string;
+  version: number;
+  status: "approved" | "blocked";
+  items: BlueprintItem[];
+  normalized_inputs: Record<string, unknown>;
+  blockers: Blocker[];
+  created_at: string;
+  legacy_compatibility?: boolean;
+}
 
 export interface ProjectInputs {
   primary_sector_id?: string;
@@ -52,6 +95,7 @@ export interface ProjectInputs {
   debt_amount?: number;
   annual_interest_rate?: number;
   loan_years?: number;
+  blueprint_items?: BlueprintItem[] | Record<string, BlueprintItem>;
 }
 
 export interface Project {
