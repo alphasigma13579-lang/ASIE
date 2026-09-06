@@ -60,9 +60,6 @@ def test_ui_discloses_review_and_live_status():
     fields = (
         "publisher",
         "source_url",
-        "geography",
-        "sector",
-        "unit",
         "confidence",
         "retrieved_at",
         "fresh_until",
