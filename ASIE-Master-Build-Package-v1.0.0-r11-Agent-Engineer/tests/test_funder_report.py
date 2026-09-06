@@ -87,18 +87,25 @@ class FunderReportProjectionTests(unittest.TestCase):
         self.assertEqual("DRAFT_INTERNAL", projection["readiness_status"])
         self.assertIn("demo_data_not_admitted_to_production", projection["gaps"])
 
-    def test_html_composer_is_rtl_and_snapshot_bound(self) -> None:
+    def test_html_composer_is_localized_and_hides_internal_identifiers(self) -> None:
         repo = self.make_repo()
         project = repo.create_project({"name": "عرض تمويلي", "inputs": {}})
         overview, report = api.build_overview(project, repo)
-        html = render_funder_report_html(report["funder_report"])
+        arabic = render_funder_report_html(report["funder_report"], locale="ar")
+        english = render_funder_report_html(report["funder_report"], locale="en")
 
-        self.assertIn("lang='ar' dir='rtl'", html)
-        self.assertIn(overview["snapshot"]["snapshot_id"], html)
-        self.assertIn("حزمة التقرير الجاهز للتمويل", html)
-        self.assertIn("الفجوات قبل الإصدار التمويلي", html)
+        self.assertIn("lang='ar' dir='rtl'", arabic)
+        self.assertIn("تقرير جدوى المشروع", arabic)
+        self.assertIn("ما الذي يحتاج استكمالاً؟", arabic)
+        self.assertIn("lang='en' dir='ltr'", english)
+        self.assertIn("Project feasibility report", english)
+        self.assertIn("What still needs completion?", english)
+        for output in (arabic, english):
+            self.assertNotIn(overview["snapshot"]["snapshot_id"], output)
+            self.assertNotIn(report["funder_report"]["contract_id"], output)
+            self.assertNotIn(report["funder_report"]["projection_hash"], output)
 
-    def test_docx_export_contains_snapshot_and_report_sections(self) -> None:
+    def test_docx_export_hides_snapshot_and_contains_customer_sections(self) -> None:
         try:
             from docx import Document
         except ModuleNotFoundError:
@@ -111,9 +118,11 @@ class FunderReportProjectionTests(unittest.TestCase):
             self.assertTrue(path.exists())
             document = Document(path)
             text = "\n".join(paragraph.text for paragraph in document.paragraphs)
-            self.assertIn("حزمة التقرير الجاهز للتمويل", text)
-            self.assertIn("الفجوات قبل الإصدار", text)
-            self.assertIn(overview["snapshot"]["snapshot_id"], "\n".join(cell.text for table in document.tables for row in table.rows for cell in row.cells))
+            self.assertIn("تقرير جدوى المشروع", text)
+            self.assertIn("ما الذي يحتاج استكمالاً؟", text)
+            document_text = text + "\n" + "\n".join(cell.text for table in document.tables for row in table.rows for cell in row.cells)
+            self.assertNotIn(overview["snapshot"]["snapshot_id"], document_text)
+            self.assertNotIn(report["funder_report"]["contract_id"], document_text)
 
     def test_pdf_export_is_server_side_and_snapshot_bound(self) -> None:
         import os
@@ -136,11 +145,15 @@ class FunderReportProjectionTests(unittest.TestCase):
         project = repo.create_project({"name": "حزمة PowerPoint", "inputs": {}})
         _overview, report = api.build_overview(project, repo)
         with tempfile.TemporaryDirectory() as temp_dir:
-            path = export_funder_report_pptx(report["funder_report"], Path(temp_dir) / "funder.pptx")
+            path = export_funder_report_pptx(report["funder_report"], Path(temp_dir) / "funder.pptx", locale="en")
             with zipfile.ZipFile(path) as archive:
                 self.assertIn("[Content_Types].xml", archive.namelist())
                 self.assertIn("ppt/presentation.xml", archive.namelist())
                 self.assertIn("ppt/slides/slide1.xml", archive.namelist())
+                slides = "\n".join(archive.read(name).decode("utf-8") for name in archive.namelist() if name.startswith("ppt/slides/slide") and name.endswith(".xml"))
+                self.assertIn("Project feasibility report", slides)
+                self.assertNotIn(report["funder_report"]["snapshot_id"], slides)
+                self.assertNotIn(report["funder_report"]["contract_id"], slides)
 
     def test_reference_profiles_return_explainable_missing_requirements(self) -> None:
         repo = self.make_repo()
