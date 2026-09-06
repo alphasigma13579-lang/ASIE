@@ -195,3 +195,15 @@ export function customerBusinessText(value: unknown, locale: CustomerLocale): st
     ?? customerStatuses[normalized]?.[locale]
     ?? (locale === "ar" ? "تفصيل يحتاج مراجعة" : "Detail requires review");
 }
+
+
+export function customerNarrativeText(value: unknown, locale: CustomerLocale): string {
+  if (typeof value !== "string" || !value.trim()) return locale === "ar" ? "لا يتوفر شرح بعد." : "No explanation is available yet.";
+  const clean = value.trim();
+  const mapped = customerBusinessTerms[normalizeStatus(clean)]?.[locale] ?? customerStatuses[normalizeStatus(clean)]?.[locale];
+  if (mapped) return mapped;
+  const hasArabic = /[\u0600-\u06ff]/.test(clean);
+  const looksTechnical = forbiddenCustomerToken.test(clean) || /(?:\b(?:snapshot|decision pack|monte carlo|finance engine|contract|algorithm|runtime)\b|[_]{1,})/i.test(clean);
+  if (!looksTechnical && ((locale === "ar" && hasArabic) || (locale === "en" && !hasArabic))) return clean;
+  return locale === "ar" ? "هذا التفصيل يحتاج صياغة واضحة قبل عرضه." : "This detail needs a clear customer-facing explanation.";
+}
