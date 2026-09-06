@@ -1489,7 +1489,7 @@ function SessionWorkspace() {
             <p className="landing-kicker"><Sparkles size={16} aria-hidden="true" /> من الدليل إلى قرار يمكن الرجوع إليه</p>
             <h1>لا تبحث عن رقمٍ جميل.<br /><em>ابنِ قراراً تعرف لماذا تثق به.</em></h1>
             <p className="landing-lede">
-              مساحة عمل عربية تحول مشروعك المحلي إلى رحلة منظمة: مدخلات، أدلة، جاهزية، ثم Snapshot ثابت يربط القرار بسببِه.
+              مساحة عمل عربية تحول مشروعك إلى رحلة منظمة: مدخلات، أدلة، جاهزية، ثم نتيجة محفوظة تربط القرار بسببه.
             </p>
             <div className="landing-actions">
               <button className="primary-button primary-button--large landing-cta" onClick={() => { writeLocalFlag(PRODUCT_ENTRY_STORAGE_KEY, true); setHasEnteredProduct(true); }}>
@@ -1501,7 +1501,7 @@ function SessionWorkspace() {
             <div className="trust-row" aria-label="ضمانات ASIE">
               <span><ShieldCheck size={16} aria-hidden="true" /> لا شبكة خارجية</span>
               <span><Database size={16} aria-hidden="true" /> أدلة محلية</span>
-              <span><BadgeCheck size={16} aria-hidden="true" /> Snapshot غير قابل للتغيير</span>
+              <span><BadgeCheck size={16} aria-hidden="true" /> نتيجة محفوظة لا تتغير</span>
             </div>
           </div>
           <div className="decision-orbit" aria-label="تصور متحرك توضيحي لرحلة القرار">
@@ -1516,7 +1516,7 @@ function SessionWorkspace() {
             </article>
             <article className="float-card float-card--evidence"><Database size={18} /><div><span>طبقة الأدلة</span><strong>مراجعة محلية</strong></div><i /></article>
             <article className="float-card float-card--readiness"><CheckCircle2 size={18} /><div><span>الجاهزية</span><strong>تحقق قبل التشغيل</strong></div></article>
-            <article className="float-card float-card--snapshot"><Layers3 size={18} /><div><span>Snapshot</span><strong>مرجع ثابت</strong></div></article>
+            <article className="float-card float-card--snapshot"><Layers3 size={18} /><div><span>نتيجة محفوظة</span><strong>مرجع ثابت</strong></div></article>
             <span className="orbit-caption">تصور توضيحي — لا يمثل بيانات مشروع حقيقية</span>
           </div>
         </section>
@@ -1538,7 +1538,7 @@ function SessionWorkspace() {
               ["01", "عرّف المشروع", "النطاق، القطاع، والهدف قبل التفاصيل."],
               ["02", "اربط ما تعرفه", "بيانات محلية وخط نسب واضح لكل إدخال."],
               ["03", "تحقق من الجاهزية", "تظهر العوائق كما هي، لا تُخفى."],
-              ["04", "شغّل وراجع", "قرار وإسقاطات تعود إلى Snapshot واحد."],
+              ["04", "شغّل وراجع", "قرار وتفسيرات تعود إلى نتيجة محفوظة واحدة."],
             ].map(([number, title, body]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{body}</p></article>)}
           </div>
         </section>
@@ -1965,13 +1965,13 @@ function SessionWorkspace() {
 
             {snapshotOverview ? (
               <section className="decision-intelligence" aria-label="ذكاء القرار: المحاكاة والشخصيات الخمس">
-                <header><div><p className="eyebrow">ذكاء القرار المحفوظ</p><h2>اختبر القرار من خمس زوايا ومحاكاة المخاطر</h2><p>هذه إسقاطات من Snapshot الحالي؛ الشخصيات تفسّر ولا تصوّت، والحكم السيادي يبقى المرجع.</p></div><button onClick={() => void handleOpenDecisionPack()} disabled={isBusy}>فتح التفسير الكامل <ArrowLeft size={16} /></button></header>
+                <header><div><p className="eyebrow">{text("فهم القرار المحفوظ", "Understand the saved decision")}</p><h2>{text("اختبر القرار من خمس زوايا واحتمالات متعددة", "Review the decision from five perspectives and multiple scenarios")}</h2><p>{text("هذه تفسيرات للنتيجة الحالية؛ لا تغيّر القرار الأصلي.", "These explanations describe the current result without changing the original decision.")}</p></div><button onClick={() => void handleOpenDecisionPack()} disabled={isBusy}>{text("فتح التفسير الكامل", "Open full explanation")} <ArrowLeft size={16} /></button></header>
                 <div className="decision-intelligence__grid">
                   <article className="monte-carlo-widget">
-                    <div className="intelligence-widget__heading"><div><Calculator size={20} /><span>{text("محاكاة احتمالات المخاطر", "Risk probability simulation")}</span></div><small>{snapshotOverview.monte_carlo.status === "ready" ? "محاكاة جاهزة" : "تحتاج مدخلات"}</small></div>
+                    <div className="intelligence-widget__heading"><div><Calculator size={20} /><span>{text("محاكاة احتمالات المخاطر", "Risk probability simulation")}</span></div><small>{snapshotOverview.monte_carlo.status === "ready" ? text("المحاكاة جاهزة", "Simulation ready") : text("تحتاج مدخلات", "Needs inputs")}</small></div>
                     <strong>{snapshotOverview.monte_carlo.p_pass === null ? "—" : `${Math.round(snapshotOverview.monte_carlo.p_pass * 100)}%`}</strong>
-                    <p>احتمال اجتياز بوابات الجدوى عبر {snapshotOverview.monte_carlo.iterations.toLocaleString("ar-SA")} تشغيل محفوظ.</p>
-                    <div className="simulation-scale"><i style={{ width: `${Math.max(0, Math.min(100, (snapshotOverview.monte_carlo.p_pass ?? 0) * 100))}%` }} /><span>ضعيف</span><span>متوازن</span><span>قوي</span></div>
+                    <p>{text("احتمال استيفاء متطلبات الجدوى عبر", "Probability of meeting feasibility requirements across")} {snapshotOverview.monte_carlo.iterations.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {text("سيناريو محفوظ.", "saved scenarios.")}</p>
+                    <div className="simulation-scale"><i style={{ width: `${Math.max(0, Math.min(100, (snapshotOverview.monte_carlo.p_pass ?? 0) * 100))}%` }} /><span>{text("ضعيف", "Weak")}</span><span>{text("متوازن", "Balanced")}</span><span>{text("قوي", "Strong")}</span></div>
                   </article>
                   <div className="persona-kpi-grid">
                     {snapshotOverview.personas.map((persona) => <button key={persona.persona_id} className="persona-kpi" onClick={() => void handleOpenDecisionPack()}><span>{customerBusinessText(persona.metric, locale)}</span><strong>{persona.value === null ? "—" : `${Math.round(persona.value * 100)}%`}</strong><small>{statusText(persona.status, locale)} · {text("افتح التفسير", "Open explanation")}</small></button>)}
@@ -1984,7 +1984,7 @@ function SessionWorkspace() {
               <article className="panel decision-rationale">
                 <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>لماذا هذا القرار؟</h2></div>
                 {decisionPack ? <><strong>{customerBusinessText(decisionPack.memo.recommendation, locale)}</strong><p>{customerNarrativeText(decisionPack.memo.rationale, locale)}</p><small>{text("مذكرة مرتبطة بالتقرير الحالي", "Memo linked to the current report")}</small></> : <p className="empty-state">{text("افتح مذكرة القرار لعرض التفسير المحفوظ.", "Open the decision memo to view the saved explanation.")}</p>}
-                <div className="button-row"><button disabled={!snapshotOverview || isBusy} onClick={handleOpenDecisionPack}>فتح حزمة القرار</button><button disabled={!snapshotOverview || isBusy} onClick={handleOpenReport}>فتح التقرير</button></div>
+                <div className="button-row"><button disabled={!snapshotOverview || isBusy} onClick={handleOpenDecisionPack}>{text("فتح مذكرة القرار", "Open decision memo")}</button><button disabled={!snapshotOverview || isBusy} onClick={handleOpenReport}>{text("فتح التقرير", "Open report")}</button></div>
               </article>
               <article className="panel decision-evidence">
                 <div className="section-title"><Database size={20} aria-hidden="true" /><h2>ثقة الأدلة</h2></div>
@@ -2101,7 +2101,7 @@ function SessionWorkspace() {
                       {run.snapshot_id ? (
                         <>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "report.html", "open")}>فتح التقرير</button>
-                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "decision-pack.html", "open")}>فتح حزمة القرار</button>
+                          <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "decision-pack.html", "open")}>{text("فتح مذكرة القرار", "Open decision memo")}</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.html", "open")}>تقرير الممول</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.pdf", "download")}>PDF</button>
                           <button className="secondary-action" onClick={() => void handleOpenDocument(run.snapshot_id!, "funder-report.docx", "download")}>DOCX</button>
