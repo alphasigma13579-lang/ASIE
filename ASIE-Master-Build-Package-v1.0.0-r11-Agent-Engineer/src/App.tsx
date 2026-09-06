@@ -55,7 +55,6 @@ import {
   runProject,
   updateProjectActionItem,
   updateProject,
-  addMembership,
   createOrganization,
   fetchFundingProfiles,
   fetchMe,
@@ -692,8 +691,6 @@ function SessionWorkspace() {
   const [sectorProfiles, setSectorProfiles] = useState<SectorProfile[]>([]);
   const [releaseRecord, setReleaseRecord] = useState<ReleaseRecord | null>(null);
   const [newOrganizationName, setNewOrganizationName] = useState("");
-  const [memberUserId, setMemberUserId] = useState("");
-  const [memberRole, setMemberRole] = useState("organization_member");
   const [isBusy, setIsBusy] = useState(false);
   const [hasEnteredProduct, setHasEnteredProduct] = useState(() => readLocalFlag(PRODUCT_ENTRY_STORAGE_KEY));
   const [legalAccepted, setLegalAccepted] = useState(() => readLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY));
@@ -973,21 +970,6 @@ function SessionWorkspace() {
       setNewOrganizationName("");
       setMemberships((current) => [...current, { organization_id: organization.organization_id, organization_name: organization.name, role: "organization_owner" }]);
       switchOrganization(organization.organization_id);
-    } catch (err) {
-      setError(customerErrorText(err, locale));
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleAddMember(event: FormEvent) {
-    event.preventDefault();
-    if (!activeOrganizationId || !memberUserId.trim()) return;
-    setIsBusy(true);
-    setError(null);
-    try {
-      await addMembership(activeOrganizationId, memberUserId.trim(), memberRole);
-      setMemberUserId("");
     } catch (err) {
       setError(customerErrorText(err, locale));
     } finally {
@@ -3418,21 +3400,37 @@ function SessionWorkspace() {
         ) : null}
         </>
         ) : (
-          <section className="panel overlay-panel" aria-label={overlay === "settings" ? "الحساب والفريق" : "فهارس التمويل والقطاع"}>
+          <section
+            className="panel overlay-panel"
+            aria-label={overlay === "settings"
+              ? text("الحساب والفريق", "Account and team")
+              : text("خيارات التمويل والقطاع", "Funding and sector options")}
+          >
             <div className="section-title">
               {overlay === "settings" ? <Users size={20} aria-hidden="true" /> : <BarChart3 size={20} aria-hidden="true" />}
-              <h2>{overlay === "settings" ? "الحساب والفريق" : "الفهارس المرجعية للتمويل والقطاع"}</h2>
-              <button className="secondary-action" onClick={closeOverlay}>عودة إلى المسار</button>
+              <h2>
+                {overlay === "settings"
+                  ? text("الحساب والفريق", "Account and team")
+                  : text("خيارات التمويل والقطاع", "Funding and sector options")}
+              </h2>
+              <button className="secondary-action" onClick={closeOverlay}>
+                {text("عودة إلى المسار", "Return to journey")}
+              </button>
             </div>
 
             {overlay === "settings" ? (
               <div className="overlay-stack">
                 {authState === "legacy" ? (
                   <article className="admin-panel">
-                    <h3>التهيئة الأولى</h3>
-                    <p className="muted">لا توجد جلسة مستخدم في هذه النسخة. استخدم دعوة بيتا مرتبطة بالبريد لإنشاء حساب ومنظمة معزولين.</p>
+                    <h3>{text("ابدأ حساب البيتا", "Start your beta account")}</h3>
+                    <p className="muted">
+                      {text(
+                        "استخدم دعوة بيتا المرتبطة ببريدك لإنشاء حساب ومنظمة منفصلين وآمنين.",
+                        "Use the beta invitation linked to your email to create a separate, secure account and organisation.",
+                      )}
+                    </p>
                     <button className="primary-button" onClick={() => { setAuthInitialMode("register"); setAuthState("anonymous"); }}>
-                      <Rocket size={17} aria-hidden="true" /> إنشاء حساب بيتا بدعوة
+                      <Rocket size={17} aria-hidden="true" /> {text("إنشاء حساب بيتا بدعوة", "Create an invited beta account")}
                     </button>
                   </article>
                 ) : null}
@@ -3440,112 +3438,123 @@ function SessionWorkspace() {
                 {authState === "authenticated" ? (
                   <>
                     <article className="admin-panel">
-                      <h3>الجلسة الحالية</h3>
-                      <p><strong>{authUser?.display_name || authUser?.email || authUser?.user_id}</strong></p>
-                      <p className="muted">{authUser?.email} {authUser?.platform_role ? `· ${authUser.platform_role}` : ""}</p>
-                      <button className="secondary-action" onClick={() => void handleLogout()}>تسجيل الخروج وإنهاء الجلسة</button>
+                      <h3>{text("حسابك الحالي", "Your current account")}</h3>
+                      <p>
+                        <strong>{authUser?.display_name || authUser?.email || text("حساب مستخدم", "User account")}</strong>
+                      </p>
+                      {authUser?.display_name && authUser?.email ? <p className="muted">{authUser.email}</p> : null}
+                      <button className="secondary-action" onClick={() => void handleLogout()}>
+                        {text("تسجيل الخروج وإنهاء الجلسة", "Sign out and end session")}
+                      </button>
                     </article>
 
                     <article className="admin-panel">
-                      <h3>المنظمة النشطة</h3>
+                      <h3>{text("منظمتك النشطة", "Your active organisation")}</h3>
                       {memberships.length ? (
                         <div className="org-chip-row">
-                          {memberships.map((membership) => (
+                          {memberships.map((membership, index) => (
                             <button
                               key={membership.organization_id}
                               className={membership.organization_id === activeOrganizationId ? "org-chip org-chip--active" : "org-chip"}
                               onClick={() => switchOrganization(membership.organization_id)}
                             >
-                              <strong>{membership.organization_name || membership.organization_id}</strong>
-                              <small>{membership.role}</small>
+                              <strong>
+                                {membership.organization_name || text(`منظمة ${index + 1}`, `Organisation ${index + 1}`)}
+                              </strong>
+                              <small>{customerBusinessText(membership.role, locale)}</small>
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <p className="muted">لا توجد عضويات بعد — أنشئ منظمتك الأولى أدناه.</p>
+                        <p className="muted">
+                          {text("لا توجد منظمة بعد. أنشئ منظمتك الأولى أدناه.", "No organisation exists yet. Create your first one below.")}
+                        </p>
                       )}
                       <form className="inline-form" onSubmit={handleCreateOrganization}>
                         <label>
-                          منظمة جديدة
-                          <input maxLength={80} value={newOrganizationName} onChange={(event) => setNewOrganizationName(event.target.value)} placeholder="اسم المنظمة" />
+                          {text("منظمة جديدة", "New organisation")}
+                          <input
+                            maxLength={80}
+                            value={newOrganizationName}
+                            onChange={(event) => setNewOrganizationName(event.target.value)}
+                            placeholder={text("اسم المنظمة", "Organisation name")}
+                          />
                         </label>
-                        <button className="primary-button" disabled={isBusy || !newOrganizationName.trim()}>إنشاء والتحويل إليها</button>
+                        <button className="primary-button" disabled={isBusy || !newOrganizationName.trim()}>
+                          {text("إنشاء المنظمة واستخدامها", "Create and use organisation")}
+                        </button>
                       </form>
                     </article>
 
                     <article className="admin-panel">
-                      <h3>إضافة عضو إلى المنظمة النشطة</h3>
-                      <p className="muted">معرّف المستخدم يُنسخ من لوحة المشغّل (قائمة المستخدمين). الصلاحية تُفرض من الخادم عند كل طلب.</p>
-                      <form className="inline-form" onSubmit={handleAddMember}>
-                        <label>
-                          معرّف المستخدم
-                          <input required value={memberUserId} onChange={(event) => setMemberUserId(event.target.value)} placeholder="usr_…" />
-                        </label>
-                        <label>
-                          الدور
-                          <select value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
-                            <option value="organization_member">عضو</option>
-                            <option value="organization_reviewer">مراجع</option>
-                            <option value="organization_owner">مالك</option>
-                          </select>
-                        </label>
-                        <button className="primary-button" disabled={isBusy || !activeOrganizationId}>إضافة العضو</button>
-                      </form>
+                      <h3>{text("الفريق والدعوات", "Team and invitations")}</h3>
+                      <p className="muted">
+                        {text(
+                          "تُدار دعوات الفريق وصلاحياته من لوحة الإدارة المحمية، ولا تحتاج إلى نسخ معرّفات تقنية.",
+                          "Team invitations and permissions are managed in the protected administration area; no technical identifiers are required.",
+                        )}
+                      </p>
+                      {authUser?.platform_role === "platform_admin" ? (
+                        <button
+                          className="secondary-action"
+                          onClick={() => {
+                            closeOverlay();
+                            setStage("architecture");
+                          }}
+                        >
+                          {text("فتح لوحة الإدارة المحمية", "Open protected administration")}
+                        </button>
+                      ) : null}
                     </article>
                   </>
                 ) : null}
               </div>
             ) : (
               <div className="overlay-stack">
-                <p className="muted">فهارس مرجعية محلية فقط (reference_only) — لا يوجد جلب خارجي، وتظهر للاسترشاد قبل اختيار ملف التمويل أو القطاع.</p>
+                <p className="muted">
+                  {text(
+                    "هذه خيارات استرشادية محفوظة داخل المنصة لمساعدتك في اختيار مسار التمويل والقطاع. لا تجلب بيانات خارجية ولا تغيّر نتائج مشروعك.",
+                    "These saved guidance options help you choose a funding route and sector. They do not fetch external data or change your project results.",
+                  )}
+                </p>
                 <article className="admin-panel">
-                  <h3>ملفات التمويل</h3>
+                  <h3>{text("خيارات التمويل", "Funding options")}</h3>
                   {fundingProfiles.length ? (
                     <div className="profile-grid">
                       {fundingProfiles.map((profile, index) => (
-                        <details key={String(profile.profile_id ?? index)} className="profile-card">
-                          <summary>{String(profile.profile_id ?? `ملف ${index + 1}`)}</summary>
-                          <dl>
-                            {Object.entries(profile)
-                              .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
-                              .slice(0, 12)
-                              .map(([key, value]) => (
-                                <div key={key}>
-                                  <dt>{key}</dt>
-                                  <dd>{value === null ? "—" : String(value)}</dd>
-                                </div>
-                              ))}
-                          </dl>
-                        </details>
+                        <article key={String(profile.profile_id ?? index)} className="profile-card">
+                          <h4>{customerBusinessText(String(profile.profile_id ?? ""), locale)}</h4>
+                          <p className="muted">
+                            {text(
+                              "افتح مشروعك لاختيار هذا المسار ومراجعة متطلباته بلغة واضحة.",
+                              "Open your project to select this route and review its requirements in clear language.",
+                            )}
+                          </p>
+                        </article>
                       ))}
                     </div>
                   ) : (
-                    <p className="muted">لا توجد ملفات تمويل محمّلة.</p>
+                    <p className="muted">{text("لا تتوفر خيارات تمويل بعد.", "No funding options are available yet.")}</p>
                   )}
                 </article>
                 <article className="admin-panel">
-                  <h3>ملفات القطاعات</h3>
+                  <h3>{text("القطاعات المتاحة", "Available sectors")}</h3>
                   {sectorProfiles.length ? (
                     <div className="profile-grid">
                       {sectorProfiles.map((profile, index) => (
-                        <details key={String(profile.profile_id ?? profile.sector_id ?? index)} className="profile-card">
-                          <summary>{String(profile.sector_id ?? profile.profile_id ?? `قطاع ${index + 1}`)}</summary>
-                          <dl>
-                            {Object.entries(profile)
-                              .filter(([, value]) => value === null || ["string", "number", "boolean"].includes(typeof value))
-                              .slice(0, 12)
-                              .map(([key, value]) => (
-                                <div key={key}>
-                                  <dt>{key}</dt>
-                                  <dd>{value === null ? "—" : String(value)}</dd>
-                                </div>
-                              ))}
-                          </dl>
-                        </details>
+                        <article key={String(profile.profile_id ?? profile.sector_id ?? index)} className="profile-card">
+                          <h4>{customerBusinessText(String(profile.sector_id ?? profile.profile_id ?? ""), locale)}</h4>
+                          <p className="muted">
+                            {text(
+                              "اختر القطاع داخل تعريف المشروع لتخصيص الأسئلة والتحليل.",
+                              "Choose the sector while setting up the project to tailor questions and analysis.",
+                            )}
+                          </p>
+                        </article>
                       ))}
                     </div>
                   ) : (
-                    <p className="muted">لا توجد ملفات قطاعات محمّلة.</p>
+                    <p className="muted">{text("لا تتوفر قطاعات بعد.", "No sectors are available yet.")}</p>
                   )}
                 </article>
               </div>

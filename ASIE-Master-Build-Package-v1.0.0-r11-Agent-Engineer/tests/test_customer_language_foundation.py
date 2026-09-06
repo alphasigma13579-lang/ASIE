@@ -58,6 +58,17 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('identity.platform_role === "platform_admin"', gate)
         self.assertIn("customerErrorText(failure, locale)", gate)
 
+    def test_customer_overlays_hide_internal_profile_and_user_identifiers(self) -> None:
+        app = (SRC / "App.tsx").read_text(encoding="utf-8")
+        self.assertNotIn("Object.entries(profile)", app)
+        self.assertNotIn("authUser?.display_name || authUser?.email || authUser?.user_id", app)
+        self.assertNotIn("handleAddMember", app)
+        self.assertNotIn("memberUserId", app)
+        self.assertIn('text("الفريق والدعوات", "Team and invitations")', app)
+        self.assertIn("customerBusinessText(membership.role, locale)", app)
+        self.assertIn('customerBusinessText(String(profile.profile_id ?? ""), locale)', app)
+        self.assertIn("customerBusinessText(String(profile.sector_id ?? profile.profile_id ?? \"\"), locale)", app)
+
     def test_sanad_opens_exact_missing_input_and_preserves_return_stage(self) -> None:
         app = (SRC / "App.tsx").read_text(encoding="utf-8")
         surface = (SRC / "ASIECompleteSurfaceMount.tsx").read_text(encoding="utf-8")

@@ -211,6 +211,17 @@ const customerBusinessTerms: Record<string, { ar: string; en: string }> = {
   launch_readiness: { ar: "جاهزية بدء التشغيل", en: "Launch readiness" },
   assumption_support_gap: { ar: "نقص في الأدلة الداعمة", en: "Supporting evidence is missing" },
   margin_pressure: { ar: "ضغط على هامش الربح", en: "Profit margin pressure" },
+  organization_owner: { ar: "مالك المنظمة", en: "Organisation owner" },
+  organization_reviewer: { ar: "مراجع المنظمة", en: "Organisation reviewer" },
+  organization_member: { ar: "عضو في المنظمة", en: "Organisation member" },
+  bank_sme_base_v1: { ar: "تمويل المنشآت الصغيرة والمتوسطة", en: "Small and medium enterprise funding" },
+  base_funding_v1: { ar: "تمويل تأسيسي", en: "Foundation funding" },
+  development_fund_base_v1: { ar: "تمويل من صندوق تنموي", en: "Development fund financing" },
+  investor_equity_base_v1: { ar: "استثمار مقابل حصة ملكية", en: "Equity investment" },
+  sector_retail_v1: { ar: "قطاع التجزئة", en: "Retail sector" },
+  sector_manufacturing_v1: { ar: "قطاع التصنيع", en: "Manufacturing sector" },
+  sector_food_service_v1: { ar: "قطاع الأغذية والمطاعم", en: "Food service sector" },
+  sector_digital_services_v1: { ar: "قطاع الخدمات الرقمية", en: "Digital services sector" },
 };
 
 export function customerBusinessText(value: unknown, locale: CustomerLocale): string {
