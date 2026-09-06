@@ -476,6 +476,7 @@ function NeedData({ text }: { text: string }) {
 function DecisionToday({
   overview, verdict, onOpenStage, projectId,
 }: { overview: ProjectOverview | null; verdict: ReturnType<typeof verdictMeta>; onOpenStage: CommandCenterProps["onOpenStage"]; projectId: string }) {
+  const { text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="قراري اليوم" crumb="قراري اليوم">
@@ -563,6 +564,7 @@ function GuideSection({ overview }: { overview: ProjectOverview | null }) {
 /* ------------------------------------------------------------------ */
 
 function RealitySection({ overview }: { overview: ProjectOverview | null }) {
+  const { text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
@@ -652,6 +654,7 @@ function OpportunitiesSection({ overview }: { overview: ProjectOverview | null }
 /* ------------------------------------------------------------------ */
 
 function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
+  const { text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="فهم القرار" crumb="فهم القرار">
@@ -696,6 +699,7 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
 /* ------------------------------------------------------------------ */
 
 function ReportsSection({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStage: CommandCenterProps["onOpenStage"] }) {
+  const { text } = useCustomerLanguage();
   const withRuns = bundles.filter((b) => b.overview);
   return (
     <SectionShell title="تقاريري" crumb="تقاريري">
