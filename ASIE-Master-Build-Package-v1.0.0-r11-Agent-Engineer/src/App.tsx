@@ -2847,7 +2847,7 @@ function SessionWorkspace() {
                     <div className="comparison-list">
                       {comparison.metric_deltas.map((item) => (
                         <article key={item.output_id}>
-                          <strong>{metricTitle(item.output_id)}</strong>
+                          <strong>{metricTitle(item.output_id, locale)}</strong>
                           <span>
                             {item.from ?? "NA"} → {item.to ?? "NA"}
                           </span>
