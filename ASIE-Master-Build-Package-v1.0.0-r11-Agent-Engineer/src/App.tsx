@@ -753,14 +753,14 @@ function SessionWorkspace() {
     ? validateWizardStepAt(firstIncompleteWizardStep)
     : readinessBlocked[0]?.message ?? null;
   const commandAction = !project
-    ? { label: "ابدأ تعريف المشروع", detail: "لم تُنشأ مسودة مشروع بعد.", stage: "wizard" as AppStage, action: "navigate" as const }
+    ? { label: text("ابدأ تعريف المشروع", "Set up the project"), detail: text("لم تُنشأ مسودة مشروع بعد.", "No project draft has been created yet."), stage: "wizard" as AppStage, action: "navigate" as const }
     : !readiness
-      ? { label: "اربط أدلة المشروع", detail: "أضف ما يثبت أرقامك قبل فحص الجاهزية.", stage: "evidence" as AppStage, action: "navigate" as const }
+      ? { label: text("اربط أدلة المشروع", "Link project evidence"), detail: text("أضف ما يثبت أرقامك قبل فحص الجاهزية.", "Add support for your figures before checking readiness."), stage: "evidence" as AppStage, action: "navigate" as const }
       : !readiness.ready_to_run
-        ? { label: "عالج متطلبات الجاهزية", detail: `${readinessBlocked.length} متطلباً يحتاج انتباهاً قبل التشغيل.`, stage: "readiness" as AppStage, action: "navigate" as const }
+        ? { label: text("عالج متطلبات الجاهزية", "Complete readiness requirements"), detail: `${readinessBlocked.length} ${text("متطلبًا يحتاج انتباهك قبل التشغيل.", "requirements need your attention before analysis.")}`, stage: "readiness" as AppStage, action: "navigate" as const }
         : !snapshotOverview
-          ? { label: "شغّل التحليل", detail: "المشروع جاهز لإنشاء أول Snapshot ثابت.", stage: "run" as AppStage, action: "run" as const }
-          : { label: "افتح ذكاء السوق والفرص", detail: "اقرأ المقارنات والتوصيات بعد ظهور نتيجة الدراسة.", stage: "reality" as AppStage, action: "navigate" as const };
+          ? { label: text("شغّل التحليل", "Run analysis"), detail: text("المشروع جاهز لإنشاء أول نتيجة محفوظة.", "The project is ready to create its first saved result."), stage: "run" as AppStage, action: "run" as const }
+          : { label: text("افتح ذكاء السوق والفرص", "Open market intelligence"), detail: text("اقرأ المقارنات والفرص بعد ظهور نتيجة الدراسة.", "Review comparisons and opportunities after the analysis result is available."), stage: "reality" as AppStage, action: "navigate" as const };
 
   function updateInputs(nextInputs: Partial<ProjectInputs>) {
     setForm((current) => ({
@@ -1651,8 +1651,8 @@ function SessionWorkspace() {
 
   return (
     <main id="main-content" className="app-shell" dir={direction}>
-      <aside className="sidebar" aria-label="مسار مساحة المشروع">
-        <BrandLockup subtitle="مرصد القرار المحلي" />
+      <aside className="sidebar" aria-label={text("مسار مساحة المشروع", "Project workspace navigation")}>
+        <BrandLockup subtitle={text("مرصد القرار المحلي", "Local decision workspace")} />
         <nav>
           {appStageGroups.map((group) => (
             <div className="nav-group" key={group.label}>
@@ -1677,15 +1677,15 @@ function SessionWorkspace() {
         </nav>
         <button className="nav-item nav-item--quiet" onClick={() => { writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, false); setLegalAccepted(false); }}>
           <ScrollText size={16} aria-hidden="true" />
-          الوثائق القانونية
+          {text("الوثائق القانونية", "Legal documents")}
         </button>
         <button className="nav-item nav-item--quiet" onClick={() => openOverlay("profiles")}>
           <BarChart3 size={16} aria-hidden="true" />
-          فهارس التمويل والقطاع
+          {text("مراجع التمويل والقطاع", "Funding and sector references")}
         </button>
         <button className="nav-item nav-item--quiet" onClick={() => openOverlay("settings")}>
           <Users size={16} aria-hidden="true" />
-          الحساب والفريق
+          {text("الحساب والفريق", "Account and team")}
         </button>
         <div className="sidebar-note">
           <Database size={18} aria-hidden="true" />
@@ -1697,15 +1697,15 @@ function SessionWorkspace() {
         <header className="topbar">
           <div>
             <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
-            <h1>{appStages.find((item) => item.id === stage)?.label ?? "ASIE"}</h1>
-            <p>{project ? `${project.sector} · ${project.jurisdiction}` : "ابدأ من تعريف المشروع، ثم دع المنصة تقودك خطوة بخطوة"}</p>
+            <h1>{(() => { const current = appStages.find((item) => item.id === stage); return current ? (locale === "ar" ? current.label : current.labelEn) : "ASIE"; })()}</h1>
+            <p>{project ? `${customerBusinessText(project.sector, locale)} · ${locale === "ar" ? project.jurisdiction : project.jurisdiction === "المملكة العربية السعودية" ? "Saudi Arabia" : customerBusinessText(project.jurisdiction, locale)}` : text("ابدأ من تعريف المشروع، ثم دع المنصة تقودك خطوة بخطوة.", "Start with project setup, then follow the guided journey step by step.")}</p>
           </div>
           <div className="topbar__actions topbar__actions--minimal">
             <CustomerLanguageSwitcher />
             {overview ? (
-            <button disabled={isBusy} onClick={handleOpenReport} title="فتح التقرير">
+            <button disabled={isBusy} onClick={handleOpenReport} title={text("فتح التقرير", "Open report")}>
               <FileText size={18} aria-hidden="true" />
-              <span>افتح التقرير</span>
+              <span>{text("افتح التقرير", "Open report")}</span>
             </button>
             ) : null}
           </div>
@@ -1714,21 +1714,21 @@ function SessionWorkspace() {
         {error ? (
           <section className="status-banner status-banner--error" role="alert" aria-live="assertive">
             <AlertTriangle size={18} aria-hidden="true" />
-            <span>{error}</span>
+            <span>{customerErrorText(error, locale)}</span>
           </section>
         ) : null}
 
         {authState === "legacy" ? (
           <section className="status-banner" role="status">
             <ShieldCheck size={18} aria-hidden="true" />
-            <span>وضع التشغيل الأول: استخدم دعوة بيتا مرتبطة بالبريد لإنشاء حساب ومنظمة معزولين.</span>
+            <span>{text("استخدم دعوة بيتا مرتبطة بالبريد لإنشاء حساب ومساحة منظمة معزولة.", "Use an email-bound beta invitation to create an account and an isolated organization workspace.")}</span>
           </section>
         ) : null}
 
-        <section className={`panel product-flow product-flow--${stage}`} aria-label="تقدم المشروع">
+        <section className={`panel product-flow product-flow--${stage}`} aria-label={text("تقدم المشروع", "Project progress")}>
           <div className="section-title">
             <Sparkles size={20} aria-hidden="true" />
-            <h2>مسار المستخدم الحالي</h2>
+            <h2>{text("مسار المستخدم الحالي", "Current journey")}</h2>
           </div>
           <div className="stage-rail">
             {appStages.map((item, index) => (
@@ -1751,17 +1751,17 @@ function SessionWorkspace() {
           <div className="journey-metrics">
             <article>
               <LayoutDashboard size={18} aria-hidden="true" />
-              <span>المشاريع</span>
+              <span>{text("المشاريع", "Projects")}</span>
               <strong>{projects.length}</strong>
             </article>
             <article>
               <Database size={18} aria-hidden="true" />
-              <span>الأدلة المرتبطة</span>
+              <span>{text("الأدلة المرتبطة", "Linked evidence")}</span>
               <strong>{evidenceLinkCount}</strong>
             </article>
             <article>
               <AlertTriangle size={18} aria-hidden="true" />
-              <span>نواقص الجاهزية</span>
+              <span>{text("نواقص الجاهزية", "Missing requirements")}</span>
               <strong>{readinessBlocked.length}</strong>
             </article>
             <article>
@@ -1773,9 +1773,9 @@ function SessionWorkspace() {
         </section>
 
         {stage !== "dashboard" ? (
-          <section className="next-action-banner" aria-label="الخطوة التالية">
+          <section className="next-action-banner" aria-label={text("الخطوة التالية", "Next action")}>
             <div>
-              <span>الخطوة التالية</span>
+              <span>{text("الخطوة التالية", "Next action")}</span>
               <strong>{commandAction.label}</strong>
               <p>{commandAction.detail}</p>
             </div>
