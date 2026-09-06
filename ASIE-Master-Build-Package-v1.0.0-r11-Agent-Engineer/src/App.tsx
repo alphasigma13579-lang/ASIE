@@ -335,8 +335,54 @@ const assumptionReviewGroups = [
   { id: "funding", label: "التمويل والخصم", labelEn: "Funding and discounting", keys: ["loan_grace_months", "annual_discount_rate", "working_capital_months", "debt_amount", "annual_interest_rate", "loan_years"] },
 ];
 
-function assumptionArabicLabel(item: AssumptionRecord): string {
-  return assumptionArabicLabels[item.input_key] ?? item.label;
+const assumptionEnglishLabels: Record<string, string> = {
+  primary_sector_id: "Sector",
+  subsector_id: "Detailed activity",
+  activity_description: "Activity description",
+  location_scope: "Market scope",
+  location_country: "Country",
+  location_region: "Region",
+  location_city: "City",
+  location_district: "District or street",
+  location_latitude: "Latitude",
+  location_longitude: "Longitude",
+  gap_statement: "Market need",
+  competitive_edge: "Competitive advantage",
+  target_audience: "Target audience",
+  intake_mode: "Detail entry method",
+  capital_available: "Available capital",
+  startup_cost: "Startup cost",
+  monthly_fixed_cost: "Monthly fixed costs",
+  other_monthly_costs: "Other monthly costs",
+  unit_price: "Sale or service price",
+  variable_cost: "Service delivery cost",
+  monthly_units: "Monthly customers or orders",
+  use_operating_capacity: "Use operating capacity",
+  capacity_units_per_day: "Daily operating capacity",
+  operating_days_per_month: "Operating days per month",
+  utilization_rate: "Capacity utilization",
+  payroll_monthly: "Monthly payroll",
+  rent_monthly: "Monthly rent",
+  utilities_monthly: "Monthly utilities",
+  marketing_monthly: "Monthly marketing",
+  maintenance_monthly: "Monthly maintenance",
+  capex_equipment: "Equipment cost",
+  capex_fitout: "Fit-out cost",
+  capex_licenses_local: "License cost",
+  depreciation_years: "Depreciation years",
+  equity_contribution: "Owner contribution",
+  loan_grace_months: "Grace period",
+  annual_discount_rate: "Annual discount rate",
+  working_capital_months: "Working capital months",
+  debt_amount: "Loan amount",
+  annual_interest_rate: "Annual financing cost",
+  loan_years: "Loan term",
+};
+
+function assumptionLabel(item: AssumptionRecord, locale: "ar" | "en"): string {
+  return locale === "ar"
+    ? assumptionArabicLabels[item.input_key] ?? customerBusinessText(item.label, locale)
+    : assumptionEnglishLabels[item.input_key] ?? customerBusinessText(item.label, locale);
 }
 
 function monthlyFixedCostFromInputs(inputs: ProjectInputs): number {
@@ -1610,7 +1656,7 @@ function SessionWorkspace() {
         <nav>
           {appStageGroups.map((group) => (
             <div className="nav-group" key={group.label}>
-              <span className="nav-group__label">{group.label}</span>
+              <span className="nav-group__label">{locale === "ar" ? group.label : group.labelEn}</span>
               {group.stages.map((stageId) => {
                 const item = appStages.find((candidate) => candidate.id === stageId);
                 if (!item) return null;
@@ -1621,8 +1667,8 @@ function SessionWorkspace() {
                     onClick={() => setStage(item.id)}
                     aria-current={stage === item.id ? "page" : undefined}
                   >
-                    <strong>{item.label}</strong>
-                    <span>{item.description}</span>
+                    <strong>{locale === "ar" ? item.label : item.labelEn}</strong>
+                    <span>{locale === "ar" ? item.description : item.descriptionEn}</span>
                   </button>
                 );
               })}
@@ -1698,7 +1744,7 @@ function SessionWorkspace() {
                 onClick={() => setStage(item.id)}
               >
                 <span>{index + 1}</span>
-                <strong>{item.label}</strong>
+                <strong>{locale === "ar" ? item.label : item.labelEn}</strong>
               </button>
             ))}
           </div>
@@ -1797,26 +1843,26 @@ function SessionWorkspace() {
               <h2>معالج المشروع</h2>
             </div>
             <div className="wizard-rail" aria-label="تقدم معالج المشروع">
-              <span className="wizard-progress-label">الخطوة {wizardStep + 1} من {wizardJourney.length}</span>
-              <strong>{wizardJourney[wizardStep].label}</strong>
+              <span className="wizard-progress-label">{text("الخطوة", "Step")} {wizardStep + 1} {text("من", "of")} {wizardJourney.length}</span>
+              <strong>{locale === "ar" ? wizardJourney[wizardStep].label : wizardJourney[wizardStep].labelEn}</strong>
               <span className="wizard-progress-track" aria-hidden="true">
                 <span style={{ width: `${((wizardStep + 1) / wizardJourney.length) * 100}%` }} />
               </span>
             </div>
             <div className="wizard-focus">
               <div>
-                <p className="eyebrow">الخطوة {wizardStep + 1} من {wizardJourney.length}</p>
-                <h2>{wizardJourney[wizardStep].label}</h2>
+                <p className="eyebrow">{text("الخطوة", "Step")} {wizardStep + 1} {text("من", "of")} {wizardJourney.length}</p>
+                <h2>{locale === "ar" ? wizardJourney[wizardStep].label : wizardJourney[wizardStep].labelEn}</h2>
                 <p className="muted">
-                  {wizardStepHelp[wizardStep] ?? "أكمل هذه الخطوة ثم تابع."}
+                  {(locale === "ar" ? wizardStepHelp : wizardStepHelpEnglish)[wizardStep] ?? text("أكمل هذه الخطوة ثم تابع.", "Complete this step to continue.")}
                 </p>
               </div>
               <div className="button-row">
                 <button disabled={wizardStep === 0} onClick={() => setWizardStep((current) => Math.max(current - 1, 0))}>
-                  السابق
+                  {text("السابق", "Previous")}
                 </button>
                 <button className="primary-button" disabled={isBusy || Boolean(validateWizardStep())} onClick={handleWizardPrimary}>
-                  {wizardStep < wizardJourney.length - 1 ? "التالي" : "افحص النواقص"}
+                  {wizardStep < wizardJourney.length - 1 ? text("التالي", "Next") : text("افحص النواقص", "Check missing inputs")}
                 </button>
               </div>
             </div>
@@ -1891,13 +1937,13 @@ function SessionWorkspace() {
                   type="button"
                   className={item.status === "ready" ? "workflow-step workflow-step--done workflow-step--action" : "workflow-step workflow-step--action"}
                   key={item.step_id}
-                  title={`${item.label}: ${item.message}`}
+                  title={`${customerBusinessText(item.label, locale)}: ${customerNarrativeText(item.message, locale)}`}
                   onClick={() => navigateFromReadiness(item.step_id, item.status)}
                 >
                   <span>{index + 1}</span>
-                  <strong>{item.label}</strong>
-                  <small>{item.message}</small>
-                  <em>{item.status === "ready" ? "عرض المدخلات" : "انتقل لإكمالها"}</em>
+                  <strong>{customerBusinessText(item.label, locale)}</strong>
+                  <small>{customerNarrativeText(item.message, locale)}</small>
+                  <em>{item.status === "ready" ? text("عرض المدخلات", "View inputs") : text("انتقل لإكمالها", "Complete inputs")}</em>
                 </button>
               ))}
             </div>
@@ -2288,9 +2334,9 @@ function SessionWorkspace() {
               <h2>مسار المشروع المؤقت</h2>
             </div>
             <div className="workflow-steps">
-              {(readiness?.steps ?? workflow.map((label, index) => ({
-                step_id: label,
-                label,
+              {(readiness?.steps ?? workflow.map((copy, index) => ({
+                step_id: `fallback-${index}`,
+                label: locale === "ar" ? copy.ar : copy.en,
                 status: index <= activeStep ? "ready" : "needs_input",
                 message: "",
               }))).map((item, index) => (
@@ -2786,8 +2832,8 @@ function SessionWorkspace() {
                           <article className={pendingCount ? "review-group" : "review-group review-group--complete"} key={group.id}>
                             <div className="review-group__summary">
                               <div>
-                                <strong>{group.label}</strong>
-                                <small>{groupItems.length} بنود · {pendingCount ? `${pendingCount} بانتظار المراجعة` : "تمت مراجعتها"}</small>
+                                <strong>{locale === "ar" ? group.label : group.labelEn}</strong>
+                                <small>{groupItems.length} {text("بنود", "items")} · {pendingCount ? `${pendingCount} ${text("بانتظار المراجعة", "awaiting review")}` : text("تمت مراجعتها", "Reviewed")}</small>
                               </div>
                               {pendingCount ? (
                                 <button type="button" className="primary-button" disabled={isBusy} onClick={() => handleApproveAssumptions(groupItems)}>
@@ -2802,7 +2848,7 @@ function SessionWorkspace() {
                               <div className="review-group__items">
                                 {groupItems.map((item) => (
                                   <div key={item.assumption_id}>
-                                    <strong>{assumptionArabicLabel(item)}</strong>
+                                    <strong>{assumptionLabel(item, locale)}</strong>
                                     <span>{item.value || "غير محدد"} {item.unit === "unit" ? "" : item.unit}</span>
                                     <small>{item.review_status === "approved" ? "معتمد" : "بانتظار المراجعة"}</small>
                                   </div>
