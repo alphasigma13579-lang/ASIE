@@ -110,12 +110,12 @@ import type {
 } from "./contracts";
 
 const workflow = [
-  "إنشاء مشروع",
-  "مدخلات أساسية",
-  "اختيار العمق",
-  "تشغيل التقييم",
-  "مراجعة الحكم",
-  "تقرير اللقطة",
+  { ar: "إنشاء مشروع", en: "Create project" },
+  { ar: "مدخلات أساسية", en: "Essential inputs" },
+  { ar: "اختيار العمق", en: "Choose detail level" },
+  { ar: "تشغيل التقييم", en: "Run assessment" },
+  { ar: "مراجعة القرار", en: "Review decision" },
+  { ar: "التقرير المحفوظ", en: "Saved report" },
 ];
 
 type AppStage = "dashboard" | "wizard" | "evidence" | "readiness" | "run" | "reality" | "decision" | "execution" | "architecture" | "snapshots";
@@ -127,22 +127,22 @@ function overlayFromLocation(): AppOverlay {
   return raw === "settings" || raw === "profiles" ? raw : null;
 }
 
-const appStages: Array<{ id: AppStage; label: string; description: string }> = [
-  { id: "dashboard", label: "الملخص", description: "أين وصلنا الآن؟" },
-  { id: "wizard", label: "عرّف مشروعك", description: "الفكرة والموقع والأرقام" },
-  { id: "evidence", label: "اربط الأدلة", description: "ملفاتك ومصادر الثقة" },
-  { id: "readiness", label: "افحص النواقص", description: "ما يمنع التحليل؟" },
-  { id: "run", label: "شغّل التحليل", description: "أنشئ مرجع القرار" },
-  { id: "reality", label: "ذكاء السوق والفرص", description: "مقارنات وتوصيات بعد الدراسة" },
-  { id: "decision", label: "افهم القرار", description: "الحكم وسببه" },
-  { id: "execution", label: "نفّذ التالي", description: "خطوات بعد القرار" },
-  { id: "snapshots", label: "التقارير", description: "المخرجات المحفوظة" },
+const appStages: Array<{ id: AppStage; label: string; labelEn: string; description: string; descriptionEn: string }> = [
+  { id: "dashboard", label: "الملخص", labelEn: "Summary", description: "أين وصلنا الآن؟", descriptionEn: "Where are we now?" },
+  { id: "wizard", label: "عرّف مشروعك", labelEn: "Set up your project", description: "الفكرة والموقع والأرقام", descriptionEn: "Concept, location, and figures" },
+  { id: "evidence", label: "اربط الأدلة", labelEn: "Link evidence", description: "ملفاتك ومصادر الثقة", descriptionEn: "Files and trusted sources" },
+  { id: "readiness", label: "افحص النواقص", labelEn: "Check missing inputs", description: "ما يمنع التحليل؟", descriptionEn: "What blocks the analysis?" },
+  { id: "run", label: "شغّل التحليل", labelEn: "Run analysis", description: "أنشئ نتيجة قابلة للمراجعة", descriptionEn: "Create a reviewable result" },
+  { id: "reality", label: "ذكاء السوق والفرص", labelEn: "Market intelligence", description: "مقارنات وتوصيات بعد الدراسة", descriptionEn: "Comparisons and opportunities after analysis" },
+  { id: "decision", label: "افهم القرار", labelEn: "Understand the decision", description: "القرار وأسبابه", descriptionEn: "Decision and reasons" },
+  { id: "execution", label: "نفّذ التالي", labelEn: "Next actions", description: "خطوات بعد القرار", descriptionEn: "Actions after the decision" },
+  { id: "snapshots", label: "التقارير", labelEn: "Reports", description: "التقارير المحفوظة", descriptionEn: "Saved reports" },
 ];
 
-const appStageGroups: Array<{ label: string; stages: AppStage[] }> = [
-  { label: "مسار الدراسة", stages: ["dashboard", "wizard"] },
-  { label: "التحقق قبل التشغيل", stages: ["evidence", "readiness"] },
-  { label: "القرار والتنفيذ", stages: ["run", "reality", "decision", "execution", "snapshots"] },
+const appStageGroups: Array<{ label: string; labelEn: string; stages: AppStage[] }> = [
+  { label: "مسار الدراسة", labelEn: "Study journey", stages: ["dashboard", "wizard"] },
+  { label: "التحقق قبل التشغيل", labelEn: "Pre-analysis checks", stages: ["evidence", "readiness"] },
+  { label: "القرار والتنفيذ", labelEn: "Decision and execution", stages: ["run", "reality", "decision", "execution", "snapshots"] },
 ];
 
 const PRODUCT_ENTRY_STORAGE_KEY = "asie.product_entry.v1";
@@ -171,14 +171,14 @@ function stageFromLocation(): AppStage {
 }
 
 const wizardJourney = [
-  { label: "موقع العميل", icon: MapPin },
-  { label: "القطاع", icon: Layers3 },
-  { label: "التصنيف الدقيق", icon: Target },
-  { label: "اسم المشروع", icon: Rocket },
-  { label: "الفجوة والميزة", icon: AlertTriangle },
-  { label: "الجمهور", icon: Users },
-  { label: "رأس المال", icon: Calculator },
-  { label: "طريقة التفاصيل", icon: Database },
+  { label: "موقع المشروع", labelEn: "Project location", icon: MapPin },
+  { label: "القطاع", labelEn: "Sector", icon: Layers3 },
+  { label: "التصنيف الدقيق", labelEn: "Detailed category", icon: Target },
+  { label: "اسم المشروع", labelEn: "Project name", icon: Rocket },
+  { label: "الفجوة والميزة", labelEn: "Market need and advantage", icon: AlertTriangle },
+  { label: "الجمهور", labelEn: "Target audience", icon: Users },
+  { label: "رأس المال", labelEn: "Available capital", icon: Calculator },
+  { label: "طريقة التفاصيل", labelEn: "How to add details", icon: Database },
 ];
 
 const firstMinuteJourney: Array<{ stage: AppStage; title: string; body: string }> = [
@@ -193,11 +193,21 @@ const wizardStepHelp = [
   "ابدأ بالمكان. الموقع هو أول عدسة لفهم السوق والمنافسين والتكاليف.",
   "اختر المجال الكبير للمشروع: صحة، تعليم، تجارة، تقنية، أو غيره.",
   "اختر النوع الدقيق داخل القطاع حتى لا تكون الدراسة عامة.",
-  "سمّ المشروع بلغة بسيطة. الاسم يساعدك لاحقاً في قراءة التقرير.",
-  "قل لنا لماذا يحتاج السوق هذا المشروع، وما الذي يجعله مختلفاً.",
+  "سمّ المشروع بلغة بسيطة. الاسم يساعدك لاحقًا في قراءة التقرير.",
+  "قل لنا لماذا يحتاج السوق هذا المشروع، وما الذي يجعله مختلفًا.",
   "حدد من سيدفع أو يستفيد: أفراد، مؤسسات، شركات، أو مزيج.",
   "ابدأ برأس المال المتاح. لا تحتاج كل التفاصيل من أول دقيقة.",
   "اختر كيف تريد تعبئة باقي الأرقام: بنفسك، من ملف، أو بمساعدة تقديرية عند تفعيلها.",
+];
+const wizardStepHelpEnglish = [
+  "Start with the place. Location shapes the market, competitors, and costs.",
+  "Choose the project's broad sector, such as health, education, retail, or technology.",
+  "Choose a precise category so the analysis is not overly general.",
+  "Give the project a clear name that will remain recognizable in reports.",
+  "Explain why the market needs this project and what makes it different.",
+  "Identify who will pay or benefit: individuals, organizations, businesses, or a mix.",
+  "Start with the available capital; you do not need every detail immediately.",
+  "Choose how to provide the remaining figures: manually, from a file, or through assisted estimates when available.",
 ];
 
 const arabicSubsectorLabels: Record<string, string> = {
@@ -318,11 +328,11 @@ const assumptionArabicLabels: Record<string, string> = {
 };
 
 const assumptionReviewGroups = [
-  { id: "identity", label: "هوية المشروع وموقعه", keys: ["primary_sector_id", "subsector_id", "activity_description", "location_scope", "location_country", "location_region", "location_city", "location_district", "location_latitude", "location_longitude"] },
-  { id: "market", label: "السوق والميزة والجمهور", keys: ["gap_statement", "competitive_edge", "target_audience", "intake_mode"] },
-  { id: "operations", label: "التشغيل والطاقة", keys: ["monthly_units", "use_operating_capacity", "capacity_units_per_day", "operating_days_per_month", "utilization_rate"] },
-  { id: "finance", label: "التكاليف والإيرادات", keys: ["capital_available", "startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "payroll_monthly", "rent_monthly", "utilities_monthly", "marketing_monthly", "maintenance_monthly", "capex_equipment", "capex_fitout", "capex_licenses_local", "depreciation_years", "equity_contribution"] },
-  { id: "funding", label: "التمويل والخصم", keys: ["loan_grace_months", "annual_discount_rate", "working_capital_months", "debt_amount", "annual_interest_rate", "loan_years"] },
+  { id: "identity", label: "هوية المشروع وموقعه", labelEn: "Project identity and location", keys: ["primary_sector_id", "subsector_id", "activity_description", "location_scope", "location_country", "location_region", "location_city", "location_district", "location_latitude", "location_longitude"] },
+  { id: "market", label: "السوق والميزة والجمهور", labelEn: "Market, advantage, and audience", keys: ["gap_statement", "competitive_edge", "target_audience", "intake_mode"] },
+  { id: "operations", label: "التشغيل والطاقة", labelEn: "Operations and capacity", keys: ["monthly_units", "use_operating_capacity", "capacity_units_per_day", "operating_days_per_month", "utilization_rate"] },
+  { id: "finance", label: "التكاليف والإيرادات", labelEn: "Costs and revenue", keys: ["capital_available", "startup_cost", "monthly_fixed_cost", "unit_price", "variable_cost", "payroll_monthly", "rent_monthly", "utilities_monthly", "marketing_monthly", "maintenance_monthly", "capex_equipment", "capex_fitout", "capex_licenses_local", "depreciation_years", "equity_contribution"] },
+  { id: "funding", label: "التمويل والخصم", labelEn: "Funding and discounting", keys: ["loan_grace_months", "annual_discount_rate", "working_capital_months", "debt_amount", "annual_interest_rate", "loan_years"] },
 ];
 
 function assumptionArabicLabel(item: AssumptionRecord): string {
