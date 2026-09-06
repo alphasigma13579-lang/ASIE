@@ -25,6 +25,7 @@ import {
   fetchProjects,
   fetchRunOverview,
 } from "./api";
+import { customerErrorText, useCustomerLanguage } from "./customerLanguage";
 import type { OutputEnvelope, Project, ProjectOverview, ProjectReadiness } from "./contracts";
 
 /* ------------------------------------------------------------------ */
@@ -166,6 +167,7 @@ function Soon({ title, icon, note }: { title: string; icon: React.ReactNode; not
 /* ------------------------------------------------------------------ */
 
 export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: CommandCenterProps) {
+  const { locale, text } = useCustomerLanguage();
   const [section, setSection] = useState<CCSection>("dashboard");
   const [bundles, setBundles] = useState<Bundle[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
       setBundles(next);
     } catch (err) {
       setBundles(null);
-      setLoadError(err instanceof Error ? err.message : "تعذر تحميل لوحة القيادة.");
+      setLoadError(customerErrorText(err, locale));
     }
   }, []);
 
@@ -282,12 +284,12 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
           <div className="cc-kpi-strip">
             <article className="cc-kpi">
               <strong>{verdict.label}</strong>
-              <span>آخر حكم سيادي {ov ? `· إسقاط ${ov.snapshot.snapshot_id.slice(-6)}` : ""}</span>
+              <span>{text("آخر قرار محفوظ", "Latest saved decision")}</span>
               <button className="cc-link" onClick={() => setSection("decision")}>افتح تفسير القرار ←</button>
             </article>
             <article className="cc-kpi">
               <strong>{fmtPct(confidence)}</strong>
-              <span>احتمال اجتياز Monte Carlo</span>
+              <span>{text("احتمال اجتياز اختبار السيناريوهات", "Scenario test pass probability")}</span>
               <button className="cc-link" onClick={() => setSection("reality")}>حفر في السيناريوهات ←</button>
             </article>
             <article className="cc-kpi">
@@ -491,7 +493,7 @@ function DecisionToday({
         <div className={`cc-verdict cc-verdict--${verdict.tone}`}>
           <span>القرار</span>
           <strong>{verdict.label}</strong>
-          <small>إسقاط {overview.snapshot.snapshot_id.slice(-8)} · {formatRelative(overview.snapshot.created_at)}</small>
+          <small>{text("آخر تحديث", "Last updated")} · {formatRelative(overview.snapshot.created_at)}</small>
         </div>
         <div className="cc-decision-metrics">
           <article><span>درجة الثقة</span><strong>{fmtPct(conf)}</strong></article>
@@ -576,7 +578,7 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
   return (
     <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
       <article className="cc-card">
-        <h3><BarChart3 size={17} aria-hidden="true" /> محاكاة Monte Carlo</h3>
+        <h3><BarChart3 size={17} aria-hidden="true" /> {text("محاكاة السيناريوهات", "Scenario simulation")}</h3>
         <p className="cc-why">{mc.iterations.toLocaleString("ar-SA")} تشغيل محفوظ — توزيع الربح الشهري تحت الضغط.</p>
         <div className="cc-bars">
           {([["متشائم P10", p10, "#c0392b"], ["وسيط P50", p50, "#1f9d6c"], ["متفائل P90", p90, "#0b3b2d"]] as const).map(([label, v, color]) => (
@@ -662,7 +664,7 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
       <article className="cc-card">
         <h3><FileText size={17} aria-hidden="true" /> لماذا هذا القرار؟</h3>
         <p className="cc-reason">{overview.decision.reason}</p>
-        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict).label}</b><span>المرجع: {overview.snapshot.snapshot_id}</span></div></div>
+        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict).label}</b><span>{text("قرار محفوظ وقابل للمراجعة", "Saved and reviewable decision")}</span></div></div>
       </article>
       <article className="cc-card">
         <h3><BarChart3 size={17} aria-hidden="true" /> المؤشرات المؤثرة</h3>
@@ -700,7 +702,7 @@ function ReportsSection({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenSta
       <p className="cc-why">مكتبة المشروع — كل تقرير مرتبط بلقطة ثابتة. تُفتح المخرجات من غرفة التقارير لكل مشروع.</p>
       {withRuns.length ? withRuns.map((b) => (
         <div className="cc-row" key={b.project.project_id}>
-          <Chip tone="go">{b.overview!.snapshot.snapshot_id.slice(-6)}</Chip>
+          <Chip tone="go">{text("محفوظ", "Saved")}</Chip>
           <div className="cc-row__body">
             <b>{b.project.name}</b>
             <span>تقرير تنفيذي · دراسة جدوى · Decision Pack · PDF/DOCX/PPTX</span>
