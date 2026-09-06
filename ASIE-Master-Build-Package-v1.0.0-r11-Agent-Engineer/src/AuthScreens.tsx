@@ -8,6 +8,11 @@ import {
   type LoginResponse,
 } from "./api";
 import { BrandMark } from "./BrandMark";
+import {
+  CustomerLanguageSwitcher,
+  customerErrorText,
+  useCustomerLanguage,
+} from "./customerLanguage";
 
 export type AuthMode = "login" | "register" | "recover-request" | "recover-complete";
 
@@ -16,12 +21,8 @@ interface AuthScreenProps {
   onAuthenticated: (response: LoginResponse) => void;
 }
 
-/**
- * Sign-in surface for the client workspace. Three flows, all served by the
- * local API only: invitation-bound password registration, returning-user
- * login, and the local password-recovery record (no external email delivery).
- */
 export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScreenProps) {
+  const { locale, direction, text } = useCustomerLanguage();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,26 +61,27 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
         const result = await requestPasswordRecovery(email);
         if (result.recovery_token) {
           setRecoveryToken(result.recovery_token);
-          setNotice("أُنشئ رمز استعادة محلي (صالح 15 دقيقة). لا يوجد إرسال بريدي خارجي في هذه النسخة.");
           switchMode("recover-complete");
-          setNotice("أُنشئ رمز استعادة محلي (صالح 15 دقيقة). لا يوجد إرسال بريدي خارجي في هذه النسخة.");
+          setNotice(text(
+            "أُنشئ رمز استعادة محلي صالح لمدة 15 دقيقة. لا يوجد إرسال بريدي في هذه النسخة.",
+            "A local recovery code valid for 15 minutes was created. Email delivery is not enabled in this release."
+          ));
         } else {
-          setNotice("إن كان البريد مسجلاً فستصله تعليمات الاستعادة عند تفعيل الإرسال الخارجي.");
+          setNotice(text(
+            "إذا كان البريد مسجلًا فستظهر تعليمات الاستعادة عند تفعيل الإرسال.",
+            "If the email is registered, recovery instructions will be available when delivery is enabled."
+          ));
         }
       } else {
         await completePasswordRecovery(recoveryToken, newPassword);
-        setNotice("اكتملت الاستعادة. سجّل الدخول بكلمة المرور الجديدة.");
         switchMode("login");
-        setNotice("اكتملت الاستعادة. سجّل الدخول بكلمة المرور الجديدة.");
+        setNotice(text(
+          "اكتملت الاستعادة. سجّل الدخول بكلمة المرور الجديدة.",
+          "Recovery is complete. Sign in with your new password."
+        ));
       }
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "تعذر إتمام الطلب";
-      if (message.includes("invalid_credentials")) setError("بيانات الدخول غير صحيحة.");
-      else if (message.includes("registration_invite_invalid")) setError("رمز الدعوة غير صالح أو لا يطابق هذا البريد.");
-      else if (message.includes("password_length_must_be_between_6_and_12_characters")) setError("يجب أن تتكون كلمة المرور من 6 إلى 12 حرفًا.");
-      else if (message.includes("email_already_registered")) setError("هذا البريد مسجل بالفعل. استخدم تسجيل الدخول.");
-      else if (message.includes("invalid_or_expired_recovery_token")) setError("رمز الاستعادة غير صالح أو منتهي. اطلب رمزاً جديداً.");
-      else setError(message);
+      setError(customerErrorText(reason, locale));
     } finally {
       setBusy(false);
     }
@@ -88,33 +90,37 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
   const titles: Record<AuthMode, { icon: ReactElement; title: string; body: string }> = {
     login: {
       icon: <LogIn size={20} aria-hidden="true" />,
-      title: "تسجيل الدخول إلى مساحة العمل",
-      body: "جلسات محلية موقّتة (8 ساعات) بتخزين هاش فقط على الخادم.",
+      title: text("تسجيل الدخول إلى مساحة العمل", "Sign in to your workspace"),
+      body: text("ادخل إلى مشاريعك المحفوظة بأمان.", "Access your saved projects securely."),
     },
     register: {
       icon: <UserPlus size={20} aria-hidden="true" />,
-      title: "إنشاء حساب بيتا",
-      body: "التسجيل متاح للمستخدمين المدعوين فقط. ينشئ حسابك ومنظمتك الخاصة.",
+      title: text("إنشاء حساب بيتا", "Create a beta account"),
+      body: text(
+        "التسجيل متاح للمدعوين فقط، وينشئ مساحة مستقلة لحسابك.",
+        "Registration is invitation-only and creates an isolated workspace for your account."
+      ),
     },
     "recover-request": {
       icon: <MailQuestion size={20} aria-hidden="true" />,
-      title: "استعادة كلمة المرور",
-      body: "أدخل بريدك لإنشاء رمز استعادة محلي.",
+      title: text("استعادة كلمة المرور", "Recover your password"),
+      body: text("أدخل بريدك لبدء الاستعادة.", "Enter your email to begin recovery."),
     },
     "recover-complete": {
       icon: <KeyRound size={20} aria-hidden="true" />,
-      title: "تعيين كلمة مرور جديدة",
-      body: "ألصق رمز الاستعادة ثم اختر كلمة مرور جديدة.",
+      title: text("تعيين كلمة مرور جديدة", "Set a new password"),
+      body: text("أدخل رمز الاستعادة واختر كلمة مرور جديدة.", "Enter the recovery code and choose a new password."),
     },
   };
   const current = titles[mode];
 
   return (
-    <main id="main-content" className="admin-shell">
+    <main id="main-content" className="admin-shell" dir={direction}>
       <section className="admin-login">
+        <div className="auth-screen__language"><CustomerLanguageSwitcher /></div>
         <div className="admin-mark">
           <BrandMark size="sm" />
-          <span>ASIE / مساحة العميل</span>
+          <span>{text("ASIE / مساحة العميل", "ASIE / Customer workspace")}</span>
         </div>
         <h1>{current.title}</h1>
         <p>{current.body}</p>
@@ -122,73 +128,72 @@ export function AuthScreen({ initialMode = "login", onAuthenticated }: AuthScree
           {mode === "register" ? (
             <>
               <label>
-                الاسم المعروض
+                {text("الاسم المعروض", "Display name")}
                 <input required maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
               </label>
               <label>
-                رمز الدعوة
+                {text("رمز الدعوة", "Invitation code")}
                 <input type="password" required autoComplete="one-time-code" spellCheck={false} autoCorrect="off" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} />
               </label>
             </>
           ) : null}
           {mode !== "recover-complete" ? (
             <label>
-              البريد المحلي
+              {text("البريد الإلكتروني", "Email")}
               <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
           ) : null}
           {mode === "login" || mode === "register" ? (
             <label>
-              كلمة المرور
+              {text("كلمة المرور", "Password")}
               <input type="password" required minLength={6} maxLength={12} value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
           ) : null}
           {mode === "recover-complete" ? (
             <>
               <label>
-                رمز الاستعادة
+                {text("رمز الاستعادة", "Recovery code")}
                 <input required value={recoveryToken} onChange={(event) => setRecoveryToken(event.target.value)} />
               </label>
               <label>
-                كلمة المرور الجديدة
-                <input type="password" required minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                {text("كلمة المرور الجديدة", "New password")}
+                <input type="password" required minLength={6} maxLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
               </label>
             </>
           ) : null}
-          {error ? (
-            <p className="admin-error" role="alert">
-              {error}
-            </p>
-          ) : null}
+          {error ? <p className="admin-error" role="alert">{error}</p> : null}
           {notice ? <p className="muted">{notice}</p> : null}
           <button className="primary-button" disabled={busy}>
-            {busy ? "جارٍ المعالجة" : mode === "login" ? "دخول" : mode === "register" ? "إنشاء الحساب" : mode === "recover-request" ? "إصدار رمز الاستعادة" : "تعيين كلمة المرور"}
+            {busy
+              ? text("جارٍ المعالجة", "Processing")
+              : mode === "login"
+                ? text("دخول", "Sign in")
+                : mode === "register"
+                  ? text("إنشاء الحساب", "Create account")
+                  : mode === "recover-request"
+                    ? text("إصدار رمز الاستعادة", "Create recovery code")
+                    : text("تعيين كلمة المرور", "Set password")}
           </button>
         </form>
         <div className="auth-links">
-          {mode !== "login" ? (
-            <button type="button" className="landing-text-link" onClick={() => switchMode("login")}>
-              تسجيل الدخول
-            </button>
-          ) : null}
-          {mode !== "register" ? (
-            <button type="button" className="landing-text-link" onClick={() => switchMode("register")}>
-              إنشاء حساب بيتا
-            </button>
-          ) : null}
-          {mode !== "recover-request" ? (
-            <button type="button" className="landing-text-link" onClick={() => switchMode("recover-request")}>
-              نسيت كلمة المرور
-            </button>
-          ) : null}
+          {mode !== "login" ? <button type="button" className="landing-text-link" onClick={() => switchMode("login")}>{text("تسجيل الدخول", "Sign in")}</button> : null}
+          {mode !== "register" ? <button type="button" className="landing-text-link" onClick={() => switchMode("register")}>{text("إنشاء حساب بيتا", "Create beta account")}</button> : null}
+          {mode !== "recover-request" ? <button type="button" className="landing-text-link" onClick={() => switchMode("recover-request")}>{text("نسيت كلمة المرور", "Forgot password")}</button> : null}
         </div>
         {mode === "register" ? (
           <p className="muted" role="status">
-            في البيتا المغلقة، التسجيل العادي بالدعوة فقط. تسجيل Google مؤجل لنسخة لاحقة بعد اعتماده واختباره.
+            {text(
+              "في البيتا المغلقة، التسجيل بالدعوة فقط. تسجيل Google مؤجل إلى نسخة لاحقة.",
+              "Closed beta registration requires an invitation. Google sign-in is planned for a later release."
+            )}
           </p>
         ) : null}
         <p className="muted auth-security-note">
-          <ShieldCheck size={14} aria-hidden="true" /> كلمات المرور بـ PBKDF2-SHA256 (310 ألف تكرار) والجلسات هاش فقط — لا تُخزّن الأسرار بصيغة صريحة.
+          <ShieldCheck size={14} aria-hidden="true" />
+          {text(
+            "تُحفظ كلمات المرور والجلسات بصيغة آمنة، ولا تُخزّن الأسرار كنص صريح.",
+            "Passwords and sessions are stored securely; secrets are never stored as plain text."
+          )}
         </p>
       </section>
     </main>
