@@ -9,7 +9,6 @@ import { DIBControlledFinanceWiring } from "./DIBControlledFinanceWiring";
 import { DIBE2EScenario } from "./DIBE2EScenario";
 import { DIBIntakeItemGovernance } from "./DIBIntakeItemGovernance";
 import { DIBManifestRunReadiness } from "./DIBManifestRunReadiness";
-import { DIBProjectCardDirectActionMount } from "./DIBProjectCardDirectAction";
 import { DIBProjectEntryPoint } from "./DIBProjectEntryPoint";
 import { DIBSnapshotProjectionHandoff } from "./DIBSnapshotProjectionHandoff";
 import { DIBWorkspace } from "./DIBWorkspace";
@@ -35,14 +34,11 @@ const routedApp = currentHash === "#admin"
               : currentHash.startsWith("#dib")
                 ? <EngineeringSurfaceGate><DIBWorkspace /></EngineeringSurfaceGate>
                 : <App />;
-const showDIBCardDirectAction = !currentHash.startsWith("#admin") && !currentHash.startsWith("#dib");
-
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <CustomerLanguageProvider>
       {routedApp}
       <ASIECompleteSurfaceMount />
-      {showDIBCardDirectAction ? <DIBProjectCardDirectActionMount /> : null}
     </CustomerLanguageProvider>
   </React.StrictMode>
 );

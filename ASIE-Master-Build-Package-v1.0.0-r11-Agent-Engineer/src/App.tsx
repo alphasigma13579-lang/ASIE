@@ -548,10 +548,12 @@ function NumberField({
   label,
   value,
   onChange,
+  inputId,
 }: {
   label: string;
   value: number;
   onChange: (nextValue: number) => void;
+  inputId?: string;
 }) {
   const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? value : 0));
   const [isEditing, setIsEditing] = useState(false);
@@ -590,6 +592,7 @@ function NumberField({
       <span>{label}</span>
       <span className="number-input-control">
         <input
+          id={inputId}
           type="text"
           inputMode="decimal"
           dir="ltr"
@@ -700,6 +703,10 @@ function SessionWorkspace() {
   const historyNavigationRef = useRef(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [maxUnlockedWizardStep, setMaxUnlockedWizardStep] = useState(0);
+  const [missingInputReturnStage, setMissingInputReturnStage] = useState<AppStage | null>(() => {
+    const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
+    return stored && appStages.some((item) => item.id === stored) ? stored : null;
+  });
   const [showCustomSector, setShowCustomSector] = useState(false);
   const [showCustomSubsector, setShowCustomSubsector] = useState(false);
   const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
@@ -752,6 +759,9 @@ function SessionWorkspace() {
   const firstMissingInputLabel = firstIncompleteWizardStep >= 0
     ? validateWizardStepAt(firstIncompleteWizardStep)
     : readinessBlocked[0]?.message ?? null;
+  const firstMissingInputTarget = firstIncompleteWizardStep >= 0
+    ? missingInputTargetForStep(firstIncompleteWizardStep)
+    : "";
   const commandAction = !project
     ? { label: text("ابدأ تعريف المشروع", "Set up the project"), detail: text("لم تُنشأ مسودة مشروع بعد.", "No project draft has been created yet."), stage: "wizard" as AppStage, action: "navigate" as const }
     : !readiness
@@ -835,10 +845,14 @@ function SessionWorkspace() {
 
   useEffect(() => {
     const handleNavigateToMissingInput = () => {
+      const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
+      if (stored && appStages.some((item) => item.id === stored)) setMissingInputReturnStage(stored);
       const incompleteStep = wizardJourney.findIndex((_, index) => Boolean(validateWizardStepAt(index)));
       if (incompleteStep >= 0) {
+        const targetId = missingInputTargetForStep(incompleteStep);
         unlockAndOpenWizardStep(incompleteStep);
         setStage("wizard");
+        focusWizardTarget(targetId);
         return;
       }
       setStage("readiness");
@@ -1248,7 +1262,7 @@ function SessionWorkspace() {
           });
       setDatasets((items) => [dataset, ...items.filter((item) => item.dataset_id !== dataset.dataset_id)]);
       setSelectedDatasetId(dataset.dataset_id);
-      setFileImportStatus(`${dataset.title} · ${dataset.row_count} صف · ${dataset.columns.length} أعمدة`);
+      setFileImportStatus(`${dataset.title} · ${dataset.row_count} ${text("صف", "rows")} · ${dataset.columns.length} ${text("أعمدة", "columns")}`);
       if (project) {
         await loadProjectWorkspace(project.project_id);
       }
@@ -1417,6 +1431,58 @@ function SessionWorkspace() {
     }
   }
 
+  function missingInputTargetForStep(step: number): string {
+    if (step === 0) {
+      if (!saudiCitiesByRegion[form.inputs.location_region]) return "wizard-location-region";
+      if (!(saudiCitiesByRegion[form.inputs.location_region] ?? []).includes(form.inputs.location_city)) return "wizard-location-city";
+      return "wizard-location-district";
+    }
+    if (step === 1) return form.inputs.primary_sector_id === "CUSTOM" ? "wizard-custom-sector" : "wizard-sector-choices";
+    if (step === 2) return showCustomSubsector ? "wizard-custom-subsector" : "wizard-subsector-choices";
+    if (step === 3) return "wizard-project-name";
+    if (step === 4) return form.inputs.gap_statement?.trim() ? "wizard-advantage-choices" : "wizard-gap-choices";
+    if (step === 5) return "wizard-audience-choices";
+    if (step === 6) return "wizard-capital-amount";
+    if (step === 7) {
+      if (!form.inputs.intake_mode?.trim()) return "wizard-intake-choices";
+      if (form.inputs.intake_mode === "file") return "wizard-data-file";
+      if (form.inputs.startup_cost <= 0) return "wizard-startup-cost";
+      if (form.inputs.unit_price <= 0) return "wizard-unit-price";
+      if (form.inputs.monthly_units <= 0) return "wizard-monthly-units";
+      if (form.inputs.variable_cost > form.inputs.unit_price) return "wizard-variable-cost";
+      if (form.inputs.annual_discount_rate <= 0) return "wizard-discount-rate";
+      if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return "wizard-interest-rate";
+      if (form.inputs.debt_amount > 0 && form.inputs.loan_years <= 0) return "wizard-loan-years";
+      return "assumption-human-review";
+    }
+    return "";
+  }
+
+  function focusWizardTarget(targetId: string) {
+    if (!targetId) return;
+    window.setTimeout(() => {
+      const container = document.getElementById(targetId);
+      const candidate = container?.matches("input, select, button, textarea")
+        ? container
+        : container?.querySelector<HTMLElement>("input:not([disabled]), select:not([disabled]), button:not([disabled]), textarea:not([disabled])");
+      candidate?.focus({ preventScroll: true });
+      (candidate ?? container)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }
+
+  function rememberMissingInputReturnStage(candidate: AppStage) {
+    if (candidate === "wizard") return;
+    window.sessionStorage.setItem("asie.sanad.return_stage", candidate);
+    setMissingInputReturnStage(candidate);
+  }
+
+  function returnToMissingInputOrigin() {
+    const target = missingInputReturnStage;
+    window.sessionStorage.removeItem("asie.sanad.return_stage");
+    setMissingInputReturnStage(null);
+    if (target) setStage(target);
+  }
+
   function validateWizardStepAt(step: number): string | null {
     if (step === 0 && !saudiCitiesByRegion[form.inputs.location_region]) return text("اختر المنطقة من القائمة المعتمدة.", "Select a region from the approved list.");
     if (step === 0 && !(saudiCitiesByRegion[form.inputs.location_region] ?? []).includes(form.inputs.location_city)) return text("اختر المدينة من القائمة.", "Select a city from the list.");
@@ -1507,10 +1573,12 @@ function SessionWorkspace() {
       run: 7,
     };
     const target = wizardTargets[stepId] ?? 0;
+    rememberMissingInputReturnStage("readiness");
     setMaxUnlockedWizardStep((current) => Math.max(current, target));
     setWizardStep(target);
     setStage("wizard");
     setError(null);
+    focusWizardTarget(missingInputTargetForStep(target));
   }
 
   async function handleRunAndOpenMarketIntelligence() {
@@ -1693,7 +1761,7 @@ function SessionWorkspace() {
         </div>
       </aside>
 
-      <section className="workspace" data-asie-missing-label={firstMissingInputLabel ?? ""} data-asie-missing-count={readinessBlocked.length}>
+      <section className="workspace" data-asie-missing-label={firstMissingInputLabel ?? ""} data-asie-missing-target={firstMissingInputTarget} data-asie-missing-count={readinessBlocked.length}>
         <header className="topbar">
           <div>
             <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
@@ -2378,7 +2446,7 @@ function SessionWorkspace() {
               {sources.slice(0, 3).map((source) => (
                 <article key={source.source_id}>
                   <strong>{customerSourceName(source.publisher || source.source_id, locale)}</strong>
-                  <span>{statusText(source.state)}</span>
+                  <span>{statusText(source.state, locale)}</span>
                 </article>
               ))}
             </div>
@@ -2494,11 +2562,11 @@ function SessionWorkspace() {
               </button>
               <button disabled={!project || isBusy} onClick={handleLinkApprovedDataset} title={text("ربط البيانات بافتراض يحتاج دليلاً", "Link data to an assumption that needs evidence")}>
                 <BadgeCheck size={18} aria-hidden="true" />
-                <span>ربط دليل</span>
+                <span>{text("ربط دليل", "Link evidence")}</span>
               </button>
               <button disabled={!project || isBusy} onClick={handleLinkSectorCriterion} title={text("ربط البيانات بمتطلب قطاعي", "Link data to a sector requirement")}>
                 <Layers3 size={18} aria-hidden="true" />
-                <span>ربط معيار</span>
+                <span>{text("ربط معيار", "Link requirement")}</span>
               </button>
             </div>
             <div className="source-list">
@@ -2506,7 +2574,7 @@ function SessionWorkspace() {
                 <article key={dataset.dataset_id}>
                   <strong>{dataset.title}</strong>
                   <span>
-                    {statusText(dataset.review_status)} · جودة {statusText(dataset.notes.quality_review?.status ?? "unknown")} · {dataset.row_count} صف
+                    {statusText(dataset.review_status, locale)} · {text("الجودة", "Quality")} {statusText(dataset.notes.quality_review?.status ?? "unknown", locale)} · {dataset.row_count} {text("صف", "rows")}
                   </span>
                   <small>{dataset.row_count} {text("صف بيانات", "data rows")}</small>
                 </article>
@@ -2529,7 +2597,7 @@ function SessionWorkspace() {
               <dl className="source-summary">
                 <div>
                   <dt>{text("جودة مجموعة البيانات", "Dataset quality")}</dt>
-                  <dd>{selectedDataset.notes.quality_review.status}</dd>
+                  <dd>{statusText(selectedDataset.notes.quality_review.status, locale)}</dd>
                 </div>
                 <div>
                   <dt>{text("قيم مفقودة", "Missing values")}</dt>
@@ -2554,6 +2622,11 @@ function SessionWorkspace() {
           <div className="section-title">
             <Calculator size={20} aria-hidden="true" />
             <h2>{text("ابدأ مشروعك", "Set up your project")}</h2>
+            {stage === "wizard" && missingInputReturnStage ? (
+              <button type="button" className="secondary-action" onClick={returnToMissingInputOrigin}>
+                <ArrowLeft size={17} aria-hidden="true" /> {text("العودة إلى موضعك السابق", "Return to your previous place")}
+              </button>
+            ) : null}
           </div>
           <div className="guided-question-card">
             {wizardStep === 0 ? (
@@ -2566,12 +2639,12 @@ function SessionWorkspace() {
                 }} />
                 <div className="location-fields">
                   <label className="field"><span>{text("الدولة", "Country")}</span><input value={text("المملكة العربية السعودية", "Saudi Arabia")} readOnly aria-readonly="true" /></label>
-                  <label className="field"><span>{text("المنطقة", "Region")}</span><select value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">{text("اختر المنطقة", "Select region")}</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
-                  <label className="field"><span>{text("المدينة", "City")}</span><select value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => {
+                  <label className="field"><span>{text("المنطقة", "Region")}</span><select id="wizard-location-region" value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">{text("اختر المنطقة", "Select region")}</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
+                  <label className="field"><span>{text("المدينة", "City")}</span><select id="wizard-location-city" value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => {
                         updateStructuredLocation("location_city", event.target.value);
                         if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
                       }}><option value="">{text("اختر المدينة", "Select city")}</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
-                  <label className="field"><span>{text("الحي أو الشارع", "District or street")} <small>{text("(اختياري)", "(optional)")}</small></span><input maxLength={50} value={form.inputs.location_district} placeholder={text("مثال: حي العليا", "Example: Al Olaya district")} onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
+                  <label className="field"><span>{text("الحي أو الشارع", "District or street")} <small>{text("(اختياري)", "(optional)")}</small></span><input id="wizard-location-district" maxLength={50} value={form.inputs.location_district} placeholder={text("مثال: حي العليا", "Example: Al Olaya district")} onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
                   <label className="field"><span>{text("خط العرض", "Latitude")} <small>{text("(اختياري)", "(optional)")}</small></span><input type="number" step="any" value={form.inputs.location_latitude ?? ""} placeholder="24.7136" onChange={(event) => {
                     const raw = event.target.value;
                     updateStructuredLocation("location_latitude", raw === "" ? undefined : Number(raw));
@@ -2589,7 +2662,7 @@ function SessionWorkspace() {
                 <p className="guided-question-card__kicker">{text("القطاع", "Sector")}</p>
                 <h3>{text("في أي قطاع تريد اختبار المشروع؟", "Which sector does the project belong to?")}</h3>
                 <p>{text("اختر المجال الأقرب لفكرتك، ثم حدد النشاط بدقة.", "Select the sector closest to your idea, then choose the detailed activity.")}</p>
-                <div className="choice-grid choice-grid--sectors" role="group" aria-label={text("قطاعات المشروع", "Project sectors")}>
+                <div id="wizard-sector-choices" className="choice-grid choice-grid--sectors" role="group" aria-label={text("قطاعات المشروع", "Project sectors")}>
                   {sectorTaxonomy.map((item) => (
                     <button type="button" key={item.sector_id} className={form.inputs.primary_sector_id === item.sector_id ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
                       setShowCustomSector(false);
@@ -2603,7 +2676,7 @@ function SessionWorkspace() {
                 </div>
                 {showCustomSector ? (
                   <div className="guided-input-row">
-                    <label className="field"><span>{text("اسم القطاع", "Sector name")}</span><input autoFocus value={form.sector} placeholder={text("مثال: الصناعات الإبداعية", "Example: creative industries")} onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value, inputs: { ...current.inputs, primary_sector_id: "CUSTOM" } }))} /></label>
+                    <label className="field"><span>{text("اسم القطاع", "Sector name")}</span><input id="wizard-custom-sector" autoFocus value={form.sector} placeholder={text("مثال: الصناعات الإبداعية", "Example: creative industries")} onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value, inputs: { ...current.inputs, primary_sector_id: "CUSTOM" } }))} /></label>
                     <button type="button" className="primary-button" disabled={!form.sector.trim()} onClick={advanceWizardFromChoice}>{text("حفظ القطاع والمتابعة", "Save sector and continue")}</button>
                   </div>
                 ) : null}
@@ -2614,7 +2687,7 @@ function SessionWorkspace() {
                 <p className="guided-question-card__kicker">{text("التصنيف الدقيق", "Detailed category")}</p>
                 <h3>{text("ما نوع المشروع داخل هذا القطاع؟", "What type of project is this within the sector?")}</h3>
                 <p>{text("اختر النوع الذي يصف مشروعك بدقة. إذا لم تجده، أضف وصفك الخاص.", "Select the category that best describes your project. If it is not listed, add your own description.")}</p>
-                <div className="choice-grid" role="group" aria-label={text("التصنيف الدقيق", "Detailed category")}>
+                <div id="wizard-subsector-choices" className="choice-grid" role="group" aria-label={text("التصنيف الدقيق", "Detailed category")}>
                   {(selectedSector?.subsectors ?? [form.inputs.subsector_id]).map((item) => (
                     <button type="button" key={item} className={form.inputs.subsector_id === item ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ subsector_id: item }); advanceWizardFromChoice(); }}><strong>{locale === "ar" ? arabicSubsectorLabel(item) : item}</strong><small>{text("اختر هذا النشاط", "Select this activity")}</small></button>
                   ))}
@@ -2622,7 +2695,7 @@ function SessionWorkspace() {
                 </div>
                 {showCustomSubsector ? (
                   <div className="guided-input-row">
-                    <label className="field"><span>{text("وصف التصنيف", "Category description")}</span><input autoFocus value={form.inputs.subsector_id} placeholder={text("اكتب النشاط بدقة", "Describe the activity precisely")} onChange={(event) => updateInputs({ subsector_id: event.target.value })} /></label>
+                    <label className="field"><span>{text("وصف التصنيف", "Category description")}</span><input id="wizard-custom-subsector" autoFocus value={form.inputs.subsector_id} placeholder={text("اكتب النشاط بدقة", "Describe the activity precisely")} onChange={(event) => updateInputs({ subsector_id: event.target.value })} /></label>
                     <button type="button" className="primary-button" disabled={!form.inputs.subsector_id?.trim()} onClick={advanceWizardFromChoice}>{text("حفظ التصنيف والمتابعة", "Save category and continue")}</button>
                   </div>
                 ) : null}
@@ -2635,6 +2708,7 @@ function SessionWorkspace() {
                 <label className="field">
                   <span>{text("اسم بسيط وواضح", "A simple, clear name")}</span>
                   <input
+                    id="wizard-project-name"
                     maxLength={60}
                     value={form.name}
                     placeholder={text("مثال: عيادات النخبة", "Example: Elite Clinics")}
@@ -2658,8 +2732,8 @@ function SessionWorkspace() {
                 <p className="guided-question-card__kicker">{text("حاجة السوق والميزة", "Market need and advantage")}</p>
                 <h3>{text("ما الحاجة التي يلبيها مشروعك؟ وما ميزته؟", "What need does your project address, and what is its advantage?")}</h3>
                 <p>{text("لا تحتاج صياغة طويلة. اختر الأقرب، ويمكنك تعديلها أو كتابة خيارك.", "Keep it concise. Select the closest option, then edit it or add your own.")}</p>
-                <div className="choice-section"><strong>{text("ما الحاجة التي لاحظتها؟", "What need did you identify?")}</strong><div className="choice-grid choice-grid--compact">{[["الخدمة غير متوفرة في موقعي", "The service is unavailable in my area"], ["الانتظار أو الوصول صعب", "Waiting or access is difficult"], ["السعر مرتفع", "The price is high"], ["الجودة أو التخصص غير كافٍ", "Quality or specialisation is insufficient"]].map(([value, labelEn]) => <button type="button" key={value} className={form.inputs.gap_statement === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => updateInputs({ gap_statement: value })}>{locale === "ar" ? value : labelEn}</button>)}</div></div>
-                <div className="choice-section"><strong>{text("ما أقرب وصف لميزتك؟", "Which best describes your advantage?")}</strong><div className="choice-grid choice-grid--compact">{[["موقع أفضل", "Better location"], ["سرعة أعلى", "Faster service"], ["تخصص واضح", "Clear specialisation"], ["سعر منافس", "Competitive price"], ["تجربة أسهل", "Easier experience"]].map(([value, labelEn]) => <button type="button" key={value} className={form.inputs.competitive_edge === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
+                <div id="wizard-gap-choices" className="choice-section"><strong>{text("ما الحاجة التي لاحظتها؟", "What need did you identify?")}</strong><div className="choice-grid choice-grid--compact">{[["الخدمة غير متوفرة في موقعي", "The service is unavailable in my area"], ["الانتظار أو الوصول صعب", "Waiting or access is difficult"], ["السعر مرتفع", "The price is high"], ["الجودة أو التخصص غير كافٍ", "Quality or specialisation is insufficient"]].map(([value, labelEn]) => <button type="button" key={value} className={form.inputs.gap_statement === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => updateInputs({ gap_statement: value })}>{locale === "ar" ? value : labelEn}</button>)}</div></div>
+                <div id="wizard-advantage-choices" className="choice-section"><strong>{text("ما أقرب وصف لميزتك؟", "Which best describes your advantage?")}</strong><div className="choice-grid choice-grid--compact">{[["موقع أفضل", "Better location"], ["سرعة أعلى", "Faster service"], ["تخصص واضح", "Clear specialisation"], ["سعر منافس", "Competitive price"], ["تجربة أسهل", "Easier experience"]].map(([value, labelEn]) => <button type="button" key={value} className={form.inputs.competitive_edge === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => {
                           updateInputs({ competitive_edge: value, activity_description: value });
                           if (form.inputs.gap_statement) setTimeout(() => advanceWizardFromChoice(), 0);
                         }}>{locale === "ar" ? value : labelEn}</button>)}</div></div>
@@ -2670,7 +2744,7 @@ function SessionWorkspace() {
               <>
                 <p className="guided-question-card__kicker">{text("الجمهور", "Audience")}</p>
                 <h3>{text("من هو جمهور المشروع؟", "Who is the project for?")}</h3>
-                <div className="choice-grid" role="group" aria-label={text("جمهور المشروع", "Project audience")}>
+                <div id="wizard-audience-choices" className="choice-grid" role="group" aria-label={text("جمهور المشروع", "Project audience")}>
                   {[
                     ["individuals", "أفراد", "Individuals", "مستهلكون أو مرضى أو زوار", "Consumers, patients, or visitors"],
                     ["organizations", "مؤسسات", "Organisations", "جهات ومدارس ومنشآت", "Institutions, schools, and organisations"],
@@ -2695,14 +2769,14 @@ function SessionWorkspace() {
                 <p className="guided-question-card__kicker">{text("رأس المال", "Available capital")}</p>
                 <h3>{text("كم رأس المال المتاح لديك تقريبًا؟", "Approximately how much capital is available?")}</h3>
                 <div className="choice-grid choice-grid--capital">{[[100000,"100 ألف","100,000"],[200000,"200 ألف","200,000"],[500000,"500 ألف","500,000"],[1000000,"مليون","1,000,000"]].map(([value,labelAr,labelEn]) => <button type="button" key={value} className={form.inputs.capital_available === value ? "choice-card choice-card--active" : "choice-card"} onClick={() => { updateInputs({ capital_available: Number(value), equity_contribution: Number(value), startup_cost: Number(value) }); advanceWizardFromChoice(); }}><strong>{locale === "ar" ? labelAr : labelEn} {text("ريال", "SAR")}</strong><small>{text("اختيار سريع", "Quick choice")}</small></button>)}<button type="button" className="choice-card choice-card--add" onClick={() => setError(text("اكتب المبلغ الحقيقي في الحقل أسفل الخيارات.", "Enter the actual amount in the field below."))}><strong>{text("مبلغ آخر", "Another amount")}</strong><small>{text("أدخل الرقم بنفسك", "Enter the amount")}</small></button></div>
-                <NumberField label={text("المبلغ الحقيقي المتاح", "Actual available amount")} value={form.inputs.capital_available} onChange={(value) => updateInputs({ capital_available: value, equity_contribution: value, startup_cost: value })} />
+                <NumberField inputId="wizard-capital-amount" label={text("المبلغ الحقيقي المتاح", "Actual available amount")} value={form.inputs.capital_available} onChange={(value) => updateInputs({ capital_available: value, equity_contribution: value, startup_cost: value })} />
               </>
             ) : null}
             {wizardStep === 7 ? (
               <>
                 <p className="guided-question-card__kicker">{text("طريقة تعبئة التفاصيل", "How to provide details")}</p>
                 <h3>{text("كيف تريد تزويد المنصة بتفاصيل المشروع؟", "How would you like to provide project details?")}</h3>
-                <div className="choice-grid choice-grid--three" role="group" aria-label={text("طريقة تعبئة تفاصيل المشروع", "How to provide project details")}>
+                <div id="wizard-intake-choices" className="choice-grid choice-grid--three" role="group" aria-label={text("طريقة تعبئة تفاصيل المشروع", "How to provide project details")}>
                   {[
                     ["manual", "أعبئ بنفسي", "Enter manually", "أدخل الأرقام الأساسية الآن.", "Enter the essential figures now."],
                     ["file", "أرفع ملفًا", "Upload a file", "ارفع ملفًا يحتوي الأرقام.", "Upload a file containing the figures."],
@@ -2724,6 +2798,7 @@ function SessionWorkspace() {
                   <label className="field file-field">
                     <span>{text("ارفع ملف الأرقام", "Upload the figures file")}</span>
                     <input
+                      id="wizard-data-file"
                       type="file"
                       accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                       disabled={isBusy}
@@ -2737,14 +2812,14 @@ function SessionWorkspace() {
                 {form.inputs.intake_mode === "manual" ? (
                   <>
                   <div className="guided-finance-lite">
-                    <NumberField label={text("تكلفة التأسيس التقريبية", "Estimated setup cost")} value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
+                    <NumberField inputId="wizard-startup-cost" label={text("تكلفة التأسيس التقريبية", "Estimated setup cost")} value={form.inputs.startup_cost} onChange={(value) => updateInputs({ startup_cost: value })} />
                     <label className="field">
                       <span>{text("المصاريف الشهرية", "Monthly expenses")} <small>{text("(تحسب تلقائيًا)", "(calculated automatically)")}</small></span>
                       <output className="derived-number-field">{monthlyFixedCostFromInputs(form.inputs).toLocaleString("ar-SA")}</output>
                     </label>
-                    <NumberField label={text("سعر البيع أو الخدمة", "Product or service price")} value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
-                    <NumberField label={text("تكلفة تقديم الخدمة", "Service delivery cost")} value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
-                    <NumberField label={text("عدد العملاء أو الطلبات شهرياً", "Monthly customers or orders")} value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
+                    <NumberField inputId="wizard-unit-price" label={text("سعر البيع أو الخدمة", "Product or service price")} value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
+                    <NumberField inputId="wizard-variable-cost" label={text("تكلفة تقديم الخدمة", "Service delivery cost")} value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
+                    <NumberField inputId="wizard-monthly-units" label={text("عدد العملاء أو الطلبات شهرياً", "Monthly customers or orders")} value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
                   </div>
                   <details className="manual-advanced-fields" open>
                     <summary>{text("إضافة تفاصيل تشغيلية أدق", "Add detailed operating information")} <small>{text("(اختياري)", "(optional)")}</small></summary>
@@ -2792,13 +2867,13 @@ function SessionWorkspace() {
                     <strong>{text("افتراضات التمويل", "Financing assumptions")}</strong>
                     <p className="muted">{text("إذا لن تستخدم قرضًا، اترك مبلغ القرض صفرًا. معدل الخصم مطلوب لتقييم القيمة الحالية.", "If you will not use a loan, leave the loan amount at zero. A discount rate is required to assess present value.")}</p>
                     <div className="guided-finance-lite">
-                      <NumberField label={text("معدل الخصم السنوي (%)", "Annual discount rate (%)")} value={Math.round(form.inputs.annual_discount_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_discount_rate: value / 100 })} />
+                      <NumberField inputId="wizard-discount-rate" label={text("معدل الخصم السنوي (%)", "Annual discount rate (%)")} value={Math.round(form.inputs.annual_discount_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_discount_rate: value / 100 })} />
                       <NumberField label={text("أشهر رأس المال العامل", "Working-capital months")} value={form.inputs.working_capital_months} onChange={(value) => updateInputs({ working_capital_months: value })} />
                       <NumberField label={text("مبلغ القرض — صفر إذا لا يوجد", "Loan amount — zero if none")} value={form.inputs.debt_amount} onChange={(value) => updateInputs({ debt_amount: value })} />
                       {form.inputs.debt_amount > 0 ? (
                         <>
-                          <NumberField label={text("معدل تكلفة التمويل السنوي (%)", "Annual financing cost (%)")} value={Math.round(form.inputs.annual_interest_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_interest_rate: value / 100 })} />
-                          <NumberField label={text("مدة القرض بالسنوات", "Loan term in years")} value={form.inputs.loan_years} onChange={(value) => updateInputs({ loan_years: value })} />
+                          <NumberField inputId="wizard-interest-rate" label={text("معدل تكلفة التمويل السنوي (%)", "Annual financing cost (%)")} value={Math.round(form.inputs.annual_interest_rate * 10000) / 100} onChange={(value) => updateInputs({ annual_interest_rate: value / 100 })} />
+                          <NumberField inputId="wizard-loan-years" label={text("مدة القرض بالسنوات", "Loan term in years")} value={form.inputs.loan_years} onChange={(value) => updateInputs({ loan_years: value })} />
                           <NumberField label={text("فترة السماح بالأشهر", "Grace period in months")} value={form.inputs.loan_grace_months} onChange={(value) => updateInputs({ loan_grace_months: value })} />
                         </>
                       ) : null}
@@ -2867,6 +2942,7 @@ function SessionWorkspace() {
           </div>
         </section>
 
+        {authUser?.platform_role === "platform_admin" ? (
         <div className={`legacy-projections legacy-projections--${stage}`}>
         {overview ? (
           <>
@@ -3091,7 +3167,7 @@ function SessionWorkspace() {
                   {overview.evidence_register.source_records.slice(0, 5).map((source) => (
                     <article key={source.source_id}>
                       <strong>{source.publisher}</strong>
-                      <span>{statusText(source.state)}</span>
+                      <span>{statusText(source.state, locale)}</span>
                     </article>
                   ))}
                 </div>
@@ -3347,6 +3423,7 @@ function SessionWorkspace() {
           </>
         ) : null}
         </div>
+        ) : null}
         </>
         ) : (
           <section className="panel overlay-panel" aria-label={overlay === "settings" ? "الحساب والفريق" : "فهارس التمويل والقطاع"}>
