@@ -28,6 +28,9 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
 
     def test_location_browser_checks_cover_safety_boundary(self):
         checks = (ROOT / "tools" / "check_location_consent_browser.py").read_text(encoding="utf-8")
+        fixture = (ROOT / "tools" / "browser" / "location-consent.tsx").read_text(encoding="utf-8")
+        self.assertIn('import { CustomerLanguageProvider } from "../../src/customerLanguage"', fixture)
+        self.assertIn("<CustomerLanguageProvider><Fixture /></CustomerLanguageProvider>", fixture)
         for check in (
             "test_no_request_on_mount_or_manual_entry",
             "test_confirmation_is_explicit_and_only_coordinates_cross_boundary",
