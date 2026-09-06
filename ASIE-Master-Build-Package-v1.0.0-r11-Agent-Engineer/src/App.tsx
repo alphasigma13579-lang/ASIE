@@ -1873,40 +1873,40 @@ function SessionWorkspace() {
           <section className="panel evidence-workbench-intro">
             <div className="section-title">
               <Database size={20} aria-hidden="true" />
-              <h2>لوحة الأدلة</h2>
+              <h2>{text("لوحة الأدلة", "Evidence workspace")}</h2>
             </div>
             <div className="journey-metrics">
               <article>
                 <Database size={18} aria-hidden="true" />
-                <span>مجموعات البيانات</span>
+                <span>{text("مجموعات البيانات", "Datasets")}</span>
                 <strong>{datasets.length}</strong>
               </article>
               <article>
                 <ShieldCheck size={18} aria-hidden="true" />
-                <span>اجتازت الجودة</span>
+                <span>{text("اجتازت الجودة", "Passed quality review")}</span>
                 <strong>{evidenceGateCount}</strong>
               </article>
               <article>
                 <FileUp size={18} aria-hidden="true" />
-                <span>التحويلات</span>
+                <span>{text("التحويلات", "Transformations")}</span>
                 <strong>{transformations.length}</strong>
               </article>
               <article>
                 <BadgeCheck size={18} aria-hidden="true" />
-                <span>سجل الأدلة</span>
+                <span>{text("الأدلة المعتمدة", "Approved evidence")}</span>
                 <strong>{evidenceLedger.length}</strong>
               </article>
             </div>
-            <p className="muted">الأدلة هي المعلومات التي تثبت أرقام مشروعك. ارفع ملفًا أو أدخل بياناتك، ثم افحص الجودة واعتمد الدليل قبل ربطه بالتحليل.</p>
+            <p className="muted">{text("الأدلة هي المعلومات التي تثبت أرقام مشروعك. ارفع ملفًا أو أدخل بياناتك، ثم افحص الجودة واعتمد الدليل قبل ربطه بالتحليل.", "Evidence supports your project figures. Upload a file or enter your data, review its quality, then approve it before linking it to the analysis.")}</p>
             <div className="evidence-guidance">
-              <article><strong>ما الذي أرفعه؟</strong><span>مبيعات، عروض أسعار، إيجارات، رواتب، أو تقرير رسمي يخص السوق السعودي.</span></article>
-              <article><strong>ماذا تفعل المنصة؟</strong><span>تفحص الملف، توضّح النواقص، ثم تعرض لك ما يحتاج اعتمادًا بشريًا.</span></article>
-              <article><strong>متى أشغّل التحليل؟</strong><span>{canRunCurrentProject ? "المشروع جاهز. شغّل التحليل لإنشاء أول نتيجة محفوظة." : "أكمل متطلبات الجاهزية أولًا؛ سنرشدك إليها خطوة بخطوة."}</span></article>
+              <article><strong>{text("ما الذي أرفعه؟", "What should I upload?")}</strong><span>{text("مبيعات، عروض أسعار، إيجارات، رواتب، أو تقرير رسمي يخص السوق السعودي.", "Sales records, quotations, rent, payroll, or an official report relevant to the Saudi market.")}</span></article>
+              <article><strong>{text("ماذا تفعل المنصة؟", "What does the platform do?")}</strong><span>{text("تفحص الملف، توضّح النواقص، ثم تعرض لك ما يحتاج اعتمادًا بشريًا.", "It checks the file, explains gaps, then shows what requires human approval.")}</span></article>
+              <article><strong>{text("متى أشغّل التحليل؟", "When should I run the analysis?")}</strong><span>{canRunCurrentProject ? text("المشروع جاهز. شغّل التحليل لإنشاء أول نتيجة محفوظة.", "The project is ready. Run the analysis to create its first saved result.") : text("أكمل متطلبات الجاهزية أولًا؛ سنرشدك إليها خطوة بخطوة.", "Complete the readiness requirements first; we will guide you step by step.")}</span></article>
             </div>
             <div className="next-action-banner__actions">
               <button className="primary-button" disabled={isBusy} onClick={() => canRunCurrentProject ? void handleRunAndOpenMarketIntelligence() : setStage("readiness")}>
                 <Play size={18} aria-hidden="true" />
-                {canRunCurrentProject ? "شغّل التحليل الآن" : "انتقل إلى فحص الجاهزية"}
+                {canRunCurrentProject ? text("شغّل التحليل الآن", "Run analysis now") : text("انتقل إلى فحص الجاهزية", "Review readiness")}
               </button>
             </div>
           </section>
@@ -1916,7 +1916,7 @@ function SessionWorkspace() {
           <section className="panel readiness-board">
             <div className="section-title">
               <CheckCircle2 size={20} aria-hidden="true" />
-              <h2>جاهزية المشروع قبل التحليل</h2>
+              <h2>{text("جاهزية المشروع قبل التحليل", "Project readiness before analysis")}</h2>
             </div>
             <div className="readiness-actions">
               <button
@@ -1927,9 +1927,9 @@ function SessionWorkspace() {
                 }}
               >
                 <ArrowLeft size={17} aria-hidden="true" />
-                العودة إلى أول متطلب ناقص
+                {text("العودة إلى أول متطلب ناقص", "Go to the first missing requirement")}
               </button>
-              <small>اضغط على أي بطاقة للذهاب مباشرة إلى مكان تعديلها.</small>
+              <small>{text("اضغط على أي بطاقة للذهاب مباشرة إلى مكان تعديلها.", "Select any card to go directly to the place where it can be completed.")}</small>
             </div>
             <div className="workflow-steps">
               {(readiness?.steps ?? []).map((item, index) => (
@@ -1947,7 +1947,7 @@ function SessionWorkspace() {
                 </button>
               ))}
             </div>
-            {!readiness ? <p className="muted">احفظ المسودة أولًا لعرض الجاهزية خطوة بخطوة.</p> : null}
+            {!readiness ? <p className="muted">{text("احفظ المسودة أولًا لعرض الجاهزية خطوة بخطوة.", "Save the draft first to view readiness step by step.")}</p> : null}
           </section>
         ) : null}
 
@@ -1955,26 +1955,26 @@ function SessionWorkspace() {
           <section className="panel run-board">
             <div className="section-title">
               <Play size={20} aria-hidden="true" />
-              <h2>تشغيل التحليل</h2>
+              <h2>{text("تشغيل التحليل", "Run analysis")}</h2>
             </div>
             <p className="muted">
-              عند الضغط على الزر، تنشئ المنصة نتيجة محفوظة من بياناتك الحالية. لا تحتاج إلى معرفة التفاصيل التقنية.
+              {text("عند الضغط على الزر، تنشئ المنصة نتيجة محفوظة من بياناتك الحالية. لا تحتاج إلى معرفة التفاصيل التقنية.", "The platform creates a saved result from your current data. No technical knowledge is required.")}
             </p>
             <button className="primary-button primary-button--large" disabled={!canRunCurrentProject || isBusy} onClick={handleRunAndOpenMarketIntelligence}>
               <Play size={20} aria-hidden="true" />
-              ابدأ التحليل
+              {text("ابدأ التحليل", "Start analysis")}
             </button>
-            {!project ? <p className="muted">أنشئ المسودة قبل التشغيل.</p> : null}
-            {readiness && !readiness.ready_to_run ? <p className="muted">هناك بوابات جاهزية محجوبة. راجع قسم الجاهزية.</p> : null}
+            {!project ? <p className="muted">{text("أنشئ المسودة قبل التشغيل.", "Create the project draft before running the analysis.")}</p> : null}
+            {readiness && !readiness.ready_to_run ? <p className="muted">{text("توجد متطلبات ناقصة تمنع التشغيل. راجع قسم الجاهزية.", "Missing requirements are preventing the analysis. Review project readiness.")}</p> : null}
           </section>
         ) : null}
 
         {stage === "reality" ? (
-          <section className="reality-page" aria-label="ذكاء السوق والفرص بعد الدراسة">
+          <section className="reality-page" aria-label={text("السوق والفرص بعد الدراسة", "Market and opportunities after the analysis")}>
             <header className="page-intro">
-              <p className="eyebrow">بعد الدراسة المالية · محاكاة تطوير</p>
-              <h2>اقرأ السوق والفرص قبل اعتماد القرار</h2>
-              <p>تأتي هذه المرحلة بعد تشغيل الدراسة. المقارنات والمنافسون والتوصيات المعروضة هنا بيانات تجريبية صريحة؛ لا تدخل اللقطة ولا التقرير ولا الحكم في هذه البيئة.</p>
+              <p className="eyebrow">{text("بعد اكتمال الدراسة", "After completing the analysis")}</p>
+              <h2>{text("راجع السوق والفرص قبل اعتماد القرار", "Review the market and opportunities before approving the decision")}</h2>
+              <p>{text("تعرض هذه الصفحة معلومات السوق المتاحة بوضوح، وتبين عندما تكون البيانات غير متاحة. لا تغيّر نتيجة التحليل أو التقرير أو القرار.", "This page clearly presents available market information and identifies unavailable data. It does not change the analysis result, report, or decision.")}</p>
             </header>
             <LiveCockpit
               projectName={project?.name}
@@ -2020,7 +2020,7 @@ function SessionWorkspace() {
             </div>
 
             {snapshotOverview ? (
-              <section className="decision-intelligence" aria-label="ذكاء القرار: المحاكاة والشخصيات الخمس">
+              <section className="decision-intelligence" aria-label={text("تفسير القرار من زوايا متعددة", "Decision explanation from multiple perspectives")}>
                 <header><div><p className="eyebrow">{text("فهم القرار المحفوظ", "Understand the saved decision")}</p><h2>{text("اختبر القرار من خمس زوايا واحتمالات متعددة", "Review the decision from five perspectives and multiple scenarios")}</h2><p>{text("هذه تفسيرات للنتيجة الحالية؛ لا تغيّر القرار الأصلي.", "These explanations describe the current result without changing the original decision.")}</p></div><button onClick={() => void handleOpenDecisionPack()} disabled={isBusy}>{text("فتح التفسير الكامل", "Open full explanation")} <ArrowLeft size={16} /></button></header>
                 <div className="decision-intelligence__grid">
                   <article className="monte-carlo-widget">
@@ -2038,80 +2038,76 @@ function SessionWorkspace() {
 
             <div className="decision-command__grid">
               <article className="panel decision-rationale">
-                <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>لماذا هذا القرار؟</h2></div>
+                <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>{text("لماذا هذا القرار؟", "Why this decision?")}</h2></div>
                 {decisionPack ? <><strong>{customerBusinessText(decisionPack.memo.recommendation, locale)}</strong><p>{customerNarrativeText(decisionPack.memo.rationale, locale)}</p><small>{text("مذكرة مرتبطة بالتقرير الحالي", "Memo linked to the current report")}</small></> : <p className="empty-state">{text("افتح مذكرة القرار لعرض التفسير المحفوظ.", "Open the decision memo to view the saved explanation.")}</p>}
                 <div className="button-row"><button disabled={!snapshotOverview || isBusy} onClick={handleOpenDecisionPack}>{text("فتح مذكرة القرار", "Open decision memo")}</button><button disabled={!snapshotOverview || isBusy} onClick={handleOpenReport}>{text("فتح التقرير", "Open report")}</button></div>
               </article>
               <article className="panel decision-evidence">
-                <div className="section-title"><Database size={20} aria-hidden="true" /><h2>ثقة الأدلة</h2></div>
-                <strong>{snapshotOverview ? `${snapshotOverview.evidence_coverage.supported} مدعوم` : "غير متاح"}</strong>
-                <p>{snapshotOverview ? `${snapshotOverview.evidence_coverage.needs_evidence} عنصر يحتاج دليلاً قبل تحسين قوة القرار.` : "ستظهر تغطية الأدلة من اللقطة بعد التشغيل."}</p>
-                <button disabled={!snapshotOverview} onClick={() => setStage("evidence")}>تفاصيل الأدلة وخط النسب</button>
+                <div className="section-title"><Database size={20} aria-hidden="true" /><h2>{text("ثقة الأدلة", "Evidence confidence")}</h2></div>
+                <strong>{snapshotOverview ? `${snapshotOverview.evidence_coverage.supported} ${text("عنصر مدعوم", "supported items")}` : text("غير متاح", "Not available")}</strong>
+                <p>{snapshotOverview ? `${snapshotOverview.evidence_coverage.needs_evidence} ${text("عنصر يحتاج دليلاً قبل تحسين قوة القرار.", "items need evidence before decision confidence can improve.")}` : text("ستظهر تغطية الأدلة بعد تشغيل التحليل.", "Evidence coverage will appear after running the analysis.")}</p>
+                <button disabled={!snapshotOverview} onClick={() => setStage("evidence")}>{text("عرض تفاصيل الأدلة ومصادرها", "View evidence details and sources")}</button>
               </article>
             </div>
 
             <div className="decision-command__grid">
               <article className="panel">
-                <div className="section-title"><AlertTriangle size={20} aria-hidden="true" /><h2>المخاطر والتخفيف</h2></div>
+                <div className="section-title"><AlertTriangle size={20} aria-hidden="true" /><h2>{text("المخاطر وخطوات الحد منها", "Risks and mitigation steps")}</h2></div>
                 <div className="command-risk-list">
                   {(decisionPack?.top_risks ?? snapshotOverview?.risk_register.top_risks ?? []).slice(0, 4).map((risk) => <article key={risk.risk_id}><strong>{customerBusinessText(risk.trigger, locale)}</strong><span>{statusText(risk.severity, locale)} · {customerBusinessText(risk.owner_role, locale)}</span><small>{customerNarrativeText(risk.mitigation, locale)}</small></article>)}
                 </div>
-                {!snapshotOverview?.risk_register.top_risks.length ? <p className="empty-state">لا توجد مخاطر محفوظة لعرضها بعد.</p> : null}
+                {!snapshotOverview?.risk_register.top_risks.length ? <p className="empty-state">{text("لا توجد مخاطر محفوظة لعرضها بعد.", "No saved risks are available yet.")}</p> : null}
               </article>
               <article className="panel">
-                <div className="section-title"><Target size={20} aria-hidden="true" /><h2>خطة التنفيذ</h2></div>
+                <div className="section-title"><Target size={20} aria-hidden="true" /><h2>{text("خطة التنفيذ", "Execution plan")}</h2></div>
                 <div className="execution-list">
-                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).slice(0, 4).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerBusinessText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
+                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).slice(0, 4).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerNarrativeText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
                 </div>
-                {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">تظهر مراحل التنفيذ مع Snapshot المكتمل فقط.</p> : null}
+                {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">{text("تظهر مراحل التنفيذ بعد اكتمال نتيجة التحليل.", "Execution stages appear after the analysis result is complete.")}</p> : null}
               </article>
             </div>
 
             <article className="panel decision-review-panel">
-              <div className="section-title"><Users size={20} aria-hidden="true" /><h2>المراجعة البشرية والإجراءات</h2></div>
+              <div className="section-title"><Users size={20} aria-hidden="true" /><h2>{text("المراجعة البشرية والإجراءات", "Human review and actions")}</h2></div>
               <p className="muted">{text("الاعتماد أو الرفض يسجل مراجعة مستقلة ولا يغير نتيجة التحليل الأصلية.", "Approval or rejection records a separate review without changing the original analysis result.")}</p>
               <div className="button-row">
-                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("approved_local")}>اعتماد محلي</button>
-                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("needs_changes")}>طلب تعديل</button>
-                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("rejected_local")}>رفض محلي</button>
+                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("approved_local")}>{text("اعتماد للمراجعة الداخلية", "Approve for internal review")}</button>
+                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("needs_changes")}>{text("طلب تعديل", "Request changes")}</button>
+                <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("rejected_local")}>{text("رفض للمراجعة الداخلية", "Reject for internal review")}</button>
               </div>
               <div className="remediation-list">
-                {actionItems.slice(0, 6).map((item) => <article key={item.action_item_id}><strong>{customerNarrativeText(item.title, locale)}</strong><span>{customerNarrativeText(item.message || item.recommended_action, locale)}</span><small>{statusText(item.severity, locale)} · {statusText(item.status, locale)}</small>{item.status === "open" ? <button disabled={isBusy} onClick={() => handleCloseActionItem(item.action_item_id)}>إغلاق الإجراء</button> : null}</article>)}
-                {!actionItems.length ? <p className="empty-state">لا توجد إجراءات مفتوحة في الحزمة الحالية.</p> : null}
+                {actionItems.slice(0, 6).map((item) => <article key={item.action_item_id}><strong>{customerNarrativeText(item.title, locale)}</strong><span>{customerNarrativeText(item.message || item.recommended_action, locale)}</span><small>{statusText(item.severity, locale)} · {statusText(item.status, locale)}</small>{item.status === "open" ? <button disabled={isBusy} onClick={() => handleCloseActionItem(item.action_item_id)}>{text("إتمام الإجراء", "Complete action")}</button> : null}</article>)}
+                {!actionItems.length ? <p className="empty-state">{text("لا توجد إجراءات مفتوحة في التقرير الحالي.", "No open actions are available in the current report.")}</p> : null}
               </div>
             </article>
           </section>
         ) : null}
 
         {stage === "execution" ? (
-          <section className="execution-page" aria-label="خارطة تنفيذ المشروع">
+          <section className="execution-page" aria-label={text("خطة تنفيذ المشروع", "Project execution plan")}>
             <header className="page-intro">
-              <p className="eyebrow">خارطة البدء والتنفيذ · محاكاة تطوير</p>
-              <h2>حوّل القرار إلى بداية مشروع عملية</h2>
-              <p>تجمع هذه الصفحة خطة التنفيذ من اللقطة مع قائمة بدء تجريبية: الجهات والمستندات وفريق البداية. لا تمثل متطلبات تنظيمية حقيقية قبل ربط المصادر الرسمية.</p>
+              <p className="eyebrow">{text("خطوات ما بعد القرار", "Post-decision steps")}</p>
+              <h2>{text("حوّل القرار إلى بداية مشروع عملية", "Turn the decision into an actionable project start")}</h2>
+              <p>{text("تعرض هذه الصفحة الخطوات المستندة إلى نتيجة التحليل المحفوظة. لن تُعرض متطلبات تنظيمية أو بيانات غير موثقة على أنها حقائق.", "This page shows steps derived from the saved analysis result. Regulatory requirements or unverified data are never presented as facts.")}</p>
             </header>
             <div className="execution-page__grid">
               <article className="panel">
-                <div className="section-title"><Target size={20} aria-hidden="true" /><h2>الخطوات القادمة</h2></div>
+                <div className="section-title"><Target size={20} aria-hidden="true" /><h2>{text("الخطوات القادمة", "Next steps")}</h2></div>
                 <div className="execution-list">
-                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerBusinessText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
+                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerNarrativeText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
                 </div>
-                {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">شغّل التحليل أولاً كي تظهر خارطة تنفيذ مرتبطة بالقرار المحفوظ.</p> : null}
+                {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">{text("شغّل التحليل أولاً كي تظهر خطة تنفيذ مرتبطة بالقرار المحفوظ.", "Run the analysis first to view an execution plan linked to the saved decision.")}</p> : null}
               </article>
               <article className="panel execution-page__action">
-                <div className="section-title"><CheckCircle2 size={20} aria-hidden="true" /><h2>إجراء اليوم</h2></div>
-                <strong>{openActionItems[0]?.title ?? "لا يوجد إجراء مفتوح"}</strong>
-                <p>{openActionItems[0]?.message || openActionItems[0]?.recommended_action || "بعد ظهور القرار ستُعرض هنا الخطوة الأهم مع سببها."}</p>
-                {openActionItems[0]?.status === "open" ? <button className="primary-button" disabled={isBusy} onClick={() => handleCloseActionItem(openActionItems[0].action_item_id)}>إتمام الإجراء</button> : null}
+                <div className="section-title"><CheckCircle2 size={20} aria-hidden="true" /><h2>{text("إجراء اليوم", "Today’s action")}</h2></div>
+                <strong>{openActionItems[0]?.title ? customerNarrativeText(openActionItems[0].title, locale) : text("لا يوجد إجراء مفتوح", "No open action")}</strong>
+                <p>{openActionItems[0] ? customerNarrativeText(openActionItems[0].message || openActionItems[0].recommended_action, locale) : text("بعد ظهور القرار ستُعرض هنا الخطوة الأهم مع سببها.", "After the decision appears, the most important next step and its reason will be shown here.")}</p>
+                {openActionItems[0]?.status === "open" ? <button className="primary-button" disabled={isBusy} onClick={() => handleCloseActionItem(openActionItems[0].action_item_id)}>{text("إتمام الإجراء", "Complete action")}</button> : null}
               </article>
             </div>
-            <section className="launch-readiness-demo" aria-label="استعداد بدء المشروع التجريبي">
-              <header><div><p className="eyebrow">ما الذي يحتاجه المشروع للبدء؟</p><h2>قائمة تأسيس تجريبية حسب نوع المشروع</h2></div><span className="demo-badge demo-badge--compact">محاكاة تطوير · غير تنظيمية</span></header>
-              <div className="launch-readiness-demo__grid">
-                <article><KeyRound size={20} aria-hidden="true" /><strong>الجهات والتراخيص</strong><p>سجل تجاري، عنوان، ورخصة قطاعية محتملة. القائمة الفعلية ستتغير حسب القطاع والمدينة ونوع النشاط.</p><small>لا تعتمد هذه القائمة قبل ربط الجهات الرسمية.</small></article>
-                <article><FileText size={20} aria-hidden="true" /><strong>المستندات</strong><p>هوية الملاك، عقد موقع، وصف النشاط، عروض موردين، وخطة تشغيل أولية — أمثلة تجريبية فقط.</p><small>المستندات المطلوبة فعلياً ستأتي من قواعد معتمدة.</small></article>
-                <article><Users size={20} aria-hidden="true" /><strong>فريق البداية</strong><p>هيكل الفريق سيُقترح من الطاقة التشغيلية وساعات العمل والمبيعات المتوقعة، لا من رقم موحّد لكل مشروع.</p><small>لا يوجد تقدير عمالة فعلي في هذه البيئة بعد.</small></article>
-              </div>
+            <section className="panel launch-readiness-status" aria-label={text("متطلبات البدء الرسمية", "Official launch requirements")}>
+              <div className="section-title"><KeyRound size={20} aria-hidden="true" /><h2>{text("متطلبات البدء الرسمية", "Official launch requirements")}</h2></div>
+              <p>{text("لن تعرض المنصة قائمة متطلبات أو تراخيص قبل ربط مصادر رسمية معتمدة حسب القطاع والموقع. عند توفرها ستظهر هنا مع مصدر كل متطلب وطريقة استكماله.", "The platform will not present requirements or licences until approved official sources are connected for the project sector and location. Once available, each requirement will appear here with its source and completion path.")}</p>
             </section>
           </section>
         ) : null}
