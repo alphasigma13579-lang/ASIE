@@ -153,3 +153,45 @@ const forbiddenCustomerToken = /(?:\b(?:project|run|snapshot|profile|contract|re
 export function containsForbiddenCustomerToken(value: string): boolean {
   return forbiddenCustomerToken.test(value);
 }
+
+
+const customerBusinessTerms: Record<string, { ar: string; en: string }> = {
+  execution_readiness_index: { ar: "جاهزية التنفيذ", en: "Execution readiness" },
+  commercial_acceptance_index: { ar: "قابلية السوق", en: "Market acceptance" },
+  technical_robustness_index: { ar: "متانة التشغيل", en: "Operational robustness" },
+  transition_readiness_index: { ar: "جاهزية الانتقال", en: "Transition readiness" },
+  pressure_survival_index: { ar: "القدرة على تحمل الضغوط", en: "Pressure resilience" },
+  setup: { ar: "تحديد نطاق المشروع", en: "Define project scope" },
+  procurement: { ar: "تأكيد المشتريات", en: "Confirm procurement" },
+  staffing: { ar: "تجهيز فريق العمل", en: "Prepare the team" },
+  launch: { ar: "بدء التشغيل", en: "Launch operations" },
+  stabilization: { ar: "استقرار التشغيل", en: "Stabilize operations" },
+  project_manager: { ar: "مدير المشروع", en: "Project manager" },
+  business_advisor: { ar: "مستشار الأعمال", en: "Business advisor" },
+  analyst_coach: { ar: "مستشار التحليل", en: "Analysis advisor" },
+  technical_auditor: { ar: "مراجع الأدلة", en: "Evidence reviewer" },
+  project_scope_signed: { ar: "اعتماد نطاق المشروع", en: "Approve project scope" },
+  capex_items_confirmed: { ar: "تأكيد بنود التأسيس", en: "Confirm setup items" },
+  staffing_plan_ready: { ar: "اعتماد خطة الفريق", en: "Approve team plan" },
+  operating_capacity_ready: { ar: "تأكيد القدرة التشغيلية", en: "Confirm operating capacity" },
+  first_month_kpis_reviewed: { ar: "مراجعة نتائج الشهر الأول", en: "Review first-month results" },
+  opex_above_60_percent_of_revenue: { ar: "المصروفات التشغيلية مرتفعة مقارنة بالإيراد", en: "Operating costs are high relative to revenue" },
+  no_enabled_open_data_source: { ar: "لا يوجد مصدر سوق معتمد ومفعّل", en: "No approved market source is enabled" },
+  no_enabled_open_data_sources: { ar: "لا توجد مصادر سوق معتمدة ومفعّلة", en: "No approved market sources are enabled" },
+  no_evidence_links: { ar: "لا توجد أدلة مرتبطة بالافتراضات المهمة", en: "No evidence is linked to key assumptions" },
+  no_assumption_evidence_links: { ar: "الافتراضات المهمة غير مرتبطة بأدلة", en: "Key assumptions are not linked to evidence" },
+  financial_readiness: { ar: "الجاهزية المالية", en: "Financial readiness" },
+  evidence_readiness: { ar: "جاهزية الأدلة", en: "Evidence readiness" },
+  source_governance: { ar: "اعتماد المصادر", en: "Source approval" },
+  launch_readiness: { ar: "جاهزية بدء التشغيل", en: "Launch readiness" },
+  assumption_support_gap: { ar: "نقص في الأدلة الداعمة", en: "Supporting evidence is missing" },
+  margin_pressure: { ar: "ضغط على هامش الربح", en: "Profit margin pressure" },
+};
+
+export function customerBusinessText(value: unknown, locale: CustomerLocale): string {
+  if (typeof value !== "string" || !value.trim()) return locale === "ar" ? "غير محدد" : "Not specified";
+  const normalized = normalizeStatus(value);
+  return customerBusinessTerms[normalized]?.[locale]
+    ?? customerStatuses[normalized]?.[locale]
+    ?? (locale === "ar" ? "تفصيل يحتاج مراجعة" : "Detail requires review");
+}
