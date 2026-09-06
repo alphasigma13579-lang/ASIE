@@ -71,6 +71,7 @@ import {
   type SectorProfile,
 } from "./api";
 import { AuthScreen } from "./AuthScreens";
+import { CustomerLanguageSwitcher, customerErrorText, customerStatusText, useCustomerLanguage } from "./customerLanguage";
 import {
   clearSession,
   getActiveOrganizationId,
@@ -387,7 +388,7 @@ const defaultInputs: ProjectFormInputs = {
 };
 
 function formatValue(output: OutputEnvelope): string {
-  if (output.value === null) return "NOT_READY";
+  if (output.value === null) return "—";
   if (typeof output.value === "string") return output.value;
   if (output.unit === "percent") return `${Math.round(output.value * 1000) / 10}%`;
   if (output.unit === "SAR") {
@@ -400,41 +401,8 @@ function formatValue(output: OutputEnvelope): string {
   return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 }).format(output.value);
 }
 
-function statusText(status: string): string {
-  const map: Record<string, string> = {
-    ready: "جاهز",
-    passed: "اجتازت",
-    warning: "تحذير",
-    blocked: "محجوب",
-    ready_with_warnings: "جاهز مع تحذيرات",
-    needs_input: "يحتاج مدخلات",
-    insufficient_data: "بيانات غير كافية",
-    completed: "مكتمل",
-    PRELIMINARY_ONLY: "تقييم أولي فقط",
-    REVISE_AND_REASSESS: "راجع وأعد التقييم",
-    BLOCKED_NOT_READY: "متوقف لمدخلات ناقصة",
-    USER_VERIFIED: "مدخلات مستخدم",
-    DEMO_DATA: "بيانات تجريبية",
-    candidate: "مرشح للمراجعة",
-    reference_only: "مرجعي فقط",
-    approved_for_use: "معتمد للاستخدام",
-    review_required: "بانتظار المراجعة",
-    rejected: "مرفوض",
-    unknown: "غير معروف",
-    approved: "معتمد",
-    draft: "مسودة",
-    needs_review: "يحتاج مراجعة",
-    pending: "قيد الانتظار",
-    enabled: "مفعّل",
-    disabled: "غير مفعّل",
-    manual_csv: "إدخال CSV",
-    manual_table: "إدخال يدوي",
-    aggregate_average: "حساب المتوسط",
-    aggregate_sum: "حساب المجموع",
-    select_column: "اختيار عمود",
-    manual_derivation_note: "ملاحظة اشتقاق",
-  };
-  return map[status] ?? status;
+function statusText(status: string, locale: "ar" | "en" = "ar"): string {
+  return customerStatusText(status, locale);
 }
 
 function metricTitle(id: string): string {
@@ -462,28 +430,16 @@ function metricTitle(id: string): string {
 }
 
 function MetricCard({ output }: { output: OutputEnvelope }) {
+  const { locale, text } = useCustomerLanguage();
   return (
     <article className="metric-card">
       <div className="metric-card__top">
-        <span className="metric-card__owner">{output.owner_module}</span>
+        <span className="metric-card__owner">{text("مؤشر محسوب", "Calculated metric")}</span>
         <BadgeCheck size={18} aria-hidden="true" />
       </div>
       <strong>{metricTitle(output.output_id)}</strong>
       <div className="metric-card__value">{formatValue(output)}</div>
-      <dl className="lineage-list">
-        <div>
-          <dt>العقد</dt>
-          <dd>{output.contract_id}</dd>
-        </div>
-        <div>
-          <dt>الخوارزمية</dt>
-          <dd>{output.algorithm_id}</dd>
-        </div>
-        <div>
-          <dt>الحالة</dt>
-          <dd>{statusText(output.status)}</dd>
-        </div>
-      </dl>
+      <p className="metric-card__status">{statusText(output.status, locale)}</p>
     </article>
   );
 }
@@ -612,23 +568,25 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 function LoadingState() {
+  const { direction, text } = useCustomerLanguage();
   return (
-    <main id="main-content" className="app-shell app-shell--center" aria-busy="true">
+    <main id="main-content" className="app-shell app-shell--center" aria-busy="true" dir={direction}>
       <Activity className="spin" size={28} aria-hidden="true" />
-      <p>جاري تجهيز مساحة ASIE المحلية...</p>
+      <p>{text("جارٍ تجهيز مساحة العمل...", "Preparing your workspace...")}</p>
     </main>
   );
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { direction, text } = useCustomerLanguage();
   return (
-    <main id="main-content" className="app-shell app-shell--center" role="alert">
+    <main id="main-content" className="app-shell app-shell--center" role="alert" dir={direction}>
       <AlertTriangle size={32} aria-hidden="true" />
-      <h1>الخدمة المحلية غير جاهزة</h1>
+      <h1>{text("تعذر تجهيز مساحة العمل", "The workspace could not be prepared")}</h1>
       <p>{message}</p>
       <button className="primary-button" onClick={onRetry}>
         <RefreshCw size={18} aria-hidden="true" />
-        إعادة المحاولة
+        {text("إعادة المحاولة", "Try again")}
       </button>
     </main>
   );
@@ -641,6 +599,7 @@ export function App() {
 }
 
 function SessionWorkspace() {
+  const { locale, direction, text } = useCustomerLanguage();
   const [sourcePolicy, setSourcePolicy] = useState<SourcePolicy | null>(null);
   const [sources, setSources] = useState<SourceReviewRecord[]>([]);
   const [sourceChecklists, setSourceChecklists] = useState<SourceReviewChecklist[]>([]);
@@ -887,7 +846,7 @@ function SessionWorkspace() {
           setFundingProfiles(funding);
           setSectorProfiles(sector);
         } catch (err) {
-          setError(err instanceof Error ? err.message : "تعذر تحميل الفهارس المرجعية.");
+          setError(customerErrorText(err, locale));
         }
       })();
     }
@@ -903,7 +862,7 @@ function SessionWorkspace() {
     try {
       await openSnapshotDocument(snapshotId, suffix, mode);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر فتح المستند.");
+      setError(customerErrorText(err, locale));
     }
   }
 
@@ -912,7 +871,7 @@ function SessionWorkspace() {
     try {
       setReleaseRecord(await fetchReleaseRecord(snapshotId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر تحميل سجل الإصدار.");
+      setError(customerErrorText(err, locale));
     }
   }
 
@@ -927,7 +886,7 @@ function SessionWorkspace() {
       setMemberships((current) => [...current, { organization_id: organization.organization_id, organization_name: organization.name, role: "organization_owner" }]);
       switchOrganization(organization.organization_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر إنشاء المنظمة.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -942,7 +901,7 @@ function SessionWorkspace() {
       await addMembership(activeOrganizationId, memberUserId.trim(), memberRole);
       setMemberUserId("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر إضافة العضو.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -980,7 +939,7 @@ function SessionWorkspace() {
       setSectorTaxonomy(nextTaxonomy);
       setArchitectureStatus(nextArchitectureStatus);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر الاتصال بالخدمة المحلية.");
+      setError(customerErrorText(err, locale));
     }
   }
 
@@ -1035,7 +994,7 @@ function SessionWorkspace() {
       setProject(nextProject);
       await loadProjectWorkspace(nextProject.project_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر حفظ المسودة.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1061,7 +1020,7 @@ function SessionWorkspace() {
       }
       await loadProjectWorkspace(project.project_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر حفظ المراجعة البشرية.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1082,7 +1041,7 @@ function SessionWorkspace() {
       setDecisionPack(await fetchDecisionPack(nextOverview.snapshot.snapshot_id));
       await loadProjectWorkspace(project.project_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر تشغيل التقييم.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1100,7 +1059,7 @@ function SessionWorkspace() {
         setActionItems(await fetchProjectActionItems(project.project_id));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر فتح تقرير اللقطة.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1116,7 +1075,7 @@ function SessionWorkspace() {
         setActionItems(await fetchProjectActionItems(project.project_id));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر فتح حزمة القرار.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1138,7 +1097,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر حفظ قرار المراجعة.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1155,7 +1114,7 @@ function SessionWorkspace() {
       });
       setActionItems(await fetchProjectActionItems(project.project_id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر إغلاق بند المعالجة.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1184,7 +1143,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر إنشاء dataset محلي.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1220,7 +1179,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر استيراد الملف المحلي.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1252,7 +1211,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر إنشاء التحويل.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1281,7 +1240,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر حفظ مراجعة Dataset.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1311,7 +1270,7 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر حفظ مراجعة التحويل.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1343,7 +1302,7 @@ function SessionWorkspace() {
       });
       await loadProjectWorkspace(project.project_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر ربط الدليل بالافتراض.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1378,7 +1337,7 @@ function SessionWorkspace() {
       });
       await loadProjectWorkspace(project.project_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "تعذر ربط الدليل بمعيار القطاع.");
+      setError(customerErrorText(err, locale));
     } finally {
       setIsBusy(false);
     }
@@ -1617,7 +1576,7 @@ function SessionWorkspace() {
   }
 
   return (
-    <main id="main-content" className="app-shell">
+    <main id="main-content" className="app-shell" dir={direction}>
       <aside className="sidebar" aria-label="مسار مساحة المشروع">
         <BrandLockup subtitle="مرصد القرار المحلي" />
         <nav>
@@ -1656,18 +1615,19 @@ function SessionWorkspace() {
         </button>
         <div className="sidebar-note">
           <Database size={18} aria-hidden="true" />
-          <span>{sourcePolicy.profile_id}</span>
+          <span>{text("مصادر محكومة ومراجعة", "Governed, reviewed sources")}</span>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">تشغيل محلي · بدون مفاتيح داخل الحزمة · لا جلب خارجي</p>
+            <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
             <h1>{appStages.find((item) => item.id === stage)?.label ?? "ASIE"}</h1>
             <p>{project ? `${project.sector} · ${project.jurisdiction}` : "ابدأ من تعريف المشروع، ثم دع المنصة تقودك خطوة بخطوة"}</p>
           </div>
           <div className="topbar__actions topbar__actions--minimal">
+            <CustomerLanguageSwitcher />
             {overview ? (
             <button disabled={isBusy} onClick={handleOpenReport} title="فتح التقرير">
               <FileText size={18} aria-hidden="true" />
@@ -1732,8 +1692,8 @@ function SessionWorkspace() {
             </article>
             <article>
               <FileText size={18} aria-hidden="true" />
-              <span>آخر Snapshot</span>
-              <strong>{latestRun?.snapshot_id ? latestRun.snapshot_id.slice(-6) : "لا يوجد"}</strong>
+              <span>{text("آخر تقرير", "Latest report")}</span>
+              <strong>{latestRun?.snapshot_id ? text("متاح", "Available") : text("لا يوجد", "None")}</strong>
             </article>
           </div>
         </section>
