@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { CustomerLanguageSwitcher, useCustomerLanguage } from "./customerLanguage";
 
 type PortalTargets = {
   landing: HTMLElement | null;
@@ -46,6 +47,19 @@ const stageDefinitions: StageDefinition[] = [
   { id: "execution", label: "خارطة التنفيذ", description: "الخطوات والعوائق بعد القرار", icon: MapPinned, legacyIndex: 7 },
   { id: "snapshots", label: "تقاريري", description: "Snapshots والمخرجات المحفوظة", icon: FileText, legacyIndex: 8 },
 ];
+
+const stageEnglish: Record<string, { label: string; description: string }> = {
+  dashboard: { label: "Dashboard", description: "Summary and next actions" },
+  wizard: { label: "Project setup guide", description: "Location, sector, capital, and inputs" },
+  evidence: { label: "Evidence", description: "Files, sources, and traceability" },
+  readiness: { label: "Readiness", description: "Gaps blocking the analysis" },
+  run: { label: "Run analysis", description: "Create a governed decision reference" },
+  reality: { label: "Market intelligence", description: "Market comparisons and opportunities" },
+  decision: { label: "Understand the decision", description: "Decision, reasons, and risks" },
+  execution: { label: "Execution plan", description: "Actions and blockers after the decision" },
+  snapshots: { label: "Reports", description: "Saved reports and outputs" },
+};
+
 
 const landingFeatures = [
   {
@@ -130,13 +144,15 @@ function enterProduct() {
 }
 
 function LandingNavigation() {
+  const { text } = useCustomerLanguage();
   return (
-    <div className="asie-complete-nav" aria-label="روابط صفحة الهبوط">
-      <a href="#decision-flow">كيف تعمل</a>
-      <a href="#asie-capabilities">المزايا</a>
-      <a className="asie-complete-nav__sanad" href="#asie-sanad">سند</a>
-      <a href="#asie-usage">المسارات</a>
-      <a href="#asie-faq">الأسئلة</a>
+    <div className="asie-complete-nav" aria-label={text("روابط صفحة الهبوط", "Landing page links")}>
+      <a href="#decision-flow">{text("كيف تعمل", "How it works")}</a>
+      <a href="#asie-capabilities">{text("المزايا", "Features")}</a>
+      <a className="asie-complete-nav__sanad" href="#asie-sanad">{text("سند", "Sanad")}</a>
+      <a href="#asie-usage">{text("المسارات", "Plans")}</a>
+      <a href="#asie-faq">{text("الأسئلة", "Questions")}</a>
+      <CustomerLanguageSwitcher />
     </div>
   );
 }
@@ -242,14 +258,15 @@ function LandingCompletion() {
 }
 
 function WorkspaceHub({ activeStage }: { activeStage: string }) {
+  const { locale, text } = useCustomerLanguage();
   return (
-    <section className="asie-page-hub" aria-label="خريطة صفحات ASIE">
+    <section className="asie-page-hub" aria-label={text("خريطة صفحات ASIE", "ASIE page map")}>
       <div className="asie-page-hub__heading">
         <div>
-          <span>خريطة مساحة القرار</span>
-          <h2>انتقل مباشرة بين صفحات ASIE الحية</h2>
+          <span>{text("خريطة مساحة القرار", "Decision workspace map")}</span>
+          <h2>{text("انتقل مباشرة بين صفحات المشروع", "Move directly between project pages")}</h2>
         </div>
-        <small>الصفحات تعرض بيانات النظام الفعلية؛ لا تضيف هذه الطبقة أي حساب أو Snapshot.</small>
+        <small>{text("كل صفحة تعرض بيانات المشروع المحفوظة دون إعادة حسابها.", "Each page shows saved project data without recalculating it.")}</small>
       </div>
       <div className="asie-page-hub__grid">
         {stageDefinitions.map(({ id, label, description, icon: Icon }) => (
@@ -261,7 +278,10 @@ function WorkspaceHub({ activeStage }: { activeStage: string }) {
             aria-current={activeStage === id ? "page" : undefined}
           >
             <Icon size={18} aria-hidden="true" />
-            <span><strong>{label}</strong><small>{description}</small></span>
+            <span>
+              <strong>{locale === "ar" ? label : stageEnglish[id]?.label}</strong>
+              <small>{locale === "ar" ? description : stageEnglish[id]?.description}</small>
+            </span>
           </button>
         ))}
       </div>
@@ -269,18 +289,43 @@ function WorkspaceHub({ activeStage }: { activeStage: string }) {
   );
 }
 
-function SanadAssistant({ onClose }: { onClose: () => void }) {
+function SanadAssistant({
+  onClose,
+  missingLabel,
+  returnStage,
+  onNavigateMissing,
+  onReturn,
+}: {
+  onClose: () => void;
+  missingLabel: string;
+  returnStage: string | null;
+  onNavigateMissing: () => void;
+  onReturn: () => void;
+}) {
+  const { direction, text } = useCustomerLanguage();
   return (
-    <aside className="asie-sanad-assistant" aria-label="سند — مساعد التنقل المحلي">
+    <aside className="asie-sanad-assistant" aria-label={text("سند — مساعد التنقل", "Sanad — navigation assistant")} dir={direction}>
       <header>
-        <div><MessagesSquare size={20} /><strong>سند</strong></div>
-        <button type="button" onClick={onClose} aria-label="إغلاق سند"><X size={18} /></button>
+        <div><MessagesSquare size={20} /><strong>{text("سند", "Sanad")}</strong></div>
+        <button type="button" onClick={onClose} aria-label={text("إغلاق سند", "Close Sanad")}><X size={18} /></button>
       </header>
-      <p>مساعد تنقل محلي. لا يولد أرقامًا، ولا يتصل بمزود خارجي، ولا يتجاوز بوابات ASIE.</p>
+      <p>{text("يساعدك سند على معرفة ما يمنع التقدم والانتقال إلى الخطوة المطلوبة.", "Sanad explains what is blocking progress and takes you to the required step.")}</p>
+      {missingLabel ? (
+        <section className="asie-sanad-assistant__blocker" role="status">
+          <strong>{text("ما الذي يمنع التقدم الآن؟", "What is blocking progress now?")}</strong>
+          <span>{missingLabel}</span>
+          <button type="button" onClick={onNavigateMissing}>
+            <Target size={16} /> {text("أكمل هذا المدخل", "Complete this input")}
+          </button>
+        </section>
+      ) : (
+        <p>{text("لا يوجد مدخل إلزامي ناقص ظاهر الآن.", "No required missing input is currently visible.")}</p>
+      )}
       <div>
-        <button type="button" onClick={() => navigateStage("wizard")}><Rocket size={16} /> عرّف المشروع</button>
-        <button type="button" onClick={() => navigateStage("evidence")}><Database size={16} /> اربط الأدلة</button>
-        <button type="button" onClick={() => navigateStage("decision")}><BookOpenCheck size={16} /> افهم القرار</button>
+        <button type="button" onClick={() => navigateStage("wizard")}><Rocket size={16} /> {text("عرّف المشروع", "Set up project")}</button>
+        <button type="button" onClick={() => navigateStage("evidence")}><Database size={16} /> {text("اربط الأدلة", "Link evidence")}</button>
+        <button type="button" onClick={() => navigateStage("decision")}><BookOpenCheck size={16} /> {text("افهم القرار", "Understand decision")}</button>
+        {returnStage ? <button type="button" onClick={onReturn}><ArrowLeft size={16} /> {text("العودة إلى الصفحة السابقة", "Return to previous page")}</button> : null}
       </div>
     </aside>
   );
@@ -290,6 +335,7 @@ export function ASIECompleteSurfaceMount() {
   const [targets, setTargets] = useState<PortalTargets>(() => readTargets());
   const [activeStage, setActiveStage] = useState(() => activeStageFromDom());
   const [sanadOpen, setSanadOpen] = useState(false);
+  const [returnStage, setReturnStage] = useState<string | null>(() => window.sessionStorage.getItem("asie.sanad.return_stage"));
 
   useEffect(() => {
     const refresh = () => {
@@ -308,7 +354,26 @@ export function ASIECompleteSurfaceMount() {
     };
   }, []);
 
-  const portals = useMemo(() => {
+  const missingLabel = targets.workspace?.dataset.asieMissingLabel ?? "";
+
+  function navigateToMissingInput() {
+    const currentStage = activeStageFromDom();
+    if (currentStage !== "wizard" && currentStage !== "readiness") {
+      window.sessionStorage.setItem("asie.sanad.return_stage", currentStage);
+      setReturnStage(currentStage);
+    }
+    window.dispatchEvent(new CustomEvent("asie:navigate-missing-input"));
+    setSanadOpen(false);
+  }
+
+  function returnFromMissingInput() {
+    if (returnStage) navigateStage(returnStage);
+    window.sessionStorage.removeItem("asie.sanad.return_stage");
+    setReturnStage(null);
+    setSanadOpen(false);
+  }
+
+    const portals = useMemo(() => {
     const items = [];
     if (targets.landingNav) items.push(createPortal(<LandingNavigation />, targets.landingNav, "asie-landing-nav"));
     if (targets.landing) items.push(createPortal(<LandingCompletion />, targets.landing, "asie-landing-completion"));
@@ -324,7 +389,7 @@ export function ASIECompleteSurfaceMount() {
           <button className="asie-sanad-launcher" type="button" onClick={() => setSanadOpen((value) => !value)} aria-expanded={sanadOpen}>
             <MessagesSquare size={18} aria-hidden="true" /> سند
           </button>
-          {sanadOpen ? <SanadAssistant onClose={() => setSanadOpen(false)} /> : null}
+          {sanadOpen ? <SanadAssistant onClose={() => setSanadOpen(false)} missingLabel={missingLabel} returnStage={returnStage} onNavigateMissing={navigateToMissingInput} onReturn={returnFromMissingInput} /> : null}
         </>
       ) : null}
     </>
