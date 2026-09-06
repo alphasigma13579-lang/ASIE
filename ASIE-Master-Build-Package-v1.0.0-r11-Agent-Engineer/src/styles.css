@@ -2662,3 +2662,40 @@ code, .mono {
 
 @media (prefers-reduced-motion: reduce) { .cc-skel span { animation: none; } }
 @media (max-width: 720px) { .cc-hero, .cc-decision-hero { flex-direction: column; } .cc-topnav__links { order: 3; } }
+
+
+/* Governed customer language controls */
+.customer-language-switcher {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line, #dbe5dd);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+}
+.customer-language-switcher button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.customer-language-switcher button.is-active {
+  background: var(--green-900, #0b4939);
+  color: #fff;
+}
+.customer-language-switcher button:focus-visible {
+  outline: 3px solid var(--lime-300, #c9ee67);
+  outline-offset: 2px;
+}
+.auth-screen__language {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+.engineering-surface-gate {
+  text-align: center;
+}
