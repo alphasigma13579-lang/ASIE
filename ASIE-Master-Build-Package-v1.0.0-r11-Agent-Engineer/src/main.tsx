@@ -4,6 +4,7 @@ import { App } from "./App";
 import { AdminConsole } from "./AdminConsole";
 import { ASIECompleteSurfaceMount } from "./ASIECompleteSurfaceMount";
 import { CustomerLanguageProvider } from "./customerLanguage";
+import { EngineeringSurfaceGate } from "./EngineeringSurfaceGate";
 import { DIBControlledFinanceWiring } from "./DIBControlledFinanceWiring";
 import { DIBE2EScenario } from "./DIBE2EScenario";
 import { DIBIntakeItemGovernance } from "./DIBIntakeItemGovernance";
@@ -20,19 +21,19 @@ const currentHash = window.location.hash;
 const routedApp = currentHash === "#admin"
   ? <AdminConsole />
   : currentHash.startsWith("#dib-e2e-scenario")
-    ? <DIBE2EScenario />
+    ? <EngineeringSurfaceGate><DIBE2EScenario /></EngineeringSurfaceGate>
     : currentHash.startsWith("#dib-snapshot-handoff")
-      ? <DIBSnapshotProjectionHandoff />
+      ? <EngineeringSurfaceGate><DIBSnapshotProjectionHandoff /></EngineeringSurfaceGate>
       : currentHash.startsWith("#dib-finance-wiring")
-        ? <DIBControlledFinanceWiring />
+        ? <EngineeringSurfaceGate><DIBControlledFinanceWiring /></EngineeringSurfaceGate>
         : currentHash.startsWith("#dib-run-readiness")
-          ? <DIBManifestRunReadiness />
+          ? <EngineeringSurfaceGate><DIBManifestRunReadiness /></EngineeringSurfaceGate>
           : currentHash.startsWith("#dib-governance")
-            ? <DIBIntakeItemGovernance />
+            ? <EngineeringSurfaceGate><DIBIntakeItemGovernance /></EngineeringSurfaceGate>
             : currentHash.startsWith("#dib-entry")
-              ? <DIBProjectEntryPoint />
+              ? <EngineeringSurfaceGate><DIBProjectEntryPoint /></EngineeringSurfaceGate>
               : currentHash.startsWith("#dib")
-                ? <DIBWorkspace />
+                ? <EngineeringSurfaceGate><DIBWorkspace /></EngineeringSurfaceGate>
                 : <App />;
 const showDIBCardDirectAction = !currentHash.startsWith("#admin") && !currentHash.startsWith("#dib");
 
