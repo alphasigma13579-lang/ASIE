@@ -179,7 +179,7 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
 
       {state === "unavailable" ? (
         <p className="live-market-map__notice live-market-map__notice--unavailable" role="alert">
-          {text("تعذر الوصول إلى مصدر الخرائط مؤقتًا. حُفظت مدخلاتك ويمكنك إعادة المحاولة لاحقًا؛ لن تُعرض بيانات بديلة.", "The map source is temporarily unavailable. Your inputs are preserved and you can try again later; no substitute data will be shown.")}
+          {text("تعذر الوصول إلى مصدر الخرائط مؤقتًا. يمكنك إعادة المحاولة لاحقًا؛ لن تُعرض بيانات بديلة.", "The map source is temporarily unavailable. You can try again later; no substitute data will be shown.")}
         </p>
       ) : null}
 

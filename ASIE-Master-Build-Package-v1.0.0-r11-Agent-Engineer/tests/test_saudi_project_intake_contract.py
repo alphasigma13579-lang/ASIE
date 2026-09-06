@@ -11,7 +11,7 @@ REPOSITORY = (ROOT / "backend" / "repository.py").read_text(encoding="utf-8")
 
 class SaudiProjectIntakeContractTests(unittest.TestCase):
     def test_saudi_scope_is_explicit_and_device_location_is_not_requested(self):
-        self.assertIn('value="المملكة العربية السعودية" readOnly', APP)
+        self.assertIn('value={text("المملكة العربية السعودية", "Saudi Arabia")} readOnly', APP)
         self.assertNotIn("navigator.geolocation", APP)
         self.assertIn("لا تُقرأ إحداثيات الجهاز تلقائيًا", APP)
 
@@ -88,7 +88,7 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         self.assertIn("اعتماد المجموعة", APP)
         self.assertIn("راجعت جميع المجموعات وأعتمدها", APP)
         self.assertIn("إضافة تفاصيل تشغيلية أدق", APP)
-        self.assertIn("لا تُراجع هذه البنود ولا تدخل كشف الافتراضات إلا إذا كتبت قيمة فعلية فيها", APP)
+        self.assertIn("لا تُراجع هذه البنود ولا تدخل قائمة الافتراضات إلا إذا كتبت قيمة فعلية فيها", APP)
 
     def test_capital_is_required_before_advancing(self):
         self.assertIn("step === 6", APP)
@@ -116,7 +116,7 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
             "اختر جمهور المشروع",
             "اختر طريقة تعبئة تفاصيل المشروع",
             "اكتب تكلفة التأسيس التقريبية",
-            "ارفع ملف CSV أو Excel قبل فحص النواقص",
+            "ارفع ملف بيانات قبل فحص النواقص",
         ):
             self.assertIn(message, APP)
 

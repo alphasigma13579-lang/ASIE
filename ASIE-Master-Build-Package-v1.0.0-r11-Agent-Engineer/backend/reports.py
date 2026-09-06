@@ -293,6 +293,34 @@ def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | N
         f"<td>{escape(', '.join(business_text(item, locale) for item in row.get('exit_criteria') or []) or text('none', locale))}</td></tr>"
         for row in view["execution_plan"].get("milestones", [])
     )
+    evidence_register = view.get("evidence_register", {})
+    source_records = {
+        str(source.get("source_id") or ""): source
+        for source in evidence_register.get("source_records", [])
+        if isinstance(source, dict)
+    }
+    evidence_rows_list: list[str] = []
+    for dataset in evidence_register.get("datasets", []):
+        if not isinstance(dataset, dict):
+            continue
+        source = source_records.get(str(dataset.get("source_id") or ""), {})
+        source_url = str(source.get("url") or "")
+        source_action = (
+            f'<a href="{escape(source_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+            f'{"فتح المصدر الرسمي" if locale == "ar" else "Open official source"}</a>'
+            if source_url.startswith("https://")
+            else ("الرابط غير متاح" if locale == "ar" else "Link unavailable")
+        )
+        evidence_rows_list.append(
+            f"<tr><td>{escape(str(dataset.get('title') or ('دليل موثق' if locale == 'ar' else 'Documented evidence')))}</td>"
+            f"<td>{escape(str(dataset.get('publisher') or source.get('publisher') or '—'))}</td>"
+            f"<td>{escape(status_text(dataset.get('review_status') or dataset.get('human_review_decision'), locale))}</td>"
+            f"<td>{source_action}</td>"
+            f"<td>{escape(safe_narrative(dataset.get('attribution') or source.get('attribution') or '—', locale))}</td></tr>"
+        )
+    evidence_rows = "".join(evidence_rows_list) or (
+        f'<tr><td colspan="5">{"لا توجد أدلة معتمدة مرتبطة بهذا التقرير بعد." if locale == "ar" else "No approved evidence is linked to this report yet."}</td></tr>'
+    )
     labels = {
         "summary": ("الملخص التنفيذي", "Executive summary"),
         "decision": ("القرار", "Decision"),
@@ -300,6 +328,11 @@ def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | N
         "metrics": ("المؤشرات الرئيسية", "Key metrics"),
         "value": ("القيمة", "Value"),
         "unit": ("الوحدة", "Unit"),
+        "evidence": ("الأدلة المستخدمة", "Evidence used"),
+        "publisher": ("الجهة الناشرة", "Publisher"),
+        "review": ("حالة المراجعة", "Review status"),
+        "source": ("المصدر", "Source"),
+        "attribution": ("الإسناد", "Attribution"),
         "readiness": ("متطلبات الجاهزية", "Readiness requirements"),
         "risks": ("المخاطر وخطة المعالجة", "Risks and mitigation"),
         "risk": ("الخطر", "Risk"),
@@ -333,6 +366,7 @@ header{{padding:24px;border-radius:16px;background:linear-gradient(135deg,#0b3d2
 <table><tbody><tr><th>{escape(label('decision'))}</th><td>{escape(status_text(summary.get('verdict'), locale))}</td></tr>
 <tr><th>{escape(label('why'))}</th><td>{escape(safe_narrative(summary.get('reason'), locale))}</td></tr></tbody></table>
 <h2>{escape(label('metrics'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(label('value'))}</th><th>{escape(label('unit'))}</th><th>{escape(text('status', locale))}</th></tr></thead><tbody>{kpi_rows}</tbody></table>
+<h2>{escape(label('evidence'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(label('publisher'))}</th><th>{escape(label('review'))}</th><th>{escape(label('source'))}</th><th>{escape(label('attribution'))}</th></tr></thead><tbody>{evidence_rows}</tbody></table>
 <h2>{escape(label('readiness'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(text('status', locale))}</th><th>{escape(text('reason', locale))}</th></tr></thead><tbody>{gate_rows}</tbody></table>
 <h2>{escape(label('risks'))}</h2><table><thead><tr><th>{escape(label('risk'))}</th><th>{escape(label('severity'))}</th><th>{escape(label('mitigation'))}</th></tr></thead><tbody>{risk_rows}</tbody></table>
 <h2>{escape(label('plan'))}</h2><table><thead><tr><th>{escape(label('phase'))}</th><th>{escape(label('owner'))}</th><th>{escape(label('days'))}</th><th>{escape(label('done'))}</th></tr></thead><tbody>{milestone_rows}</tbody></table>

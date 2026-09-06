@@ -736,10 +736,10 @@ class LocalPlatformTests(unittest.TestCase):
         html = render_report_html(report)
 
         self.assertEqual(view["snapshot_id"], overview["snapshot"]["snapshot_id"])
-        self.assertIn(overview["snapshot"]["snapshot_id"], html)
-        self.assertIn("دفتر الافتراضات", html)
-        self.assertIn("سجل المصادر", html)
-        self.assertIn("اختبارات القبول r10/r11", html)
+        self.assertNotIn(overview["snapshot"]["snapshot_id"], html)
+        self.assertIn("متطلبات الجاهزية", html)
+        self.assertIn("خطة التنفيذ", html)
+        self.assertIn("التفاصيل الفنية وسجل التدقيق متاحة للمشرف فقط", html)
 
     def test_two_runs_produce_distinct_immutable_snapshots(self) -> None:
         repo = self.make_repo()
@@ -1008,8 +1008,12 @@ class LocalPlatformTests(unittest.TestCase):
         html = render_report_html(report)
 
         self.assertEqual(report["evidence_register"]["evidence_links"][0]["dataset_id"], dataset["dataset_id"])
-        self.assertIn("سجل البيانات والأدلة", html)
+        self.assertIn("الأدلة المستخدمة", html)
         self.assertIn("Report dataset", html)
+        self.assertIn(APPROVED_SOURCE["publisher"], html)
+        self.assertIn(APPROVED_SOURCE["url"], html)
+        self.assertNotIn(dataset["dataset_id"], html)
+        self.assertNotIn(APPROVED_SOURCE["source_id"], html)
         self.assertFalse(overview["audit"]["source_fetch_enabled"])
 
     def test_old_snapshot_stays_stable_after_dataset_edit(self) -> None:
@@ -1283,16 +1287,16 @@ class LocalPlatformTests(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertEqual(next(item for item in merged if item["action_item_id"] == target["action_item_id"])["status"], "closed")
 
-    def test_decision_pack_html_contains_snapshot_run_and_audit_lineage(self) -> None:
+    def test_decision_pack_html_hides_snapshot_run_and_audit_lineage_from_customer(self) -> None:
         repo = self.make_repo()
         project = repo.create_project({"name": "Decision HTML", "inputs": OPERATIONAL_INPUTS})
         overview, report = api.build_overview(project, repo)
         pack = build_decision_pack(overview, report, [])
         html = render_decision_pack_html(pack)
 
-        self.assertIn(overview["snapshot"]["snapshot_id"], html)
-        self.assertIn(overview["run"]["run_id"], html)
-        self.assertIn(overview["audit"]["audit_id"], html)
+        self.assertNotIn(overview["snapshot"]["snapshot_id"], html)
+        self.assertNotIn(overview["run"]["run_id"], html)
+        self.assertNotIn(overview["audit"]["audit_id"], html)
         self.assertIn("مذكرة القرار", html)
 
     def test_sector_intelligence_result_is_saved_in_snapshot(self) -> None:

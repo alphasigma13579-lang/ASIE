@@ -133,7 +133,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
           {context.partial_results_available && (
             <section aria-labelledby="failures-title">
               <h3 id="failures-title">{text("تعذر إكمال جزء من البحث", "Part of the research could not be completed")}</h3>
-              <p>{text("تعذر الوصول إلى أحد المصادر مؤقتًا. حُفظت مدخلات البحث ويمكنك إعادة المحاولة لاحقًا؛ لن تُعرض بيانات بديلة.", "One source is temporarily unavailable. Your research inputs are preserved and you can try again later; no substitute data will be shown.")}</p>
+              <p>{text("تعذر الوصول إلى أحد المصادر مؤقتًا. يمكنك إعادة المحاولة لاحقًا؛ لن تُعرض بيانات بديلة.", "One source is temporarily unavailable. You can try again later; no substitute data will be shown.")}</p>
             </section>
           )}
         </div>
@@ -141,7 +141,7 @@ export function LiveIntelligenceWorkspace({ context, loading = false, error = fa
 
       {error ? (
         <p role="alert" className="capability-notice">
-          {text("تعذر إكمال البحث مؤقتًا. حُفظت مدخلاتك ويمكنك إعادة المحاولة من هذه الصفحة.", "Research could not be completed temporarily. Your inputs are preserved and you can retry from this page.")}
+          {text("تعذر إكمال البحث مؤقتًا. يمكنك إعادة المحاولة من هذه الصفحة؛ لن تُعرض بيانات بديلة.", "Research could not be completed temporarily. You can retry from this page; no substitute data will be shown.")}
         </p>
       ) : null}
     </section>

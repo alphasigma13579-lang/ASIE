@@ -23,10 +23,10 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
 
     def test_market_request_requires_confirmed_project_location_and_sector(self) -> None:
         self.assertIn("projectId && sector?.trim() && hasConfirmedLocation", self.map)
-        self.assertIn("تحديث المنافسين للموقع المؤكد", self.map)
+        self.assertIn("البحث عن منافسين قرب الموقع", self.map)
         self.assertIn("reverseGeocode", self.map)
         self.assertIn("searchMarketCompetitors", self.map)
-        self.assertIn('لا توجد بيانات بديلة أو تجريبية هنا', self.map)
+        self.assertIn("لن تُعرض بيانات بديلة", self.map)
 
     def test_browser_map_never_receives_the_server_key_or_loads_on_mount(self) -> None:
         self.assertIn("VITE_GOOGLE_MAPS_BROWSER_KEY", self.map)
@@ -62,6 +62,9 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertIn('contextRevisionRef', self.cockpit)
         self.assertIn('primarySectorId', self.cockpit)
         self.assertNotIn("حُفظت مدخلاتك", self.workspace)
+        self.assertNotIn("حُفظت مدخلاتك", self.map)
+        self.assertNotIn("Your inputs are preserved", self.workspace)
+        self.assertNotIn("Your inputs are preserved", self.map)
 
 
 if __name__ == "__main__":
