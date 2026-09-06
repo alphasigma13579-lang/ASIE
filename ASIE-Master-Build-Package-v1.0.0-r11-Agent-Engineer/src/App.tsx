@@ -71,7 +71,7 @@ import {
   type SectorProfile,
 } from "./api";
 import { AuthScreen } from "./AuthScreens";
-import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerStatusText, useCustomerLanguage } from "./customerLanguage";
+import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerNarrativeText, customerStatusText, useCustomerLanguage } from "./customerLanguage";
 import {
   clearSession,
   getActiveOrganizationId,
@@ -1943,24 +1943,24 @@ function SessionWorkspace() {
         ) : null}
 
         {stage === "decision" ? (
-          <section className="decision-command" aria-label="مساحة قرار العميل">
+          <section className="decision-command" aria-label={text("مساحة قرار العميل", "Customer decision workspace")}>
             <article className="decision-command__hero">
               <div>
-                <p className="eyebrow">مساحة القرار · إسقاط محفوظ لا يعيد الحساب</p>
-                <h2>{snapshotOverview ? statusText(snapshotOverview.decision.sovereign_verdict) : "القرار غير متاح بعد"}</h2>
-                <p>{snapshotOverview?.decision.reason ?? "شغّل تحليلاً صالحاً أولاً لإظهار الحكم وسببه من Snapshot محفوظ."}</p>
+                <p className="eyebrow">{text("مساحة القرار · تقرير محفوظ لا يعيد الحساب", "Decision workspace · saved report without recalculation")}</p>
+                <h2>{snapshotOverview ? statusText(snapshotOverview.decision.sovereign_verdict, locale) : text("القرار غير متاح بعد", "Decision is not available yet")}</h2>
+                <p>{snapshotOverview ? customerNarrativeText(snapshotOverview.decision.reason, locale) : text("شغّل التحليل أولاً لإظهار القرار وسببه من تقرير محفوظ.", "Run the analysis first to show the decision and its reason from a saved report.")}</p>
               </div>
               <div className="decision-command__identity">
-                <span>مرجع اللقطة</span>
-                <strong>{snapshotOverview?.snapshot.snapshot_id ?? "—"}</strong>
-                <small>{snapshotOverview ? `Run ${snapshotOverview.run.run_id}` : "لا توجد هوية قرار قبل التشغيل"}</small>
+                <span>{text("حالة التقرير", "Report status")}</span>
+                <strong>{snapshotOverview ? text("محفوظ", "Saved") : text("غير متاح", "Not available")}</strong>
+                <small>{snapshotOverview ? text("مرتبط بنتيجة التحليل الحالية", "Linked to the current analysis result") : text("أنشئ التحليل أولاً", "Run the analysis first")}</small>
               </div>
             </article>
 
             <div className="decision-command__summary">
-              <article><span>المراجعة البشرية</span><strong>{statusText(decisionStatus)}</strong><small>طبقة فوق القرار وليست تعديلاً للـ Snapshot</small></article>
-              <article><span>الإجراءات المفتوحة</span><strong>{openActionItems.length}</strong><small>مستخرجة من الحزمة المحفوظة</small></article>
-              <article><span>حالة التنفيذ</span><strong>{snapshotOverview ? statusText(snapshotOverview.execution_plan.status) : "غير متاح"}</strong><small>تتبع القيود والمراحل من الإسقاط</small></article>
+              <article><span>{text("المراجعة البشرية", "Human review")}</span><strong>{statusText(decisionStatus, locale)}</strong><small>{text("مراجعة منفصلة لا تغيّر نتيجة التحليل الأصلية", "A separate review that does not change the original result")}</small></article>
+              <article><span>{text("الإجراءات المفتوحة", "Open actions")}</span><strong>{openActionItems.length}</strong><small>{text("خطوات عملية مرتبطة بالتقرير", "Practical steps linked to the report")}</small></article>
+              <article><span>{text("حالة التنفيذ", "Execution status")}</span><strong>{snapshotOverview ? statusText(snapshotOverview.execution_plan.status, locale) : text("غير متاح", "Not available")}</strong><small>{text("متابعة الخطوات والعوائق", "Track actions and blockers")}</small></article>
             </div>
 
             {snapshotOverview ? (
@@ -1968,13 +1968,13 @@ function SessionWorkspace() {
                 <header><div><p className="eyebrow">ذكاء القرار المحفوظ</p><h2>اختبر القرار من خمس زوايا ومحاكاة المخاطر</h2><p>هذه إسقاطات من Snapshot الحالي؛ الشخصيات تفسّر ولا تصوّت، والحكم السيادي يبقى المرجع.</p></div><button onClick={() => void handleOpenDecisionPack()} disabled={isBusy}>فتح التفسير الكامل <ArrowLeft size={16} /></button></header>
                 <div className="decision-intelligence__grid">
                   <article className="monte-carlo-widget">
-                    <div className="intelligence-widget__heading"><div><Calculator size={20} /><span>محاكاة Monte Carlo</span></div><small>{snapshotOverview.monte_carlo.status === "ready" ? "محاكاة جاهزة" : "تحتاج مدخلات"}</small></div>
-                    <strong>{snapshotOverview.monte_carlo.p_pass === null ? "NOT_READY" : `${Math.round(snapshotOverview.monte_carlo.p_pass * 100)}%`}</strong>
+                    <div className="intelligence-widget__heading"><div><Calculator size={20} /><span>{text("محاكاة احتمالات المخاطر", "Risk probability simulation")}</span></div><small>{snapshotOverview.monte_carlo.status === "ready" ? "محاكاة جاهزة" : "تحتاج مدخلات"}</small></div>
+                    <strong>{snapshotOverview.monte_carlo.p_pass === null ? "—" : `${Math.round(snapshotOverview.monte_carlo.p_pass * 100)}%`}</strong>
                     <p>احتمال اجتياز بوابات الجدوى عبر {snapshotOverview.monte_carlo.iterations.toLocaleString("ar-SA")} تشغيل محفوظ.</p>
                     <div className="simulation-scale"><i style={{ width: `${Math.max(0, Math.min(100, (snapshotOverview.monte_carlo.p_pass ?? 0) * 100))}%` }} /><span>ضعيف</span><span>متوازن</span><span>قوي</span></div>
                   </article>
                   <div className="persona-kpi-grid">
-                    {snapshotOverview.personas.map((persona) => <button key={persona.persona_id} className="persona-kpi" onClick={() => void handleOpenDecisionPack()}><span>{persona.metric}</span><strong>{persona.value === null ? "NOT_READY" : `${Math.round(persona.value * 100)}%`}</strong><small>{statusText(persona.status)} · افتح التفسير</small></button>)}
+                    {snapshotOverview.personas.map((persona) => <button key={persona.persona_id} className="persona-kpi" onClick={() => void handleOpenDecisionPack()}><span>{customerBusinessText(persona.metric, locale)}</span><strong>{persona.value === null ? "—" : `${Math.round(persona.value * 100)}%`}</strong><small>{statusText(persona.status, locale)} · {text("افتح التفسير", "Open explanation")}</small></button>)}
                   </div>
                 </div>
               </section>
@@ -1983,7 +1983,7 @@ function SessionWorkspace() {
             <div className="decision-command__grid">
               <article className="panel decision-rationale">
                 <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>لماذا هذا القرار؟</h2></div>
-                {decisionPack ? <><strong>{decisionPack.memo.recommendation}</strong><p>{decisionPack.memo.rationale}</p><small>Decision Pack {decisionPack.decision_pack_hash.slice(-10)}</small></> : <p className="empty-state">افتح حزمة القرار لعرض المذكرة المحفوظة من Snapshot.</p>}
+                {decisionPack ? <><strong>{customerBusinessText(decisionPack.memo.recommendation, locale)}</strong><p>{customerNarrativeText(decisionPack.memo.rationale, locale)}</p><small>{text("مذكرة مرتبطة بالتقرير الحالي", "Memo linked to the current report")}</small></> : <p className="empty-state">{text("افتح مذكرة القرار لعرض التفسير المحفوظ.", "Open the decision memo to view the saved explanation.")}</p>}
                 <div className="button-row"><button disabled={!snapshotOverview || isBusy} onClick={handleOpenDecisionPack}>فتح حزمة القرار</button><button disabled={!snapshotOverview || isBusy} onClick={handleOpenReport}>فتح التقرير</button></div>
               </article>
               <article className="panel decision-evidence">
@@ -1998,14 +1998,14 @@ function SessionWorkspace() {
               <article className="panel">
                 <div className="section-title"><AlertTriangle size={20} aria-hidden="true" /><h2>المخاطر والتخفيف</h2></div>
                 <div className="command-risk-list">
-                  {(decisionPack?.top_risks ?? snapshotOverview?.risk_register.top_risks ?? []).slice(0, 4).map((risk) => <article key={risk.risk_id}><strong>{risk.trigger}</strong><span>{risk.severity} · {risk.owner_role}</span><small>{risk.mitigation}</small></article>)}
+                  {(decisionPack?.top_risks ?? snapshotOverview?.risk_register.top_risks ?? []).slice(0, 4).map((risk) => <article key={risk.risk_id}><strong>{customerBusinessText(risk.trigger, locale)}</strong><span>{statusText(risk.severity, locale)} · {customerBusinessText(risk.owner_role, locale)}</span><small>{customerNarrativeText(risk.mitigation, locale)}</small></article>)}
                 </div>
                 {!snapshotOverview?.risk_register.top_risks.length ? <p className="empty-state">لا توجد مخاطر محفوظة لعرضها بعد.</p> : null}
               </article>
               <article className="panel">
                 <div className="section-title"><Target size={20} aria-hidden="true" /><h2>خطة التنفيذ</h2></div>
                 <div className="execution-list">
-                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).slice(0, 4).map((milestone) => <article key={milestone.phase_id}><strong>{milestone.phase_id}</strong><span>{milestone.owner_role} · {milestone.estimated_duration_days} يوم</span><small>{milestone.exit_criteria[0] ?? "لا يوجد معيار خروج معلن"}</small></article>)}
+                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).slice(0, 4).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerBusinessText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
                 </div>
                 {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">تظهر مراحل التنفيذ مع Snapshot المكتمل فقط.</p> : null}
               </article>
@@ -2013,14 +2013,14 @@ function SessionWorkspace() {
 
             <article className="panel decision-review-panel">
               <div className="section-title"><Users size={20} aria-hidden="true" /><h2>المراجعة البشرية والإجراءات</h2></div>
-              <p className="muted">الاعتماد أو الرفض يحفظان overlay منفصلاً ولا يغيران الحكم أو hash أو بيانات الـ Snapshot.</p>
+              <p className="muted">{text("الاعتماد أو الرفض يسجل مراجعة مستقلة ولا يغير نتيجة التحليل الأصلية.", "Approval or rejection records a separate review without changing the original analysis result.")}</p>
               <div className="button-row">
                 <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("approved_local")}>اعتماد محلي</button>
                 <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("needs_changes")}>طلب تعديل</button>
                 <button disabled={!decisionPack || isBusy} onClick={() => handleReviewDecision("rejected_local")}>رفض محلي</button>
               </div>
               <div className="remediation-list">
-                {actionItems.slice(0, 6).map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><span>{item.message || item.recommended_action}</span><small>{item.severity} · {item.status}</small>{item.status === "open" ? <button disabled={isBusy} onClick={() => handleCloseActionItem(item.action_item_id)}>إغلاق الإجراء</button> : null}</article>)}
+                {actionItems.slice(0, 6).map((item) => <article key={item.action_item_id}><strong>{customerNarrativeText(item.title, locale)}</strong><span>{customerNarrativeText(item.message || item.recommended_action, locale)}</span><small>{statusText(item.severity, locale)} · {statusText(item.status, locale)}</small>{item.status === "open" ? <button disabled={isBusy} onClick={() => handleCloseActionItem(item.action_item_id)}>إغلاق الإجراء</button> : null}</article>)}
                 {!actionItems.length ? <p className="empty-state">لا توجد إجراءات مفتوحة في الحزمة الحالية.</p> : null}
               </div>
             </article>
@@ -2038,7 +2038,7 @@ function SessionWorkspace() {
               <article className="panel">
                 <div className="section-title"><Target size={20} aria-hidden="true" /><h2>الخطوات القادمة</h2></div>
                 <div className="execution-list">
-                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).map((milestone) => <article key={milestone.phase_id}><strong>{milestone.phase_id}</strong><span>{milestone.owner_role} · {milestone.estimated_duration_days} يوم</span><small>{milestone.exit_criteria[0] ?? "لا يوجد معيار خروج معلن"}</small></article>)}
+                  {(decisionPack?.execution_plan.milestones ?? snapshotOverview?.execution_plan.milestones ?? []).map((milestone) => <article key={milestone.phase_id}><strong>{customerBusinessText(milestone.phase_id, locale)}</strong><span>{customerBusinessText(milestone.owner_role, locale)} · {milestone.estimated_duration_days} {text("يوم", "days")}</span><small>{milestone.exit_criteria[0] ? customerBusinessText(milestone.exit_criteria[0], locale) : text("لا يوجد معيار إتمام معلن", "No completion criterion is available")}</small></article>)}
                 </div>
                 {!snapshotOverview?.execution_plan.milestones.length ? <p className="empty-state">شغّل التحليل أولاً كي تظهر خارطة تنفيذ مرتبطة بالقرار المحفوظ.</p> : null}
               </article>
