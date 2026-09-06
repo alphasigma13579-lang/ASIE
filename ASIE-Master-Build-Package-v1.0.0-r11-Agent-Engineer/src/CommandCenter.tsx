@@ -723,13 +723,36 @@ function AttentionList({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStag
   const { locale, text } = useCustomerLanguage();
   const items: Array<{ id: string; pid: string; title: string; detail: string; tone: "warn" | "stop" | "dim"; stage: "evidence" | "readiness" | "decision" | "run" }> = [];
   for (const b of bundles) {
-    for (const bl of (b.readiness?.blockers ?? []).slice(0, 2)) {
-      items.push({ id: `${b.project.project_id}:${bl.code}`, pid: b.project.project_id, title: `${b.project.name} — يحتاج استكمال جاهزية`, detail: bl.message, tone: "warn", stage: "readiness" });
+    for (const blocker of (b.readiness?.blockers ?? []).slice(0, 2)) {
+      items.push({
+        id: `${b.project.project_id}:${blocker.code}`,
+        pid: b.project.project_id,
+        title: `${b.project.name} — ${text("يحتاج استكمال الجاهزية", "readiness needs completion")}`,
+        detail: customerNarrativeText(blocker.message, locale),
+        tone: "warn",
+        stage: "readiness",
+      });
     }
-    const src = b.readiness?.steps.find((s) => s.step_id === "sources" && s.status !== "ready");
-    if (src) items.push({ id: `${b.project.project_id}:ev`, pid: b.project.project_id, title: `${b.project.name} — الأدلة غير مكتملة`, detail: src.message || "اربط دليلاً قبل التشغيل.", tone: "dim", stage: "evidence" });
+    const sourceStep = b.readiness?.steps.find((step) => step.step_id === "sources" && step.status !== "ready");
+    if (sourceStep) {
+      items.push({
+        id: `${b.project.project_id}:evidence`,
+        pid: b.project.project_id,
+        title: `${b.project.name} — ${text("الأدلة غير مكتملة", "evidence is incomplete")}`,
+        detail: customerNarrativeText(sourceStep.message || text("اربط دليلًا قبل التشغيل.", "Link evidence before running the analysis."), locale),
+        tone: "dim",
+        stage: "evidence",
+      });
+    }
     if (b.overview?.decision.sovereign_verdict === "REVISE_AND_REASSESS") {
-      items.push({ id: `${b.project.project_id}:vd`, pid: b.project.project_id, title: `${b.project.name} — القرار يطلب مراجعة`, detail: "آخر حكم سيادي طلب المراجعة وإعادة التقييم.", tone: "stop", stage: "decision" });
+      items.push({
+        id: `${b.project.project_id}:decision`,
+        pid: b.project.project_id,
+        title: `${b.project.name} — ${text("القرار يحتاج مراجعة", "decision needs review")}`,
+        detail: text("القرار الأخير يطلب المراجعة وإعادة التقييم.", "The latest decision requires review and reassessment."),
+        tone: "stop",
+        stage: "decision",
+      });
     }
   }
   const shown = items.slice(0, 4);
@@ -737,18 +760,20 @@ function AttentionList({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStag
     return (
       <div className="cc-clear">
         <CheckCircle2 size={19} aria-hidden="true" />
-        <span>لا شيء يحتاج انتباهاً الآن — مشاريعك على المسار.</span>
+        <span>{text("لا شيء يحتاج انتباهك الآن، ومشاريعك على المسار.", "Nothing needs your attention now; your projects are on track.")}</span>
       </div>
     );
   }
   return (
     <>
-      {shown.map((it) => (
-        <div className="cc-row" key={it.id}>
-          <Chip tone={it.tone}>{it.stage === "readiness" ? "جاهزية" : it.stage === "evidence" ? "أدلة" : "قرار"}</Chip>
-          <div className="cc-row__body"><b>{it.title}</b><span>{it.detail}</span></div>
-          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(it.pid, it.stage)}>
-            معالجة <ArrowLeft size={13} aria-hidden="true" />
+      {shown.map((item) => (
+        <div className="cc-row" key={item.id}>
+          <Chip tone={item.tone}>
+            {item.stage === "readiness" ? text("جاهزية", "Readiness") : item.stage === "evidence" ? text("أدلة", "Evidence") : text("قرار", "Decision")}
+          </Chip>
+          <div className="cc-row__body"><b>{item.title}</b><span>{item.detail}</span></div>
+          <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenStage(item.pid, item.stage)}>
+            {text("معالجة", "Resolve")} <ArrowLeft size={13} aria-hidden="true" />
           </button>
         </div>
       ))}
