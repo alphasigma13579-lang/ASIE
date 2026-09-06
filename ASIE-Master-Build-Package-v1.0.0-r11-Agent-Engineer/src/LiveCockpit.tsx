@@ -14,17 +14,7 @@ type LiveCockpitProps = {
   projectId?: string;
   latitude?: number | null;
   longitude?: number | null;
-  snapshotId?: string | null;
-  signals?: StudySignals;
   onContinue?: () => void;
-};
-
-type StudySignals = {
-  monthlyProfit?: number | null;
-  paybackMonths?: number | null;
-  fundingGap?: number | null;
-  feasibilityProbability?: number | null;
-  monthlyUnits?: number | null;
 };
 
 export function LiveCockpit({

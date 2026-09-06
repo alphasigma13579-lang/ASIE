@@ -2053,14 +2053,6 @@ function SessionWorkspace() {
               locationLabel={[project?.inputs.location_city, project?.inputs.location_district].filter(Boolean).join(" · ") || project?.inputs.location_scope}
               latitude={project?.inputs.location_latitude ?? null}
               longitude={project?.inputs.location_longitude ?? null}
-              snapshotId={snapshotOverview?.snapshot.snapshot_id}
-              signals={{
-                monthlyProfit: snapshotMetricValue("monthly-profit"),
-                paybackMonths: snapshotMetricValue("payback-months"),
-                fundingGap: snapshotMetricValue("funding-need-after-equity") ?? snapshotMetricValue("funding-gap"),
-                feasibilityProbability: snapshotMetricValue("mc-feasibility-gate-probability"),
-                monthlyUnits: project?.inputs.monthly_units ?? null,
-              }}
               onContinue={() => setStage("decision")}
             />
           </section>

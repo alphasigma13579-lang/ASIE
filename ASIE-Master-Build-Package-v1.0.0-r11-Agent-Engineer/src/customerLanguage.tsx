@@ -136,6 +136,7 @@ const customerErrors: Array<{ pattern: RegExp; ar: string; en: string }> = [
   { pattern: /invalid_or_expired_recovery_token/i, ar: "رمز الاستعادة غير صالح أو منتهي. اطلب رمزًا جديدًا.", en: "The recovery code is invalid or expired. Request a new code." },
   { pattern: /local_bootstrap_unavailable/i, ar: "إنشاء الحساب غير متاح الآن. حاول لاحقًا أو تواصل مع مشرف البيتا.", en: "Account creation is temporarily unavailable. Try again later or contact the beta administrator." },
   { pattern: /unauthorized|forbidden|permission/i, ar: "ليست لديك صلاحية لتنفيذ هذا الإجراء.", en: "You do not have permission to perform this action." },
+  { pattern: /report_export_unavailable/i, ar: "تعذر تجهيز ملف التقرير الآن. حاول مرة أخرى لاحقًا.", en: "The report file could not be prepared. Try again later." },
   { pattern: /network|fetch|timeout|timed out/i, ar: "تعذر الاتصال بالخدمة. تحقق من الشبكة ثم أعد المحاولة.", en: "The service could not be reached. Check your connection and try again." },
 ];
 

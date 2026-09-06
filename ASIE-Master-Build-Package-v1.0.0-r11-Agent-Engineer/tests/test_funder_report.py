@@ -123,6 +123,15 @@ class FunderReportProjectionTests(unittest.TestCase):
             document_text = text + "\n" + "\n".join(cell.text for table in document.tables for row in table.rows for cell in row.cells)
             self.assertNotIn(overview["snapshot"]["snapshot_id"], document_text)
             self.assertNotIn(report["funder_report"]["contract_id"], document_text)
+            import zipfile
+            with zipfile.ZipFile(path) as archive:
+                self.assertIn("<w:bidi", archive.read("word/document.xml").decode("utf-8"))
+
+            english_path = export_funder_report_docx(report["funder_report"], Path(temp_dir) / "funder-en.docx", locale="en")
+            with zipfile.ZipFile(english_path) as archive:
+                english_xml = archive.read("word/document.xml").decode("utf-8")
+                self.assertNotIn("<w:bidi", english_xml)
+                self.assertIn('w:jc w:val="left"', english_xml)
 
     def test_pdf_export_is_server_side_and_snapshot_bound(self) -> None:
         import os
@@ -152,6 +161,8 @@ class FunderReportProjectionTests(unittest.TestCase):
                 self.assertIn("ppt/slides/slide1.xml", archive.namelist())
                 slides = "\n".join(archive.read(name).decode("utf-8") for name in archive.namelist() if name.startswith("ppt/slides/slide") and name.endswith(".xml"))
                 self.assertIn("Project feasibility report", slides)
+                self.assertIn('algn="l"', slides)
+                self.assertNotIn('rtl="1"', slides)
                 self.assertNotIn(report["funder_report"]["snapshot_id"], slides)
                 self.assertNotIn(report["funder_report"]["contract_id"], slides)
 

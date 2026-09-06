@@ -1591,17 +1591,16 @@ class Handler(BaseHTTPRequestHandler):
         if exporter is None or content_type is None:
             write_error(self, "unsupported_export_format", 400)
             return
-        safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
         try:
             with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
                 output = Path(temp_dir) / f"export.{export_format}"
                 exporter(projection, output, locale=locale)
                 payload = output.read_bytes()
-        except RuntimeError as exc:
-            write_error(self, str(exc), 503)
+        except RuntimeError:
+            write_error(self, "report_export_unavailable", 503)
             return
         except subprocess.CalledProcessError:
-            write_error(self, "PDF renderer failed while producing the export", 503)
+            write_error(self, "report_export_unavailable", 503)
             return
         principal = self._principal()
         if principal is None:
@@ -1616,7 +1615,7 @@ class Handler(BaseHTTPRequestHandler):
             reason=export_format,
             correlation_id=self.request_id,
         )
-        write_binary(self, payload, content_type, f"asie-funder-report-{safe_id}.{export_format}")
+        write_binary(self, payload, content_type, f"asie-project-report-{locale}.{export_format}")
 
     def do_OPTIONS(self) -> None:
         if not self._allow_request():
