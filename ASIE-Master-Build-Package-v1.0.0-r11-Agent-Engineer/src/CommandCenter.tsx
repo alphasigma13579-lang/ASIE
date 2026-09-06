@@ -233,7 +233,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
         <TopNav section={section} onNavigate={setSection} />
         <div className="cc-empty">
           <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
-          <h1>{timeGreeting()} — ابدأ أول مشروع لك</h1>
+          <h1>{timeGreeting(locale)} — ابدأ أول مشروع لك</h1>
           <p className="cc-sub">من فكرة إلى قرار موثق خلال جلسة واحدة. عرّف مشروعك، اربط الأدلة، افحص الجاهزية، واستلم القرار.</p>
           <button className="cc-btn cc-btn--main cc-btn--lg" onClick={onNewProject}>
             <Plus size={19} aria-hidden="true" /> ابدأ مشروعك الأول
@@ -244,7 +244,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
   }
 
   const ov = primary?.overview ?? null;
-  const verdict = verdictMeta(ov?.decision?.sovereign_verdict);
+  const verdict = verdictMeta(ov?.decision?.sovereign_verdict, locale);
   const confidence = ov ? ov.monte_carlo.p_pass : null;
   const kpis = ov?.kpis ?? [];
 
@@ -262,7 +262,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
             <div className="cc-hero__text">
               <p className="cc-crumb">ASIE / <b>لوحة القيادة</b></p>
               <h1>
-                {timeGreeting()} —<br />
+                {timeGreeting(locale)} —<br />
                 مشاريعك بخير، وواحد منها <em>ينتظر قرارك</em>
               </h1>
               <p className="cc-sub">
@@ -279,7 +279,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
               <button className="cc-link" onClick={() => setSection("decision")}>افتح تفسير القرار ←</button>
             </article>
             <article className="cc-kpi">
-              <strong>{fmtPct(confidence)}</strong>
+              <strong>{fmtPct(confidence, locale)}</strong>
               <span>{text("احتمال اجتياز اختبار السيناريوهات", "Scenario test pass probability")}</span>
               <button className="cc-link" onClick={() => setSection("reality")}>حفر في السيناريوهات ←</button>
             </article>
@@ -299,7 +299,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
                 const steps = b.readiness?.steps ?? [];
                 const done = steps.filter((s) => s.status === "ready").length;
                 const total = steps.length || 9;
-                const v = verdictMeta(b.overview?.decision?.sovereign_verdict);
+                const v = verdictMeta(b.overview?.decision?.sovereign_verdict, locale);
                 const state = b.overview ? v.label : b.readiness?.ready_to_run ? "جاهز للتشغيل" : "مسودة";
                 const tone = b.overview ? v.tone : b.readiness?.ready_to_run ? "go" : "dim";
                 return (
@@ -307,7 +307,7 @@ export function CommandCenter({ onOpenProject, onNewProject, onOpenStage }: Comm
                     <Chip tone={tone}>{state}</Chip>
                     <div className="cc-row__body">
                       <b>{b.project.name}</b>
-                      <span>الخطوة {done} من {total} · آخر تحديث: {formatRelative(b.project.updated_at)}</span>
+                      <span>الخطوة {done} من {total} · آخر تحديث: {formatRelative(b.project.updated_at, locale)}</span>
                     </div>
                     <button className="cc-btn cc-btn--ghost cc-btn--sm" onClick={() => onOpenProject(b.project.project_id)}>
                       {b.overview ? "فتح" : "إكمال"} <ArrowLeft size={13} aria-hidden="true" />
@@ -469,7 +469,7 @@ function NeedData({ text }: { text: string }) {
 function DecisionToday({
   overview, verdict, onOpenStage, projectId,
 }: { overview: ProjectOverview | null; verdict: ReturnType<typeof verdictMeta>; onOpenStage: CommandCenterProps["onOpenStage"]; projectId: string }) {
-  const { text } = useCustomerLanguage();
+  const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="قراري اليوم" crumb="قراري اليوم">
@@ -487,11 +487,11 @@ function DecisionToday({
         <div className={`cc-verdict cc-verdict--${verdict.tone}`}>
           <span>القرار</span>
           <strong>{verdict.label}</strong>
-          <small>{text("آخر تحديث", "Last updated")} · {formatRelative(overview.snapshot.created_at)}</small>
+          <small>{text("آخر تحديث", "Last updated")} · {formatRelative(overview.snapshot.created_at, locale)}</small>
         </div>
         <div className="cc-decision-metrics">
-          <article><span>درجة الثقة</span><strong>{fmtPct(conf)}</strong></article>
-          <article><span>الربح الوسيط (P50)</span><strong>{fmtSAR(overview.monte_carlo.p50_profit)}</strong></article>
+          <article><span>درجة الثقة</span><strong>{fmtPct(conf, locale)}</strong></article>
+          <article><span>الربح الوسيط (P50)</span><strong>{fmtSAR(overview.monte_carlo.p50_profit, locale)}</strong></article>
           <article><span>درجة المخاطرة</span><strong>{overview.monte_carlo.status === "ready" ? "محسوبة" : "—"}</strong></article>
         </div>
       </div>
@@ -502,7 +502,7 @@ function DecisionToday({
           {risks.length ? risks.map((r) => (
             <div className="cc-row" key={r.risk_id}>
               <Chip tone={r.severity === "high" || r.severity === "critical" ? "stop" : "warn"}>{r.severity}</Chip>
-              <div className="cc-row__body"><b>{r.trigger}</b><span>{r.mitigation}</span></div>
+              <div className="cc-row__body"><b>{customerBusinessText(r.trigger, locale)}</b><span>{customerNarrativeText(r.mitigation, locale)}</span></div>
             </div>
           )) : <NeedData text="لا توجد مخاطر مسجلة في هذه اللقطة." />}
         </article>
@@ -510,13 +510,13 @@ function DecisionToday({
           <h3><Sparkles size={17} aria-hidden="true" /> زوايا التقييم الخمس</h3>
           {personas.map((p) => (
             <div className="cc-row" key={p.persona_id}>
-              <div className="cc-row__body"><b>{p.metric}</b><span>{p.note}</span></div>
-              <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value)}</strong>
+              <div className="cc-row__body"><b>{customerBusinessText(p.metric, locale)}</b><span>{customerNarrativeText(p.note, locale)}</span></div>
+              <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value, locale)}</strong>
             </div>
           ))}
         </article>
       </div>
-      <p className="cc-reason">{overview.decision.reason}</p>
+      <p className="cc-reason">{customerNarrativeText(overview.decision.reason, locale)}</p>
     </SectionShell>
   );
 }
@@ -526,6 +526,7 @@ function DecisionToday({
 /* ------------------------------------------------------------------ */
 
 function GuideSection({ overview }: { overview: ProjectOverview | null }) {
+  const { locale, text } = useCustomerLanguage();
   const milestones = overview?.execution_plan.milestones ?? [];
   return (
     <SectionShell title="مرشد تأسيس المشروع" crumb="مرشد التأسيس">
@@ -557,7 +558,7 @@ function GuideSection({ overview }: { overview: ProjectOverview | null }) {
 /* ------------------------------------------------------------------ */
 
 function RealitySection({ overview }: { overview: ProjectOverview | null }) {
-  const { text } = useCustomerLanguage();
+  const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="اختبار الواقع" crumb="اختبار الواقع">
@@ -580,13 +581,13 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
             <div className="cc-bar" key={label}>
               <span>{label}</span>
               <div className="cc-bar__track"><i style={{ width: `${Math.max(4, (Math.abs(v) / max) * 100)}%`, background: color }} /></div>
-              <strong>{fmtSAR(v)}</strong>
+              <strong>{fmtSAR(v, locale)}</strong>
             </div>
           ))}
         </div>
         <div className="cc-gate">
           <span>احتمال اجتياز بوابات الجدوى</span>
-          <strong>{fmtPct(mc.p_pass)}</strong>
+          <strong>{fmtPct(mc.p_pass, locale)}</strong>
         </div>
       </article>
       <div className="cc-grid-2">
@@ -602,6 +603,7 @@ function RealitySection({ overview }: { overview: ProjectOverview | null }) {
 /* ------------------------------------------------------------------ */
 
 function StrategySection({ overview }: { overview: ProjectOverview | null }) {
+  const { locale, text } = useCustomerLanguage();
   const sector = overview?.sector_intelligence;
   return (
     <SectionShell title="التوافق الاستراتيجي" crumb="التوافق الاستراتيجي">
@@ -625,13 +627,14 @@ function StrategySection({ overview }: { overview: ProjectOverview | null }) {
 /* ------------------------------------------------------------------ */
 
 function OpportunitiesSection({ overview }: { overview: ProjectOverview | null }) {
+  const { locale, text } = useCustomerLanguage();
   return (
     <SectionShell title="الفرص الذكية" crumb="الفرص الذكية">
       {overview ? (
         <article className="cc-card">
           <h3><Lightbulb size={17} aria-hidden="true" /> من قراءة لقطتك</h3>
           <p className="cc-why">مؤشرات مستمدة من بياناتك المحفوظة — ليست توصية نهائية.</p>
-          <div className="cc-row"><div className="cc-row__body"><b>احتمال الاجتياز {fmtPct(overview.monte_carlo.p_pass)}</b><span>كلما ارتفع، اتسع هامش المناورة أمام الفرص.</span></div></div>
+          <div className="cc-row"><div className="cc-row__body"><b>احتمال الاجتياز {fmtPct(overview.monte_carlo.p_pass, locale)}</b><span>كلما ارتفع، اتسع هامش المناورة أمام الفرص.</span></div></div>
         </article>
       ) : <NeedData text="شغّل التحليل لتظهر مؤشرات الفرص." />}
       <div className="cc-grid-2">
@@ -647,7 +650,7 @@ function OpportunitiesSection({ overview }: { overview: ProjectOverview | null }
 /* ------------------------------------------------------------------ */
 
 function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
-  const { text } = useCustomerLanguage();
+  const { locale, text } = useCustomerLanguage();
   if (!overview) {
     return (
       <SectionShell title="فهم القرار" crumb="فهم القرار">
@@ -659,16 +662,16 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
     <SectionShell title="فهم القرار" crumb="فهم القرار">
       <article className="cc-card">
         <h3><FileText size={17} aria-hidden="true" /> لماذا هذا القرار؟</h3>
-        <p className="cc-reason">{overview.decision.reason}</p>
-        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict).label}</b><span>{text("قرار محفوظ وقابل للمراجعة", "Saved and reviewable decision")}</span></div></div>
+        <p className="cc-reason">{customerNarrativeText(overview.decision.reason, locale)}</p>
+        <div className="cc-row"><Chip tone="dim">الحكم</Chip><div className="cc-row__body"><b>{verdictMeta(overview.decision.sovereign_verdict, locale).label}</b><span>{text("قرار محفوظ وقابل للمراجعة", "Saved and reviewable decision")}</span></div></div>
       </article>
       <article className="cc-card">
         <h3><BarChart3 size={17} aria-hidden="true" /> المؤشرات المؤثرة</h3>
         <div className="cc-kpi-grid">
           {overview.kpis.slice(0, 8).map((k: OutputEnvelope) => (
             <div className="cc-kpi-cell" key={k.output_id}>
-              <span>{KPI_TITLES[k.output_id] ?? k.output_id}</span>
-              <strong>{typeof k.value === "number" ? (k.unit === "percent" ? fmtPct(k.value) : k.unit === "SAR" ? fmtSAR(k.value) : String(k.value)) : "—"}</strong>
+              <span>{customerBusinessText(k.output_id, locale)}</span>
+              <strong>{typeof k.value === "number" ? (k.unit === "percent" ? fmtPct(k.value, locale) : k.unit === "SAR" ? fmtSAR(k.value, locale) : String(k.value)) : "—"}</strong>
             </div>
           ))}
         </div>
@@ -677,8 +680,8 @@ function DecisionSection({ overview }: { overview: ProjectOverview | null }) {
         <h3><Sparkles size={17} aria-hidden="true" /> تصويت الشخصيات السيادية الخمس</h3>
         {overview.personas.map((p) => (
           <div className="cc-row" key={p.persona_id}>
-            <div className="cc-row__body"><b>{p.metric}</b><span>{p.note}</span></div>
-            <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value)}</strong>
+            <div className="cc-row__body"><b>{customerBusinessText(p.metric, locale)}</b><span>{customerNarrativeText(p.note, locale)}</span></div>
+            <strong className="cc-row__val">{p.value === null ? "—" : fmtPct(p.value, locale)}</strong>
           </div>
         ))}
         <p className="cc-why">الشخصيات تفسّر ولا تصوّت على الحكم — الحكم السيادي هو المرجع.</p>
@@ -718,6 +721,7 @@ function ReportsSection({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenSta
 /* ------------------------------------------------------------------ */
 
 function AttentionList({ bundles, onOpenStage }: { bundles: Bundle[]; onOpenStage: CommandCenterProps["onOpenStage"] }) {
+  const { locale, text } = useCustomerLanguage();
   const items: Array<{ id: string; pid: string; title: string; detail: string; tone: "warn" | "stop" | "dim"; stage: "evidence" | "readiness" | "decision" | "run" }> = [];
   for (const b of bundles) {
     for (const bl of (b.readiness?.blockers ?? []).slice(0, 2)) {
