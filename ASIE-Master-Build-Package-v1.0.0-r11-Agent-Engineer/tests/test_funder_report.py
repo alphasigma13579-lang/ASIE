@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from backend import asie_local_api as api
 from backend.funder_report import build_funder_report_projection
 from backend.funder_report import render_funder_report_html
 from backend.customer_presentation import business_text, safe_narrative, text
+from backend.customer_report_content import customer_report_groups
 from backend.funding_readiness import evaluate_funding_readiness, profile_ids, sector_profile_catalog
 from backend.report_release import build_release_record, validate_release_record
 from backend.report_exports import export_funder_report_docx, export_funder_report_pdf, export_funder_report_pptx
@@ -178,6 +180,72 @@ class FunderReportProjectionTests(unittest.TestCase):
                 self.assertNotIn('rtl="1"', slides)
                 self.assertNotIn(report["funder_report"]["snapshot_id"], slides)
                 self.assertNotIn(report["funder_report"]["contract_id"], slides)
+
+    def test_document_formats_include_saved_business_content_without_mutation(self) -> None:
+        """Content parity, not merely translated headings or valid file signatures."""
+        import zipfile
+        from xml.etree import ElementTree
+        projection = {
+            "snapshot_id": "PRIVATE-SNAPSHOT", "projection_hash": "PRIVATE-HASH",
+            "readiness_status": "DRAFT_INTERNAL", "gaps": ["marketing_strategy"],
+            "sections": [
+                {"section_id": "02-executive-summary", "payload": {
+                    "decision": {"sovereign_verdict": "revise_and_reassess", "reason": "negative_npv"},
+                    "kpis": [{"output_id": "monthly_revenue", "value": 12345.6789, "unit": "SAR", "status": "ready"}],
+                }},
+                {"section_id": "12-general-risks", "payload": {"risk_register": {"top_risks": [{
+                    "trigger": "opex_above_60_percent_of_revenue", "severity": "high",
+                    "mitigation": "Reduce fixed OPEX or increase validated revenue capacity.",
+                }]}}},
+                {"section_id": "09-timeline", "payload": {"milestones": [{
+                    "phase_id": "setup", "owner_role": "Project Manager",
+                    "estimated_duration_days": 17, "exit_criteria": ["project_scope_signed"],
+                }]}},
+            ],
+        }
+        original = deepcopy(projection)
+        with tempfile.TemporaryDirectory() as directory:
+            for locale, expected in (
+                ("ar", ["الإيراد الشهري", "المصروفات التشغيلية مرتفعة", "اعتماد نطاق المشروع"]),
+                ("en", ["Monthly revenue", "Operating costs are high", "Approve project scope"]),
+            ):
+                with self.subTest(locale=locale):
+                    outputs = [render_funder_report_html(projection, locale)]
+                    deck = export_funder_report_pptx(projection, Path(directory) / f"report-{locale}.pptx", locale)
+                    with zipfile.ZipFile(deck) as archive:
+                        slide_text = []
+                        for name in archive.namelist():
+                            if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+                                root = ElementTree.fromstring(archive.read(name))
+                                slide_text.extend(node.text or "" for node in root.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}t"))
+                        outputs.append(" ".join(slide_text))
+                    try:
+                        from docx import Document
+                    except ModuleNotFoundError:
+                        Document = None
+                    if Document is not None:
+                        word = export_funder_report_docx(projection, Path(directory) / f"report-{locale}.docx", locale)
+                        document = Document(word)
+                        outputs.append(" ".join(
+                            [paragraph.text for paragraph in document.paragraphs] +
+                            [cell.text for table in document.tables for row in table.rows for cell in row.cells]
+                        ))
+                    for output in outputs:
+                        self.assertIn("12345.6789", output)
+                        for phrase in expected:
+                            self.assertIn(phrase, output)
+                        for private in ("PRIVATE-SNAPSHOT", "PRIVATE-HASH", "monthly_revenue", "project_scope_signed", "DRAFT_INTERNAL"):
+                            self.assertNotIn(private, output)
+        self.assertEqual(original, projection)
+
+    def test_customer_report_groups_reject_non_numeric_metric_payloads(self) -> None:
+        projection = {"sections": [{"section_id": "02-executive-summary", "payload": {
+            "kpis": [{"output_id": "monthly_revenue", "value": "PRIVATE-runtime", "unit": "PRIVATE_UNIT", "status": "not_ready"}],
+        }}]}
+        groups = customer_report_groups(projection, "en")
+        self.assertEqual("—", groups[1]["rows"][0][1])
+        self.assertEqual("—", groups[1]["rows"][0][2])
+        self.assertNotIn("PRIVATE", str(groups))
 
     def test_reference_profiles_return_explainable_missing_requirements(self) -> None:
         repo = self.make_repo()

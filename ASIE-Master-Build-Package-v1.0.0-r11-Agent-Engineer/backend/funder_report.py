@@ -13,6 +13,7 @@ from typing import Any
 from backend.snapshot_assembly import canonical_hash
 from backend.funding_readiness import evaluate_funding_readiness
 from backend.customer_presentation import business_text, normalize_locale, section_title, status_text, text
+from backend.customer_report_content import customer_report_groups
 
 
 FUNDER_REPORT_CONTRACT = "funder.report.projection.v1"
@@ -237,6 +238,20 @@ def render_funder_report_html(projection: dict[str, Any], locale: str = "ar") ->
         text("operating_cashflow", locale),
     ]
     header_html = "".join(f"<th>{escape(label)}</th>" for label in headers)
+    business_sections = []
+    for group in customer_report_groups(projection, locale):
+        group_headers = "".join(f"<th>{escape(label)}</th>" for label in group["headers"])
+        group_rows = "".join(
+            "<tr>" + "".join(f"<td>{escape(value)}</td>" for value in row) + "</tr>"
+            for row in group["rows"]
+        )
+        if not group_rows:
+            group_rows = f'<tr><td colspan="{len(group["headers"])}">{escape(group["empty"])}</td></tr>'
+        business_sections.append(
+            f'<h2>{escape(group["title"])}</h2><table><thead><tr>{group_headers}</tr></thead><tbody>{group_rows}</tbody></table>'
+        )
+    business_html = "".join(business_sections)
+
     return f"""<!doctype html>
 <html lang='{locale}' dir='{direction}'>
 <head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
@@ -259,6 +274,7 @@ ul {{ margin-top:8px; }} footer {{ padding:18px 44px; border-top:1px solid var(-
 <header class='hero'><h1>{escape(text('report_title', locale))}</h1><div class='meta'>{escape(project_name)}</div><p><span class='badge'>{escape(status_text(projection.get('readiness_status'), locale))}</span></p></header>
 <section class='content'>
 <div class='notice'>{escape(text('notice', locale))}</div>
+{business_html}
 <h2>{escape(text('readiness', locale))}</h2>
 <table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(text('status', locale))}</th><th>{escape(text('reason', locale))}</th></tr></thead><tbody>{profile_rows}</tbody></table>
 <h2>{escape(text('study_structure', locale))}</h2><div class='section-grid'>{section_cards}</div>

@@ -15,6 +15,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from typing import Any
 
 from backend.customer_presentation import business_text, normalize_locale, section_title, status_text, text
+from backend.customer_report_content import customer_report_groups
 
 try:
     from docx.shared import RGBColor
@@ -34,17 +35,36 @@ def export_funder_report_pptx(projection: dict[str, Any], output_path: str | Pat
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     sections = projection.get("sections", [])
-    slides = [
-        (text("report_title", locale), status_text(projection.get("readiness_status"), locale)),
-        (text("readiness", locale), text("notice", locale)),
-        (text("study_structure", locale), "\n".join(section_title(row, locale) for row in sections)),
-        (text("missing_items", locale), "\n".join(business_text(gap, locale) for gap in projection.get("gaps", [])) or text("none", locale)),
-        (text("report_status", locale), text("saved", locale)),
-    ]
-    def text_shape(name: str, text: str, y: int, size: int) -> str:
+    # Paginate customer content rather than exporting only section names.
+    import textwrap
+    slides = [(text("report_title", locale), status_text(projection.get("readiness_status"), locale))]
+
+    def add_slides(title: str, lines: list[str]) -> None:
+        wrapped = [part for line in lines for part in (textwrap.wrap(str(line), width=78) or [""])]
+        for start in range(0, max(1, len(wrapped)), 8):
+            slides.append((title, "\n".join(wrapped[start:start + 8])))
+
+    add_slides(text("readiness", locale), [text("notice", locale)])
+    for group in customer_report_groups(projection, locale):
+        lines = [
+            " · ".join(f"{header}: {value}" for header, value in zip(group["headers"], row))
+            for row in group["rows"]
+        ]
+        add_slides(group["title"], lines or [group["empty"]])
+    add_slides(text("study_structure", locale), [section_title(row, locale) for row in sections])
+    add_slides(text("missing_items", locale), [business_text(gap, locale) for gap in projection.get("gaps", [])] or [text("none", locale)])
+    add_slides(text("report_status", locale), [text("saved", locale)])
+    def text_shape(name: str, content: str, y: int, size: int) -> str:
         body_direction = ' rtlCol="1"' if locale == "ar" else ""
         paragraph_direction = ' rtl="1" algn="r"' if locale == "ar" else ' algn="l"'
-        return f'<p:sp><p:nvSpPr><p:cNvPr id="{y}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="900000" y="{y}"/><a:ext cx="10300000" cy="4000000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr{body_direction}/><a:lstStyle/><a:p><a:pPr{paragraph_direction}/><a:r><a:rPr lang="{'ar-SA' if locale == 'ar' else 'en-US'}" sz="{size * 100}"/><a:t>{escape(str(text))}</a:t></a:r></a:p></p:txBody></p:sp>'
+        language = "ar-SA" if locale == "ar" else "en-US"
+        paragraphs = "".join(
+            f'<a:p><a:pPr{paragraph_direction}/><a:r><a:rPr lang="{language}" sz="{size * 100}"/>'
+            f'<a:t>{escape(line)}</a:t></a:r></a:p>'
+            for line in (str(content).splitlines() or [""])
+        )
+        height = 900000 if name == "Title" else 4000000
+        return f'<p:sp><p:nvSpPr><p:cNvPr id="{y}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="900000" y="{y}"/><a:ext cx="10300000" cy="{height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr{body_direction}/><a:lstStyle/>{paragraphs}</p:txBody></p:sp>'
     def slide_xml(title: str, body: str) -> str:
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' + text_shape("Title", title, 700000, 28) + text_shape("Body", body, 2500000, 16) + '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>'
     content_types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>' + ''.join(f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>' for i in range(1, len(slides) + 1)) + '</Types>'
@@ -181,6 +201,15 @@ def export_funder_report_docx(projection: dict[str, Any], output_path: str | Pat
     _set_paragraph_direction(note, locale)
     run = note.add_run(text("notice", locale))
     _set_font(run, size=10, color="7C2D12", bold=True)
+
+    for group in customer_report_groups(projection, locale):
+        heading = doc.add_heading(group["title"], level=1)
+        _set_paragraph_direction(heading, locale)
+        if group["rows"]:
+            _table(doc, group["headers"], group["rows"], locale=locale)
+        else:
+            paragraph = doc.add_paragraph(group["empty"])
+            _set_paragraph_direction(paragraph, locale)
 
     h = doc.add_heading(text("report_status", locale), level=1)
     _set_paragraph_direction(h, locale)
