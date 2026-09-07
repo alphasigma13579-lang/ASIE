@@ -339,10 +339,12 @@ class AppSessionBrowserChecks(unittest.TestCase):
                     page.wait_for_function("window.location.hash === '#wizard'")
                     expect(page.locator("#wizard-location-region")).to_be_focused()
                     expect(draft).to_have_value("حي الاختبار")
+                    expect(page.locator(".asie-sanad-launcher")).to_have_count(0)
                     page.screenshot(path=str(consent.ARTIFACTS / f"sanad-missing-{locale}-{width}.png"), full_page=True)
                     page.get_by_role("button", name="العودة إلى موضعك السابق" if locale == "ar" else "Return to your previous place", exact=True).click()
                     page.wait_for_function("window.location.hash === '#snapshots'")
                     self.assertIsNone(page.evaluate("sessionStorage.getItem('asie.sanad.return_stage')"))
+                    expect(page.locator(".asie-sanad-launcher")).to_be_visible()
                     page.locator(".asie-sanad-launcher").click()
                     expect(page.locator(".asie-sanad-assistant").get_by_role(
                         "button", name="العودة إلى الصفحة السابقة" if locale == "ar" else "Return to previous page", exact=True

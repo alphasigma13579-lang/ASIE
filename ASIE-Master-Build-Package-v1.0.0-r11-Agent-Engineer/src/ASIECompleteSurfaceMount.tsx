@@ -386,7 +386,7 @@ export function ASIECompleteSurfaceMount() {
   return (
     <>
       {portals}
-      {targets.workspace ? (
+      {targets.workspace && !returnStage ? (
         <>
           <button className="asie-sanad-launcher" type="button" onClick={() => setSanadOpen((value) => !value)} aria-expanded={sanadOpen}>
             <MessagesSquare size={18} aria-hidden="true" /> {text("سند", "Sanad")}
