@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from backend.customer_presentation import safe_narrative
+from backend.decision_pack import render_decision_pack_html
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,14 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertNotIn("return raw;", source)
         self.assertEqual("تفصيل يحتاج مراجعة قبل عرضه", safe_narrative("finance engine failed", "ar"))
         self.assertEqual("Detail requires review before display", safe_narrative("runtime failure", "en"))
+
+    def test_unreviewed_memo_explains_review_status_in_both_languages(self) -> None:
+        pack = {"memo": {"review_status": "draft_review"}}
+        for locale, expected in (("ar", "بانتظار المراجعة"), ("en", "Awaiting review")):
+            with self.subTest(locale=locale):
+                rendered = render_decision_pack_html(pack, locale=locale)
+                self.assertIn(expected, rendered)
+                self.assertNotIn("draft_review", rendered)
 
     def test_customer_auth_never_renders_raw_provider_errors(self) -> None:
         source = (SRC / "AuthScreens.tsx").read_text(encoding="utf-8")

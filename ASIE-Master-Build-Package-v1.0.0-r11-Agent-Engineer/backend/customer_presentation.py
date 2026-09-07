@@ -55,6 +55,7 @@ _STATUS = {
     "funding_base_ready": ("جاهز للمراجعة التمويلية الأولية", "Ready for initial funding review"),
     "approved": ("معتمد", "Approved"),
     "review_required": ("بانتظار المراجعة", "Awaiting review"),
+    "draft_review": ("بانتظار المراجعة", "Awaiting review"),
     "blocked": ("متوقف حتى استكمال المتطلبات", "Blocked until requirements are completed"),
     "high": ("مرتفع", "High"),
     "medium": ("متوسط", "Medium"),

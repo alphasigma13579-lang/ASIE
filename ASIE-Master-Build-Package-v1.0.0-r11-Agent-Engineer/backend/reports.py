@@ -300,8 +300,15 @@ def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | N
         if isinstance(source, dict)
     }
     evidence_rows_list: list[str] = []
+    supported_dataset_ids = {
+        str(item["dataset_id"])
+        for item in view.get("evidence_ledger", [])
+        if isinstance(item, dict) and item.get("dataset_id") and item.get("can_support_target") is True
+    }
     for dataset in evidence_register.get("datasets", []):
         if not isinstance(dataset, dict):
+            continue
+        if str(dataset.get("dataset_id") or "") not in supported_dataset_ids:
             continue
         source = source_records.get(str(dataset.get("source_id") or ""), {})
         source_url = str(source.get("url") or "")

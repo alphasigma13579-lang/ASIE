@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
 import io
 import tempfile
 import threading
@@ -740,6 +741,44 @@ class LocalPlatformTests(unittest.TestCase):
         self.assertIn("متطلبات الجاهزية", html)
         self.assertIn("خطة التنفيذ", html)
         self.assertIn("التفاصيل الفنية وسجل التدقيق متاحة للمشرف فقط", html)
+
+        self.assertTrue(view["headline_kpis"])
+        expected_value = view["headline_kpis"][0]["value"]
+        self.assertIn(f">{expected_value if expected_value is not None else '—'}<", html)
+        changed_report = deepcopy(report)
+        changed_report["kpis"][0]["value"] = 987654321.25
+        changed_html = render_report_html(changed_report)
+        self.assertIn(">987654321.25<", changed_html)
+        self.assertNotEqual(html, changed_html)
+
+    def test_customer_report_lists_only_evidence_admitted_by_ledger(self) -> None:
+        repo = self.make_repo()
+        project = repo.create_project({"name": "Evidence report", "inputs": VALID_INPUTS})
+        _, original = api.build_overview(project, repo)
+        report = deepcopy(original)
+        report["evidence_register"] = {"datasets": [
+            {"dataset_id": "supported", "title": "Approved evidence", "review_status": "approved_for_use"},
+            {"dataset_id": "pending", "title": "Pending evidence", "review_status": "review_required"},
+            {"dataset_id": "unlinked", "title": "Unlinked evidence", "review_status": "approved_for_use"},
+            {"title": "Missing identity"},
+            None,
+        ]}
+        report["evidence_ledger"] = [
+            {"dataset_id": "supported", "can_support_target": True},
+            {"dataset_id": "pending", "can_support_target": False},
+            {"can_support_target": True},
+            None,
+        ]
+        before = deepcopy(report)
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale):
+                rendered = render_report_html(report, locale=locale)
+                self.assertIn("Approved evidence", rendered)
+                for excluded in ("Pending evidence", "Unlinked evidence", "Missing identity"):
+                    self.assertNotIn(excluded, rendered)
+                self.assertEqual(before, report)
+        report["evidence_ledger"] = []
+        self.assertNotIn("Approved evidence", render_report_html(report, locale="en"))
 
     def test_two_runs_produce_distinct_immutable_snapshots(self) -> None:
         repo = self.make_repo()

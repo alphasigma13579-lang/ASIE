@@ -141,7 +141,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
         if not close.is_visible():
             page.locator(".sidebar").get_by_role("button", name="الحساب والفريق", exact=True).click()
         expect(close).to_be_visible()
-        expect(page.get_by_role("heading", name="المنظمة النشطة", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="منظمتك النشطة", exact=True)).to_be_visible()
 
     def switch(self, page, organization="org-b"):
         """Select an organization and reopen settings after the real context reset."""
@@ -186,8 +186,8 @@ class AppSessionBrowserChecks(unittest.TestCase):
     def login(self, page):
         """Sign in through the real AuthScreen against the intercepted API."""
         expect(page.get_by_role("heading", name="تسجيل الدخول إلى مساحة العمل")).to_be_visible()
-        page.get_by_label("البريد المحلي").fill("test@example.invalid")
-        page.get_by_label("كلمة المرور", exact=True).fill("test-password-only")
+        page.get_by_label("البريد الإلكتروني").fill("test@example.invalid")
+        page.get_by_label("كلمة المرور", exact=True).fill("test-pass-12")
         page.get_by_role("button", name="دخول", exact=True).click()
         expect(page.locator(".sidebar")).to_be_visible()
 

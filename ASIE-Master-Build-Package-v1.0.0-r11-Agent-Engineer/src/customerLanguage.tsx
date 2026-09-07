@@ -101,6 +101,7 @@ const customerStatuses: Record<string, { ar: string; en: string }> = {
   reference_only: { ar: "مرجع إرشادي", en: "Guidance only" },
   approved_for_use: { ar: "معتمد للاستخدام", en: "Approved for use" },
   review_required: { ar: "بانتظار المراجعة", en: "Awaiting review" },
+  draft_review: { ar: "بانتظار المراجعة", en: "Awaiting review" },
   rejected: { ar: "مرفوض", en: "Rejected" },
   unknown: { ar: "غير محدد", en: "Not specified" },
   approved: { ar: "معتمد", en: "Approved" },
