@@ -101,7 +101,7 @@ _BUSINESS = {
     "validate_capacity_and_ramp_up_before_launch": ("تحقق من الطاقة التشغيلية وخطة التدرج قبل البدء.", "Validate operating capacity and the ramp-up plan before launch."),
     "keep_utilization_in_assumption_review": ("راجع افتراض نسبة التشغيل بانتظام.", "Keep the utilization assumption under review."),
     "complete_operating_cost_inputs": ("أكمل مدخلات تكاليف التشغيل.", "Complete the operating cost inputs."),
-    "reduce_fixed_opex_or_increase_validated_revenue_capacity": ("خفّض تكاليف التشغيل الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.", "Reduce fixed operating costs or validate a higher revenue capacity."),
+    "reduce_fixed_opex_or_increase_validated_revenue_capacity": ("خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.", "Reduce fixed costs or validate a higher revenue capacity."),
     "monitor_opex_during_stabilization": ("راقب تكاليف التشغيل خلال مرحلة الاستقرار.", "Monitor operating costs during stabilization."),
     "disable_external_fetch_and_re_review_source_policy": ("راجع إعدادات المصادر المعتمدة قبل المتابعة.", "Review approved-source settings before continuing."),
     "complete_human_review_for_exact_open_datasets": ("أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.", "Complete human review of the selected open datasets."),

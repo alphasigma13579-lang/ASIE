@@ -75,7 +75,7 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
             "Complete finance inputs.": "أكمل المدخلات المالية المطلوبة.",
             "Complete interest rate and loan tenor.": "أكمل نسبة التمويل ومدة السداد.",
             "Complete operating cost inputs.": "أكمل مدخلات تكاليف التشغيل.",
-            "Reduce fixed OPEX or increase validated revenue capacity.": "خفّض تكاليف التشغيل الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.",
+            "Reduce fixed OPEX or increase validated revenue capacity.": "خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.",
             "Complete human review for exact open datasets.": "أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.",
             "Link approved datasets to critical assumptions.": "اربط المصادر المعتمدة بالافتراضات المؤثرة في القرار.",
         }
