@@ -276,6 +276,26 @@ class AppSessionBrowserChecks(unittest.TestCase):
             self.assertTrue(any(path == "/api/auth/preferences" and method == "PATCH"
                                 for path, _organization, method in state["requests"]))
 
+    def test_mobile_navigation_starts_compact_and_remains_usable(self):
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app() as (page, _state):
+                page.set_viewport_size({"width": 390, "height": 844})
+                if locale == "en":
+                    page.get_by_role("button", name="English", exact=True).first.click()
+                toggle_name = "فتح قائمة التنقل" if locale == "ar" else "Open navigation menu"
+                toggle = page.get_by_role("button", name=toggle_name, exact=True)
+                expect(toggle).to_be_visible()
+                expect(toggle).to_have_attribute("aria-expanded", "false")
+                expect(page.locator("#workspace-navigation")).not_to_be_visible()
+                toggle.click()
+                expect(page.locator("#workspace-navigation")).to_be_visible()
+                page.locator("#workspace-navigation .nav-item").filter(
+                    has_text="التقارير" if locale == "ar" else "Reports"
+                ).click()
+                page.wait_for_function("window.location.hash === '#snapshots'")
+                expect(page.locator(".sidebar__mobile-toggle")).to_have_attribute("aria-expanded", "false")
+                expect(page.locator("#workspace-navigation")).not_to_be_visible()
+
     def test_customer_routes_hide_internal_tokens_in_both_languages(self):
         forbidden = re.compile(
             r"project_id|run_id|snapshot_id|profile_id|contract_id|review_id|"

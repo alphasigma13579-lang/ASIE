@@ -13,6 +13,7 @@ import {
   KeyRound,
   Layers3,
   MapPin,
+  Menu,
   Play,
   RefreshCw,
   Rocket,
@@ -21,6 +22,7 @@ import {
   Sparkles,
   Target,
   Users,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
@@ -630,6 +632,7 @@ function SessionWorkspace() {
   const desiredLocaleRef = useRef<"ar" | "en">("ar");
   const savingLocaleRef = useRef(false);
   const [languageSaveFailed, setLanguageSaveFailed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sourcePolicy, setSourcePolicy] = useState<SourcePolicy | null>(null);
   const [sources, setSources] = useState<SourceReviewRecord[]>([]);
   const [sourceChecklists, setSourceChecklists] = useState<SourceReviewChecklist[]>([]);
@@ -1727,45 +1730,60 @@ function SessionWorkspace() {
 
   return (
     <main id="main-content" className="app-shell" dir={direction}>
-      <aside className="sidebar" aria-label={text("مسار مساحة المشروع", "Project workspace navigation")}>
-        <BrandLockup subtitle={text("مرصد القرار المحلي", "Local decision workspace")} />
-        <nav>
-          {appStageGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span className="nav-group__label">{locale === "ar" ? group.label : group.labelEn}</span>
-              {group.stages.map((stageId) => {
-                const item = appStages.find((candidate) => candidate.id === stageId);
-                if (!item) return null;
-                return (
-                  <button
-                    className={stage === item.id ? "nav-item nav-item--active" : "nav-item"}
-                    key={item.id}
-                    onClick={() => setStage(item.id)}
-                    aria-current={stage === item.id ? "page" : undefined}
-                  >
-                    <strong>{locale === "ar" ? item.label : item.labelEn}</strong>
-                    <span>{locale === "ar" ? item.description : item.descriptionEn}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-        <button className="nav-item nav-item--quiet" onClick={() => { writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, false); setLegalAccepted(false); }}>
-          <ScrollText size={16} aria-hidden="true" />
-          {text("الوثائق القانونية", "Legal documents")}
-        </button>
-        <button className="nav-item nav-item--quiet" onClick={() => openOverlay("profiles")}>
-          <BarChart3 size={16} aria-hidden="true" />
-          {text("مراجع التمويل والقطاع", "Funding and sector references")}
-        </button>
-        <button className="nav-item nav-item--quiet" onClick={() => openOverlay("settings")}>
-          <Users size={16} aria-hidden="true" />
-          {text("الحساب والفريق", "Account and team")}
-        </button>
-        <div className="sidebar-note">
-          <Database size={18} aria-hidden="true" />
-          <span>{text("مصادر محكومة ومراجعة", "Governed, reviewed sources")}</span>
+      <aside className={mobileNavOpen ? "sidebar sidebar--open" : "sidebar"} aria-label={text("مسار مساحة المشروع", "Project workspace navigation")}>
+        <div className="sidebar__mobile-header">
+          <BrandLockup subtitle={text("مرصد القرار المحلي", "Local decision workspace")} />
+          <button
+            type="button"
+            className="sidebar__mobile-toggle"
+            aria-controls="workspace-navigation"
+            aria-expanded={mobileNavOpen}
+            aria-label={mobileNavOpen ? text("إغلاق قائمة التنقل", "Close navigation menu") : text("فتح قائمة التنقل", "Open navigation menu")}
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+            <span>{text("القائمة", "Menu")}</span>
+          </button>
+        </div>
+        <div className="sidebar__navigation" id="workspace-navigation">
+          <nav>
+            {appStageGroups.map((group) => (
+              <div className="nav-group" key={group.label}>
+                <span className="nav-group__label">{locale === "ar" ? group.label : group.labelEn}</span>
+                {group.stages.map((stageId) => {
+                  const item = appStages.find((candidate) => candidate.id === stageId);
+                  if (!item) return null;
+                  return (
+                    <button
+                      className={stage === item.id ? "nav-item nav-item--active" : "nav-item"}
+                      key={item.id}
+                      onClick={() => { setStage(item.id); setMobileNavOpen(false); }}
+                      aria-current={stage === item.id ? "page" : undefined}
+                    >
+                      <strong>{locale === "ar" ? item.label : item.labelEn}</strong>
+                      <span>{locale === "ar" ? item.description : item.descriptionEn}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+          <button className="nav-item nav-item--quiet" onClick={() => { setMobileNavOpen(false); writeLocalFlag(LEGAL_ACCEPTANCE_STORAGE_KEY, false); setLegalAccepted(false); }}>
+            <ScrollText size={16} aria-hidden="true" />
+            {text("الوثائق القانونية", "Legal documents")}
+          </button>
+          <button className="nav-item nav-item--quiet" onClick={() => { setMobileNavOpen(false); openOverlay("profiles"); }}>
+            <BarChart3 size={16} aria-hidden="true" />
+            {text("مراجع التمويل والقطاع", "Funding and sector references")}
+          </button>
+          <button className="nav-item nav-item--quiet" onClick={() => { setMobileNavOpen(false); openOverlay("settings"); }}>
+            <Users size={16} aria-hidden="true" />
+            {text("الحساب والفريق", "Account and team")}
+          </button>
+          <div className="sidebar-note">
+            <Database size={18} aria-hidden="true" />
+            <span>{text("مصادر محكومة ومراجعة", "Governed, reviewed sources")}</span>
+          </div>
         </div>
       </aside>
 

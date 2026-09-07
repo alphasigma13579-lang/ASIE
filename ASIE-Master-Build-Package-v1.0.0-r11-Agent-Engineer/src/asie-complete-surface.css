@@ -1545,3 +1545,81 @@ tr:hover td {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+
+/* EKB-08 mobile navigation: keep the customer task visible before the full journey. */
+.sidebar__mobile-header,
+.sidebar__navigation {
+  display: contents;
+}
+
+.sidebar__mobile-toggle {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .app-shell > .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 140;
+    width: 100%;
+    min-height: 0;
+    padding: 10px 12px;
+    gap: 10px;
+    border-bottom: 1px solid rgba(215, 244, 227, 0.16);
+  }
+
+  .sidebar__mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .sidebar__mobile-header .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+
+  .sidebar__mobile-header .brand-lockup span:last-child {
+    display: none;
+  }
+
+  .sidebar__mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid rgba(215, 244, 227, 0.24);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #f6fbf7;
+    font-weight: 800;
+  }
+
+  .sidebar__navigation {
+    display: none;
+  }
+
+  .sidebar--open .sidebar__navigation {
+    display: grid;
+    gap: 8px;
+    max-height: calc(100vh - 76px);
+    overflow-y: auto;
+    padding-block-end: 8px;
+  }
+
+  .sidebar--open .sidebar__navigation nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .sidebar--open .sidebar-note {
+    margin-top: 4px;
+  }
+}
