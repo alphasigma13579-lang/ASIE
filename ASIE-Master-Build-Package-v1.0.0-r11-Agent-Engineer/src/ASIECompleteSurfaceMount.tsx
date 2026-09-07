@@ -342,9 +342,10 @@ export function ASIECompleteSurfaceMount() {
     const refresh = () => {
       setTargets(readTargets());
       setActiveStage(activeStageFromDom());
+      setReturnStage(window.sessionStorage.getItem("asie.sanad.return_stage"));
     };
     const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "data-asie-missing-label", "data-asie-missing-target"] });
     window.addEventListener("hashchange", refresh);
     window.addEventListener("popstate", refresh);
     refresh();
@@ -368,7 +369,7 @@ export function ASIECompleteSurfaceMount() {
   }
 
   function returnFromMissingInput() {
-    if (returnStage) navigateStage(returnStage);
+    window.dispatchEvent(new CustomEvent("asie:return-from-missing-input"));
     window.sessionStorage.removeItem("asie.sanad.return_stage");
     setReturnStage(null);
     setSanadOpen(false);

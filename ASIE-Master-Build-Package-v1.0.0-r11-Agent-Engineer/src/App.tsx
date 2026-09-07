@@ -670,6 +670,8 @@ function SessionWorkspace() {
     const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
     return stored && appStages.some((item) => item.id === stored) ? stored : null;
   });
+  const missingInputReturnPosition = useRef<{ stage: AppStage; x: number; y: number } | null>(null);
+  const restoreMissingPosition = useRef(false);
   const [showCustomSector, setShowCustomSector] = useState(false);
   const [showCustomSubsector, setShowCustomSubsector] = useState(false);
   const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
@@ -808,6 +810,7 @@ function SessionWorkspace() {
 
   useEffect(() => {
     const handleNavigateToMissingInput = () => {
+      rememberMissingInputReturnStage(stage);
       const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
       if (stored && appStages.some((item) => item.id === stored)) setMissingInputReturnStage(stored);
       const incompleteStep = wizardJourney.findIndex((_, index) => Boolean(validateWizardStepAt(index)));
@@ -821,8 +824,23 @@ function SessionWorkspace() {
       setStage("readiness");
     };
     window.addEventListener("asie:navigate-missing-input", handleNavigateToMissingInput);
-    return () => window.removeEventListener("asie:navigate-missing-input", handleNavigateToMissingInput);
+    window.addEventListener("asie:return-from-missing-input", returnToMissingInputOrigin);
+    return () => {
+      window.removeEventListener("asie:navigate-missing-input", handleNavigateToMissingInput);
+      window.removeEventListener("asie:return-from-missing-input", returnToMissingInputOrigin);
+    };
   });
+
+  useEffect(() => {
+    const position = missingInputReturnPosition.current;
+    if (!restoreMissingPosition.current || !position || position.stage !== stage) return;
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ left: position.x, top: position.y, behavior: "instant" });
+      restoreMissingPosition.current = false;
+      missingInputReturnPosition.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [stage, missingInputReturnStage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1420,6 +1438,7 @@ function SessionWorkspace() {
 
   function rememberMissingInputReturnStage(candidate: AppStage) {
     if (candidate === "wizard") return;
+    missingInputReturnPosition.current = { stage: candidate, x: window.scrollX, y: window.scrollY };
     window.sessionStorage.setItem("asie.sanad.return_stage", candidate);
     setMissingInputReturnStage(candidate);
   }
@@ -1428,7 +1447,10 @@ function SessionWorkspace() {
     const target = missingInputReturnStage;
     window.sessionStorage.removeItem("asie.sanad.return_stage");
     setMissingInputReturnStage(null);
-    if (target) setStage(target);
+    if (target) {
+      restoreMissingPosition.current = true;
+      setStage(target);
+    }
   }
 
   function validateWizardStepAt(step: number): string | null {

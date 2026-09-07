@@ -208,6 +208,38 @@ class AppSessionBrowserChecks(unittest.TestCase):
         self.assertEqual(len(state["pending"]), 1, "Deferred request never reached API interception")
 
 
+    def test_sanad_opens_exact_missing_field_and_returns_without_losing_draft(self):
+        """Use the production Sanad portal and real navigation on both screen sizes."""
+        for locale in ("ar", "en"):
+            for width in (390, 1280):
+                with self.subTest(locale=locale, width=width), self.app() as (page, _state):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    if locale == "en":
+                        page.get_by_role("button", name="English", exact=True).first.click()
+                    draft = page.locator("#wizard-location-district")
+                    draft.fill("حي الاختبار")
+                    label = "تقاريري" if locale == "ar" else "Reports"
+                    page.locator(".asie-page-link").filter(has_text=label).click()
+                    page.wait_for_function("window.location.hash === '#snapshots'")
+                    page.locator(".asie-sanad-launcher").click()
+                    assistant = page.locator(".asie-sanad-assistant")
+                    expect(assistant).to_contain_text(
+                        "اختر المنطقة" if locale == "ar" else "Select a region"
+                    )
+                    assistant.get_by_role("button", name="أكمل هذا المدخل" if locale == "ar" else "Complete this input", exact=True).click()
+                    page.wait_for_function("window.location.hash === '#wizard'")
+                    expect(page.locator("#wizard-location-region")).to_be_focused()
+                    expect(draft).to_have_value("حي الاختبار")
+                    page.screenshot(path=str(consent.ARTIFACTS / f"sanad-missing-{locale}-{width}.png"), full_page=True)
+                    page.get_by_role("button", name="العودة إلى موضعك السابق" if locale == "ar" else "Return to your previous place", exact=True).click()
+                    page.wait_for_function("window.location.hash === '#snapshots'")
+                    self.assertIsNone(page.evaluate("sessionStorage.getItem('asie.sanad.return_stage')"))
+                    page.locator(".asie-sanad-launcher").click()
+                    expect(page.locator(".asie-sanad-assistant").get_by_role(
+                        "button", name="العودة إلى الصفحة السابقة" if locale == "ar" else "Return to previous page", exact=True
+                    )).to_have_count(0)
+                    self.assertFalse(any(method != "GET" for _, _, method in _state["requests"]))
+
     def test_location_labels_follow_language_without_changing_stored_values(self):
         """Display translations must not rewrite the project's location identifiers."""
         with self.app() as (page, _state):
