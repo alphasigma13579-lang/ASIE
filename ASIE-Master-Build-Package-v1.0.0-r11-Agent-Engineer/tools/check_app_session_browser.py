@@ -283,20 +283,19 @@ class AppSessionBrowserChecks(unittest.TestCase):
             r"demo_or_user_input_only|blocked_not_ready|no_evidence_links",
             re.IGNORECASE,
         )
-        labels = {
-            "ar": ("الملخص", "عرّف مشروعك", "اربط الأدلة", "افحص النواقص",
-                   "شغّل التحليل", "ذكاء السوق والفرص", "افهم القرار", "نفّذ التالي", "التقارير"),
-            "en": ("Summary", "Set up your project", "Link evidence", "Check missing inputs",
-                   "Run analysis", "Market intelligence", "Understand the decision", "Next actions", "Reports"),
-        }
+        stages = ("dashboard", "wizard", "evidence", "readiness", "run",
+                  "reality", "decision", "execution", "snapshots")
         for locale in ("ar", "en"):
             with self.subTest(locale=locale), self.app() as (page, _state):
                 if locale == "en":
                     page.get_by_role("button", name="English", exact=True).first.click()
-                for label in labels[locale]:
-                    page.locator(".asie-page-link").filter(has_text=label).click()
+                links = page.locator(".asie-page-link")
+                self.assertEqual(len(stages), links.count())
+                for index, stage in enumerate(stages):
+                    links.nth(index).click()
+                    page.wait_for_function("expected => window.location.hash === expected", arg=f"#{stage}")
                     visible_text = page.locator(".workspace").inner_text()
-                    self.assertIsNone(forbidden.search(visible_text), f"{label}: leaked an internal token")
+                    self.assertIsNone(forbidden.search(visible_text), f"{stage}: leaked an internal token")
 
     def test_sanad_opens_exact_missing_field_and_returns_without_losing_draft(self):
         """Use the production Sanad portal and real navigation on both screen sizes."""
