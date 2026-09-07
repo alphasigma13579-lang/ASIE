@@ -1726,7 +1726,7 @@ class Handler(BaseHTTPRequestHandler):
             principal = self._principal()
             if principal is None:
                 return
-            write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "external_access_enabled": False})
+            write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "locale": REPO.customer_locale(principal.user_id), "external_access_enabled": False})
             return
         if path == "/api/auth/registration-options":
             write_json(
@@ -2790,6 +2790,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             payload = read_json(self)
+            if path == "/api/auth/preferences":
+                # Only the authenticated account may select its own language.
+                # No user/tenant identifier is accepted from the browser.
+                if not self._bearer_token():
+                    write_error(self, "authentication_required", 401)
+                    return
+                principal = self._principal()
+                if principal is None:
+                    return
+                if not isinstance(payload, dict) or set(payload) != {"locale"} or payload.get("locale") not in ("ar", "en"):
+                    write_error(self, "invalid_request", 400)
+                    return
+                locale = REPO.save_customer_locale(principal.user_id, payload["locale"])
+                write_json(self, {"locale": locale})
+                return
             if self._principal() is None:
                 return
             if path.startswith("/api/projects/"):

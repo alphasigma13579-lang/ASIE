@@ -59,6 +59,7 @@ import {
   createOrganization,
   fetchFundingProfiles,
   fetchMe,
+  saveCustomerLocale,
   fetchReleaseRecord,
   fetchSectorProfiles,
   logout,
@@ -623,7 +624,12 @@ export function App() {
 }
 
 function SessionWorkspace() {
-  const { locale, direction, text } = useCustomerLanguage();
+  const { locale, direction, text, setLocale, selectionVersion } = useCustomerLanguage();
+  const [accountLocaleReady, setAccountLocaleReady] = useState(false);
+  const savedLocaleRef = useRef<"ar" | "en">("ar");
+  const desiredLocaleRef = useRef<"ar" | "en">("ar");
+  const savingLocaleRef = useRef(false);
+  const [languageSaveFailed, setLanguageSaveFailed] = useState(false);
   const [sourcePolicy, setSourcePolicy] = useState<SourcePolicy | null>(null);
   const [sources, setSources] = useState<SourceReviewRecord[]>([]);
   const [sourceChecklists, setSourceChecklists] = useState<SourceReviewChecklist[]>([]);
@@ -850,6 +856,11 @@ function SessionWorkspace() {
         const me = await fetchMe();
         if (cancelled) return;
         if (token) {
+          const accountLocale = me.locale === "en" ? "en" : "ar";
+          savedLocaleRef.current = accountLocale;
+          desiredLocaleRef.current = accountLocale;
+          setLocale(accountLocale);
+          setAccountLocaleReady(true);
           setAuthUser({ user_id: me.user_id, display_name: "", email: "", platform_role: me.platform_role });
           setMemberships(me.memberships ?? []);
           const nextOrganization = getActiveOrganizationId() || me.memberships?.[0]?.organization_id || "";
@@ -880,6 +891,32 @@ function SessionWorkspace() {
       }),
     []
   );
+
+  useEffect(() => {
+    if (!accountLocaleReady || authState !== "authenticated") return;
+    desiredLocaleRef.current = locale;
+    if (savingLocaleRef.current || savedLocaleRef.current === locale) return;
+    const revision = getSessionRevision();
+    savingLocaleRef.current = true;
+    void (async () => {
+      try {
+        // Serialize rapid switches so the last choice also wins on the server.
+        while (revision === getSessionRevision() && savedLocaleRef.current !== desiredLocaleRef.current) {
+          const nextLocale = desiredLocaleRef.current;
+          await saveCustomerLocale(nextLocale);
+          if (revision !== getSessionRevision()) return;
+          savedLocaleRef.current = nextLocale;
+          setLanguageSaveFailed(false);
+        }
+      } catch {
+        if (revision === getSessionRevision()) {
+          setLanguageSaveFailed(true);
+        }
+      } finally {
+        savingLocaleRef.current = false;
+      }
+    })();
+  }, [locale, selectionVersion, accountLocaleReady, authState]);
 
   function handleAuthenticated(response: LoginResponse) {
     // The new workspace re-reads /auth/me before loading any scoped data.
@@ -1748,6 +1785,13 @@ function SessionWorkspace() {
             ) : null}
           </div>
         </header>
+
+        {languageSaveFailed ? (
+          <section className="status-banner" role="status">
+            <span>{text("تغيرت لغة الصفحة، لكن تعذر حفظها في الحساب.", "The page language changed, but it could not be saved to your account.")}</span>
+            <button type="button" onClick={() => setLocale(locale)}>{text("إعادة حفظ اللغة", "Retry saving language")}</button>
+          </section>
+        ) : null}
 
         {error ? (
           <section className="status-banner status-banner--error" role="alert" aria-live="assertive">

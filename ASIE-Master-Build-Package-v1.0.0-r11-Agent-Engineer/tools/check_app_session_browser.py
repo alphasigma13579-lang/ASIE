@@ -50,7 +50,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
                                            viewport={"width": 1280, "height": 1000})
         context.add_init_script(INITIAL_SESSION + consent.GEOLOCATION_STUB)
         state = {"blocked": [], "errors": [], "requests": [], "pending": [],
-                 "defer_projects": False, "login_number": 0}
+                 "defer_projects": False, "login_number": 0, "locale": "ar", "defer_locale": False, "locale_pending": []}
         policy = {"profile_id": "TEST_ONLY", "external_fetch_enabled": False, "rule": "",
                   "enabled_sources": [], "candidate_sources": [], "reference_only": [],
                   "blocked_sources": []}
@@ -73,7 +73,14 @@ class AppSessionBrowserChecks(unittest.TestCase):
                     route.fulfill(status=401, json={"error": "authentication_required"})
                     return
                 payload = {"user_id": "user-test", "platform_role": None,
-                           "memberships": MEMBERSHIPS, "external_access_enabled": False}
+                           "memberships": MEMBERSHIPS, "locale": state["locale"], "external_access_enabled": False}
+            elif path == "/api/auth/preferences" and route.request.method == "PATCH":
+                state["locale"] = route.request.post_data_json["locale"]
+                payload = {"locale": state["locale"]}
+                if state["defer_locale"]:
+                    state["defer_locale"] = False
+                    state["locale_pending"].append(route)
+                    return
             elif path == "/api/auth/login":
                 state["login_number"] += 1
                 payload = {"access_token": "test-login-" + str(state["login_number"]),
@@ -208,6 +215,46 @@ class AppSessionBrowserChecks(unittest.TestCase):
         self.assertEqual(len(state["pending"]), 1, "Deferred request never reached API interception")
 
 
+    def test_delayed_language_save_cannot_continue_after_session_context_changes(self):
+        with self.app() as (page, state):
+            state["defer_locale"] = True
+            page.get_by_role("button", name="English", exact=True).first.click()
+            deadline = time.monotonic() + 5
+            while not state["locale_pending"] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual(1, len(state["locale_pending"]))
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            page.evaluate("async () => (await import('/src/session.ts')).setActiveOrganizationId('org-b')")
+            page.wait_for_function("window.location.hash === '#dashboard'")
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            with page.expect_response(lambda response: response.url.endswith("/api/auth/preferences")):
+                state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
+            # Drain the browser microtask queue after the obsolete response arrives.
+            page.evaluate("() => Promise.resolve()")
+            self.assertEqual("en", state["locale"])
+            self.assertEqual(1, sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]))
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+
+    def test_rapid_language_switches_persist_the_last_choice(self):
+        with self.app() as (page, state):
+            state["defer_locale"] = True
+            page.get_by_role("button", name="English", exact=True).first.click()
+            deadline = time.monotonic() + 5
+            while not state["locale_pending"] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual(1, len(state["locale_pending"]))
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
+            deadline = time.monotonic() + 5
+            while state["locale"] != "ar" and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("ar", state["locale"])
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            page.evaluate("localStorage.setItem('asie.customer_locale.v1', 'en')")
+            page.reload()
+            expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+
     def test_sanad_opens_exact_missing_field_and_returns_without_losing_draft(self):
         """Use the production Sanad portal and real navigation on both screen sizes."""
         for locale in ("ar", "en"):
@@ -238,7 +285,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
                     expect(page.locator(".asie-sanad-assistant").get_by_role(
                         "button", name="العودة إلى الصفحة السابقة" if locale == "ar" else "Return to previous page", exact=True
                     )).to_have_count(0)
-                    self.assertFalse(any(method != "GET" for _, _, method in _state["requests"]))
+                    self.assertFalse(any(method != "GET" and path != "/api/auth/preferences" for path, _, method in _state["requests"]))
 
     def test_location_labels_follow_language_without_changing_stored_values(self):
         """Display translations must not rewrite the project's location identifiers."""
@@ -267,7 +314,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
             expect(region).to_have_value("منطقة الرياض")
             expect(region.locator("option:checked")).to_have_text("منطقة الرياض")
             expect(city.locator('option[value="الرياض"]')).to_have_text("الرياض")
-            self.assertFalse(any(method != "GET" for _, _, method in _state["requests"]))
+            self.assertFalse(any(method != "GET" and path != "/api/auth/preferences" for path, _, method in _state["requests"]))
 
     def test_same_organization_navigation_preserves_draft(self):
         """A normal navigation or reselecting the same organization is not a reset."""

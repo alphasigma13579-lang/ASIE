@@ -86,6 +86,7 @@ export interface BetaPasswordRegistrationResponse extends LoginResponse {
 
 export interface MeResponse {
   user_id: string;
+  locale?: "ar" | "en";
   platform_role: string | null;
   memberships: Membership[];
   external_access_enabled: boolean;
@@ -127,6 +128,10 @@ export async function registerWithPassword(payload: {
 
 export async function logout(): Promise<void> {
   await requestJson("/api/auth/logout", { method: "POST", body: JSON.stringify({}) });
+}
+
+export async function saveCustomerLocale(locale: "ar" | "en"): Promise<{ locale: "ar" | "en" }> {
+  return requestJson("/api/auth/preferences", { method: "PATCH", body: JSON.stringify({ locale }) });
 }
 
 export async function fetchMe(): Promise<MeResponse> {

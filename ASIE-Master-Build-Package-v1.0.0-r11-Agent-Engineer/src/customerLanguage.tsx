@@ -7,6 +7,7 @@ const DEFAULT_CUSTOMER_LOCALE: CustomerLocale = "ar";
 
 type CustomerLanguageContextValue = {
   locale: CustomerLocale;
+  selectionVersion: number;
   direction: "rtl" | "ltr";
   setLocale: (locale: CustomerLocale) => void;
   text: (arabic: string, english: string) => string;
@@ -25,9 +26,11 @@ function readStoredLocale(): CustomerLocale {
 
 export function CustomerLanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<CustomerLocale>(() => readStoredLocale());
+  const [selectionVersion, setSelectionVersion] = useState(0);
 
   function setLocale(nextLocale: CustomerLocale) {
     setLocaleState(nextLocale);
+    setSelectionVersion((version) => version + 1);
     try {
       window.localStorage.setItem(CUSTOMER_LOCALE_STORAGE_KEY, nextLocale);
     } catch {
@@ -43,11 +46,12 @@ export function CustomerLanguageProvider({ children }: { children: ReactNode }) 
   const value = useMemo<CustomerLanguageContextValue>(
     () => ({
       locale,
+      selectionVersion,
       direction: locale === "ar" ? "rtl" : "ltr",
       setLocale,
       text: (arabic, english) => (locale === "ar" ? arabic : english),
     }),
-    [locale]
+    [locale, selectionVersion]
   );
 
   return <CustomerLanguageContext.Provider value={value}>{children}</CustomerLanguageContext.Provider>;
