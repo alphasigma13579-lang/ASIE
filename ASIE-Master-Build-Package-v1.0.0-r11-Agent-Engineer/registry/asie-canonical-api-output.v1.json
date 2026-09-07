@@ -68,6 +68,18 @@
       "response": "MeResponse"
     },
     {
+      "route_id": "AUTH_CUSTOMER_PREFERENCES",
+      "method": "PATCH",
+      "path": "/api/auth/preferences",
+      "frontend_functions": [
+        "saveCustomerLocale"
+      ],
+      "backend_evidence": [
+        "if path == \"/api/auth/preferences\":"
+      ],
+      "response": "authenticated account locale (ar or en)"
+    },
+    {
       "route_id": "AUTH_RECOVERY_REQUEST",
       "method": "POST",
       "path": "/api/auth/password-recovery/request",

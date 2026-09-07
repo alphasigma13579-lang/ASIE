@@ -218,6 +218,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
     def test_delayed_language_save_cannot_continue_after_session_context_changes(self):
         with self.app() as (page, state):
             state["defer_locale"] = True
+            page.get_by_label("الحي أو الشارع").fill("OLD-SESSION-DRAFT")
             page.get_by_role("button", name="English", exact=True).first.click()
             deadline = time.monotonic() + 5
             while not state["locale_pending"] and time.monotonic() < deadline:
@@ -225,8 +226,12 @@ class AppSessionBrowserChecks(unittest.TestCase):
             self.assertEqual(1, len(state["locale_pending"]))
             page.get_by_role("button", name="العربية", exact=True).first.click()
             page.evaluate("async () => (await import('/src/session.ts')).setActiveOrganizationId('org-b')")
-            page.wait_for_function("window.location.hash === '#dashboard'")
+            # The current valid route is restored, not forcibly changed to dashboard.
+            # Account hydration and cleared parent draft prove a new workspace lifetime.
             expect(page.locator("html")).to_have_attribute("lang", "en")
+            expect(page.get_by_label("District or street")).to_have_value("")
+            self.assertTrue(any(path == "/api/auth/me" and organization == "org-b"
+                                for path, organization, _ in state["requests"]))
             with page.expect_response(lambda response: response.url.endswith("/api/auth/preferences")):
                 state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
             # Drain the browser microtask queue after the obsolete response arrives.
