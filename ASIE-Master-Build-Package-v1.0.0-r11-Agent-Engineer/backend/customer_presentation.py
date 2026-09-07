@@ -162,6 +162,26 @@ _SECTIONS = {
     "16-results-recommendations": ("النتائج والتوصيات", "Results and recommendations"),
 }
 
+_UNITS = {
+    "sar": ("ر.س", "SAR"),
+    "sar_month": ("ر.س شهريًا", "SAR/month"),
+    "sar_year": ("ر.س سنويًا", "SAR/year"),
+    "percent": ("٪", "%"),
+    "percentage": ("٪", "%"),
+    "probability": ("احتمال", "Probability"),
+    "count": ("عدد", "Count"),
+    "unit": ("وحدة", "Unit"),
+    "units": ("وحدة", "Units"),
+    "month": ("شهر", "Month"),
+    "months": ("شهر", "Months"),
+    "year": ("سنة", "Year"),
+    "years": ("سنة", "Years"),
+    "day": ("يوم", "Day"),
+    "days": ("يوم", "Days"),
+    "ratio": ("نسبة", "Ratio"),
+}
+
+
 _FORBIDDEN = re.compile(
     r"(?:\b(?:project|run|snapshot|profile|contract|review|projection|release|algorithm|engine|session|manifest|payload|hash)_id\b|"
     r"\b(?:not_ready|review_required|demo_or_user_input_only|blocked_not_ready|decision[_ ]pack|monte[_ ]carlo|finance[_ ]engine|runtime)\b|_{1,})",
@@ -192,6 +212,17 @@ def business_text(value: Any, locale: Locale) -> str:
     key = _normalize_key(value)
     pair = _BUSINESS.get(key)
     return (pair[1] if normalize_locale(locale) == "en" else pair[0]) if pair else status_text(value, locale)
+
+
+def unit_text(value: Any, locale: Locale) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    key = _normalize_key(raw).replace("_per_", "_")
+    pair = _UNITS.get(key)
+    if pair:
+        return pair[1] if normalize_locale(locale) == "en" else pair[0]
+    return "Unit" if normalize_locale(locale) == "en" else "وحدة قياس"
 
 
 def section_title(section: dict[str, Any], locale: Locale) -> str:

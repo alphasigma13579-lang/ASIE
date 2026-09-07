@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from backend.customer_presentation import safe_narrative
+from backend.customer_presentation import safe_narrative, unit_text
 from backend.decision_pack import render_decision_pack_html
 
 
@@ -25,6 +25,9 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('document.documentElement.lang = locale;', source)
         self.assertIn('document.documentElement.dir = locale === "ar" ? "rtl" : "ltr";', source)
         self.assertIn("CUSTOMER_LOCALE_STORAGE_KEY", source)
+        self.assertIn("customerLocaleFromUrl", source)
+        self.assertIn('url.searchParams.set("lang", locale);', source)
+        self.assertIn("window.history.replaceState", source)
 
     def test_unknown_customer_status_and_errors_fail_closed(self) -> None:
         source = (SRC / "customerLanguage.tsx").read_text(encoding="utf-8")
@@ -32,7 +35,8 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('"Status requires review"', source)
         self.assertIn('"تعذر إتمام الطلب.', source)
         self.assertIn('"The request could not be completed.', source)
-        self.assertNotIn("return raw;", source)
+        error_projector = source[source.index("export function customerErrorText"):source.index("const customerSourceNames")]
+        self.assertNotIn("return raw;", error_projector)
         self.assertEqual("تفصيل يحتاج مراجعة قبل عرضه", safe_narrative("finance engine failed", "ar"))
         self.assertEqual("Detail requires review before display", safe_narrative("runtime failure", "en"))
 
@@ -51,6 +55,20 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertIn('{text("من", "of")} {assumptions.length} {text("مكتملة", "complete")}', app)
         self.assertIn('customerLocationLabel(region, locale)', app)
         self.assertIn('customerLocationLabel(city, locale)', app)
+
+    def test_customer_messages_preserve_safe_validation_and_units_are_localized(self) -> None:
+        app = (SRC / "App.tsx").read_text(encoding="utf-8")
+        language = (SRC / "customerLanguage.tsx").read_text(encoding="utf-8")
+        reports = (ROOT / "backend" / "reports.py").read_text(encoding="utf-8")
+        self.assertIn("customerMessageText(error, locale)", app)
+        self.assertNotIn("customerErrorText(error, locale)", app)
+        self.assertIn("forbiddenOperationalDetail", language)
+        self.assertIn("customerUnitText(item.unit, locale)", app)
+        self.assertIn("unit_text(kpi.get('unit'), locale)", reports)
+        self.assertEqual("ر.س شهريًا", unit_text("SAR/month", "ar"))
+        self.assertEqual("SAR/month", unit_text("SAR/month", "en"))
+        self.assertEqual("وحدة قياس", unit_text("unexpected_internal_unit", "ar"))
+        self.assertEqual("Unit", unit_text("unexpected_internal_unit", "en"))
 
     def test_customer_auth_never_renders_raw_provider_errors(self) -> None:
         source = (SRC / "AuthScreens.tsx").read_text(encoding="utf-8")

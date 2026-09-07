@@ -44,7 +44,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
         cls.addClassCleanup(cls.browser.close)
 
     @contextmanager
-    def app(self):
+    def app(self, location="#wizard"):
         """Intercept every API and reject all non-loopback traffic."""
         context = self.browser.new_context(locale="ar-SA", service_workers="block",
                                            viewport={"width": 1280, "height": 1000})
@@ -122,7 +122,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
         page = context.new_page()
         page.on("pageerror", lambda error: state["errors"].append(str(error)))
         try:
-            page.goto(FIXTURE + "#wizard")
+            page.goto(FIXTURE + location)
             expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
             yield page, state
             self.assertEqual(state["blocked"], [], "Unexpected API or outbound traffic")
@@ -255,10 +255,44 @@ class AppSessionBrowserChecks(unittest.TestCase):
                 page.wait_for_timeout(20)
             self.assertEqual("ar", state["locale"])
             expect(page.locator("html")).to_have_attribute("lang", "ar")
+            self.assertEqual("ar", page.evaluate("new URL(location.href).searchParams.get('lang')"))
             page.evaluate("localStorage.setItem('asie.customer_locale.v1', 'en')")
             page.reload()
             expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
             expect(page.locator("html")).to_have_attribute("lang", "ar")
+
+    def test_shared_language_link_overrides_account_and_persists(self):
+        with self.app("?lang=en#wizard") as (page, state):
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            self.assertEqual("en", page.evaluate("new URL(location.href).searchParams.get('lang')"))
+            deadline = time.monotonic() + 5
+            while state["locale"] != "en" and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("en", state["locale"])
+            self.assertTrue(any(path == "/api/auth/preferences" and method == "PATCH"
+                                for path, _organization, method in state["requests"]))
+
+    def test_customer_routes_hide_internal_tokens_in_both_languages(self):
+        forbidden = re.compile(
+            r"project_id|run_id|snapshot_id|profile_id|contract_id|review_id|"
+            r"projection_hash|release_hash|readiness_hash|review_required|not_ready|"
+            r"demo_or_user_input_only|blocked_not_ready|no_evidence_links",
+            re.IGNORECASE,
+        )
+        labels = {
+            "ar": ("الملخص", "عرّف مشروعك", "اربط الأدلة", "افحص النواقص",
+                   "شغّل التحليل", "ذكاء السوق والفرص", "افهم القرار", "نفّذ التالي", "التقارير"),
+            "en": ("Summary", "Set up your project", "Link evidence", "Check missing inputs",
+                   "Run analysis", "Market intelligence", "Understand the decision", "Next actions", "Reports"),
+        }
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app() as (page, _state):
+                if locale == "en":
+                    page.get_by_role("button", name="English", exact=True).first.click()
+                for label in labels[locale]:
+                    page.locator(".asie-page-link").filter(has_text=label).click()
+                    visible_text = page.locator(".workspace").inner_text()
+                    self.assertIsNone(forbidden.search(visible_text), f"{label}: leaked an internal token")
 
     def test_sanad_opens_exact_missing_field_and_returns_without_losing_draft(self):
         """Use the production Sanad portal and real navigation on both screen sizes."""

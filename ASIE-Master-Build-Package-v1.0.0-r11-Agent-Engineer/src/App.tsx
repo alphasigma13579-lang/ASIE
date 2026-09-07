@@ -72,7 +72,7 @@ import {
   type SectorProfile,
 } from "./api";
 import { AuthScreen } from "./AuthScreens";
-import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerNarrativeText, customerSourceName, customerStatusText, useCustomerLanguage } from "./customerLanguage";
+import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerLocaleFromUrl, customerMessageText, customerNarrativeText, customerSourceName, customerStatusText, customerUnitText, useCustomerLanguage } from "./customerLanguage";
 import {
   clearSession,
   getActiveOrganizationId,
@@ -857,9 +857,10 @@ function SessionWorkspace() {
         if (cancelled) return;
         if (token) {
           const accountLocale = me.locale === "en" ? "en" : "ar";
+          const selectedLocale = customerLocaleFromUrl() ?? accountLocale;
           savedLocaleRef.current = accountLocale;
-          desiredLocaleRef.current = accountLocale;
-          setLocale(accountLocale);
+          desiredLocaleRef.current = selectedLocale;
+          setLocale(selectedLocale);
           setAccountLocaleReady(true);
           setAuthUser({ user_id: me.user_id, display_name: "", email: "", platform_role: me.platform_role });
           setMemberships(me.memberships ?? []);
@@ -1796,7 +1797,7 @@ function SessionWorkspace() {
         {error ? (
           <section className="status-banner status-banner--error" role="alert" aria-live="assertive">
             <AlertTriangle size={18} aria-hidden="true" />
-            <span>{customerErrorText(error, locale)}</span>
+            <span>{customerMessageText(error, locale)}</span>
           </section>
         ) : null}
 
@@ -2924,7 +2925,7 @@ function SessionWorkspace() {
                                 {groupItems.map((item) => (
                                   <div key={item.assumption_id}>
                                     <strong>{assumptionLabel(item, locale)}</strong>
-                                    <span>{item.value || text("غير محدد", "Not specified")} {item.unit === "unit" ? "" : item.unit}</span>
+                                    <span>{item.value || text("غير محدد", "Not specified")} {item.unit === "unit" ? "" : customerUnitText(item.unit, locale)}</span>
                                     <small>{item.review_status === "approved" ? text("معتمد", "Approved") : text("بانتظار المراجعة", "Awaiting review")}</small>
                                   </div>
                                 ))}

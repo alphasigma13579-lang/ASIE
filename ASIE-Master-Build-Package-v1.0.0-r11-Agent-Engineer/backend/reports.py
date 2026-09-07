@@ -5,7 +5,7 @@ from typing import Any
 
 from backend.snapshot_assembly import canonical_hash
 from backend.funder_report import build_funder_report_projection, render_funder_report_html
-from backend.customer_presentation import business_text, normalize_locale, safe_narrative, status_text, text
+from backend.customer_presentation import business_text, normalize_locale, safe_narrative, status_text, text, unit_text
 
 
 def remediation(blockers: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -270,7 +270,7 @@ def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | N
     kpi_rows = "".join(
         f"<tr><td>{escape(business_text(kpi.get('output_id'), locale))}</td>"
         f"<td>{escape(str(kpi.get('value') if kpi.get('value') is not None else '—'))}</td>"
-        f"<td>{escape(str(kpi.get('unit') or ''))}</td>"
+        f"<td>{escape(unit_text(kpi.get('unit'), locale))}</td>"
         f"<td>{escape(status_text(kpi.get('status'), locale))}</td></tr>"
         for kpi in view["headline_kpis"]
     )

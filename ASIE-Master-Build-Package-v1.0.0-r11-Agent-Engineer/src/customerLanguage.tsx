@@ -15,12 +15,33 @@ type CustomerLanguageContextValue = {
 
 const CustomerLanguageContext = createContext<CustomerLanguageContextValue | null>(null);
 
+export function customerLocaleFromUrl(search = window.location.search): CustomerLocale | null {
+  try {
+    const requested = new URLSearchParams(search).get("lang");
+    return requested === "ar" || requested === "en" ? requested : null;
+  } catch {
+    return null;
+  }
+}
+
 function readStoredLocale(): CustomerLocale {
+  const linkedLocale = customerLocaleFromUrl();
+  if (linkedLocale) return linkedLocale;
   try {
     const stored = window.localStorage.getItem(CUSTOMER_LOCALE_STORAGE_KEY);
     return stored === "en" ? "en" : DEFAULT_CUSTOMER_LOCALE;
   } catch {
     return DEFAULT_CUSTOMER_LOCALE;
+  }
+}
+
+function writeLocaleToUrl(locale: CustomerLocale) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", locale);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // Language remains active even when the browser blocks URL state changes.
   }
 }
 
@@ -31,6 +52,7 @@ export function CustomerLanguageProvider({ children }: { children: ReactNode }) 
   function setLocale(nextLocale: CustomerLocale) {
     setLocaleState(nextLocale);
     setSelectionVersion((version) => version + 1);
+    writeLocaleToUrl(nextLocale);
     try {
       window.localStorage.setItem(CUSTOMER_LOCALE_STORAGE_KEY, nextLocale);
     } catch {
@@ -182,6 +204,43 @@ const forbiddenCustomerToken = /(?:\b(?:project|run|snapshot|profile|contract|re
 
 export function containsForbiddenCustomerToken(value: string): boolean {
   return forbiddenCustomerToken.test(value);
+}
+
+const forbiddenOperationalDetail = /(?:\b(?:tavily|pinecone|deepseek|google places|api key|secret|environment variable|traceback|exception|stack trace|http [45]\d\d)\b|[_]{1,})/i;
+
+export function customerMessageText(value: unknown, locale: CustomerLocale): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || containsForbiddenCustomerToken(raw) || forbiddenOperationalDetail.test(raw)) {
+    return customerErrorText(value, locale);
+  }
+  const hasArabic = /[\u0600-\u06ff]/.test(raw);
+  if ((locale === "ar" && hasArabic) || (locale === "en" && !hasArabic)) return raw;
+  return customerErrorText(value, locale);
+}
+
+const customerUnits: Record<string, { ar: string; en: string }> = {
+  sar: { ar: "ر.س", en: "SAR" },
+  sar_month: { ar: "ر.س شهريًا", en: "SAR/month" },
+  sar_year: { ar: "ر.س سنويًا", en: "SAR/year" },
+  percent: { ar: "٪", en: "%" },
+  percentage: { ar: "٪", en: "%" },
+  probability: { ar: "احتمال", en: "Probability" },
+  count: { ar: "عدد", en: "Count" },
+  unit: { ar: "وحدة", en: "Unit" },
+  units: { ar: "وحدة", en: "Units" },
+  month: { ar: "شهر", en: "Month" },
+  months: { ar: "شهر", en: "Months" },
+  year: { ar: "سنة", en: "Year" },
+  years: { ar: "سنة", en: "Years" },
+  day: { ar: "يوم", en: "Day" },
+  days: { ar: "يوم", en: "Days" },
+  ratio: { ar: "نسبة", en: "Ratio" },
+};
+
+export function customerUnitText(value: unknown, locale: CustomerLocale): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const normalized = normalizeStatus(value).replace(/_per_/g, "_");
+  return customerUnits[normalized]?.[locale] ?? (locale === "ar" ? "وحدة قياس" : "Unit");
 }
 
 
