@@ -70,6 +70,24 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertEqual("وحدة قياس", unit_text("unexpected_internal_unit", "ar"))
         self.assertEqual("Unit", unit_text("unexpected_internal_unit", "en"))
 
+    def test_default_risk_actions_remain_actionable_in_arabic(self) -> None:
+        actions = (
+            "Complete finance inputs.",
+            "Complete interest rate and loan tenor.",
+            "Complete operating cost inputs.",
+            "Complete human review for exact open datasets.",
+            "Link approved datasets to critical assumptions.",
+        )
+        for action in actions:
+            with self.subTest(action=action):
+                projected = safe_narrative(action, "ar")
+                self.assertRegex(projected, r"[\u0600-\u06ff]")
+                self.assertNotEqual("تفصيل يحتاج مراجعة قبل عرضه", projected)
+
+    def test_browser_download_name_preserves_the_selected_report_language(self) -> None:
+        source = (SRC / "api.ts").read_text(encoding="utf-8")
+        self.assertIn("asie-project-report-${locale}", source)
+
     def test_customer_auth_never_renders_raw_provider_errors(self) -> None:
         source = (SRC / "AuthScreens.tsx").read_text(encoding="utf-8")
         self.assertIn("setError(customerErrorText(reason, locale));", source)

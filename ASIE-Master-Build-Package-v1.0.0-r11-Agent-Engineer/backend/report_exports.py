@@ -214,8 +214,6 @@ def export_funder_report_docx(projection: dict[str, Any], output_path: str | Pat
     h = doc.add_heading(text("report_status", locale), level=1)
     _set_paragraph_direction(h, locale)
     _set_font(h.runs[0], size=16, color=BLUE, bold=True)
-    summary = next((row for row in projection.get("sections", []) if row.get("section_id") == "02-executive-summary"), {})
-    payload = summary.get("payload") or {}
     _table(doc, [text("requirement", locale), text("status", locale)], [[text("readiness", locale), status_text(projection.get("readiness_status"), locale)], [text("report_status", locale), text("saved", locale)]], locale=locale)
 
     h = doc.add_heading(text("readiness", locale), level=1)
@@ -243,10 +241,6 @@ def export_funder_report_docx(projection: dict[str, Any], output_path: str | Pat
         run = paragraph.add_run(business_text(gap, locale))
         _set_font(run, size=10)
 
-    h = doc.add_heading(text("report_status", locale), level=1)
-    _set_paragraph_direction(h, locale)
-    evidence = projection.get("evidence") or {}
-    _table(doc, [text("requirement", locale), text("status", locale)], [[text("readiness", locale), status_text(projection.get("readiness_status"), locale)], [text("report_status", locale), text("saved", locale)]], locale=locale)
     doc.save(output)
     return output
 

@@ -21,6 +21,14 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertNotIn("منشأة مماثلة", self.cockpit)
         self.assertNotIn("local-map--demo", self.cockpit)
 
+    def test_customer_context_is_projected_without_changing_the_search_query(self) -> None:
+        self.assertIn("customerBusinessText(primarySectorId, locale)", self.cockpit)
+        self.assertIn("customerLocationLabel(part, locale)", self.cockpit)
+        self.assertIn("sectorLabel={customerSector}", self.cockpit)
+        self.assertIn("sectorLabel?: string", self.map)
+        self.assertIn("query: sector", self.map)
+        self.assertIn("sectorLabel || text", self.map)
+
     def test_market_request_requires_confirmed_project_location_and_sector(self) -> None:
         self.assertIn("projectId && sector?.trim() && hasConfirmedLocation", self.map)
         self.assertIn("البحث عن منافسين قرب الموقع", self.map)

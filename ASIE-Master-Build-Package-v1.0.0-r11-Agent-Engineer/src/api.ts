@@ -218,7 +218,7 @@ export async function openSnapshotDocument(snapshotId: string, suffix: string, m
   if (mode === "download") {
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `asie-report.${suffix.split(".").pop()}`;
+    anchor.download = `asie-project-report-${locale}.${suffix.split(".").pop()}`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

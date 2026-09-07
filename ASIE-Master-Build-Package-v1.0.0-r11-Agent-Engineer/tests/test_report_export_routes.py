@@ -130,6 +130,15 @@ class ReportExportRouteTests(unittest.TestCase):
         self.assertTrue(raw.startswith(b"PK"), "PPTX export must be a zip container")
         self.assertGreater(len(raw), 500)
 
+        status, headers, raw = self.request_bytes(
+            self.export_path(self.snapshot_b_id, "pptx") + "?locale=en",
+            token=self.token_b,
+        )
+        self.assertEqual(200, status)
+        self.assertIn("asie-project-report-en.pptx", headers.get("content-disposition", ""))
+        self.assertNotIn(self.snapshot_b_id, headers.get("content-disposition", ""))
+        self.assertTrue(raw.startswith(b"PK"), "English PPTX export must be a zip container")
+
     def test_docx_export_streams_or_reports_missing_runtime(self) -> None:
         status, headers, raw = self.request_bytes(self.export_path(self.snapshot_b_id, "docx"), token=self.token_b)
         if _docx_available():

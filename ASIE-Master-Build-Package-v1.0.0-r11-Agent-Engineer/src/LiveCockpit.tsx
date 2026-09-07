@@ -1,7 +1,8 @@
 import { ArrowLeft, MapPinned, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { buildLiveMarketContext, type LiveMarketContext } from "./api";
-import { useCustomerLanguage } from "./customerLanguage";
+import { customerBusinessText, customerNarrativeText, useCustomerLanguage } from "./customerLanguage";
+import { customerLocationLabel } from "./customerLocationLabels";
 import { LiveIntelligenceWorkspace } from "./LiveIntelligenceWorkspace";
 import { LiveMarketMap } from "./LiveMarketMap";
 
@@ -28,7 +29,7 @@ export function LiveCockpit({
   longitude,
   onContinue,
 }: LiveCockpitProps) {
-  const { text } = useCustomerLanguage();
+  const { locale, text } = useCustomerLanguage();
   const [liveContext, setLiveContext] = useState<LiveMarketContext | null>(null);
   const [liveResearchLoading, setLiveResearchLoading] = useState(false);
   const [liveResearchUnavailable, setLiveResearchUnavailable] = useState(false);
@@ -39,6 +40,20 @@ export function LiveCockpit({
       && typeof longitude === "number" && Number.isFinite(longitude),
   );
   const marketContextKey = [projectId ?? "", primarySectorId ?? "", latitude ?? "", longitude ?? ""].join("|");
+  const customerSector = primarySectorId
+    ? customerBusinessText(primarySectorId, locale)
+    : sector
+      ? customerNarrativeText(sector, locale)
+      : text("قطاع غير محدد", "Sector not specified");
+  const customerLocation = locationLabel
+    ? locationLabel
+        .split(/\s*·\s*/)
+        .filter(Boolean)
+        .map((part) => customerLocationLabel(part, locale))
+        .join(" · ")
+    : location
+      ? customerLocationLabel(location, locale)
+      : text("موقع غير محدد", "Location not specified");
 
   useEffect(() => {
     contextRevisionRef.current += 1;
@@ -91,8 +106,8 @@ export function LiveCockpit({
 
       <section className="market-context-strip" aria-label={text("سياق البحث", "Search context")}>
         <div><span>{text("المشروع", "Project")}</span><strong>{projectName || text("مشروع غير محدد", "Project not specified")}</strong></div>
-        <div><span>{text("القطاع", "Sector")}</span><strong>{sector || text("قطاع غير محدد", "Sector not specified")}</strong></div>
-        <div><span>{text("الموقع", "Location")}</span><strong>{locationLabel || location || text("موقع غير محدد", "Location not specified")}</strong></div>
+        <div><span>{text("القطاع", "Sector")}</span><strong>{customerSector}</strong></div>
+        <div><span>{text("الموقع", "Location")}</span><strong>{customerLocation}</strong></div>
       </section>
 
       {!liveResearchReady ? (
@@ -109,7 +124,8 @@ export function LiveCockpit({
         <LiveMarketMap
           projectId={projectId}
           sector={sector}
-          locationLabel={locationLabel || location}
+          sectorLabel={customerSector}
+          locationLabel={customerLocation}
           latitude={latitude}
           longitude={longitude}
         />

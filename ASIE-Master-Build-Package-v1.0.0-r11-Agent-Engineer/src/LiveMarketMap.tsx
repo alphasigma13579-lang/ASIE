@@ -12,6 +12,7 @@ import "./live-market-map.css";
 type LiveMarketMapProps = {
   projectId?: string;
   sector?: string;
+  sectorLabel?: string;
   locationLabel?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -74,7 +75,7 @@ function distanceKilometers(
   return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-export function LiveMarketMap({ projectId, sector, locationLabel, latitude, longitude }: LiveMarketMapProps) {
+export function LiveMarketMap({ projectId, sector, sectorLabel, locationLabel, latitude, longitude }: LiveMarketMapProps) {
   const { locale, text } = useCustomerLanguage();
   const [state, setState] = useState<RequestState>("idle");
   const [address, setAddress] = useState<GoogleLocationResult | null>(null);
@@ -158,7 +159,7 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
       </header>
 
       <p className="live-market-map__context">
-        {locationLabel || text("الموقع غير مسمى بعد", "Location is not named yet")} · {sector || text("التصنيف مطلوب", "Category is required")}
+        {locationLabel || text("الموقع غير مسمى بعد", "Location is not named yet")} · {sectorLabel || text("التصنيف مطلوب", "Category is required")}
       </p>
 
       <button
