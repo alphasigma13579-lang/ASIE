@@ -71,18 +71,17 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         self.assertEqual("Unit", unit_text("unexpected_internal_unit", "en"))
 
     def test_default_risk_actions_remain_actionable_in_arabic(self) -> None:
-        actions = (
-            "Complete finance inputs.",
-            "Complete interest rate and loan tenor.",
-            "Complete operating cost inputs.",
-            "Complete human review for exact open datasets.",
-            "Link approved datasets to critical assumptions.",
-        )
-        for action in actions:
+        expected_actions = {
+            "Complete finance inputs.": "أكمل المدخلات المالية المطلوبة.",
+            "Complete interest rate and loan tenor.": "أكمل نسبة التمويل ومدة السداد.",
+            "Complete operating cost inputs.": "أكمل مدخلات تكاليف التشغيل.",
+            "Reduce fixed OPEX or increase validated revenue capacity.": "خفّض تكاليف التشغيل الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.",
+            "Complete human review for exact open datasets.": "أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.",
+            "Link approved datasets to critical assumptions.": "اربط المصادر المعتمدة بالافتراضات المؤثرة في القرار.",
+        }
+        for action, expected_arabic in expected_actions.items():
             with self.subTest(action=action):
-                projected = safe_narrative(action, "ar")
-                self.assertRegex(projected, r"[\u0600-\u06ff]")
-                self.assertNotEqual("تفصيل يحتاج مراجعة قبل عرضه", projected)
+                self.assertEqual(expected_arabic, safe_narrative(action, "ar"))
 
     def test_browser_download_name_preserves_the_selected_report_language(self) -> None:
         source = (SRC / "api.ts").read_text(encoding="utf-8")

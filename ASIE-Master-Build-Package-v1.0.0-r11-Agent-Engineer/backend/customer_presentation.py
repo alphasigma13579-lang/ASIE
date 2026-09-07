@@ -155,9 +155,6 @@ _BUSINESS = {
     "opex_above_60_percent_of_revenue": ("المصروفات التشغيلية مرتفعة مقارنة بالإيراد", "Operating costs are high relative to revenue"),
     "assumption_support_gap": ("نقص في الأدلة الداعمة", "Supporting evidence is missing"),
     "margin_pressure": ("ضغط على هامش الربح", "Profit margin pressure"),
-    "reduce_fixed_opex_or_increase_validated_revenue_capacity": ("خفّض المصروفات الثابتة أو أثبت قدرة أعلى على تحقيق الإيراد.", "Reduce fixed costs or validate a higher revenue capacity."),
-    "complete_human_review_for_exact_open_datasets": ("أكمل المراجعة البشرية لمصادر البيانات المفتوحة المحددة.", "Complete human review of the selected open datasets."),
-    "link_approved_datasets_to_critical_assumptions": ("اربط المصادر المعتمدة بالافتراضات المؤثرة في القرار.", "Link approved sources to the assumptions that affect the decision."),
 }
 
 _SECTIONS = {
