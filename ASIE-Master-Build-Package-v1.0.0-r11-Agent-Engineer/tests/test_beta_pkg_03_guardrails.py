@@ -53,16 +53,13 @@ def test_provider_outputs_remain_review_required_and_non_sovereign():
 def test_ui_discloses_review_and_live_status():
     text = UI.read_text(encoding="utf-8")
     assert "تحتاج مراجعة" in text
-    assert "الاتصال الخارجي معطّل" in text
+    assert "لا يبدأ البحث إلا بطلبك" in text
     assert "لا تُستخدم تلقائيًا كأرقام مالية" in text
-    assert "الأدلة الاقتصادية العامة" in text
+    assert "مصادر الويب المقترحة" in text
     assert "public_evidence_context" in text
     fields = (
         "publisher",
         "source_url",
-        "geography",
-        "sector",
-        "unit",
         "confidence",
         "retrieved_at",
         "fresh_until",

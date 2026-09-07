@@ -1575,7 +1575,7 @@ class Handler(BaseHTTPRequestHandler):
         write_error(self, "organization_required", 400)
         return None
 
-    def _export_snapshot_report(self, snapshot_id: str, report: dict[str, Any], export_format: str) -> None:
+    def _export_snapshot_report(self, snapshot_id: str, report: dict[str, Any], export_format: str, locale: str = "ar") -> None:
         """Stream a snapshot-bound funder report export; the renderer never sees a client browser."""
         projection = report.get("funder_report", {})
         if not projection:
@@ -1591,17 +1591,16 @@ class Handler(BaseHTTPRequestHandler):
         if exporter is None or content_type is None:
             write_error(self, "unsupported_export_format", 400)
             return
-        safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
         try:
             with tempfile.TemporaryDirectory(prefix="asie-export-") as temp_dir:
                 output = Path(temp_dir) / f"export.{export_format}"
-                exporter(projection, output)
+                exporter(projection, output, locale=locale)
                 payload = output.read_bytes()
-        except RuntimeError as exc:
-            write_error(self, str(exc), 503)
+        except RuntimeError:
+            write_error(self, "report_export_unavailable", 503)
             return
         except subprocess.CalledProcessError:
-            write_error(self, "PDF renderer failed while producing the export", 503)
+            write_error(self, "report_export_unavailable", 503)
             return
         principal = self._principal()
         if principal is None:
@@ -1616,7 +1615,7 @@ class Handler(BaseHTTPRequestHandler):
             reason=export_format,
             correlation_id=self.request_id,
         )
-        write_binary(self, payload, content_type, f"asie-funder-report-{safe_id}.{export_format}")
+        write_binary(self, payload, content_type, f"asie-project-report-{locale}.{export_format}")
 
     def do_OPTIONS(self) -> None:
         if not self._allow_request():
@@ -1635,7 +1634,10 @@ class Handler(BaseHTTPRequestHandler):
         """Route one admitted GET request without mutating platform state."""
         if not self._allow_request():
             return
-        path = urlparse(self.path).path
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        requested_locale = parse_qs(parsed_url.query).get("locale", ["ar"])[0]
+        locale = "en" if requested_locale == "en" else "ar"
         if path == "/api/health":
             write_json(self, {"ok": True, "service": "asie-local-api", "strict_profile": PROFILE_ID})
             return
@@ -1724,7 +1726,7 @@ class Handler(BaseHTTPRequestHandler):
             principal = self._principal()
             if principal is None:
                 return
-            write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "external_access_enabled": False})
+            write_json(self, {"user_id": principal.user_id, "platform_role": principal.platform_role, "memberships": REPO.memberships_for_user(principal.user_id), "locale": REPO.customer_locale(principal.user_id), "external_access_enabled": False})
             return
         if path == "/api/auth/registration-options":
             write_json(
@@ -1972,7 +1974,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             base_pack = decision_pack_via_module_runtime(overview, report)
             pack = apply_review_overlay(base_pack, REPO.snapshot_reviews(snapshot_id))
-            write_html(self, render_decision_pack_html(pack))
+            write_html(self, render_decision_pack_html(pack, locale=locale))
             return
         if path.startswith("/api/snapshots/") and path.endswith("/reviews"):
             snapshot_id = path.split("/")[3]
@@ -2003,7 +2005,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            write_html(self, render_report_html(report, REPO.latest_snapshot_review(snapshot_id)))
+            write_html(self, render_report_html(report, REPO.latest_snapshot_review(snapshot_id), locale=locale))
             return
         if path.startswith("/api/snapshots/") and path.endswith("/funder-report.html"):
             snapshot_id = path.split("/")[3]
@@ -2011,7 +2013,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            write_html(self, render_funder_report_html(report.get("funder_report", {})))
+            write_html(self, render_funder_report_html(report.get("funder_report", {}), locale=locale))
             return
         if path.startswith("/api/snapshots/") and path.endswith("/funder-report.pdf"):
             snapshot_id = path.split("/")[3]
@@ -2019,7 +2021,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            self._export_snapshot_report(snapshot_id, report, "pdf")
+            self._export_snapshot_report(snapshot_id, report, "pdf", locale=locale)
             return
         if path.startswith("/api/snapshots/") and path.endswith("/funder-report.docx"):
             snapshot_id = path.split("/")[3]
@@ -2027,7 +2029,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            self._export_snapshot_report(snapshot_id, report, "docx")
+            self._export_snapshot_report(snapshot_id, report, "docx", locale=locale)
             return
         if path.startswith("/api/snapshots/") and path.endswith("/funder-report.pptx"):
             snapshot_id = path.split("/")[3]
@@ -2035,7 +2037,7 @@ class Handler(BaseHTTPRequestHandler):
             if report is None:
                 write_error(self, "snapshot_not_found", 404)
                 return
-            self._export_snapshot_report(snapshot_id, report, "pptx")
+            self._export_snapshot_report(snapshot_id, report, "pptx", locale=locale)
             return
         if path.startswith("/api/snapshots/") and path.endswith("/release"):
             snapshot_id = path.split("/")[3]
@@ -2788,6 +2790,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             payload = read_json(self)
+            if path == "/api/auth/preferences":
+                # Only the authenticated account may select its own language.
+                # No user/tenant identifier is accepted from the browser.
+                if not self._bearer_token():
+                    write_error(self, "authentication_required", 401)
+                    return
+                principal = self._principal()
+                if principal is None:
+                    return
+                if not isinstance(payload, dict) or set(payload) != {"locale"} or payload.get("locale") not in ("ar", "en"):
+                    write_error(self, "invalid_request", 400)
+                    return
+                locale = REPO.save_customer_locale(principal.user_id, payload["locale"])
+                write_json(self, {"locale": locale})
+                return
             if self._principal() is None:
                 return
             if path.startswith("/api/projects/"):

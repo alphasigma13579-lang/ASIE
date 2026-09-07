@@ -82,12 +82,12 @@ class CompleteFrontendSurfacePackageTests(unittest.TestCase):
         required_pages = (
             "لوحة القيادة",
             "مرشد تأسيس المشروع",
-            "طبقة الأدلة",
+            "الأدلة",
             "جاهزية الدراسة",
             "تشغيل التحليل",
             "اختبر السوق",
             "فهم القرار",
-            "خارطة التنفيذ",
+            "خطة التنفيذ",
             "تقاريري",
         )
         for page in required_pages:
@@ -95,9 +95,10 @@ class CompleteFrontendSurfacePackageTests(unittest.TestCase):
 
     def test_landing_completion_is_honest_about_live_capabilities(self) -> None:
         source = MOUNT.read_text(encoding="utf-8")
-        self.assertIn("PDF واستخراج عروض الموردين ما زالا ضمن خطة البناء", source)
-        self.assertIn("لا يتصل بمزود ذكاء خارجي", source)
-        self.assertIn("ليست بوابة دفع أو عروضًا تجارية حية", source)
+        self.assertIn("استيراد أنواع أخرى ما زال قيد البناء", source)
+        self.assertIn("تُفتح المصادر الحية فقط بعد اعتماد المصدر وفحوص الجودة والأمان", source)
+        self.assertIn("لا أسعار أو وعود غير مفعّلة", source)
+        self.assertIn("ليست عروضًا تجارية حية", source)
         self.assertNotIn("149", source)
         self.assertNotIn("449", source)
 

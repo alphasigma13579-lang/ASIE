@@ -24,7 +24,7 @@ FIXTURE = ORIGIN + "/tools/browser/location-consent.html"
 ARTIFACTS = ROOT / "browser-artifacts"
 REQUEST = "تحديد موقعي بإذني"
 RETRY = "إعادة طلب موقعي"
-CONFIRM = "تأكيد الإحداثيات لموقعي"
+CONFIRM = "تأكيد هذا الموقع للمشروع"
 CANCEL = "إلغاء استخدام موقع الجهاز"
 GEOLOCATION_STUB = """
 (() => {
@@ -51,7 +51,7 @@ class LocationConsentBrowserChecks(unittest.TestCase):
         cls.addClassCleanup(cls.browser.close)
 
     @contextmanager
-    def page(self, *, init="", mobile=False):
+    def page(self, *, init="", mobile=False, locale="ar"):
         context = self.browser.new_context(
             viewport={"width": 390, "height": 844} if mobile else {"width": 1000, "height": 900},
             locale="ar-SA",
@@ -66,12 +66,12 @@ class LocationConsentBrowserChecks(unittest.TestCase):
                 blocked.append(route.request.url)
                 route.abort()
         context.route("**/*", route_request)
-        context.add_init_script(GEOLOCATION_STUB + "\n" + init)
+        context.add_init_script(GEOLOCATION_STUB + "\n" + init + ("\nlocalStorage.setItem('asie.customer_locale.v1', 'en');" if locale == "en" else ""))
         page = context.new_page()
         page.on("pageerror", lambda error: errors.append(str(error)))
         try:
             page.goto(FIXTURE)
-            expect(page.get_by_role("button", name=REQUEST, exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name=REQUEST if locale == "ar" else "Use my location with permission", exact=True)).to_be_visible()
             yield page
             self.assertEqual(blocked, [], "Browser attempted unexpected outbound traffic")
             self.assertEqual(errors, [], "Uncaught browser errors")
@@ -209,7 +209,7 @@ class LocationConsentBrowserChecks(unittest.TestCase):
 
     def test_insecure_or_unsupported_environment_never_requests_gps(self):
         cases = [
-            ('Object.defineProperty(window, "isSecureContext", {value: false});', "HTTPS"),
+            ('Object.defineProperty(window, "isSecureContext", {value: false});', "اتصالًا آمنًا"),
             ('Object.defineProperty(navigator, "geolocation", {value: undefined});', "لا يدعم"),
         ]
         for init, message in cases:
@@ -219,6 +219,26 @@ class LocationConsentBrowserChecks(unittest.TestCase):
                 self.assertEqual(page.evaluate("window.__gps.calls.length"), 0)
                 page.get_by_label("خط الطول اليدوي").fill("47")
                 self.assert_unconfirmed(page)
+
+    def test_english_location_consent_preserves_confirmation_and_safe_recovery(self):
+        for mobile in (False, True):
+            with self.subTest(mobile=mobile), self.page(locale="en", mobile=mobile) as page:
+                expect(page.locator("html")).to_have_attribute("lang", "en")
+                expect(page.locator("html")).to_have_attribute("dir", "ltr")
+                request = page.get_by_role("button", name="Use my location with permission", exact=True)
+                request.click()
+                self.succeed(page)
+                self.assert_unconfirmed(page)
+                expect(page.get_by_role("status")).to_contain_text("temporary location")
+                page.get_by_role("button", name="Confirm this project location", exact=True).click()
+                self.assertEqual(json.loads(page.get_by_test_id("confirmed").inner_text()),
+                                 [{"latitude": 24.7136, "longitude": 46.6753}])
+                request.click()
+                page.evaluate("window.__gps.fail(1, 1)")
+                expect(page.get_by_role("status")).to_contain_text("permission was not granted")
+                expect(page.locator(".location-consent")).not_to_contain_text("PRIVATE ERROR")
+                self.assertFalse(any("\u0600" <= char <= "\u06ff"
+                                     for char in page.locator(".location-consent").inner_text()))
 
     def test_synchronous_failure_does_not_break_manual_entry(self):
         with self.page(init='navigator.geolocation.getCurrentPosition = () => {throw new Error("PRIVATE ERROR")};') as page:

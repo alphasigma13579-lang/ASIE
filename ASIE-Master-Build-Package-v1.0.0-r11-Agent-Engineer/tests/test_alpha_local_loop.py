@@ -57,7 +57,7 @@ class LocalAlphaLoopTests(unittest.TestCase):
                     report_response = connection.getresponse()
                     report_html = report_response.read().decode("utf-8")
                     self.assertEqual(200, report_response.status)
-                    self.assertIn(snapshot_id, report_html)
+                    self.assertNotIn(snapshot_id, report_html)
                     self.assertIn("lang='ar' dir='rtl'", report_html)
                 finally:
                     connection.close()

@@ -6,11 +6,13 @@ import {
   type GoogleLocationResult,
   type MarketCompetitor,
 } from "./api";
+import { useCustomerLanguage } from "./customerLanguage";
 import "./live-market-map.css";
 
 type LiveMarketMapProps = {
   projectId?: string;
   sector?: string;
+  sectorLabel?: string;
   locationLabel?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -53,11 +55,28 @@ function confirmedCoordinate(value: number | null | undefined, minimum: number, 
   return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
 }
 
-function competitorName(competitor: MarketCompetitor) {
-  return competitor.displayName?.text || competitor.formattedAddress || "منشأة مسجلة في المصدر";
+function competitorName(competitor: MarketCompetitor, fallback: string) {
+  return competitor.displayName?.text || competitor.formattedAddress || fallback;
 }
 
-export function LiveMarketMap({ projectId, sector, locationLabel, latitude, longitude }: LiveMarketMapProps) {
+function distanceKilometers(
+  originLatitude: number,
+  originLongitude: number,
+  destinationLatitude: number,
+  destinationLongitude: number,
+) {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(destinationLatitude - originLatitude);
+  const longitudeDelta = toRadians(destinationLongitude - originLongitude);
+  const originRadians = toRadians(originLatitude);
+  const destinationRadians = toRadians(destinationLatitude);
+  const value = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(originRadians) * Math.cos(destinationRadians) * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+export function LiveMarketMap({ projectId, sector, sectorLabel, locationLabel, latitude, longitude }: LiveMarketMapProps) {
+  const { locale, text } = useCustomerLanguage();
   const [state, setState] = useState<RequestState>("idle");
   const [address, setAddress] = useState<GoogleLocationResult | null>(null);
   const [competitors, setCompetitors] = useState<MarketCompetitor[]>([]);
@@ -85,21 +104,21 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
         disableDefaultUI: false,
         gestureHandling: "cooperative",
       });
-      new google.maps.Marker({ map, position: center, title: "موقع المشروع المؤكد" });
+      new google.maps.Marker({ map, position: center, title: text("موقع المشروع المؤكد", "Confirmed project location") });
       competitors.forEach((competitor) => {
         const competitorLocation = competitor.location;
         if (!competitorLocation || !confirmedCoordinate(competitorLocation.latitude, -90, 90) || !confirmedCoordinate(competitorLocation.longitude, -180, 180)) return;
         new google.maps.Marker({
           map,
           position: { lat: competitorLocation.latitude, lng: competitorLocation.longitude },
-          title: competitorName(competitor),
+          title: competitorName(competitor, text("منشأة من المصدر", "Source-listed business")),
         });
       });
     });
     return () => {
       disposed = true;
     };
-  }, [state, competitors, hasConfirmedLocation, latitude, longitude]);
+  }, [state, competitors, hasConfirmedLocation, latitude, longitude, text]);
 
   async function refreshMarketContext() {
     if (!canRefresh || !projectId || !sector || latitude === null || latitude === undefined || longitude === null || longitude === undefined) return;
@@ -127,20 +146,20 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
   }
 
   return (
-    <article className="live-market-map" aria-label="خريطة المنافسين للموقع المؤكد">
+    <article className="live-market-map" aria-label={text("خريطة المنافسين للموقع المؤكد", "Competitor map for the confirmed location")}>
       <header className="live-market-map__heading">
         <div>
           <MapPinned size={20} aria-hidden="true" />
           <div>
-            <span>المنافسة في النطاق</span>
-            <strong>خريطة ومنافسون من المصدر المسموح بعد طلبك</strong>
+            <span>{text("المنافسة في النطاق", "Competition nearby")}</span>
+            <strong>{text("خريطة ومنافسون من المصدر المعتمد بعد طلبك", "Map and competitors from the approved source after your request")}</strong>
           </div>
         </div>
-        <small>لا تحفظ المنصة موقع الجهاز الخام</small>
+        <small>{text("لا تحفظ المنصة موقع الجهاز الخام", "The platform does not store the device’s raw location")}</small>
       </header>
 
       <p className="live-market-map__context">
-        {locationLabel || "الموقع غير مسمى بعد"} · {sector || "التصنيف مطلوب"}
+        {locationLabel || text("الموقع غير مسمى بعد", "Location is not named yet")} · {sectorLabel || text("التصنيف مطلوب", "Category is required")}
       </p>
 
       <button
@@ -150,53 +169,57 @@ export function LiveMarketMap({ projectId, sector, locationLabel, latitude, long
         onClick={refreshMarketContext}
       >
         <RefreshCw size={16} aria-hidden="true" />
-        {state === "loading" ? "جارٍ تحديث سياق السوق…" : "تحديث المنافسين للموقع المؤكد"}
+        {state === "loading" ? text("جارٍ تحديث معلومات السوق…", "Updating market information…") : text("البحث عن منافسين قرب الموقع", "Find competitors near this location")}
       </button>
 
       {!canRefresh ? (
         <p className="live-market-map__notice" role="status">
-          ثبّت موقع المشروع والتصنيف أولاً. لا يبدأ أي طلب للخدمة أو تحميل للخريطة قبل ذلك.
+          {text("أكد موقع المشروع وحدد القطاع أولاً. لن يبدأ البحث قبل ذلك.", "Confirm the project location and sector first. Research will not start before then.")}
         </p>
       ) : null}
 
       {state === "unavailable" ? (
         <p className="live-market-map__notice live-market-map__notice--unavailable" role="alert">
-          الخدمة الخارجية متوقفة مؤقتًا. حُفظت مدخلاتك، ويمكنك إعادة المحاولة لاحقًا. لا توجد بيانات بديلة أو تجريبية هنا.
+          {text("تعذر الوصول إلى مصدر الخرائط مؤقتًا. يمكنك إعادة المحاولة لاحقًا؛ لن تُعرض بيانات بديلة.", "The map source is temporarily unavailable. You can try again later; no substitute data will be shown.")}
         </p>
       ) : null}
 
       {state === "ready" ? (
         <div className="live-market-map__results">
           <p className="live-market-map__source">
-            {address?.formattedAddress || locationLabel || "الموقع المؤكد"} · المصدر: Google Maps/Places عند التفعيل
+            {address?.formattedAddress || locationLabel || text("الموقع المؤكد", "Confirmed location")} · {text("المصدر: خدمة الخرائط المعتمدة", "Source: approved mapping service")}
           </p>
-          <div ref={mapElement} className="live-market-map__canvas" aria-label="خريطة Google للموقع والمنافسين" />
+          <div ref={mapElement} className="live-market-map__canvas" aria-label={text("خريطة الموقع والمنافسين", "Project and competitor map")} />
           {mapUnavailable ? (
             <p className="live-market-map__notice" role="status">
-              تعذر تحميل سطح الخريطة في المتصفح؛ تبقى نتائج المصدر أدناه متاحة ولا يجري استبدالها بمحاكاة.
+              {text("تعذر تحميل الخريطة في المتصفح؛ تبقى نتائج المصدر أدناه متاحة ولن تُستبدل ببيانات تجريبية.", "The browser map could not be loaded; the source results below remain available and will not be replaced with demo data.")}
             </p>
           ) : null}
-          <section className="live-market-map__list" aria-label="المنافسون من المصدر">
-            <h3>المنشآت المطابقة في نطاق البحث</h3>
+          <section className="live-market-map__list" aria-label={text("المنافسون من المصدر", "Competitors from the source")}>
+            <h3>{text("المنشآت المطابقة في نطاق البحث", "Matching businesses in the search area")}</h3>
             {competitors.length ? (
               <ul>
                 {competitors.map((competitor) => (
                   <li key={competitor.id}>
                     <div>
-                      <strong>{competitorName(competitor)}</strong>
-                      <span>{competitor.primaryType || "تصنيف غير معلن"} · {competitor.businessStatus || "حالة غير معلنة"}</span>
+                      <strong>{competitorName(competitor, text("منشأة من المصدر", "Source-listed business"))}</strong>
+                      <span>
+                        {competitor.location && typeof latitude === "number" && typeof longitude === "number"
+                          ? `${new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", { maximumFractionDigits: 1 }).format(distanceKilometers(latitude, longitude, competitor.location.latitude, competitor.location.longitude))} ${text("كم تقريبًا", "km approximately")}`
+                          : text("المسافة غير متاحة", "Distance unavailable")}
+                      </span>
                       {competitor.formattedAddress ? <small>{competitor.formattedAddress}</small> : null}
                     </div>
                     {competitor.googleMapsUri ? (
                       <a href={competitor.googleMapsUri} target="_blank" rel="noreferrer">
-                        فتح في Google Maps
+                        {text("فتح الموقع على الخريطة", "Open location on map")}
                       </a>
                     ) : null}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>لم يعثر المصدر على منشآت مطابقة في نطاق البحث الحالي.</p>
+              <p>{text("لم يعثر المصدر على منشآت مطابقة في نطاق البحث الحالي.", "The source found no matching businesses in the current search area.")}</p>
             )}
           </section>
         </div>

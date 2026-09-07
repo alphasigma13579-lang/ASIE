@@ -1,5 +1,6 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { CustomerLanguageProvider } from "../../src/customerLanguage";
 import { LocationConsentInput, type ConfirmedCoordinates } from "../../src/LocationConsentInput";
 import "../../src/styles.css";
 import "../../src/asie-reference-theme.css";
@@ -29,4 +30,6 @@ function Fixture() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><Fixture /></StrictMode>);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode><CustomerLanguageProvider><Fixture /></CustomerLanguageProvider></StrictMode>
+);

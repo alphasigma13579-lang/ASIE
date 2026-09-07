@@ -125,9 +125,19 @@ class ReportExportRouteTests(unittest.TestCase):
             headers.get("content-type"),
         )
         self.assertIn("attachment", headers.get("content-disposition", ""))
-        self.assertIn(self.snapshot_b_id, headers.get("content-disposition", ""))
+        self.assertIn("asie-project-report-ar.pptx", headers.get("content-disposition", ""))
+        self.assertNotIn(self.snapshot_b_id, headers.get("content-disposition", ""))
         self.assertTrue(raw.startswith(b"PK"), "PPTX export must be a zip container")
         self.assertGreater(len(raw), 500)
+
+        status, headers, raw = self.request_bytes(
+            self.export_path(self.snapshot_b_id, "pptx") + "?locale=en",
+            token=self.token_b,
+        )
+        self.assertEqual(200, status)
+        self.assertIn("asie-project-report-en.pptx", headers.get("content-disposition", ""))
+        self.assertNotIn(self.snapshot_b_id, headers.get("content-disposition", ""))
+        self.assertTrue(raw.startswith(b"PK"), "English PPTX export must be a zip container")
 
     def test_docx_export_streams_or_reports_missing_runtime(self) -> None:
         status, headers, raw = self.request_bytes(self.export_path(self.snapshot_b_id, "docx"), token=self.token_b)
@@ -140,7 +150,7 @@ class ReportExportRouteTests(unittest.TestCase):
             self.assertTrue(raw.startswith(b"PK"), "DOCX export must be a zip container")
         else:
             self.assertEqual(503, status)
-            self.assertIn(b"document runtime", raw)
+            self.assertIn(b"report_export_unavailable", raw)
 
     def test_pdf_export_streams_or_reports_missing_renderer(self) -> None:
         status, headers, raw = self.request_bytes(self.export_path(self.snapshot_b_id, "pdf"), token=self.token_b)
@@ -150,7 +160,7 @@ class ReportExportRouteTests(unittest.TestCase):
             self.assertTrue(raw.startswith(b"%PDF"), "PDF export must carry the PDF magic header")
         else:
             self.assertEqual(503, status)
-            self.assertIn(b"PDF renderer", raw)
+            self.assertIn(b"report_export_unavailable", raw)
 
     # ------------------------------------------------------------------ fail-closed paths
     def test_exports_fail_closed_cross_tenant(self) -> None:

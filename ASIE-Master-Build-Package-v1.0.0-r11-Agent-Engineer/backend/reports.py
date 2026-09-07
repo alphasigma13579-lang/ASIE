@@ -5,6 +5,7 @@ from typing import Any
 
 from backend.snapshot_assembly import canonical_hash
 from backend.funder_report import build_funder_report_projection, render_funder_report_html
+from backend.customer_presentation import business_text, normalize_locale, safe_narrative, status_text, text, unit_text
 
 
 def remediation(blockers: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -259,187 +260,122 @@ def normalize_evidence_coverage(coverage: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | None = None) -> str:
+def render_report_html(report: dict[str, Any], latest_review: dict[str, Any] | None = None, locale: str = "ar") -> str:
+    """Render a concise customer report; engineering diagnostics remain server-side."""
+    locale = normalize_locale(locale)
+    direction = "rtl" if locale == "ar" else "ltr"
+    align = "right" if locale == "ar" else "left"
     view = build_report_view(report, latest_review)
+    summary = view["executive_summary"]
     kpi_rows = "".join(
-        f"<tr><td>{escape(kpi['output_id'])}</td><td>{escape(str(kpi['value']))}</td>"
-        f"<td>{escape(kpi['unit'])}</td><td>{escape(kpi['algorithm_id'])}</td></tr>"
+        f"<tr><td>{escape(business_text(kpi.get('output_id'), locale))}</td>"
+        f"<td>{escape(str(kpi.get('value') if kpi.get('value') is not None else '—'))}</td>"
+        f"<td>{escape(unit_text(kpi.get('unit'), locale))}</td>"
+        f"<td>{escape(status_text(kpi.get('status'), locale))}</td></tr>"
         for kpi in view["headline_kpis"]
     )
-    scenario_rows = "".join(
-        f"<tr><td>{escape(row['scenario_id'])}</td><td>{row['npv']}</td>"
-        f"<td>{row['monthly_profit']}</td><td>{escape(str(row['payback_months']))}</td></tr>"
-        for row in view["scenario_table"]
-    )
-    assumption_rows = "".join(
-        f"<tr><td>{escape(row['assumption_id'])}</td><td>{escape(row['label'])}</td>"
-        f"<td>{escape(str(row['value']))}</td><td>{escape(row['review_status'])}</td></tr>"
-        for row in view["assumption_book"]
-    )
-    source_rows = "".join(
-        f"<tr><td>{escape(row['source_id'])}</td><td>{escape(row['publisher'])}</td>"
-        f"<td>{escape(row['state'])}</td><td>{escape(row.get('reviewer_decision') or '')}</td></tr>"
-        for group in ["enabled_sources", "candidate_sources", "reference_only", "blocked_sources"]
-        for row in view["source_governance"].get(group, [])
-    )
-    operating_model = view.get("operating_model") or {}
-    capex = view.get("capex_breakdown") or {}
-    opex = view.get("opex_breakdown") or {}
-    debt = view.get("debt_service_profile") or {}
-    operating_rows = "".join(
-        f"<tr><td>{escape(label)}</td><td>{escape(str(value))}</td></tr>"
-        for label, value in [
-            ("مصدر الوحدات", operating_model.get("unit_source", "")),
-            ("الوحدات الشهرية", operating_model.get("monthly_units", "")),
-            ("نسبة الاستخدام", operating_model.get("utilization_rate", "")),
-            ("CAPEX الإجمالي", capex.get("total_capex", "")),
-            ("OPEX الشهري", opex.get("total_monthly_opex", "")),
-            ("الإهلاك الشهري", capex.get("depreciation_monthly", "")),
-            ("دفعة الدين الشهرية", debt.get("monthly_payment", "")),
-            ("DSCR", debt.get("dscr", "")),
-            ("حالة خدمة الدين", debt.get("status", "")),
-        ]
-    )
-    dataset_rows = "".join(
-        f"<tr><td>{escape(row['dataset_id'])}</td><td>{escape(row['title'])}</td>"
-        f"<td>{escape(row['review_status'])}</td><td>{escape(str(row.get('notes', {}).get('quality_review', {}).get('status', 'unknown')))}</td>"
-        f"<td>{escape(str(row.get('row_count') or 0))}</td></tr>"
-        for row in view["evidence_register"].get("datasets", [])
-    )
     gate_rows = "".join(
-        f"<tr><td>{escape(row['dataset_id'])}</td><td>{escape(row['status'])}</td>"
-        f"<td>{escape(', '.join(row.get('reasons') or []))}</td></tr>"
-        for row in view["evidence_register"].get("quality_gates", [])
-    )
-    evidence_rows = "".join(
-        f"<tr><td>{escape(row.get('target_id') or row.get('assumption_id', ''))}</td><td>{escape(row['dataset_id'])}</td>"
-        f"<td>{escape(row.get('transformation_id') or '')}</td><td>{escape(row['evidence_ref'])}</td>"
-        f"<td>{escape(row['human_review_decision'])}</td></tr>"
-        for row in view["evidence_register"].get("evidence_links", [])
-    )
-    ledger_rows = "".join(
-        f"<tr><td>{escape(row.get('target_type', ''))}:{escape(row.get('target_id', ''))}</td>"
-        f"<td>{escape(row.get('data_quality_status', ''))}</td>"
-        f"<td>{escape(row.get('transformation_quality_status', ''))}</td>"
-        f"<td>{escape(str(row.get('evidence_confidence_score', '')))}</td>"
-        f"<td>{escape(row.get('evidence_confidence_status', ''))}</td></tr>"
-        for row in view.get("evidence_ledger", [])
-    )
-    transformation_rows = "".join(
-        f"<tr><td>{escape(row.get('transformation_id', ''))}</td><td>{escape(row.get('operation_type', ''))}</td>"
-        f"<td>{escape(', '.join(row.get('input_columns') or []))}</td><td>{escape(str(row.get('output_value') or ''))}</td>"
-        f"<td>{escape(row.get('review_status', ''))}</td></tr>"
-        for row in view["evidence_register"].get("transformations", [])
-    )
-    lineage_rows = "".join(
-        f"<tr><td>{escape(row.get('dataset_id', ''))}</td><td>{escape(row.get('transformation_id', ''))}</td>"
-        f"<td>{escape(row.get('target_type', ''))}:{escape(row.get('target_id', ''))}</td>"
-        f"<td>{escape(row.get('review_status', ''))}</td></tr>"
-        for row in view.get("transformation_lineage", [])
-    )
-    gate_rows_html = "".join(
-        f"<tr><td>{escape(row['label'])}</td><td>{escape(row['status'])}</td>"
-        f"<td>{escape(', '.join(row.get('reasons') or []))}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('label'), locale))}</td>"
+        f"<td>{escape(status_text(row.get('status'), locale))}</td>"
+        f"<td>{escape(', '.join(business_text(reason, locale) for reason in row.get('reasons') or []) or text('none', locale))}</td></tr>"
         for row in view["readiness_gates"].get("gates", [])
     )
-    milestone_rows = "".join(
-        f"<tr><td>{escape(row['phase_id'])}</td><td>{escape(row['owner_role'])}</td>"
-        f"<td>{escape(str(row['estimated_duration_days']))}</td><td>{escape(', '.join(row.get('dependencies') or []))}</td></tr>"
-        for row in view["execution_plan"].get("milestones", [])
-    )
     risk_rows = "".join(
-        f"<tr><td>{escape(row['risk_id'])}</td><td>{escape(row['severity'])}</td>"
-        f"<td>{escape(row['trigger'])}</td><td>{escape(row['mitigation'])}</td></tr>"
+        f"<tr><td>{escape(business_text(row.get('trigger'), locale))}</td>"
+        f"<td>{escape(status_text(row.get('severity'), locale))}</td>"
+        f"<td>{escape(safe_narrative(row.get('mitigation'), locale))}</td></tr>"
         for row in view["risk_register"].get("top_risks", [])
     )
-    sector = view["sector_intelligence"]
-    taxonomy = sector.get("taxonomy_record") or {}
-    sector_rows = "".join(
-        f"<tr><td>{escape(row.get('label', ''))}</td><td>{escape(row.get('sector_value', ''))}</td>"
-        f"<td>{escape(row.get('evidence_status', ''))}</td></tr>"
-        for row in sector.get("sector_criteria", {}).get("criteria", [])
+    milestone_rows = "".join(
+        f"<tr><td>{escape(business_text(row.get('phase_id'), locale))}</td>"
+        f"<td>{escape(business_text(row.get('owner_role'), locale))}</td>"
+        f"<td>{escape(str(row.get('estimated_duration_days') or '—'))}</td>"
+        f"<td>{escape(', '.join(business_text(item, locale) for item in row.get('exit_criteria') or []) or text('none', locale))}</td></tr>"
+        for row in view["execution_plan"].get("milestones", [])
     )
-    signal_rows = "".join(
-        f"<tr><td>{escape(row.get('label', ''))}</td><td>{escape(row.get('value', ''))}</td>"
-        f"<td>{escape(row.get('evidence_status', ''))}</td></tr>"
-        for row in sector.get("investment_signal_pack", {}).get("signals", [])
+    evidence_register = view.get("evidence_register", {})
+    source_records = {
+        str(source.get("source_id") or ""): source
+        for source in evidence_register.get("source_records", [])
+        if isinstance(source, dict)
+    }
+    evidence_rows_list: list[str] = []
+    supported_dataset_ids = {
+        str(item["dataset_id"])
+        for item in view.get("evidence_ledger", [])
+        if isinstance(item, dict) and item.get("dataset_id") and item.get("can_support_target") is True
+    }
+    for dataset in evidence_register.get("datasets", []):
+        if not isinstance(dataset, dict):
+            continue
+        if str(dataset.get("dataset_id") or "") not in supported_dataset_ids:
+            continue
+        source = source_records.get(str(dataset.get("source_id") or ""), {})
+        source_url = str(source.get("url") or "")
+        source_action = (
+            f'<a href="{escape(source_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+            f'{"فتح المصدر الرسمي" if locale == "ar" else "Open official source"}</a>'
+            if source_url.startswith("https://")
+            else ("الرابط غير متاح" if locale == "ar" else "Link unavailable")
+        )
+        evidence_rows_list.append(
+            f"<tr><td>{escape(str(dataset.get('title') or ('دليل موثق' if locale == 'ar' else 'Documented evidence')))}</td>"
+            f"<td>{escape(str(dataset.get('publisher') or source.get('publisher') or '—'))}</td>"
+            f"<td>{escape(status_text(dataset.get('review_status') or dataset.get('human_review_decision'), locale))}</td>"
+            f"<td>{source_action}</td>"
+            f"<td>{escape(safe_narrative(dataset.get('attribution') or source.get('attribution') or '—', locale))}</td></tr>"
+        )
+    evidence_rows = "".join(evidence_rows_list) or (
+        f'<tr><td colspan="5">{"لا توجد أدلة معتمدة مرتبطة بهذا التقرير بعد." if locale == "ar" else "No approved evidence is linked to this report yet."}</td></tr>'
     )
-    coverage = view.get("evidence_coverage", {})
-    coverage_rows = "".join(
-        f"<tr><td>{escape(row.get('target_type', ''))}</td><td>{escape(row.get('label', ''))}</td>"
-        f"<td>{escape(row.get('coverage_status', ''))}</td></tr>"
-        for row in coverage.get("targets", [])[:20]
-    )
-    pack = view["decision_pack_summary"]
-    review_row = (
-        f"<tr><td>حالة المراجعة</td><td>{escape(view['review_status'])}</td></tr>"
-        f"<tr><td>توصية الحزمة</td><td>{escape(pack['recommendation'])}</td></tr>"
-        f"<tr><td>حالة الجاهزية</td><td>{escape(pack['readiness_status'])}</td></tr>"
-        f"<tr><td>عدد المخاطر الأعلى</td><td>{escape(str(pack['top_risk_count']))}</td></tr>"
-        f"<tr><td>حالة التنفيذ</td><td>{escape(pack['execution_status'])}</td></tr>"
-    )
-    acceptance_rows = "".join(
-        f"<tr><td>{escape(row['test_id'])}</td><td>{escape(row['status'])}</td>"
-        f"<td>{escape(row['evidence'])}</td></tr>"
-        for row in view.get("acceptance", {}).get("tests", [])
-    )
+    labels = {
+        "summary": ("الملخص التنفيذي", "Executive summary"),
+        "decision": ("القرار", "Decision"),
+        "why": ("لماذا؟", "Why?"),
+        "metrics": ("المؤشرات الرئيسية", "Key metrics"),
+        "value": ("القيمة", "Value"),
+        "unit": ("الوحدة", "Unit"),
+        "evidence": ("الأدلة المستخدمة", "Evidence used"),
+        "publisher": ("الجهة الناشرة", "Publisher"),
+        "review": ("حالة المراجعة", "Review status"),
+        "source": ("المصدر", "Source"),
+        "attribution": ("الإسناد", "Attribution"),
+        "readiness": ("متطلبات الجاهزية", "Readiness requirements"),
+        "risks": ("المخاطر وخطة المعالجة", "Risks and mitigation"),
+        "risk": ("الخطر", "Risk"),
+        "severity": ("الأهمية", "Severity"),
+        "mitigation": ("الإجراء المقترح", "Recommended action"),
+        "plan": ("خطة التنفيذ", "Execution plan"),
+        "phase": ("المرحلة", "Phase"),
+        "owner": ("المسؤول", "Owner"),
+        "days": ("الأيام", "Days"),
+        "done": ("معيار الإتمام", "Completion criterion"),
+        "internal": ("التفاصيل الفنية وسجل التدقيق متاحة للمشرف فقط.", "Technical details and the audit trail are available to administrators only."),
+    }
+    def label(key: str) -> str:
+        pair = labels[key]
+        return pair[1] if locale == "en" else pair[0]
     return f"""<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <title>{escape(view['title'])}</title>
-  <style>
-    body {{ font-family: Tahoma, Arial, sans-serif; margin: 32px; color: #17201b; }}
-    h1, h2 {{ margin-bottom: 8px; }}
-    .meta {{ color: #53645a; margin-bottom: 24px; }}
-    table {{ width: 100%; border-collapse: collapse; margin: 12px 0 24px; }}
-    th, td {{ border: 1px solid #dfe5e1; padding: 8px; text-align: right; }}
-    th {{ background: #f4f6f4; }}
-    .verdict {{ padding: 12px; background: #f8fbec; border: 1px solid #d8e6a6; }}
-  </style>
-</head>
-<body>
-  <h1>{escape(view['title'])}</h1>
-  <p class="meta">Snapshot {escape(view['snapshot_id'])} · Run {escape(view['run_id'])}</p>
-  <section class="verdict">
-    <h2>الملخص التنفيذي</h2>
-    <p><strong>{escape(view['executive_summary']['verdict'])}</strong></p>
-    <p>{escape(view['executive_summary']['reason'])}</p>
-  </section>
-  <h2>المؤشرات</h2>
-  <table><thead><tr><th>المؤشر</th><th>القيمة</th><th>الوحدة</th><th>الخوارزمية</th></tr></thead><tbody>{kpi_rows}</tbody></table>
-  <h2>السيناريوهات</h2>
-  <table><thead><tr><th>السيناريو</th><th>NPV</th><th>الربح الشهري</th><th>الاسترداد</th></tr></thead><tbody>{scenario_rows}</tbody></table>
-  <h2>نموذج التشغيل والتمويل</h2>
-  <table><thead><tr><th>البند</th><th>القيمة</th></tr></thead><tbody>{operating_rows}</tbody></table>
-  <h2>القطاع ومؤشرات الاستثمار</h2>
-  <p>{escape(taxonomy.get('primary_sector_ar') or taxonomy.get('primary_sector') or 'غير مصنف')}</p>
-  <table><thead><tr><th>المعيار</th><th>قيمة القطاع</th><th>حالة الدليل</th></tr></thead><tbody>{sector_rows}</tbody></table>
-  <table><thead><tr><th>الإشارة</th><th>القيمة</th><th>حالة الدليل</th></tr></thead><tbody>{signal_rows}</tbody></table>
-  <h2>دفتر الافتراضات</h2>
-  <table><thead><tr><th>المعرف</th><th>الافتراض</th><th>القيمة</th><th>المراجعة</th></tr></thead><tbody>{assumption_rows}</tbody></table>
-  <h2>سجل المصادر</h2>
-  <table><thead><tr><th>المصدر</th><th>الناشر</th><th>الحالة</th><th>قرار المراجع</th></tr></thead><tbody>{source_rows}</tbody></table>
-  <h2>سجل البيانات والأدلة</h2>
-  <table><thead><tr><th>Dataset</th><th>العنوان</th><th>المراجعة</th><th>جودة البيانات</th><th>الصفوف</th></tr></thead><tbody>{dataset_rows}</tbody></table>
-  <table><thead><tr><th>نوع الهدف</th><th>الهدف</th><th>تغطية الدليل</th></tr></thead><tbody>{coverage_rows}</tbody></table>
-  <table><thead><tr><th>الهدف</th><th>جودة البيانات</th><th>جودة التحويل</th><th>درجة الثقة</th><th>حالة الثقة</th></tr></thead><tbody>{ledger_rows}</tbody></table>
-  <table><thead><tr><th>Dataset</th><th>بوابة الجودة</th><th>الأسباب</th></tr></thead><tbody>{gate_rows}</tbody></table>
-  <table><thead><tr><th>الهدف</th><th>Dataset</th><th>Transformation</th><th>Evidence Ref</th><th>قرار المراجع</th></tr></thead><tbody>{evidence_rows}</tbody></table>
-  <h2>سجل التحويلات</h2>
-  <table><thead><tr><th>Transformation</th><th>العملية</th><th>الأعمدة</th><th>الناتج</th><th>المراجعة</th></tr></thead><tbody>{transformation_rows}</tbody></table>
-  <table><thead><tr><th>Dataset</th><th>Transformation</th><th>Target</th><th>حالة التحويل</th></tr></thead><tbody>{lineage_rows}</tbody></table>
-  <h2>بوابات الجاهزية</h2>
-  <table><thead><tr><th>البوابة</th><th>الحالة</th><th>الأسباب</th></tr></thead><tbody>{gate_rows_html}</tbody></table>
-  <h2>خطة التنفيذ</h2>
-  <table><thead><tr><th>المرحلة</th><th>المالك</th><th>الأيام</th><th>الاعتماديات</th></tr></thead><tbody>{milestone_rows}</tbody></table>
-  <h2>أعلى المخاطر</h2>
-  <table><thead><tr><th>الخطر</th><th>الشدة</th><th>المحفز</th><th>المعالجة</th></tr></thead><tbody>{risk_rows}</tbody></table>
-  <h2>حزمة القرار والمراجعة</h2>
-  <table><thead><tr><th>البند</th><th>القيمة</th></tr></thead><tbody>{review_row}</tbody></table>
-  <h2>اختبارات القبول r10/r11</h2>
-  <table><thead><tr><th>الاختبار</th><th>الحالة</th><th>الدليل</th></tr></thead><tbody>{acceptance_rows}</tbody></table>
-  <h2>التدقيق</h2>
-  <p>{escape(view['audit']['owner_path'])}</p>
-</body>
-</html>"""
+<html lang="{locale}" dir="{direction}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{escape(text('report_title', locale))}</title>
+<style>
+:root{{--ink:#0f3328;--muted:#6b7d76;--line:#dce7e0;--green:#138a66;--soft:#f5f9f6}}
+*{{box-sizing:border-box}}body{{font-family:Tahoma,Arial,sans-serif;margin:0;background:#f1f5f2;color:var(--ink);line-height:1.65}}
+main{{max-width:1080px;margin:28px auto;background:white;border:1px solid var(--line);padding:38px 44px;box-shadow:0 12px 36px #12382a14}}
+header{{padding:24px;border-radius:16px;background:linear-gradient(135deg,#0b3d2e,#138a66);color:white}}h1{{margin:0}}h2{{margin-top:30px}}
+.notice{{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}}table{{width:100%;border-collapse:collapse;margin:12px 0 24px}}th,td{{border:1px solid var(--line);padding:9px;text-align:{align}}}th{{background:#edf7f2}}
+@media(max-width:760px){{main{{margin:0;padding:18px}}table{{font-size:12px}}}}@media print{{body{{background:#fff}}main{{margin:0;box-shadow:none;border:0}}}}
+</style></head><body><main>
+<header><h1>{escape(text('report_title', locale))}</h1><p>{escape(status_text(view['review_status'], locale))}</p></header>
+<div class="notice">{escape(text('notice', locale))}</div>
+<h2>{escape(label('summary'))}</h2>
+<table><tbody><tr><th>{escape(label('decision'))}</th><td>{escape(status_text(summary.get('verdict'), locale))}</td></tr>
+<tr><th>{escape(label('why'))}</th><td>{escape(safe_narrative(summary.get('reason'), locale))}</td></tr></tbody></table>
+<h2>{escape(label('metrics'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(label('value'))}</th><th>{escape(label('unit'))}</th><th>{escape(text('status', locale))}</th></tr></thead><tbody>{kpi_rows}</tbody></table>
+<h2>{escape(label('evidence'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(label('publisher'))}</th><th>{escape(label('review'))}</th><th>{escape(label('source'))}</th><th>{escape(label('attribution'))}</th></tr></thead><tbody>{evidence_rows}</tbody></table>
+<h2>{escape(label('readiness'))}</h2><table><thead><tr><th>{escape(text('requirement', locale))}</th><th>{escape(text('status', locale))}</th><th>{escape(text('reason', locale))}</th></tr></thead><tbody>{gate_rows}</tbody></table>
+<h2>{escape(label('risks'))}</h2><table><thead><tr><th>{escape(label('risk'))}</th><th>{escape(label('severity'))}</th><th>{escape(label('mitigation'))}</th></tr></thead><tbody>{risk_rows}</tbody></table>
+<h2>{escape(label('plan'))}</h2><table><thead><tr><th>{escape(label('phase'))}</th><th>{escape(label('owner'))}</th><th>{escape(label('days'))}</th><th>{escape(label('done'))}</th></tr></thead><tbody>{milestone_rows}</tbody></table>
+<footer>{escape(label('internal'))}</footer>
+</main></body></html>"""

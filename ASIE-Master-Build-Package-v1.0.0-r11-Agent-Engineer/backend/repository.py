@@ -194,6 +194,10 @@ class Repository:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS customer_preferences (
+                    user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+                    locale TEXT NOT NULL CHECK (locale IN ('ar', 'en'))
+                );
                 CREATE TABLE IF NOT EXISTS organizations (
                     organization_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -789,6 +793,26 @@ class Repository:
             updated_at=row["updated_at"],
             organization_id=row["organization_id"],
         )
+
+    def customer_locale(self, user_id: str) -> str:
+        with closing(self.connect()) as conn:
+            row = conn.execute("SELECT locale FROM customer_preferences WHERE user_id = ?", (user_id,)).fetchone()
+        return row["locale"] if row is not None and row["locale"] in {"ar", "en"} else "ar"
+
+    def save_customer_locale(self, user_id: str, locale: str) -> str:
+        if not isinstance(locale, str) or locale not in {"ar", "en"}:
+            raise ValueError("invalid_customer_locale")
+        with closing(self.connect()) as conn:
+            user = conn.execute("SELECT user_id FROM users WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()
+            if user is None:
+                raise ValueError("customer_account_unavailable")
+            conn.execute(
+                "INSERT INTO customer_preferences (user_id, locale) VALUES (?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET locale = excluded.locale",
+                (user_id, locale),
+            )
+            conn.commit()
+        return locale
 
     def create_user(self, *, email: str, display_name: str, password: str, platform_role: str | None = None) -> dict[str, Any]:
         normalized_email = email.strip().lower()

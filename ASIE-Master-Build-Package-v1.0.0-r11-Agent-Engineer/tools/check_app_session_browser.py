@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -44,13 +45,13 @@ class AppSessionBrowserChecks(unittest.TestCase):
         cls.addClassCleanup(cls.browser.close)
 
     @contextmanager
-    def app(self):
+    def app(self, location="#wizard"):
         """Intercept every API and reject all non-loopback traffic."""
         context = self.browser.new_context(locale="ar-SA", service_workers="block",
                                            viewport={"width": 1280, "height": 1000})
         context.add_init_script(INITIAL_SESSION + consent.GEOLOCATION_STUB)
         state = {"blocked": [], "errors": [], "requests": [], "pending": [],
-                 "defer_projects": False, "login_number": 0}
+                 "defer_projects": False, "login_number": 0, "locale": "ar", "defer_locale": False, "locale_pending": []}
         policy = {"profile_id": "TEST_ONLY", "external_fetch_enabled": False, "rule": "",
                   "enabled_sources": [], "candidate_sources": [], "reference_only": [],
                   "blocked_sources": []}
@@ -73,7 +74,14 @@ class AppSessionBrowserChecks(unittest.TestCase):
                     route.fulfill(status=401, json={"error": "authentication_required"})
                     return
                 payload = {"user_id": "user-test", "platform_role": None,
-                           "memberships": MEMBERSHIPS, "external_access_enabled": False}
+                           "memberships": MEMBERSHIPS, "locale": state["locale"], "external_access_enabled": False}
+            elif path == "/api/auth/preferences" and route.request.method == "PATCH":
+                state["locale"] = route.request.post_data_json["locale"]
+                payload = {"locale": state["locale"]}
+                if state["defer_locale"]:
+                    state["defer_locale"] = False
+                    state["locale_pending"].append(route)
+                    return
             elif path == "/api/auth/login":
                 state["login_number"] += 1
                 payload = {"access_token": "test-login-" + str(state["login_number"]),
@@ -115,8 +123,8 @@ class AppSessionBrowserChecks(unittest.TestCase):
         page = context.new_page()
         page.on("pageerror", lambda error: state["errors"].append(str(error)))
         try:
-            page.goto(FIXTURE + "#wizard")
-            expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
+            page.goto(FIXTURE + location)
+            expect(page.locator(".location-consent")).to_be_visible()
             yield page, state
             self.assertEqual(state["blocked"], [], "Unexpected API or outbound traffic")
             self.assertEqual(state["errors"], [], "Uncaught browser errors")
@@ -141,7 +149,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
         if not close.is_visible():
             page.locator(".sidebar").get_by_role("button", name="الحساب والفريق", exact=True).click()
         expect(close).to_be_visible()
-        expect(page.get_by_role("heading", name="المنظمة النشطة", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="منظمتك النشطة", exact=True)).to_be_visible()
 
     def switch(self, page, organization="org-b"):
         """Select an organization and reopen settings after the real context reset."""
@@ -186,8 +194,8 @@ class AppSessionBrowserChecks(unittest.TestCase):
     def login(self, page):
         """Sign in through the real AuthScreen against the intercepted API."""
         expect(page.get_by_role("heading", name="تسجيل الدخول إلى مساحة العمل")).to_be_visible()
-        page.get_by_label("البريد المحلي").fill("test@example.invalid")
-        page.get_by_label("كلمة المرور", exact=True).fill("test-password-only")
+        page.get_by_label("البريد الإلكتروني").fill("test@example.invalid")
+        page.get_by_label("كلمة المرور", exact=True).fill("test-pass-12")
         page.get_by_role("button", name="دخول", exact=True).click()
         expect(page.locator(".sidebar")).to_be_visible()
 
@@ -206,6 +214,171 @@ class AppSessionBrowserChecks(unittest.TestCase):
         while not state["pending"] and time.monotonic() < deadline:
             page.wait_for_timeout(20)
         self.assertEqual(len(state["pending"]), 1, "Deferred request never reached API interception")
+
+
+    def test_delayed_language_save_cannot_continue_after_session_context_changes(self):
+        with self.app() as (page, state):
+            state["defer_locale"] = True
+            page.get_by_label("الحي أو الشارع").fill("OLD-SESSION-DRAFT")
+            page.get_by_role("button", name="English", exact=True).first.click()
+            deadline = time.monotonic() + 5
+            while not state["locale_pending"] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual(1, len(state["locale_pending"]))
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            page.evaluate("async () => (await import('/src/session.ts')).setActiveOrganizationId('org-b')")
+            # The explicit URL selection survives the new workspace lifetime and
+            # is synchronized to the account without reviving the old request.
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            expect(page.get_by_label("الحي أو الشارع")).to_have_value("")
+            self.assertTrue(any(path == "/api/auth/me" and organization == "org-b"
+                                for path, organization, _ in state["requests"]))
+            deadline = time.monotonic() + 5
+            while (state["locale"] != "ar" or
+                   sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]) < 2) and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("ar", state["locale"])
+            self.assertEqual(2, sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]))
+            state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
+            page.evaluate("() => Promise.resolve()")
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            self.assertEqual("ar", state["locale"])
+
+    def test_rapid_language_switches_persist_the_last_choice(self):
+        with self.app() as (page, state):
+            state["defer_locale"] = True
+            page.get_by_role("button", name="English", exact=True).first.click()
+            deadline = time.monotonic() + 5
+            while not state["locale_pending"] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual(1, len(state["locale_pending"]))
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
+            deadline = time.monotonic() + 5
+            while state["locale"] != "ar" and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("ar", state["locale"])
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            self.assertEqual("ar", page.evaluate("new URL(location.href).searchParams.get('lang')"))
+            page.evaluate("localStorage.setItem('asie.customer_locale.v1', 'en')")
+            page.reload()
+            expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+
+    def test_shared_language_link_overrides_account_and_persists(self):
+        with self.app("?lang=en#wizard") as (page, state):
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            self.assertEqual("en", page.evaluate("new URL(location.href).searchParams.get('lang')"))
+            deadline = time.monotonic() + 5
+            while state["locale"] != "en" and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("en", state["locale"])
+            self.assertTrue(any(path == "/api/auth/preferences" and method == "PATCH"
+                                for path, _organization, method in state["requests"]))
+
+    def test_mobile_navigation_starts_compact_and_remains_usable(self):
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app() as (page, _state):
+                page.set_viewport_size({"width": 390, "height": 844})
+                if locale == "en":
+                    page.get_by_role("button", name="English", exact=True).first.click()
+                toggle_name = "فتح قائمة التنقل" if locale == "ar" else "Open navigation menu"
+                toggle = page.get_by_role("button", name=toggle_name, exact=True)
+                expect(toggle).to_be_visible()
+                expect(toggle).to_have_attribute("aria-expanded", "false")
+                expect(page.locator("#workspace-navigation")).not_to_be_visible()
+                toggle.click()
+                expect(page.locator("#workspace-navigation")).to_be_visible()
+                page.locator("#workspace-navigation .nav-item").filter(
+                    has_text="التقارير" if locale == "ar" else "Reports"
+                ).click()
+                page.wait_for_function("window.location.hash === '#snapshots'")
+                expect(page.locator(".sidebar__mobile-toggle")).to_have_attribute("aria-expanded", "false")
+                expect(page.locator("#workspace-navigation")).not_to_be_visible()
+
+    def test_customer_routes_hide_internal_tokens_in_both_languages(self):
+        forbidden = re.compile(
+            r"project_id|run_id|snapshot_id|profile_id|contract_id|review_id|"
+            r"projection_hash|release_hash|readiness_hash|review_required|not_ready|"
+            r"demo_or_user_input_only|blocked_not_ready|no_evidence_links",
+            re.IGNORECASE,
+        )
+        stages = ("dashboard", "wizard", "evidence", "readiness", "run",
+                  "reality", "decision", "execution", "snapshots")
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app() as (page, _state):
+                if locale == "en":
+                    page.get_by_role("button", name="English", exact=True).first.click()
+                links = page.locator(".asie-page-link")
+                self.assertEqual(len(stages), links.count())
+                for index, stage in enumerate(stages):
+                    links.nth(index).click()
+                    page.wait_for_function("expected => window.location.hash === expected", arg=f"#{stage}")
+                    visible_text = page.locator(".workspace").inner_text()
+                    self.assertIsNone(forbidden.search(visible_text), f"{stage}: leaked an internal token")
+
+    def test_sanad_opens_exact_missing_field_and_returns_without_losing_draft(self):
+        """Use the production Sanad portal and real navigation on both screen sizes."""
+        for locale in ("ar", "en"):
+            for width in (390, 1280):
+                with self.subTest(locale=locale, width=width), self.app() as (page, _state):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    if locale == "en":
+                        page.get_by_role("button", name="English", exact=True).first.click()
+                    draft = page.locator("#wizard-location-district")
+                    draft.fill("حي الاختبار")
+                    label = "تقاريري" if locale == "ar" else "Reports"
+                    page.locator(".asie-page-link").filter(has_text=label).click()
+                    page.wait_for_function("window.location.hash === '#snapshots'")
+                    page.locator(".asie-sanad-launcher").click()
+                    assistant = page.locator(".asie-sanad-assistant")
+                    expect(assistant).to_contain_text(
+                        "اختر المنطقة" if locale == "ar" else "Select a region"
+                    )
+                    assistant.get_by_role("button", name="أكمل هذا المدخل" if locale == "ar" else "Complete this input", exact=True).click()
+                    page.wait_for_function("window.location.hash === '#wizard'")
+                    expect(page.locator("#wizard-location-region")).to_be_focused()
+                    expect(draft).to_have_value("حي الاختبار")
+                    expect(page.locator(".asie-sanad-launcher")).to_have_count(0)
+                    page.screenshot(path=str(consent.ARTIFACTS / f"sanad-missing-{locale}-{width}.png"), full_page=True)
+                    page.get_by_role("button", name="العودة إلى موضعك السابق" if locale == "ar" else "Return to your previous place", exact=True).click()
+                    page.wait_for_function("window.location.hash === '#snapshots'")
+                    self.assertIsNone(page.evaluate("sessionStorage.getItem('asie.sanad.return_stage')"))
+                    expect(page.locator(".asie-sanad-launcher")).to_be_visible()
+                    page.locator(".asie-sanad-launcher").click()
+                    expect(page.locator(".asie-sanad-assistant").get_by_role(
+                        "button", name="العودة إلى الصفحة السابقة" if locale == "ar" else "Return to previous page", exact=True
+                    )).to_have_count(0)
+                    self.assertFalse(any(method != "GET" and path != "/api/auth/preferences" for path, _, method in _state["requests"]))
+
+    def test_location_labels_follow_language_without_changing_stored_values(self):
+        """Display translations must not rewrite the project's location identifiers."""
+        with self.app() as (page, _state):
+            page.get_by_role("button", name="English", exact=True).first.click()
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            expect(page.locator("html")).to_have_attribute("dir", "ltr")
+            region = page.locator("#wizard-location-region")
+            city = page.locator("#wizard-location-city")
+            values = region.locator("option").evaluate_all(
+                "(options) => options.map(option => option.value).filter(Boolean)"
+            )
+            self.assertEqual(len(values), 13)
+            for value in values:
+                region.select_option(value)
+                labels = region.locator("option").all_text_contents() + city.locator("option").all_text_contents()
+                self.assertTrue(labels)
+                for label in labels:
+                    self.assertFalse(any("\u0600" <= char <= "\u06ff" for char in label), label)
+                    self.assertNotIn("requires review", label)
+            region.select_option("منطقة الرياض")
+            expect(region.locator("option:checked")).to_have_text("Riyadh Region")
+            expect(city.locator('option[value="الرياض"]')).to_have_text("Riyadh")
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            expect(page.locator("html")).to_have_attribute("dir", "rtl")
+            expect(region).to_have_value("منطقة الرياض")
+            expect(region.locator("option:checked")).to_have_text("منطقة الرياض")
+            expect(city.locator('option[value="الرياض"]')).to_have_text("الرياض")
+            self.assertFalse(any(method != "GET" and path != "/api/auth/preferences" for path, _, method in _state["requests"]))
 
     def test_same_organization_navigation_preserves_draft(self):
         """A normal navigation or reselecting the same organization is not a reset."""

@@ -27,13 +27,12 @@ class DIBProjectCardDirectActionTests(unittest.TestCase):
         self.assertIn("window.location.reload()", source)
         self.assertIn("افتح DIB", source)
 
-    def test_main_mounts_direct_action_only_outside_admin_and_dib_routes(self) -> None:
+    def test_main_never_mounts_engineering_direct_action_in_customer_routes(self) -> None:
         main = MAIN_PATH.read_text(encoding="utf-8")
-        self.assertIn('import { DIBProjectCardDirectActionMount } from "./DIBProjectCardDirectAction";', main)
-        self.assertIn("showDIBCardDirectAction", main)
-        self.assertIn('!currentHash.startsWith("#admin")', main)
-        self.assertIn('!currentHash.startsWith("#dib")', main)
-        self.assertIn("<DIBProjectCardDirectActionMount />", main)
+        self.assertNotIn('import { DIBProjectCardDirectActionMount } from "./DIBProjectCardDirectAction";', main)
+        self.assertNotIn("showDIBCardDirectAction", main)
+        self.assertNotIn("<DIBProjectCardDirectActionMount />", main)
+        self.assertIn("<EngineeringSurfaceGate><DIBWorkspace /></EngineeringSurfaceGate>", main)
 
     def test_direct_action_preserves_no_later_wiring_boundary(self) -> None:
         source = DIRECT_ACTION_PATH.read_text(encoding="utf-8")
