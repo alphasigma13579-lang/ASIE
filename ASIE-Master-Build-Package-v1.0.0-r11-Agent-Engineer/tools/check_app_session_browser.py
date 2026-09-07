@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -123,7 +124,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
         page.on("pageerror", lambda error: state["errors"].append(str(error)))
         try:
             page.goto(FIXTURE + location)
-            expect(page.get_by_role("button", name=consent.REQUEST, exact=True)).to_be_visible()
+            expect(page.locator(".location-consent")).to_be_visible()
             yield page, state
             self.assertEqual(state["blocked"], [], "Unexpected API or outbound traffic")
             self.assertEqual(state["errors"], [], "Uncaught browser errors")
@@ -226,19 +227,22 @@ class AppSessionBrowserChecks(unittest.TestCase):
             self.assertEqual(1, len(state["locale_pending"]))
             page.get_by_role("button", name="العربية", exact=True).first.click()
             page.evaluate("async () => (await import('/src/session.ts')).setActiveOrganizationId('org-b')")
-            # The current valid route is restored, not forcibly changed to dashboard.
-            # Account hydration and cleared parent draft prove a new workspace lifetime.
-            expect(page.locator("html")).to_have_attribute("lang", "en")
-            expect(page.get_by_label("District or street")).to_have_value("")
+            # The explicit URL selection survives the new workspace lifetime and
+            # is synchronized to the account without reviving the old request.
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            expect(page.get_by_label("الحي أو الشارع")).to_have_value("")
             self.assertTrue(any(path == "/api/auth/me" and organization == "org-b"
                                 for path, organization, _ in state["requests"]))
-            with page.expect_response(lambda response: response.url.endswith("/api/auth/preferences")):
-                state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
-            # Drain the browser microtask queue after the obsolete response arrives.
+            deadline = time.monotonic() + 5
+            while (state["locale"] != "ar" or
+                   sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]) < 2) and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            self.assertEqual("ar", state["locale"])
+            self.assertEqual(2, sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]))
+            state["locale_pending"].pop().fulfill(status=200, json={"locale": "en"})
             page.evaluate("() => Promise.resolve()")
-            self.assertEqual("en", state["locale"])
-            self.assertEqual(1, sum(path == "/api/auth/preferences" for path, _, _ in state["requests"]))
-            expect(page.locator("html")).to_have_attribute("lang", "en")
+            expect(page.locator("html")).to_have_attribute("lang", "ar")
+            self.assertEqual("ar", state["locale"])
 
     def test_rapid_language_switches_persist_the_last_choice(self):
         with self.app() as (page, state):
