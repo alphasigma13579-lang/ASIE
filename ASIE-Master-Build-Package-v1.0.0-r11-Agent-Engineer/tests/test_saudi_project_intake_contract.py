@@ -31,6 +31,7 @@ class SaudiProjectIntakeContractTests(unittest.TestCase):
         fixture = (ROOT / "tools" / "browser" / "location-consent.tsx").read_text(encoding="utf-8")
         self.assertIn('import { CustomerLanguageProvider } from "../../src/customerLanguage"', fixture)
         self.assertIn("<CustomerLanguageProvider><Fixture /></CustomerLanguageProvider>", fixture)
+        self.assertNotIn(r"\n", fixture)
         for check in (
             "test_no_request_on_mount_or_manual_entry",
             "test_confirmation_is_explicit_and_only_coordinates_cross_boundary",

@@ -30,4 +30,6 @@ function Fixture() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(\n  <StrictMode><CustomerLanguageProvider><Fixture /></CustomerLanguageProvider></StrictMode>\n);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode><CustomerLanguageProvider><Fixture /></CustomerLanguageProvider></StrictMode>
+);
