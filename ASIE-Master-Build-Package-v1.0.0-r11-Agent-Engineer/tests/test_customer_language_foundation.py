@@ -44,6 +44,14 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
                 self.assertIn(expected, rendered)
                 self.assertNotIn("draft_review", rendered)
 
+    def test_input_controls_and_review_progress_use_selected_language(self) -> None:
+        app = (SRC / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn('text("زيادة", "Increase")', app)
+        self.assertIn('text("إنقاص", "Decrease")', app)
+        self.assertIn('{text("من", "of")} {assumptions.length} {text("مكتملة", "complete")}', app)
+        self.assertIn('customerLocationLabel(region, locale)', app)
+        self.assertIn('customerLocationLabel(city, locale)', app)
+
     def test_customer_auth_never_renders_raw_provider_errors(self) -> None:
         source = (SRC / "AuthScreens.tsx").read_text(encoding="utf-8")
         self.assertIn("setError(customerErrorText(reason, locale));", source)

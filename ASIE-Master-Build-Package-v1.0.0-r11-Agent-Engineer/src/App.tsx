@@ -25,6 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { LiveCockpit } from "./LiveCockpit";
 import { LocationConsentInput } from "./LocationConsentInput";
+import { customerLocationLabel } from "./customerLocationLabels";
 import { BrandLockup } from "./BrandMark";
 import { CommandCenter } from "./CommandCenter";
 import {
@@ -518,6 +519,7 @@ function NumberField({
   onChange: (nextValue: number) => void;
   inputId?: string;
 }) {
+  const { text } = useCustomerLanguage();
   const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? value : 0));
   const [isEditing, setIsEditing] = useState(false);
 
@@ -570,8 +572,8 @@ function NumberField({
           aria-label={label}
         />
         <span className="number-input-control__steppers" aria-hidden="false">
-          <button type="button" tabIndex={-1} aria-label={`زيادة ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(1)}>▲</button>
-          <button type="button" tabIndex={-1} aria-label={`إنقاص ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(-1)}>▼</button>
+          <button type="button" tabIndex={-1} aria-label={`${text("زيادة", "Increase")} ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(1)}>▲</button>
+          <button type="button" tabIndex={-1} aria-label={`${text("إنقاص", "Decrease")} ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={() => stepValue(-1)}>▼</button>
         </span>
       </span>
     </label>
@@ -2577,11 +2579,11 @@ function SessionWorkspace() {
                 }} />
                 <div className="location-fields">
                   <label className="field"><span>{text("الدولة", "Country")}</span><input value={text("المملكة العربية السعودية", "Saudi Arabia")} readOnly aria-readonly="true" /></label>
-                  <label className="field"><span>{text("المنطقة", "Region")}</span><select id="wizard-location-region" value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">{text("اختر المنطقة", "Select region")}</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{region}</option>)}</select></label>
+                  <label className="field"><span>{text("المنطقة", "Region")}</span><select id="wizard-location-region" value={form.inputs.location_region} onChange={(event) => { updateStructuredLocation("location_region", event.target.value); updateStructuredLocation("location_city", ""); }}><option value="">{text("اختر المنطقة", "Select region")}</option>{Object.keys(saudiCitiesByRegion).map((region) => <option key={region} value={region}>{customerLocationLabel(region, locale)}</option>)}</select></label>
                   <label className="field"><span>{text("المدينة", "City")}</span><select id="wizard-location-city" value={form.inputs.location_city} disabled={!form.inputs.location_region} onChange={(event) => {
                         updateStructuredLocation("location_city", event.target.value);
                         if (event.target.value) setTimeout(() => advanceWizardFromChoice(), 0);
-                      }}><option value="">{text("اختر المدينة", "Select city")}</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
+                      }}><option value="">{text("اختر المدينة", "Select city")}</option>{(saudiCitiesByRegion[form.inputs.location_region] ?? []).map((city) => <option key={city} value={city}>{customerLocationLabel(city, locale)}</option>)}</select></label>
                   <label className="field"><span>{text("الحي أو الشارع", "District or street")} <small>{text("(اختياري)", "(optional)")}</small></span><input id="wizard-location-district" maxLength={50} value={form.inputs.location_district} placeholder={text("مثال: حي العليا", "Example: Al Olaya district")} onChange={(event) => updateStructuredLocation("location_district", event.target.value)} /></label>
                   <label className="field"><span>{text("خط العرض", "Latitude")} <small>{text("(اختياري)", "(optional)")}</small></span><input type="number" step="any" value={form.inputs.location_latitude ?? ""} placeholder="24.7136" onChange={(event) => {
                     const raw = event.target.value;
@@ -2827,7 +2829,7 @@ function SessionWorkspace() {
                         <p className="muted">{text("راجع الملخصات، وافتح التفاصيل عند الحاجة، ثم اعتمد كل مجموعة.", "Review each summary, open details when needed, then approve each group.")}</p>
                       </div>
                       <span className="review-progress">
-                        {assumptions.filter((item) => item.review_status === "approved").length} من {assumptions.length} مكتملة
+                        {assumptions.filter((item) => item.review_status === "approved").length} {text("من", "of")} {assumptions.length} {text("مكتملة", "complete")}
                       </span>
                     </div>
                     <div className="review-group-list">

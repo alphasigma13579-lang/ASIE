@@ -207,6 +207,36 @@ class AppSessionBrowserChecks(unittest.TestCase):
             page.wait_for_timeout(20)
         self.assertEqual(len(state["pending"]), 1, "Deferred request never reached API interception")
 
+
+    def test_location_labels_follow_language_without_changing_stored_values(self):
+        """Display translations must not rewrite the project's location identifiers."""
+        with self.app() as (page, _state):
+            page.get_by_role("button", name="English", exact=True).first.click()
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            expect(page.locator("html")).to_have_attribute("dir", "ltr")
+            region = page.locator("#wizard-location-region")
+            city = page.locator("#wizard-location-city")
+            values = region.locator("option").evaluate_all(
+                "(options) => options.map(option => option.value).filter(Boolean)"
+            )
+            self.assertEqual(len(values), 13)
+            for value in values:
+                region.select_option(value)
+                labels = region.locator("option").all_text_contents() + city.locator("option").all_text_contents()
+                self.assertTrue(labels)
+                for label in labels:
+                    self.assertFalse(any("\u0600" <= char <= "\u06ff" for char in label), label)
+                    self.assertNotIn("requires review", label)
+            region.select_option("منطقة الرياض")
+            expect(region.locator("option:checked")).to_have_text("Riyadh Region")
+            expect(city.locator('option[value="الرياض"]')).to_have_text("Riyadh")
+            page.get_by_role("button", name="العربية", exact=True).first.click()
+            expect(page.locator("html")).to_have_attribute("dir", "rtl")
+            expect(region).to_have_value("منطقة الرياض")
+            expect(region.locator("option:checked")).to_have_text("منطقة الرياض")
+            expect(city.locator('option[value="الرياض"]')).to_have_text("الرياض")
+            self.assertFalse(any(method != "GET" for _, _, method in _state["requests"]))
+
     def test_same_organization_navigation_preserves_draft(self):
         """A normal navigation or reselecting the same organization is not a reset."""
         with self.app() as (page, state):
