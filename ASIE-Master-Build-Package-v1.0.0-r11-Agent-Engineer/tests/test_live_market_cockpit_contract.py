@@ -13,6 +13,7 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.api = (SRC / "api.ts").read_text(encoding="utf-8")
         self.workspace = (SRC / "LiveIntelligenceWorkspace.tsx").read_text(encoding="utf-8")
         self.vite_types = (SRC / "vite-env.d.ts").read_text(encoding="utf-8")
+        self.language = (SRC / "customerLanguage.tsx").read_text(encoding="utf-8")
 
     def test_cockpit_replaces_static_competitors_with_the_provider_boundary(self) -> None:
         self.assertIn('import { LiveMarketMap } from "./LiveMarketMap";', self.cockpit)
@@ -28,6 +29,24 @@ class LiveMarketCockpitContractTests(unittest.TestCase):
         self.assertIn("sectorLabel?: string", self.map)
         self.assertIn("query: sector", self.map)
         self.assertIn("sectorLabel || text", self.map)
+
+    def test_governed_sector_ids_have_bilingual_customer_labels(self) -> None:
+        expected_labels = {
+            "sec_05": ("الصناعة والتصنيع", "Manufacturing"),
+            "sec_07": ("العقارات", "Real estate"),
+            "sec_08": ("اللوجستيات وسلاسل الإمداد", "Logistics and supply chain"),
+            "sec_09": ("السياحة والترفيه", "Tourism and entertainment"),
+            "sec_11": ("التقنية والابتكار", "Technology and innovation"),
+            "sec_12": ("القطاع المالي", "Financial services"),
+            "sec_14": ("الصحة والطب", "Healthcare"),
+            "sec_17": ("الأغذية والزراعة والأمن الغذائي", "Agriculture, food, and food security"),
+        }
+        for sector_id, (arabic, english) in expected_labels.items():
+            with self.subTest(sector_id=sector_id):
+                self.assertIn(
+                    f'{sector_id}: {{ ar: "{arabic}", en: "{english}" }}',
+                    self.language,
+                )
 
     def test_market_request_requires_confirmed_project_location_and_sector(self) -> None:
         self.assertIn("projectId && sector?.trim() && hasConfirmedLocation", self.map)
