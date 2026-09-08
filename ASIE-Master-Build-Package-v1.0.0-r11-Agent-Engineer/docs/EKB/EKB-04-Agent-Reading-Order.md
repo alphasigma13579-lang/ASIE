@@ -15,3 +15,7 @@
 | Repository Surgery / Cleanup | PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md + EKB-06 Repository Surgery Inventory | EKB-07 Quarantine Map + AGENTS archive lockdown | نسخ أو دمج ملفات archive/reference في المسارات الحية، أو الحذف دون PR مستقل ودليل. |
 | Planning | EKB-00 + Source Matrix | relevant domain docs | خلط المنفذ بالمخطط. |
 | Prompt writing | Prompt Policy | prompt templates | وضع المعرفة طويلة الأجل في البرومبت. |
+
+## مرجع إلزامي للمصادر والقطاعات وخدمات دراسة الجدوى
+
+قبل تطوير أو مراجعة البحث أو المحركات المستفيدة أو الخرائط أو المنافسين أو الأسعار أو توجيه الأفكار أو سند، اقرأ [EKB-10: المصادر والقطاعات وأدلة السوق](EKB-10-Saudi-Feasibility-Sources-Sectors-and-Market-Evidence.md). يحدد الاحتياج وملكية الاستهلاك، ولا يمنح تفعيلًا لمصدر ولا يثبت اكتمال التنفيذ. تظل دراسة الجدوى الخدمة الأساسية، وتظل العقود والسجلات التشغيلية وحدود AAS حاكمة.

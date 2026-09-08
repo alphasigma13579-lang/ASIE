@@ -55,3 +55,7 @@ python -m pytest -q
 ```
 
 Keep AI providers disabled (`DISABLED` / `DENY_ALL`) and external network disabled in development unless a separate approved ACR changes those controls.
+
+## مرجع إلزامي للمصادر والقطاعات وخدمات دراسة الجدوى
+
+قبل تطوير أو مراجعة البحث أو المحركات المستفيدة أو الخرائط أو المنافسين أو الأسعار أو توجيه الأفكار أو سند، اقرأ [EKB-10: المصادر والقطاعات وأدلة السوق](ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/EKB/EKB-10-Saudi-Feasibility-Sources-Sectors-and-Market-Evidence.md). يحدد الاحتياج وملكية الاستهلاك، ولا يمنح تفعيلًا لمصدر ولا يثبت اكتمال التنفيذ. تظل دراسة الجدوى الخدمة الأساسية، وتظل العقود والسجلات التشغيلية وحدود AAS حاكمة.
