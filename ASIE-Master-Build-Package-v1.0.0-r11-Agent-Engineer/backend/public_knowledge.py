@@ -116,7 +116,7 @@ class PublicKnowledgeError(RuntimeError):
 # class names, causes or tracebacks. Only exact, owned codes may cross it.
 _SAFE_FAILURE_MESSAGES = {
     "public_source_content_too_short": (
-        "لم يحتو المصدر على محتوى كافٍ.",
+        "لم يحتوِ المصدر على محتوى كافٍ.",
         "راجع المصدر أو أعد المحاولة لاحقًا دون اعتماد محتوى ناقص.",
     ),
     "public_source_content_too_large": (
@@ -181,11 +181,12 @@ _INCOMPLETE_COMPENSATION_CODES = frozenset({
 def _safe_failure(exc: Exception) -> dict[str, str]:
     # Exact type and one plain-string argument avoid executing an untrusted
     # __str__ override or treating provider messages as owned contract codes.
+    args = exc.args if type(exc) is PublicKnowledgeError else None
     code = (
-        exc.args[0]
-        if type(exc) is PublicKnowledgeError
-        and len(exc.args) == 1
-        and type(exc.args[0]) is str
+        args[0]
+        if type(args) is tuple
+        and len(args) == 1
+        and type(args[0]) is str
         else None
     )
     if code in _INCOMPLETE_COMPENSATION_CODES:

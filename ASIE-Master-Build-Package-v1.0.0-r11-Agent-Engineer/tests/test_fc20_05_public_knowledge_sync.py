@@ -402,7 +402,7 @@ def test_dry_run_reports_source_failure_instead_of_unchanged(tmp_path: Path) -> 
             "source_id": "mof-open-data",
             "error_type": "PublicKnowledgeError",
             "reason": "public_source_content_too_short",
-            "message": "لم يحتو المصدر على محتوى كافٍ.",
+            "message": "لم يحتوِ المصدر على محتوى كافٍ.",
             "next_action": "راجع المصدر أو أعد المحاولة لاحقًا دون اعتماد محتوى ناقص.",
         }
     ]
@@ -869,18 +869,26 @@ def test_compatibility_cli_redacts_exception_and_cause(tmp_path, monkeypatch, ca
     assert not service.corpus_path.exists()
 
 
-def test_exception_args_assignment_normalizes_hostile_tuple():
-    """BaseException normalizes assigned tuple subclasses before formatting."""
+def test_exception_args_are_checked_before_tuple_operations():
+    """Arm hostile operations only after assignment reaches the formatter boundary."""
+    armed = False
+
     class HostileTuple(tuple):
         def __len__(self):
-            raise AssertionError(SENSITIVE_MARKER)
+            if armed:
+                raise AssertionError(SENSITIVE_MARKER)
+            return tuple.__len__(self)
 
         def __getitem__(self, index):
-            raise AssertionError(SENSITIVE_MARKER)
+            if armed:
+                raise AssertionError(SENSITIVE_MARKER)
+            return tuple.__getitem__(self, index)
 
     exc = PublicKnowledgeError()
     exc.args = HostileTuple(("public_source_extract_empty",))
-    assert type(exc.args) is tuple
+    armed = True
     result = public_knowledge_module._safe_failure(exc)
-    assert result["reason"] == "public_source_extract_empty"
+    expected = ("public_source_extract_empty" if type(exc.args) is tuple
+                else "public_knowledge_operation_failed")
+    assert result["reason"] == expected
     assert SENSITIVE_MARKER not in json.dumps(result)
