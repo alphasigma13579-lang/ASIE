@@ -94,9 +94,20 @@ def _corpus(value):
 
 def _read_json(value):
     try:
-        return json.loads(value)
-    except (ValueError, TypeError, RecursionError):
+        decoded = json.loads(value)
+        _json(decoded)
+        return decoded
+    except (ValueError, TypeError, RecursionError, CorpusStoreError):
         raise CorpusStoreError("corpus_storage_invalid") from None
+
+
+def _read_corpus(value):
+    decoded = _read_json(value)
+    try:
+        _corpus(decoded)
+    except CorpusStoreError:
+        raise CorpusStoreError("corpus_storage_invalid") from None
+    return decoded
 
 
 def _safe_path(path, *, regular=False):
@@ -149,6 +160,34 @@ CREATE TABLE operation_steps(
 PRAGMA user_version=1;
 COMMIT;
 """
+
+
+def _schema_signature():
+    expected = {}
+    for statement in _SCHEMA.split(";"):
+        sql = " ".join(statement.split())
+        if sql.startswith("CREATE TABLE "):
+            expected[("table", sql.split()[2].split("(")[0])] = sql
+        elif sql.startswith("CREATE UNIQUE INDEX "):
+            expected[("index", sql.split()[3])] = sql
+    return expected
+
+
+def _validate_schema(connection):
+    actual = {(kind, name): " ".join(sql.split())
+              for kind, name, sql in connection.execute(
+                  "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL")}
+    if actual != _schema_signature():
+        raise CorpusStoreError("corpus_schema_unsupported")
+    rows = connection.execute(
+        "SELECT id,revision,restore_epoch,payload FROM corpus_state").fetchall()
+    if len(rows) != 1 or rows[0][0] != 1 or type(rows[0][1]) is not int or rows[0][1] < 0:
+        raise CorpusStoreError("corpus_storage_invalid")
+    try:
+        _token(rows[0][2])
+    except CorpusStoreError:
+        raise CorpusStoreError("corpus_storage_invalid") from None
+    _read_corpus(rows[0][3])
 
 
 @dataclass(frozen=True)
@@ -244,6 +283,7 @@ class PublicCorpusStore:
                 raise CorpusStoreError("corpus_storage_invalid")
             if connection.execute("PRAGMA foreign_key_check").fetchall():
                 raise CorpusStoreError("corpus_storage_invalid")
+            _validate_schema(connection)
             session = _Session(connection)
             yielded = True
             yield session
@@ -315,8 +355,7 @@ class _Session:
             "SELECT revision,restore_epoch,payload FROM corpus_state WHERE id=1").fetchone()
         if row is None:
             raise CorpusStoreError("corpus_storage_invalid")
-        corpus = _read_json(row[2])
-        _corpus(corpus)
+        corpus = _read_corpus(row[2])
         blocked = bool(self._db.execute(
             "SELECT 1 FROM operations WHERE state!='committed' LIMIT 1").fetchone())
         return {"revision": row[0], "restore_epoch": row[1],
@@ -398,7 +437,7 @@ class _Session:
         _token(operation_id)
         with self._transaction():
             base, payload, _ = self._prepared(operation_id)
-            _corpus(_read_json(payload))
+            _read_corpus(payload)
             cursor = self._db.execute(
                 "UPDATE corpus_state SET revision=revision+1,payload=? WHERE id=1 AND revision=?",
                 (payload, base))
@@ -416,7 +455,7 @@ class _Session:
             "SELECT operation_id,kind,base_revision,state,before_payload,after_payload "
             "FROM operations WHERE state!='committed'").fetchall()
         return [{"operation_id": r[0], "kind": r[1], "base_revision": r[2],
-                 "state": r[3], "before": _read_json(r[4]), "after": _read_json(r[5]),
+                 "state": r[3], "before": _read_corpus(r[4]), "after": _read_corpus(r[5]),
                  "steps": [_read_json(s[0]) for s in self._db.execute(
                      "SELECT payload FROM operation_steps WHERE operation_id=? ORDER BY ordinal",
                      (r[0],)).fetchall()]} for r in rows]

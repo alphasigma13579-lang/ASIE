@@ -315,3 +315,46 @@ def test_excessively_nested_persisted_json_uses_stable_error(tmp_path):
         with pytest.raises(CorpusStoreError) as error:
             session.snapshot()
         assert str(error.value) == "corpus_storage_invalid"
+
+
+def test_decoder_recursion_failure_uses_stable_error(tmp_path, monkeypatch):
+    import backend.public_corpus_store as storage
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        def fail_decode(value):
+            raise RecursionError("SENSITIVE_DECODER_MARKER")
+        monkeypatch.setattr(storage.json, "loads", fail_decode)
+        with pytest.raises(CorpusStoreError) as error:
+            session.snapshot()
+        assert str(error.value) == "corpus_storage_invalid"
+
+
+@pytest.mark.parametrize("payload", ['{}', '{"schema_version":2,"source_of_truth":true,"sources":{},"audit_events":[]}'])
+def test_invalid_stored_corpus_schema_uses_storage_error(tmp_path, payload):
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        session._db.execute("UPDATE corpus_state SET payload=? WHERE id=1", (payload,))
+        with pytest.raises(CorpusStoreError, match="corpus_storage_invalid"):
+            session.snapshot()
+
+
+def test_empty_version_one_database_denied_before_yield(tmp_path):
+    with sqlite3.connect(tmp_path / "public_knowledge.sqlite3") as db:
+        db.execute("PRAGMA user_version=1")
+    with pytest.raises(CorpusStoreError, match="schema_unsupported"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pytest.fail("invalid schema was exposed")
+
+
+@pytest.mark.parametrize("mutation,code", [
+    ("DROP INDEX one_unfinished", "schema_unsupported"),
+    ("ALTER TABLE operations ADD COLUMN unexpected TEXT", "schema_unsupported"),
+    ("DELETE FROM corpus_state", "storage_invalid"),
+    ("UPDATE corpus_state SET restore_epoch=''", "storage_invalid"),
+])
+def test_mutated_version_one_database_denied_before_yield(tmp_path, mutation, code):
+    with PublicCorpusStore(tmp_path).session(scope()):
+        pass
+    with sqlite3.connect(tmp_path / "public_knowledge.sqlite3") as db:
+        db.execute(mutation)
+    with pytest.raises(CorpusStoreError, match=code):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pytest.fail("invalid database was exposed")
