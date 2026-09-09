@@ -76,11 +76,12 @@ class PublicKnowledgeLifecycle:
     is not proof. No live verifier is installed by this module.
     """
 
-    def __init__(self, *, store, scope, tavily, pinecone, verifier=None, now=_utc_now):
+    def __init__(self, *, store, scope, tavily, pinecone, verifier=None, project_organization_resolver=None, now=_utc_now):
         _authorize(scope)
         self.store, self.scope = store, scope
         self.tavily, self.pinecone = tavily, pinecone
         self.verifier, self.now = verifier, now
+        self.project_organization_resolver = project_organization_resolver
 
     def run(self, registry, *, key, epoch):
         return self._execute("sync", registry, key=key, epoch=epoch)
@@ -113,11 +114,11 @@ class PublicKnowledgeLifecycle:
                          scope=self.scope, now=self.now)
             try:
                 if kind == "sync":
-                    result = plan.run(value)
+                    result = plan.run(request["value"])
                 elif kind == "delete":
-                    result = plan.delete_source(value)
+                    result = plan.delete_source(request["value"])
                 elif kind == "restore":
-                    result = plan.restore_source(value)
+                    result = plan.restore_source(request["value"])
                 else:
                     result = plan.reindex()
             except Exception as exc:
@@ -177,6 +178,10 @@ class PublicKnowledgeLifecycle:
                     session.record_step(operation_id, action=action,
                                         record_ids=identifiers, recovery=True)
                     self._effect(action, batch)
+            # The first proof covered original requests only. Compensation
+            # creates new requests; prove those terminal before opening reads.
+            if self.verifier.settled(operation_id) is not True:
+                return blocked
             if self.verifier.matches(operation_id, deepcopy(expected), list(absent)) is not True:
                 return blocked
             result = {"status": "failed_compensated",
@@ -192,9 +197,12 @@ class PublicKnowledgeLifecycle:
             raise CorpusStoreError("corpus_scope_denied")
         try:
             TrustedProviderScope.request_context(scope, "search_public_knowledge")
-            if scope.preflight or scope.organization_id == "__platform__":
+            if (scope.preflight or scope.organization_id == "__platform__"
+                    or self.project_organization_resolver is None
+                    or self.project_organization_resolver(scope.project_id) != scope.organization_id):
                 raise PermissionError
-        except PermissionError:
+        except Exception:
+            # Resolver failures deny access without exposing backing-store details.
             raise CorpusStoreError("corpus_scope_denied") from None
         if type(query) is not str or not 1 <= len(query.strip()) <= 2000:
             raise CorpusStoreError("corpus_request_invalid")

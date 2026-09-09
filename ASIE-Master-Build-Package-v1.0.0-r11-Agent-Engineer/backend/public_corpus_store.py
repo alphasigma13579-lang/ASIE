@@ -245,6 +245,8 @@ def _upgrade_v1(connection):
         raise
     finally:
         connection.execute("PRAGMA foreign_keys=ON")
+        if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+            raise CorpusStoreError("corpus_durability_unavailable")
 
 @dataclass(frozen=True)
 class Operation:
@@ -322,7 +324,11 @@ class PublicCorpusStore:
                 # Schema plus initial state in one transaction; no half-initialized DB.
                 initial = _corpus({"schema_version": 1, "source_of_truth": True,
                                    "sources": {}, "audit_events": []})
-                connection.executescript(_SCHEMA.replace("PRAGMA user_version=2;\nCOMMIT;", ""))
+                connection.execute("BEGIN IMMEDIATE")
+                for statement in _SCHEMA.split(";"):
+                    sql = statement.strip()
+                    if sql.startswith("CREATE "):
+                        connection.execute(sql)
                 connection.execute("INSERT INTO corpus_state VALUES(1,0,?,?)",
                                    (uuid.uuid4().hex, initial))
                 connection.execute("PRAGMA user_version=2")

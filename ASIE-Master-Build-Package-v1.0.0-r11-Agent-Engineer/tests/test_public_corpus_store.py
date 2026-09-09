@@ -568,7 +568,7 @@ class LifecycleIndex:
         if self.on_search:
             self.on_search()
         return {"payload": {"result": {"hits": [
-            {"_id": key, "fields": {k: v for k, v in record.items() if k != "_id"}}
+            {"_id": key, "_score": 0.9, "fields": {k: v for k, v in record.items() if k != "_id"}}
             for key, record in list(self.records.items())[:top_k]]}}}
 
     def settled(self, operation_id):
@@ -584,7 +584,8 @@ def lifecycle(tmp_path, *, verifier=True):
     service = PublicKnowledgeLifecycle(
         store=PublicCorpusStore(tmp_path), scope=scope(),
         tavily=FakeTavily("Official public economic publication. " * 20),
-        pinecone=index, verifier=index if verifier else None, now=lambda: NOW)
+        pinecone=index, verifier=index if verifier else None,
+        project_organization_resolver=lambda project: project.removeprefix("project-"), now=lambda: NOW)
     with service.store.session(scope()) as session:
         epoch = session.snapshot()["restore_epoch"]
     return service, index, epoch
@@ -657,6 +658,9 @@ def test_lifecycle_interrupted_effect_recovers_previous_projection(tmp_path, ope
     with service.store.session(scope()) as session:
         assert session.snapshot()["recovery_required"]
         assert session.pending()[0]["steps"]
+    service = PublicKnowledgeLifecycle(
+        store=PublicCorpusStore(tmp_path), scope=scope(), tavily=service.tavily,
+        pinecone=index, verifier=index, now=lambda: NOW)
     assert service.recover()["status"] == "failed_compensated"
     assert index.records == previous
     with service.store.session(scope()) as session:
@@ -681,7 +685,8 @@ def test_lifecycle_reads_bound_to_canonical_and_tenant(tmp_path):
     service, index, epoch = lifecycle(tmp_path)
     service.run(registry(), key="sync", epoch=epoch)
     good = service.evidence(scope=tenant(), query="public")
-    assert good != service._unavailable()
+    assert good["status"] == "ready"
+    assert good["evidence"]
     service.evidence(scope=tenant("org-b"), query="public")
     assert ("search", "org-a", "project-org-a") in index.calls
     assert ("search", "org-b", "project-org-b") in index.calls
@@ -703,7 +708,8 @@ def test_lifecycle_denied_before_io(tmp_path):
     with pytest.raises(CorpusStoreError, match="scope_denied"):
         PublicKnowledgeLifecycle(store=NeverStore(), scope=tenant(), tavily=None, pinecone=None)
     service, index, epoch = lifecycle(tmp_path)
-    for denied in (scope(), replace(tenant(), organization_id="other"), None):
+    for denied in (scope(), replace(tenant(), organization_id="other"),
+                   replace(tenant(), _proof=object()), None):
         with pytest.raises((CorpusStoreError, PermissionError)):
             service.evidence(scope=denied, query="public")
     assert not index.calls
@@ -721,6 +727,16 @@ def test_v1_requires_explicit_upgrade_and_preserves_corpus(tmp_path):
         with closing(sqlite3.connect(path)) as db:
             db.executescript(_SCHEMA_V1)
             db.execute("INSERT INTO corpus_state VALUES(1,3,'epoch',?)", (json.dumps(corpus()),))
+            for operation_id, state, result_code in (
+                    ("old-committed", "committed", "committed"),
+                    ("old-pending", "recovery_required", None)):
+                db.execute(
+                    "INSERT INTO operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (operation_id, "epoch", "public-knowledge-sync", operation_id,
+                     "legacy-intent", "sync", 3, state, json.dumps(corpus()),
+                     json.dumps(corpus(2)), result_code, "created", "updated"))
+                db.execute("INSERT INTO operation_steps VALUES(?,0,?)",
+                           (operation_id, json.dumps({"action": "upsert", "record_ids": ["old"]})))
             db.commit()
     finally:
         files.close()
@@ -732,3 +748,118 @@ def test_v1_requires_explicit_upgrade_and_preserves_corpus(tmp_path):
         assert session.snapshot()["revision"] == 3
         assert session.snapshot()["restore_epoch"] == "epoch"
         assert session.verify_integrity() == "ok"
+        assert session.snapshot()["recovery_required"]
+        assert session.pending()[0]["operation_id"] == "old-pending"
+        assert session.pending()[0]["steps"] == [{"action": "upsert", "record_ids": ["old"]}]
+        rows = session._db.execute(
+            "SELECT operation_id,state,result_code,request_digest,result_payload FROM operations ORDER BY operation_id").fetchall()
+        assert rows == [("old-committed", "committed", "committed", None, None),
+                        ("old-pending", "recovery_required", None, None, None)]
+
+
+def test_lifecycle_cross_tenant_ownership_rejected_at_scope_issuance():
+    with pytest.raises(PermissionError):
+        TrustedProviderScope.for_tenant(
+            principal=SimpleNamespace(user_id="user", session_id="session",
+                                      organization_id="org-a", role="member"),
+            project_id="project-b", project_organization_resolver=lambda _: "org-b")
+
+
+def test_lifecycle_unproven_parity_keeps_durable_gate(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.matches = lambda *_: False
+    index.failure = RuntimeError("private")
+    assert service.run(registry(), key="failed", epoch=epoch)["status"] == "recovery_required"
+    with service.store.session(scope()) as session:
+        assert session.pending()
+    index.matches = lambda *_: True
+    assert service.recover()["status"] == "failed_compensated"
+
+
+def test_lifecycle_compensation_itself_interrupted_is_recoverable(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="failed", epoch=epoch)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.recover()
+    with service.store.session(scope()) as session:
+        assert len(session.pending()[0]["steps"]) == 2
+    assert service.recover()["status"] == "failed_compensated"
+    assert not index.records
+
+
+def test_lifecycle_commit_then_lost_ack_replays_without_compensation(tmp_path, monkeypatch):
+    from backend.public_corpus_store import _Session
+    service, index, epoch = lifecycle(tmp_path)
+    original = _Session.commit
+    def lost_ack(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        raise Interrupted()
+    monkeypatch.setattr(_Session, "commit", lost_ack)
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="sync", epoch=epoch)
+    monkeypatch.setattr(_Session, "commit", original)
+    service.reindex(key="advance", epoch=epoch)
+    calls = list(index.calls)
+    service = PublicKnowledgeLifecycle(
+        store=PublicCorpusStore(tmp_path), scope=scope(), tavily=service.tavily,
+        pinecone=index, verifier=index, now=lambda: "2026-08-24T00:00:00Z")
+    result = service.run(registry(), key="sync", epoch=epoch)
+    assert result["sources_changed"] == 1
+    assert index.calls == calls
+    assert service.recover()["status"] == "no_recovery_needed"
+
+
+def test_lifecycle_invalid_source_never_fetches_and_failure_replays(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    invalid = registry()
+    invalid["sources"][0]["allowed_paths"] = ["/"]
+    result = service.run(invalid, key="invalid", epoch=epoch)
+    assert result["status"] == "failed"
+    assert service.run(invalid, key="invalid", epoch=epoch) == result
+    assert not service.tavily.calls and not index.calls
+
+
+def test_lifecycle_late_compensation_requires_second_settlement_proof(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="sync", epoch=epoch)
+    proofs = iter([True, False])
+    index.settled = lambda _: next(proofs)
+    index.matches = lambda *_: pytest.fail("parity alone is not settlement")
+    assert service.recover()["status"] == "recovery_required"
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["recovery_required"]
+    calls = list(index.calls)
+    service.evidence(scope=tenant(), query="blocked")
+    assert calls == index.calls
+
+
+def test_lifecycle_registry_snapshot_cannot_diverge_from_replay_key(tmp_path, monkeypatch):
+    from backend.public_corpus_store import _Session
+    service, index, epoch = lifecycle(tmp_path)
+    original_registry = registry()
+    stable_registry = deepcopy(original_registry)
+    original_lookup = _Session.lookup
+    def mutate_caller(self, **kwargs):
+        original_registry["sources"][0]["allowed_paths"] = ["/"]
+        return original_lookup(self, **kwargs)
+    monkeypatch.setattr(_Session, "lookup", mutate_caller)
+    result = service.run(original_registry, key="stable", epoch=epoch)
+    assert result["sources_changed"] == 1
+    assert service.run(stable_registry, key="stable", epoch=epoch) == result
+    assert len(service.tavily.calls) == 1
+
+
+def test_lifecycle_owner_resolver_failure_denies_without_details(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    def unavailable(_):
+        raise RuntimeError("SECRET_RESOLVER")
+    service.project_organization_resolver = unavailable
+    with pytest.raises(CorpusStoreError, match="^corpus_scope_denied$") as caught:
+        service.evidence(scope=tenant(), query="public")
+    assert "SECRET_RESOLVER" not in str(caught.value)
+    assert not index.calls
