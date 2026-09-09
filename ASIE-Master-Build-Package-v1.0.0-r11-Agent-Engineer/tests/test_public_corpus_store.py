@@ -475,3 +475,25 @@ def test_linux_file_symlink_race_does_not_touch_target(tmp_path, monkeypatch):
         with PublicCorpusStore(tmp_path).session(scope()):
             pass
     assert target.read_bytes() == b"DO_NOT_MODIFY"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Win32 handle boundary")
+def test_windows_guard_primitives(tmp_path):
+    from backend.public_corpus_files import _Windows, StoreFiles
+    win = _Windows()
+    handles = []
+    try:
+        for part in (*reversed(tmp_path.parents), tmp_path):
+            handles.append(win.open(part, directory=True))
+        win.private(handles[-1])
+    finally:
+        for handle in reversed(handles):
+            win.close(handle)
+    files = StoreFiles(tmp_path)
+    try:
+        files.open()
+        files.file("public_knowledge.lock")
+        files.database()
+        files.validate()
+    finally:
+        files.close()
