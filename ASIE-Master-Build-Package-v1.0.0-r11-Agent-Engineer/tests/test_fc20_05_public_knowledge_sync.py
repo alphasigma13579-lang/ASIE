@@ -705,10 +705,16 @@ SENSITIVE_MARKER = "F05_SENTINEL_DO_NOT_DISCLOSE"
 HostileFailure = type(SENSITIVE_MARKER, (RuntimeError,), {})
 
 
+class UnprintableKnowledgeFailure(PublicKnowledgeError):
+    def __str__(self):
+        raise AssertionError(SENSITIVE_MARKER + ": must not stringify")
+
+
+@pytest.mark.parametrize("exception_type", [HostileFailure, UnprintableKnowledgeFailure])
 @pytest.mark.parametrize("dry_run", [True, False])
 @pytest.mark.parametrize("operation", ["extract", "crawl", "upsert"])
 def test_source_failure_summary_does_not_serialize_exception(
-    tmp_path: Path, monkeypatch, capsys, dry_run: bool, operation: str,
+    tmp_path: Path, monkeypatch, capsys, dry_run: bool, operation: str, exception_type,
 ) -> None:
     service, pinecone = sync(tmp_path, "Official economic content. " * 30)
     source = source_record()
@@ -716,7 +722,7 @@ def test_source_failure_summary_does_not_serialize_exception(
         source.update(acquisition_mode="crawl", crawl_max_depth=1, crawl_limit=2)
 
     def fail(**kwargs):
-        raise HostileFailure(SENSITIVE_MARKER + " credential=value /private/file")
+        raise exception_type(SENSITIVE_MARKER + " credential=value /private/file")
 
     target = service.pinecone if operation == "upsert" else service.tavily
     method = "upsert_public_knowledge" if operation == "upsert" else operation
@@ -773,11 +779,14 @@ def test_cli_failure_redacts_exception_and_cause(
     assert not service.corpus_path.exists()
 
 
-def test_cli_source_failure_uses_safe_nested_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("exception_type", [HostileFailure, UnprintableKnowledgeFailure])
+def test_cli_source_failure_uses_safe_nested_summary(
+    tmp_path: Path, monkeypatch, capsys, exception_type,
+) -> None:
     service, _ = sync(tmp_path, "Official economic content. " * 30)
 
     def fail(**kwargs):
-        raise HostileFailure(SENSITIVE_MARKER)
+        raise exception_type(SENSITIVE_MARKER)
 
     monkeypatch.setattr(service.tavily, "extract", fail)
     monkeypatch.setattr(public_knowledge_module.sys, "argv", ["public-knowledge", "--dry-run"])
@@ -799,6 +808,10 @@ def test_cli_source_failure_uses_safe_nested_summary(tmp_path: Path, monkeypatch
     (PublicKnowledgeError("public_source_extract_empty:" + SENSITIVE_MARKER),
      "public_knowledge_operation_failed"),
     (RuntimeError("public_source_extract_empty"), "public_knowledge_operation_failed"),
+    (UnprintableKnowledgeFailure("public_source_extract_url_mismatch"),
+     "public_knowledge_operation_failed"),
+    (UnprintableKnowledgeFailure("public_source_sync_failed_compensation_incomplete"),
+     "public_knowledge_operation_failed"),
 ])
 def test_safe_failure_accepts_only_owned_exact_codes(exc, expected) -> None:
     result = public_knowledge_module._safe_failure(exc)

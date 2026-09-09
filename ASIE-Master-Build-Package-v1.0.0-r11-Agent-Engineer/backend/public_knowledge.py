@@ -123,6 +123,14 @@ _SAFE_FAILURE_MESSAGES = {
         "تجاوز محتوى المصدر الحجم المسموح.",
         "راجع نطاق الاستخراج وحدوده قبل المحاولة مجددًا.",
     ),
+    "public_source_extract_url_mismatch": (
+        "عنوان المحتوى المستخرج لا يطابق المصدر المعتمد.",
+        "اعزل المحتوى وراجع عنوان المصدر دون توسيع النطاق المسموح.",
+    ),
+    "public_source_crawl_url_mismatch": (
+        "عنوان نتيجة البحث خارج نطاق المصدر المعتمد.",
+        "اعزل المحتوى وراجع نطاق البحث دون توسيعه تلقائيًا.",
+    ),
     "public_source_extract_empty": (
         "لم يُستخرج محتوى من المصدر.",
         "تحقق من إتاحة المصدر وطريقة الوصول المعتمدة.",
@@ -975,16 +983,15 @@ class PublicKnowledgeSync:
                 )
                 summary["sources_changed"] += 1
             except Exception as exc:
-                if (
-                    isinstance(exc, PublicKnowledgeError)
-                    and str(exc) == "public_source_sync_failed_compensation_incomplete"
-                ):
+                failure = _safe_failure(exc)
+                code = failure["reason"]
+                if code == "public_source_sync_failed_compensation_incomplete":
                     raise
-                if isinstance(exc, PublicKnowledgeError) and str(exc) in {
+                if code in {
                     "public_source_extract_url_mismatch",
                     "public_source_crawl_url_mismatch",
                 }:
-                    anomalies = [str(exc)]
+                    anomalies = [code]
                     summary["sources_quarantined"] += 1
                     summary["errors"].append(
                         {"source_id": source_id, "reason": "public_source_quarantined", "anomalies": anomalies}
@@ -999,7 +1006,7 @@ class PublicKnowledgeSync:
                     continue
                 summary["sources_failed"] += 1
                 summary["errors"].append(
-                    {"source_id": source_id, **_safe_failure(exc)}
+                    {"source_id": source_id, **failure}
                 )
         summary["completed_at"] = self.now()
         if dry_run:
