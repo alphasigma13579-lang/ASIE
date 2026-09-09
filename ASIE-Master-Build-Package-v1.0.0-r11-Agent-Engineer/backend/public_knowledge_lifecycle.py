@@ -13,6 +13,7 @@ from backend.provider_security_control_plane import TrustedProviderScope
 from backend.public_corpus_store import CorpusStoreError, _json
 from backend.public_knowledge import (
     PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _batched, _safe_failure,
+    _safe_source_id, validate_public_source_registry,
     _utc_now, build_feasibility_evidence_context,
     build_unavailable_feasibility_evidence_context,
 )
@@ -103,7 +104,18 @@ class PublicKnowledgeLifecycle:
 
     def _execute(self, kind, value, *, key, epoch):
         _authorize(self.scope)
-        request = {"kind": kind, "value": deepcopy(value)}
+        captured = deepcopy(value)
+        _json(captured)
+        try:
+            if kind == "sync":
+                captured = validate_public_source_registry(captured)
+            elif kind in ("delete", "restore"):
+                captured = _safe_source_id(captured)
+        except Exception:
+            # Invalid input retains its stable raw JSON fingerprint and is
+            # handled by the existing safe domain failure path below.
+            pass
+        request = {"kind": kind, "value": captured}
         _json(request)
         with self.store.session(self.scope) as session:
             replay = session.lookup(key=key, epoch=epoch, request=request)

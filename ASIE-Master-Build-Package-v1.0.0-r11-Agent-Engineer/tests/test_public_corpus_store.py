@@ -915,3 +915,12 @@ def test_lifecycle_contract_change_rejects_terminal_replay(tmp_path, monkeypatch
     with pytest.raises(CorpusStoreError, match="intent_conflict"):
         service.run(registry(), key="versioned", epoch=epoch)
     assert index.calls == calls
+
+
+def test_lifecycle_equivalent_source_spellings_replay_one_operation(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="initial", epoch=epoch)
+    result = service.delete_source(" MOF-OPEN-DATA ", key="delete", epoch=epoch)
+    calls = list(index.calls)
+    assert service.delete_source("mof-open-data", key="delete", epoch=epoch) == result
+    assert calls == index.calls
