@@ -72,7 +72,8 @@ class StoreFiles:
         try:
             if self._win:
                 import msvcrt
-                handle = self._win.open(self.path / name, directory=False)
+                handle = self._win.open(self.path / name, directory=False,
+                                        transient=name.endswith("-journal"))
                 try:
                     self._win.private(handle)
                     fd = msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
@@ -196,12 +197,12 @@ class _Windows:
         finally:
             self.kernel.LocalFree(text)
 
-    def open(self, path, *, directory):
+    def open(self, path, *, directory, transient=False):
         if self.kernel.GetDriveTypeW(str(path.anchor)) != 3:  # fixed local disk only
             raise UnsafeStorePath()
         # No FILE_SHARE_DELETE: path entries cannot be replaced while guarded.
         access = 0x20080 if directory else 0xC0020080
-        handle = self.kernel.CreateFileW(str(path), access, 3, None,
+        handle = self.kernel.CreateFileW(str(path), access, 7 if transient else 3, None,
                                         3 if directory else 4, 0x02200000, None)
         if handle == self.c.c_void_p(-1).value:
             raise UnsafeStorePath()

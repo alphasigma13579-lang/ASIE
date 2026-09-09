@@ -503,7 +503,11 @@ def test_windows_guard_primitives(tmp_path):
     try:
         files.open()
         files.file("public_knowledge.lock")
-        files.database()
+        database = files.database()
         files.validate()
+        with sqlite3.connect(database, isolation_level=None) as db:
+            assert db.execute("PRAGMA user_version").fetchone()[0] == 0
+            assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+            db.execute("CREATE TABLE primitive_probe(value)")
     finally:
         files.close()
