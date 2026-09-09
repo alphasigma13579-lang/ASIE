@@ -21,6 +21,7 @@ from backend.public_knowledge import (
     PUBLIC_KNOWLEDGE_REGISTRY_POLICY,
     PublicKnowledgeError,
     PublicKnowledgeSync,
+    _safe_failure,
     build_public_knowledge_sync_from_env,
 )
 
@@ -173,9 +174,7 @@ def main() -> int:
         result = {
             "sync_id": "fc20-05-public-economic-knowledge-v1",
             "status": "failed",
-            "error_type": type(exc).__name__,
-            "reason": str(exc),
-            "secrets_exposed": False,
+            **_safe_failure(exc),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 1
