@@ -155,7 +155,7 @@ def test_schema_and_durability(tmp_path):
     path = tmp_path / "public_knowledge.sqlite3"
     with sqlite3.connect(path) as db:
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
         assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
         db.execute("PRAGMA user_version=999")
@@ -369,7 +369,7 @@ def test_invalid_stored_corpus_schema_uses_storage_error(tmp_path, payload):
 
 def test_empty_version_one_database_denied_before_yield(tmp_path):
     with sqlite3.connect(tmp_path / "public_knowledge.sqlite3") as db:
-        db.execute("PRAGMA user_version=1")
+        db.execute("PRAGMA user_version=2")
     with pytest.raises(CorpusStoreError, match="schema_unsupported"):
         with PublicCorpusStore(tmp_path).session(scope()):
             pytest.fail("invalid schema was exposed")
@@ -530,3 +530,205 @@ def test_unsafe_file_permissions_denied_before_database(tmp_path, monkeypatch, n
         with PublicCorpusStore(tmp_path).session(scope()):
             pass
     assert path.read_bytes() == b"DO_NOT_CHANGE"
+
+
+# Lifecycle integration stays in this file to reuse the isolated ACL fixture
+# and run identically in the dedicated Linux/Windows store workflow.
+from copy import deepcopy
+import json
+from backend.public_knowledge_lifecycle import PublicKnowledgeLifecycle
+from test_fc20_05_public_knowledge_sync import registry, FakeTavily, NOW
+
+
+class LifecycleIndex:
+    def __init__(self):
+        self.records = {}
+        self.calls = []
+        self.failure = None
+        self.on_search = None
+
+    def upsert_public_knowledge(self, *, scope, records):
+        self.calls.append("upsert")
+        self.records.update({r["_id"]: deepcopy(r) for r in records})
+        self._fail()
+
+    def delete_public_knowledge(self, *, scope, record_ids):
+        self.calls.append("delete")
+        for identifier in record_ids:
+            self.records.pop(identifier, None)
+        self._fail()
+
+    def _fail(self):
+        failure, self.failure = self.failure, None
+        if failure:
+            raise failure
+
+    def search_public_knowledge(self, *, scope, query, top_k):
+        self.calls.append(("search", scope.organization_id, scope.project_id))
+        if self.on_search:
+            self.on_search()
+        return {"payload": {"result": {"hits": [
+            {"_id": key, "fields": {k: v for k, v in record.items() if k != "_id"}}
+            for key, record in list(self.records.items())[:top_k]]}}}
+
+    def settled(self, operation_id):
+        return True
+
+    def matches(self, operation_id, expected, absent):
+        return (all(self.records.get(key) == value for key, value in expected.items())
+                and all(key not in self.records for key in absent))
+
+
+def lifecycle(tmp_path, *, verifier=True):
+    index = LifecycleIndex()
+    service = PublicKnowledgeLifecycle(
+        store=PublicCorpusStore(tmp_path), scope=scope(),
+        tavily=FakeTavily("Official public economic publication. " * 20),
+        pinecone=index, verifier=index if verifier else None, now=lambda: NOW)
+    with service.store.session(scope()) as session:
+        epoch = session.snapshot()["restore_epoch"]
+    return service, index, epoch
+
+
+def tenant(organization="org-a"):
+    return TrustedProviderScope.for_tenant(
+        principal=SimpleNamespace(user_id="user", session_id="session",
+                                  organization_id=organization, role="member"),
+        project_id="project-" + organization,
+        project_organization_resolver=lambda _: organization)
+
+
+def test_lifecycle_sync_replay_delete_restore_reindex(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    result = service.run(registry(), key="sync", epoch=epoch)
+    assert result["sources_changed"] == 1
+    assert index.records
+    calls = list(index.calls)
+    assert service.run(registry(), key="sync", epoch=epoch) == result
+    assert len(service.tavily.calls) == 1
+    assert index.calls == calls
+    service.delete_source("mof-open-data", key="delete", epoch=epoch)
+    assert not index.records
+    service.restore_source("mof-open-data", key="restore", epoch=epoch)
+    assert index.records
+    service.reindex(key="reindex", epoch=epoch)
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["revision"] == 4
+        assert not session.pending()
+    with pytest.raises(CorpusStoreError, match="intent_conflict"):
+        service.delete_source("other", key="delete", epoch=epoch)
+
+
+def test_lifecycle_failure_compensation_replays_without_sensitive_details(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.failure = RuntimeError("SECRET_TEST_MARKER missing_private_environment")
+    result = service.run(registry(), key="sync", epoch=epoch)
+    assert result["status"] == "failed_compensated"
+    assert not index.records
+    assert service.run(registry(), key="sync", epoch=epoch) == result
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["corpus"]["sources"] == {}
+        assert not session.pending()
+        rows = session._db.execute("SELECT * FROM operations").fetchall()
+    assert "SECRET_TEST_MARKER" not in repr(rows) + json.dumps(result)
+
+
+class Interrupted(BaseException):
+    pass
+
+
+@pytest.mark.parametrize("operation", ["sync", "delete", "restore", "reindex"])
+def test_lifecycle_interrupted_effect_recovers_previous_projection(tmp_path, operation):
+    service, index, epoch = lifecycle(tmp_path)
+    if operation != "sync":
+        service.run(registry(), key="initial", epoch=epoch)
+    if operation == "restore":
+        service.delete_source("mof-open-data", key="initial-delete", epoch=epoch)
+    previous = deepcopy(index.records)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        if operation == "sync":
+            service.run(registry(), key="interrupted", epoch=epoch)
+        elif operation == "reindex":
+            service.reindex(key="interrupted", epoch=epoch)
+        else:
+            getattr(service, operation + "_source")(
+                "mof-open-data", key="interrupted", epoch=epoch)
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["recovery_required"]
+        assert session.pending()[0]["steps"]
+    assert service.recover()["status"] == "failed_compensated"
+    assert index.records == previous
+    with service.store.session(scope()) as session:
+        assert not session.pending()
+
+
+def test_lifecycle_no_settlement_proof_blocks_search_and_retry(tmp_path):
+    service, index, epoch = lifecycle(tmp_path, verifier=False)
+    index.failure = TimeoutError("sensitive")
+    assert service.run(registry(), key="sync", epoch=epoch)["status"] == "recovery_required"
+    calls = list(index.calls)
+    assert service.recover()["status"] == "recovery_required"
+    service.evidence(scope=tenant(), query="never persisted")
+    assert index.calls == calls
+    with pytest.raises(CorpusStoreError, match="recovery_required"):
+        service.run(registry(), key="retry", epoch=epoch)
+    with service.store.session(scope()) as session:
+        assert "never persisted" not in repr(session.pending())
+
+
+def test_lifecycle_reads_bound_to_canonical_and_tenant(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="sync", epoch=epoch)
+    good = service.evidence(scope=tenant(), query="public")
+    assert good != service._unavailable()
+    service.evidence(scope=tenant("org-b"), query="public")
+    assert ("search", "org-a", "project-org-a") in index.calls
+    assert ("search", "org-b", "project-org-b") in index.calls
+    next(iter(index.records.values()))["chunk_text"] = "tampered"
+    assert service.evidence(scope=tenant(), query="public") == service._unavailable()
+
+
+def test_lifecycle_read_revision_race_abstains(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="sync", epoch=epoch)
+    index.on_search = lambda: service.reindex(key="during-search", epoch=epoch)
+    assert service.evidence(scope=tenant(), query="public") == service._unavailable()
+
+
+def test_lifecycle_denied_before_io(tmp_path):
+    class NeverStore:
+        def session(self, *_):
+            pytest.fail("unauthorized store access")
+    with pytest.raises(CorpusStoreError, match="scope_denied"):
+        PublicKnowledgeLifecycle(store=NeverStore(), scope=tenant(), tavily=None, pinecone=None)
+    service, index, epoch = lifecycle(tmp_path)
+    for denied in (scope(), replace(tenant(), organization_id="other"), None):
+        with pytest.raises((CorpusStoreError, PermissionError)):
+            service.evidence(scope=denied, query="public")
+    assert not index.calls
+
+
+def test_v1_requires_explicit_upgrade_and_preserves_corpus(tmp_path):
+    from backend.public_corpus_store import _SCHEMA_V1
+    path = tmp_path / "public_knowledge.sqlite3"
+    # Use the actual pinned filename from the store helper, not an owner file.
+    from backend.public_corpus_files import StoreFiles
+    files = StoreFiles(tmp_path)
+    files.open()
+    try:
+        path = files.database()
+        with closing(sqlite3.connect(path)) as db:
+            db.executescript(_SCHEMA_V1)
+            db.execute("INSERT INTO corpus_state VALUES(1,3,'epoch',?)", (json.dumps(corpus()),))
+            db.commit()
+    finally:
+        files.close()
+    with pytest.raises(CorpusStoreError, match="upgrade_required"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pytest.fail("implicit migration")
+    with PublicCorpusStore(tmp_path).session(scope(), upgrade_v1=True) as session:
+        assert session.snapshot()["corpus"] == corpus()
+        assert session.snapshot()["revision"] == 3
+        assert session.snapshot()["restore_epoch"] == "epoch"
+        assert session.verify_integrity() == "ok"

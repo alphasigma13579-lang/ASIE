@@ -724,6 +724,12 @@ class PublicKnowledgeSync:
     corpus_path: Path
     now: Callable[[], str] = _utc_now
 
+    def _load(self) -> dict[str, Any]:
+        return _load_corpus(self.corpus_path)
+
+    def _save(self, corpus: Mapping[str, Any]) -> None:
+        _save_corpus(self.corpus_path, corpus)
+
     def _records(
         self,
         *,
@@ -797,7 +803,7 @@ class PublicKnowledgeSync:
     def run(self, registry: Mapping[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
         validated = validate_public_source_registry(registry)
         admission_policy = PublicKnowledgeSourcePolicy.from_registry(validated)
-        corpus = _load_corpus(self.corpus_path)
+        corpus = self._load()
         working = json.loads(json.dumps(corpus))
         summary: dict[str, Any] = {
             "sync_id": "fc20-05-public-economic-knowledge-v1",
@@ -1025,7 +1031,7 @@ class PublicKnowledgeSync:
         ):
             working["last_run_at"] = summary["completed_at"]
             try:
-                _save_corpus(self.corpus_path, working)
+                self._save(working)
             except Exception as commit_error:
                 try:
                     for previous_records, previous_ids, new_ids in reversed(compensations):
@@ -1048,7 +1054,7 @@ class PublicKnowledgeSync:
 
     def delete_source(self, source_id: str) -> dict[str, Any]:
         normalized_id = _safe_source_id(source_id)
-        corpus = _load_corpus(self.corpus_path)
+        corpus = self._load()
         source = corpus["sources"].get(normalized_id)
         if not isinstance(source, dict) or source.get("status") != "active":
             raise PublicKnowledgeError("public_source_not_active")
@@ -1069,7 +1075,7 @@ class PublicKnowledgeSync:
         source["last_result"] = "deleted"
         corpus["audit_events"].append({"event": "source_deleted", "source_id": normalized_id, "at": at})
         try:
-            _save_corpus(self.corpus_path, corpus)
+            self._save(corpus)
         except Exception as commit_error:
             try:
                 self._upsert(source.get("records", []))
@@ -1084,7 +1090,7 @@ class PublicKnowledgeSync:
 
     def restore_source(self, source_id: str) -> dict[str, Any]:
         normalized_id = _safe_source_id(source_id)
-        corpus = _load_corpus(self.corpus_path)
+        corpus = self._load()
         source = corpus["sources"].get(normalized_id)
         if not isinstance(source, dict) or source.get("status") != "deleted_tombstone":
             raise PublicKnowledgeError("public_source_not_deleted")
@@ -1107,7 +1113,7 @@ class PublicKnowledgeSync:
         source["last_result"] = "restored"
         corpus["audit_events"].append({"event": "source_restored", "source_id": normalized_id, "at": at})
         try:
-            _save_corpus(self.corpus_path, corpus)
+            self._save(corpus)
         except Exception as commit_error:
             try:
                 self._delete_ids([str(record["_id"]) for record in records])
@@ -1121,7 +1127,7 @@ class PublicKnowledgeSync:
         return {"status": "restored", "source_id": normalized_id, "records_upserted": upserted}
 
     def reindex(self) -> dict[str, Any]:
-        corpus = _load_corpus(self.corpus_path)
+        corpus = self._load()
         records = [
             record
             for source in corpus["sources"].values()
@@ -1174,7 +1180,7 @@ class PublicKnowledgeSync:
                 "at": at,
             }
         )
-        _save_corpus(self.corpus_path, corpus)
+        self._save(corpus)
         return {
             "status": "rebuilt",
             "records_upserted": upserted,
