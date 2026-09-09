@@ -1,0 +1,33 @@
+name: Public corpus isolated storage
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_store.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_files.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_public_corpus_store.py'
+      - '.github/workflows/public-corpus-store.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-store:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
+    steps:
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}
+        run: git config --global core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install pytest==8.3.5
+      - run: python -m pytest -q tests/test_public_corpus_store.py
