@@ -19,11 +19,21 @@ def private_test_directory(tmp_path):
     # Only disposable pytest data. Runtime never changes an existing ACL.
     if os.name == "nt":
         from backend.public_corpus_files import _Windows
-        user = _Windows().user
-        subprocess.run(["icacls", str(tmp_path), "/inheritance:r", "/grant:r",
-                        f"*{user}:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F",
-                        "*S-1-5-32-544:(OI)(CI)F"],
-                       check=True, capture_output=True, text=True)
+        win = _Windows()
+        c, w = win.c, win.w
+        convert = win.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+        convert.argtypes = [w.LPCWSTR, w.DWORD, c.POINTER(c.c_void_p), c.c_void_p]
+        convert.restype = w.BOOL
+        apply = win.advapi.SetFileSecurityW
+        apply.argtypes = [w.LPCWSTR, w.DWORD, c.c_void_p]
+        apply.restype = w.BOOL
+        descriptor = c.c_void_p()
+        sddl = f"D:P(A;OICI;FA;;;{win.user})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        assert convert(sddl, 1, c.byref(descriptor), None)
+        try:
+            assert apply(str(tmp_path), 0x80000004, descriptor)
+        finally:
+            win.kernel.LocalFree(descriptor)
         yield
     else:
         previous = os.umask(0o077)
