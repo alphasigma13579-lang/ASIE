@@ -295,3 +295,23 @@ def test_invalid_request_type_has_no_effect(tmp_path):
         with pytest.raises(CorpusStoreError, match="request_invalid"):
             session.begin(**{**request(session), "kind": []})
         assert session.pending() == []
+
+
+@pytest.mark.parametrize("failure", [OSError("caller effect"), sqlite3.OperationalError("caller database")])
+def test_caller_failure_classification_preserved_and_lock_released(tmp_path, failure):
+    store = PublicCorpusStore(tmp_path, lock_timeout=0)
+    with pytest.raises(type(failure)) as error:
+        with store.session(scope()):
+            raise failure
+    assert error.value is failure
+    with store.session(scope()) as session:
+        assert session.snapshot()["revision"] == 0
+
+
+def test_excessively_nested_persisted_json_uses_stable_error(tmp_path):
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        session._db.execute("UPDATE corpus_state SET payload=? WHERE id=1",
+                            ("[" * 2000 + "0" + "]" * 2000,))
+        with pytest.raises(CorpusStoreError) as error:
+            session.snapshot()
+        assert str(error.value) == "corpus_storage_invalid"

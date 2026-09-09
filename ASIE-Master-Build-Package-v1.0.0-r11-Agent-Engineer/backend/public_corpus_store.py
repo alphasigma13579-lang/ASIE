@@ -95,7 +95,7 @@ def _corpus(value):
 def _read_json(value):
     try:
         return json.loads(value)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         raise CorpusStoreError("corpus_storage_invalid") from None
 
 
@@ -181,6 +181,7 @@ class PublicCorpusStore:
         descriptor = None
         locked = False
         session = None
+        yielded = False
         try:
             root = self.directory.absolute()
             _safe_path(root)
@@ -244,8 +245,12 @@ class PublicCorpusStore:
             if connection.execute("PRAGMA foreign_key_check").fetchall():
                 raise CorpusStoreError("corpus_storage_invalid")
             session = _Session(connection)
+            yielded = True
             yield session
         except (OSError, sqlite3.Error):
+            if yielded:
+                # The caller owns external-effect classification and recovery.
+                raise
             raise CorpusStoreError("corpus_storage_unavailable") from None
         finally:
             if session is not None:
