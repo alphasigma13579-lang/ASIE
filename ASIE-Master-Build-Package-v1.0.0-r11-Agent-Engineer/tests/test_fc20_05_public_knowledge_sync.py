@@ -833,3 +833,54 @@ def test_incomplete_compensation_requires_manual_recovery(code) -> None:
     result = public_knowledge_module._safe_failure(PublicKnowledgeError(code))
     assert result["reason"] == code
     assert "أوقف إعادة المحاولة" in result["next_action"]
+
+
+@pytest.mark.parametrize("stage", ["registry", "build", "run"])
+def test_compatibility_cli_redacts_exception_and_cause(tmp_path, monkeypatch, capsys, stage):
+    """The legacy entrypoint must use the same redaction boundary."""
+    import backend.vision2030_kb_sync as compatibility
+
+    service, _ = sync(tmp_path, "Official economic content. " * 30)
+
+    def fail(*args, **kwargs):
+        try:
+            raise OSError(SENSITIVE_MARKER)
+        except OSError as cause:
+            raise UnprintableKnowledgeFailure(SENSITIVE_MARKER) from cause
+
+    monkeypatch.setattr(compatibility.sys, "argv", ["vision-sync", "--dry-run"])
+    monkeypatch.setattr(compatibility, "load_registry",
+                        fail if stage == "registry" else lambda *args: registry())
+    monkeypatch.setattr(compatibility, "_as_public_registry", lambda value: value)
+    monkeypatch.setattr(compatibility, "build_sync_from_env",
+                        fail if stage == "build" else lambda *args, **kwargs: service)
+    if stage == "run":
+        monkeypatch.setattr(service, "run", fail)
+    assert compatibility.main() == 1
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["status"] == "failed"
+    assert result["reason"] == "public_knowledge_operation_failed"
+    assert result["error_type"] == "OperationalError"
+    assert result["message"] and result["next_action"]
+    assert "secrets_exposed" not in result
+    assert SENSITIVE_MARKER not in captured.out + captured.err
+    assert captured.err == ""
+    assert not service.corpus_path.exists()
+
+
+def test_exception_args_assignment_normalizes_hostile_tuple():
+    """BaseException normalizes assigned tuple subclasses before formatting."""
+    class HostileTuple(tuple):
+        def __len__(self):
+            raise AssertionError(SENSITIVE_MARKER)
+
+        def __getitem__(self, index):
+            raise AssertionError(SENSITIVE_MARKER)
+
+    exc = PublicKnowledgeError()
+    exc.args = HostileTuple(("public_source_extract_empty",))
+    assert type(exc.args) is tuple
+    result = public_knowledge_module._safe_failure(exc)
+    assert result["reason"] == "public_source_extract_empty"
+    assert SENSITIVE_MARKER not in json.dumps(result)
