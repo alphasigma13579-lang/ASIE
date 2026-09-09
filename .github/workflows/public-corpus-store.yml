@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_store.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_files.py'
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_public_corpus_store.py'
       - '.github/workflows/public-corpus-store.yml'
 permissions:

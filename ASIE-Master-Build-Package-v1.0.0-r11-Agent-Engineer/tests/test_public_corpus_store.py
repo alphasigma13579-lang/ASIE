@@ -5,12 +5,32 @@ import multiprocessing as mp
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 from backend.provider_security_control_plane import TrustedProviderScope
 from backend.public_corpus_store import CorpusStoreError, PublicCorpusStore
+
+
+@pytest.fixture(autouse=True)
+def private_test_directory(tmp_path):
+    # Only disposable pytest data. Runtime never changes an existing ACL.
+    if os.name == "nt":
+        from backend.public_corpus_files import _Windows
+        user = _Windows().user
+        subprocess.run(["icacls", str(tmp_path), "/inheritance:r", "/grant:r",
+                        f"*{user}:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F",
+                        "*S-1-5-32-544:(OI)(CI)F"],
+                       check=True, capture_output=True, text=True)
+        yield
+    else:
+        previous = os.umask(0o077)
+        try:
+            yield
+        finally:
+            os.umask(previous)
 
 
 def scope():
@@ -358,3 +378,100 @@ def test_mutated_version_one_database_denied_before_yield(tmp_path, mutation, co
     with pytest.raises(CorpusStoreError, match=code):
         with PublicCorpusStore(tmp_path).session(scope()):
             pytest.fail("invalid database was exposed")
+
+
+def test_session_does_not_scan_history_but_maintenance_does(tmp_path, monkeypatch):
+    real_connect = sqlite3.connect
+    statements = []
+    class Traced:
+        def __init__(self, *args, **kwargs):
+            self.db = real_connect(*args, **kwargs)
+            self.db.set_trace_callback(statements.append)
+        def __getattr__(self, name):
+            return getattr(self.db, name)
+    monkeypatch.setattr(sqlite3, "connect", Traced)
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        session.snapshot()
+        assert not any("integrity_check" in s or "foreign_key_check" in s for s in statements)
+        plan = session._db.execute("EXPLAIN QUERY PLAN SELECT 1 FROM operations "
+            "WHERE state IN ('prepared','recovery_required') LIMIT 1").fetchall()
+        assert any("one_unfinished" in row[-1] for row in plan)
+        assert session.verify_integrity() == "ok"
+        assert any("PRAGMA integrity_check" in s for s in statements)
+        assert any("PRAGMA foreign_key_check" in s for s in statements)
+
+
+@pytest.mark.parametrize("name", ["public_knowledge.lock", "public_knowledge.sqlite3",
+                                  "public_knowledge.sqlite3-wal", "public_knowledge.sqlite3-shm",
+                                  "public_knowledge.sqlite3-journal"])
+def test_substituted_entry_before_handle_open_denied_without_sqlite(tmp_path, monkeypatch, name):
+    import backend.public_corpus_files as paths
+    target = tmp_path / "unrelated-target"
+    target.mkdir()
+    marker = target / "keep"
+    marker.write_text("UNCHANGED")
+    original = paths.StoreFiles.file
+    injected = False
+
+    def substitute(self, candidate):
+        nonlocal injected
+        if candidate == name and not injected:
+            injected = True
+            entry = tmp_path / name
+            if os.name == "nt":
+                subprocess.run(["cmd", "/c", "mklink", "/J", str(entry), str(target)],
+                               check=True, capture_output=True)
+            else:
+                entry.symlink_to(target, target_is_directory=True)
+        return original(self, candidate)
+
+    monkeypatch.setattr(paths.StoreFiles, "file", substitute)
+    def no_database(*args, **kwargs):
+        pytest.fail("SQLite opened a substituted path")
+    monkeypatch.setattr(sqlite3, "connect", no_database)
+    with pytest.raises(CorpusStoreError, match="corpus_path_invalid"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pass
+    assert injected
+    assert marker.read_text() == "UNCHANGED"
+
+
+def test_unsafe_directory_permissions_denied_before_database(tmp_path, monkeypatch):
+    if os.name == "nt":
+        subprocess.run(["icacls", str(tmp_path), "/grant", "*S-1-1-0:(OI)(CI)F"],
+                       check=True, capture_output=True)
+    else:
+        tmp_path.chmod(0o777)
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: pytest.fail("unsafe directory used"))
+    with pytest.raises(CorpusStoreError, match="corpus_path_invalid"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pass
+    assert not (tmp_path / "public_knowledge.lock").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Win32 no-delete-sharing guarantee")
+def test_windows_pins_database_and_sidecar_entries_through_session(tmp_path):
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        for suffix in (".lock", ".sqlite3", ".sqlite3-wal", ".sqlite3-shm"):
+            path = tmp_path / ("public_knowledge" + suffix)
+            with pytest.raises(PermissionError):
+                path.rename(tmp_path / ("substitute" + suffix))
+        assert session.verify_integrity() == "ok"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX no-follow regular-file open")
+def test_linux_file_symlink_race_does_not_touch_target(tmp_path, monkeypatch):
+    import backend.public_corpus_files as paths
+    target = tmp_path / "unrelated-file"
+    target.write_bytes(b"DO_NOT_MODIFY")
+    original = paths.StoreFiles.file
+    def substitute(self, candidate):
+        if candidate == "public_knowledge.sqlite3":
+            (tmp_path / candidate).symlink_to(target)
+        return original(self, candidate)
+    monkeypatch.setattr(paths.StoreFiles, "file", substitute)
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: pytest.fail("target reached"))
+    with pytest.raises(CorpusStoreError, match="corpus_path_invalid"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pass
+    assert target.read_bytes() == b"DO_NOT_MODIFY"

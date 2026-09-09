@@ -14,11 +14,11 @@ import math
 import os
 from pathlib import Path
 import sqlite3
-import stat
 import time
 import uuid
 
 from backend.provider_security_control_plane import TrustedProviderScope
+from backend.public_corpus_files import StoreFiles, UnsafeStorePath
 
 _WORKLOAD = "public-knowledge-sync"
 _VERSION = 1
@@ -108,21 +108,6 @@ def _read_corpus(value):
     except CorpusStoreError:
         raise CorpusStoreError("corpus_storage_invalid") from None
     return decoded
-
-
-def _safe_path(path, *, regular=False):
-    # lstat before resolve: do not silently accept symlinks, junctions or aliases.
-    for part in (*reversed(path.parents), path):
-        if not part.exists() and not part.is_symlink():
-            continue
-        info = part.lstat()
-        if (stat.S_ISLNK(info.st_mode)
-                or getattr(info, "st_file_attributes", 0) & 0x400):
-            raise CorpusStoreError("corpus_path_invalid")
-    if regular and path.exists():
-        info = path.stat()
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            raise CorpusStoreError("corpus_path_invalid")
 
 
 _SCHEMA = """
@@ -217,21 +202,15 @@ class PublicCorpusStore:
         except PermissionError:
             raise CorpusStoreError("corpus_scope_denied") from None
         connection = None
+        files = None
         descriptor = None
         locked = False
         session = None
         yielded = False
         try:
-            root = self.directory.absolute()
-            _safe_path(root)
-            if not root.is_dir():
-                raise CorpusStoreError("corpus_path_invalid")
-            if os.name != "nt" and (root.stat().st_uid != os.geteuid() or root.stat().st_mode & 0o077):
-                raise CorpusStoreError("corpus_path_invalid")
-            for suffix in (".lock", ".sqlite3", ".sqlite3-wal", ".sqlite3-shm"):
-                _safe_path(root / ("public_knowledge" + suffix), regular=True)
-            lock_path = root / "public_knowledge.lock"
-            descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+            files = StoreFiles(self.directory)
+            files.open()
+            descriptor = files.file("public_knowledge.lock")
             deadline = time.monotonic() + self.lock_timeout
             while True:
                 try:
@@ -248,15 +227,9 @@ class PublicCorpusStore:
                     if time.monotonic() >= deadline:
                         raise CorpusStoreError("corpus_busy") from None
                     time.sleep(min(0.02, max(0, deadline - time.monotonic())))
-            lock_info = os.fstat(descriptor)
-            if (lock_info.st_nlink != 1 or not stat.S_ISREG(lock_info.st_mode)
-                    or not os.path.samestat(lock_info, lock_path.stat())):
-                raise CorpusStoreError("corpus_path_invalid")
-            # Revalidate after acquiring the shared process lock.
-            for suffix in (".sqlite3", ".sqlite3-wal", ".sqlite3-shm"):
-                _safe_path(root / ("public_knowledge" + suffix), regular=True)
-            connection = sqlite3.connect(root / "public_knowledge.sqlite3",
-                                         timeout=2, isolation_level=None)
+            database = files.database()
+            files.validate()
+            connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version not in (0, _VERSION):
                 raise CorpusStoreError("corpus_schema_unsupported")
@@ -279,14 +252,14 @@ class PublicCorpusStore:
                                    (uuid.uuid4().hex, initial))
                 connection.execute("PRAGMA user_version=1")
                 connection.commit()
-            if connection.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
-                raise CorpusStoreError("corpus_storage_invalid")
-            if connection.execute("PRAGMA foreign_key_check").fetchall():
-                raise CorpusStoreError("corpus_storage_invalid")
             _validate_schema(connection)
             session = _Session(connection)
             yielded = True
             yield session
+        except UnsafeStorePath:
+            if yielded:
+                raise
+            raise CorpusStoreError("corpus_path_invalid") from None
         except (OSError, sqlite3.Error):
             if yielded:
                 # The caller owns external-effect classification and recovery.
@@ -317,11 +290,11 @@ class PublicCorpusStore:
                             fcntl.flock(descriptor, fcntl.LOCK_UN)
                 except OSError:
                     cleanup_failed = True
-                finally:
-                    try:
-                        os.close(descriptor)
-                    except OSError:
-                        cleanup_failed = True
+            if files is not None:
+                try:
+                    files.close()
+                except OSError:
+                    cleanup_failed = True
             if cleanup_failed:
                 raise CorpusStoreError("corpus_storage_unavailable") from None
 
@@ -349,6 +322,17 @@ class _Session:
             raise
 
     @_guarded
+    def verify_integrity(self):
+        """Explicit maintenance: O(database history), under the process lock."""
+        self._check()
+        if self._db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+            raise CorpusStoreError("corpus_storage_invalid")
+        if self._db.execute("PRAGMA foreign_key_check").fetchall():
+            raise CorpusStoreError("corpus_storage_invalid")
+        _validate_schema(self._db)
+        return "ok"
+
+    @_guarded
     def snapshot(self):
         self._check()
         row = self._db.execute(
@@ -357,7 +341,7 @@ class _Session:
             raise CorpusStoreError("corpus_storage_invalid")
         corpus = _read_corpus(row[2])
         blocked = bool(self._db.execute(
-            "SELECT 1 FROM operations WHERE state!='committed' LIMIT 1").fetchone())
+            "SELECT 1 FROM operations WHERE state IN ('prepared','recovery_required') LIMIT 1").fetchone())
         return {"revision": row[0], "restore_epoch": row[1],
                 "corpus": corpus, "recovery_required": blocked}
 
@@ -453,7 +437,7 @@ class _Session:
         self._check()
         rows = self._db.execute(
             "SELECT operation_id,kind,base_revision,state,before_payload,after_payload "
-            "FROM operations WHERE state!='committed'").fetchall()
+            "FROM operations WHERE state IN ('prepared','recovery_required')").fetchall()
         return [{"operation_id": r[0], "kind": r[1], "base_revision": r[2],
                  "state": r[3], "before": _read_corpus(r[4]), "after": _read_corpus(r[5]),
                  "steps": [_read_json(s[0]) for s in self._db.execute(
