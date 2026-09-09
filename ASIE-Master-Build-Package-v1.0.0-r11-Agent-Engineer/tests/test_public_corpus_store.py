@@ -367,7 +367,7 @@ def test_invalid_stored_corpus_schema_uses_storage_error(tmp_path, payload):
             session.snapshot()
 
 
-def test_empty_version_one_database_denied_before_yield(tmp_path):
+def test_empty_version_two_database_denied_before_yield(tmp_path):
     with sqlite3.connect(tmp_path / "public_knowledge.sqlite3") as db:
         db.execute("PRAGMA user_version=2")
     with pytest.raises(CorpusStoreError, match="schema_unsupported"):
@@ -381,7 +381,7 @@ def test_empty_version_one_database_denied_before_yield(tmp_path):
     ("DELETE FROM corpus_state", "storage_invalid"),
     ("UPDATE corpus_state SET restore_epoch=''", "storage_invalid"),
 ])
-def test_mutated_version_one_database_denied_before_yield(tmp_path, mutation, code):
+def test_mutated_version_two_database_denied_before_yield(tmp_path, mutation, code):
     with PublicCorpusStore(tmp_path).session(scope()):
         pass
     with sqlite3.connect(tmp_path / "public_knowledge.sqlite3") as db:
@@ -591,6 +591,11 @@ def lifecycle(tmp_path, *, verifier=True):
     return service, index, epoch
 
 
+def tenant_principal(organization="org-a"):
+    return SimpleNamespace(user_id="user", session_id="session",
+                           organization_id=organization, role="member")
+
+
 def tenant(organization="org-a"):
     return TrustedProviderScope.for_tenant(
         principal=SimpleNamespace(user_id="user", session_id="session",
@@ -673,7 +678,7 @@ def test_lifecycle_no_settlement_proof_blocks_search_and_retry(tmp_path):
     assert service.run(registry(), key="sync", epoch=epoch)["status"] == "recovery_required"
     calls = list(index.calls)
     assert service.recover()["status"] == "recovery_required"
-    service.evidence(scope=tenant(), query="never persisted")
+    service.evidence(scope=tenant(), principal=tenant_principal(), query="never persisted")
     assert index.calls == calls
     with pytest.raises(CorpusStoreError, match="recovery_required"):
         service.run(registry(), key="retry", epoch=epoch)
@@ -684,21 +689,21 @@ def test_lifecycle_no_settlement_proof_blocks_search_and_retry(tmp_path):
 def test_lifecycle_reads_bound_to_canonical_and_tenant(tmp_path):
     service, index, epoch = lifecycle(tmp_path)
     service.run(registry(), key="sync", epoch=epoch)
-    good = service.evidence(scope=tenant(), query="public")
+    good = service.evidence(scope=tenant(), principal=tenant_principal(), query="public")
     assert good["status"] == "ready"
     assert good["evidence"]
-    service.evidence(scope=tenant("org-b"), query="public")
+    service.evidence(scope=tenant("org-b"), principal=tenant_principal("org-b"), query="public")
     assert ("search", "org-a", "project-org-a") in index.calls
     assert ("search", "org-b", "project-org-b") in index.calls
     next(iter(index.records.values()))["chunk_text"] = "tampered"
-    assert service.evidence(scope=tenant(), query="public") == service._unavailable()
+    assert service.evidence(scope=tenant(), principal=tenant_principal(), query="public") == service._unavailable()
 
 
 def test_lifecycle_read_revision_race_abstains(tmp_path):
     service, index, epoch = lifecycle(tmp_path)
     service.run(registry(), key="sync", epoch=epoch)
     index.on_search = lambda: service.reindex(key="during-search", epoch=epoch)
-    assert service.evidence(scope=tenant(), query="public") == service._unavailable()
+    assert service.evidence(scope=tenant(), principal=tenant_principal(), query="public") == service._unavailable()
 
 
 def test_lifecycle_denied_before_io(tmp_path):
@@ -711,7 +716,7 @@ def test_lifecycle_denied_before_io(tmp_path):
     for denied in (scope(), replace(tenant(), organization_id="other"),
                    replace(tenant(), _proof=object()), None):
         with pytest.raises((CorpusStoreError, PermissionError)):
-            service.evidence(scope=denied, query="public")
+            service.evidence(scope=denied, principal=tenant_principal(), query="public")
     assert not index.calls
 
 
@@ -834,7 +839,7 @@ def test_lifecycle_late_compensation_requires_second_settlement_proof(tmp_path):
     with service.store.session(scope()) as session:
         assert session.snapshot()["recovery_required"]
     calls = list(index.calls)
-    service.evidence(scope=tenant(), query="blocked")
+    service.evidence(scope=tenant(), principal=tenant_principal(), query="blocked")
     assert calls == index.calls
 
 
@@ -860,6 +865,53 @@ def test_lifecycle_owner_resolver_failure_denies_without_details(tmp_path):
         raise RuntimeError("SECRET_RESOLVER")
     service.project_organization_resolver = unavailable
     with pytest.raises(CorpusStoreError, match="^corpus_scope_denied$") as caught:
-        service.evidence(scope=tenant(), query="public")
+        service.evidence(scope=tenant(), principal=tenant_principal(), query="public")
     assert "SECRET_RESOLVER" not in str(caught.value)
     assert not index.calls
+
+
+def test_lifecycle_delayed_duplicate_compensation_cannot_cross_next_write(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="original", epoch=epoch)
+    queued = []
+    delete_now = index.delete_public_knowledge
+    def delete_with_delayed_duplicate(*, scope, record_ids):
+        delete_now(scope=scope, record_ids=record_ids)
+        queued.append((scope, list(record_ids)))
+    index.delete_public_knowledge = delete_with_delayed_duplicate
+    index.settled = lambda _: not queued
+    # Compensation currently matches the empty canonical state, but the delayed
+    # duplicate could delete a subsequent successful sync if the gate reopened.
+    assert service.recover()["status"] == "recovery_required"
+    assert not index.records and queued
+    assert index.matches("test-proof", {}, [r for _, ids in queued for r in ids])
+    with pytest.raises(CorpusStoreError, match="recovery_required"):
+        service.run(registry(), key="next-write", epoch=epoch)
+    index.delete_public_knowledge = delete_now
+    while queued:
+        request_scope, identifiers = queued.pop()
+        delete_now(scope=request_scope, record_ids=identifiers)
+    assert service.recover()["status"] == "failed_compensated"
+    assert service.run(registry(), key="next-write", epoch=epoch)["sources_changed"] == 1
+    assert index.records
+
+
+def test_lifecycle_rewritten_pair_cannot_charge_another_tenant(tmp_path):
+    service, index, _ = lifecycle(tmp_path)
+    changed = replace(tenant(), organization_id="org-b", project_id="project-org-b")
+    with pytest.raises(CorpusStoreError, match="scope_denied"):
+        service.evidence(scope=changed, principal=tenant_principal(), query="public")
+    assert not index.calls
+
+
+def test_lifecycle_contract_change_rejects_terminal_replay(tmp_path, monkeypatch):
+    import backend.public_corpus_store as module
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="versioned", epoch=epoch)
+    calls = list(index.calls)
+    monkeypatch.setattr(module, "_REPLAY_CONTRACT", "public-knowledge-lifecycle.v2")
+    with pytest.raises(CorpusStoreError, match="intent_conflict"):
+        service.run(registry(), key="versioned", epoch=epoch)
+    assert index.calls == calls

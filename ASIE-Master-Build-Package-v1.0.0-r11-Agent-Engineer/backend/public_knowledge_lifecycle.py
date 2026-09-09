@@ -191,12 +191,19 @@ class PublicKnowledgeLifecycle:
         except Exception:
             return blocked
 
-    def evidence(self, *, scope, query, top_k=8):
+    def evidence(self, *, scope, principal=None, query, top_k=8):
         """Tenant-scoped read; query is never journalled or stored."""
         if type(scope) is not TrustedProviderScope:
             raise CorpusStoreError("corpus_scope_denied")
         try:
             TrustedProviderScope.request_context(scope, "search_public_knowledge")
+            # Reissue from the independently authenticated server principal;
+            # agreement between two replaceable scope fields alone is not proof.
+            issued = TrustedProviderScope.for_tenant(
+                principal=principal, project_id=scope.project_id,
+                project_organization_resolver=self.project_organization_resolver)
+            if issued.organization_id != scope.organization_id:
+                raise PermissionError
             if (scope.preflight or scope.organization_id == "__platform__"
                     or self.project_organization_resolver is None
                     or self.project_organization_resolver(scope.project_id) != scope.organization_id):

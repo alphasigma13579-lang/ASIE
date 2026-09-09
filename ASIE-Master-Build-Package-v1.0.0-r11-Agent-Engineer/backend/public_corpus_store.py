@@ -22,6 +22,7 @@ from backend.public_corpus_files import StoreFiles, UnsafeStorePath
 
 _WORKLOAD = "public-knowledge-sync"
 _VERSION = 2
+_REPLAY_CONTRACT = "public-knowledge-lifecycle.v1"
 _MAX_BYTES = 16 * 1024 * 1024
 _FORBIDDEN = frozenset({
     "organization_id", "tenant_id", "project_id", "session_id", "user_id",
@@ -440,7 +441,7 @@ class _Session:
                                       "after": after, "revision": expected_revision,
                                       "contract_version": _VERSION}).encode()).hexdigest()
         key_hash = hashlib.sha256(key.encode()).hexdigest()
-        request_digest = hashlib.sha256(_json(request).encode()).hexdigest() if request is not None else None
+        request_digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest() if request is not None else None
         with self._transaction():
             current = self.snapshot()
             if epoch != current["restore_epoch"]:
@@ -549,7 +550,7 @@ class _Session:
         self._check()
         _token(key)
         _token(epoch)
-        digest = hashlib.sha256(_json(request).encode()).hexdigest()
+        digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest()
         current = self.snapshot()
         if epoch != current["restore_epoch"]:
             raise CorpusStoreError("corpus_epoch_mismatch")
