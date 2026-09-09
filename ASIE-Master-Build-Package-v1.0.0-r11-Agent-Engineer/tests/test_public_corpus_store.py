@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from contextlib import closing
 import multiprocessing as mp
 import os
 from pathlib import Path
@@ -505,9 +506,27 @@ def test_windows_guard_primitives(tmp_path):
         files.file("public_knowledge.lock")
         database = files.database()
         files.validate()
-        with sqlite3.connect(database, isolation_level=None) as db:
+        with closing(sqlite3.connect(database, isolation_level=None)) as db:
             assert db.execute("PRAGMA user_version").fetchone()[0] == 0
             assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
             db.execute("CREATE TABLE primitive_probe(value)")
     finally:
         files.close()
+
+
+@pytest.mark.parametrize("name", ["public_knowledge.lock", "public_knowledge.sqlite3",
+                                  "public_knowledge.sqlite3-wal", "public_knowledge.sqlite3-shm",
+                                  "public_knowledge.sqlite3-journal"])
+def test_unsafe_file_permissions_denied_before_database(tmp_path, monkeypatch, name):
+    path = tmp_path / name
+    path.write_bytes(b"DO_NOT_CHANGE")
+    if os.name == "nt":
+        subprocess.run(["icacls", str(path), "/grant", "*S-1-1-0:F"],
+                       check=True, capture_output=True)
+    else:
+        path.chmod(0o666)
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: pytest.fail("unsafe file used"))
+    with pytest.raises(CorpusStoreError, match="corpus_path_invalid"):
+        with PublicCorpusStore(tmp_path).session(scope()):
+            pass
+    assert path.read_bytes() == b"DO_NOT_CHANGE"

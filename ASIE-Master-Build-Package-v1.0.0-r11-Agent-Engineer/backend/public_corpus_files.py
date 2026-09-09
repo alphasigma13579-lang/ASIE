@@ -5,7 +5,6 @@ trusted: code running as either can already replace the process or its database.
 """
 from __future__ import annotations
 
-import errno
 import os
 from pathlib import Path
 import stat
@@ -200,7 +199,9 @@ class _Windows:
     def open(self, path, *, directory, transient=False):
         if self.kernel.GetDriveTypeW(str(path.anchor)) != 3:  # fixed local disk only
             raise UnsafeStorePath()
-        # No FILE_SHARE_DELETE: path entries cannot be replaced while guarded.
+        # Pin persistent entries against replacement. The rollback journal alone
+        # shares deletion: SQLite retires it during WAL initialization, inside
+        # the verified service-private directory (not an untrusted namespace).
         access = 0x20080 if directory else 0xC0020080
         handle = self.kernel.CreateFileW(str(path), access, 7 if transient else 3, None,
                                         3 if directory else 4, 0x02200000, None)
