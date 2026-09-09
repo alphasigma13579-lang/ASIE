@@ -112,6 +112,99 @@ class PublicKnowledgeError(RuntimeError):
     """Fail-closed public knowledge contract or lifecycle error."""
 
 
+# Operational summaries are an output boundary: never serialize exception text,
+# class names, causes or tracebacks. Only exact, owned codes may cross it.
+_SAFE_FAILURE_MESSAGES = {
+    "public_source_content_too_short": (
+        "لم يحتو المصدر على محتوى كافٍ.",
+        "راجع المصدر أو أعد المحاولة لاحقًا دون اعتماد محتوى ناقص.",
+    ),
+    "public_source_content_too_large": (
+        "تجاوز محتوى المصدر الحجم المسموح.",
+        "راجع نطاق الاستخراج وحدوده قبل المحاولة مجددًا.",
+    ),
+    "public_source_extract_empty": (
+        "لم يُستخرج محتوى من المصدر.",
+        "تحقق من إتاحة المصدر وطريقة الوصول المعتمدة.",
+    ),
+    "public_source_crawl_empty": (
+        "لم يُعثر على محتوى ضمن نطاق البحث المعتمد.",
+        "راجع المصدر والنطاق المسموح دون توسيعه تلقائيًا.",
+    ),
+    "public_source_registry_invalid": (
+        "تعذرت قراءة سجل المصادر.",
+        "اطلب من المسؤول فحص السجل وإعداداته دون نشر تفاصيل الملفات.",
+    ),
+    "public_knowledge_corpus_invalid": (
+        "تعذرت قراءة مخزن المعرفة.",
+        "أوقف التحديث واطلب من المسؤول التحقق من سلامة المخزن.",
+    ),
+    "public_reindex_dry_run_conflict": (
+        "لا يمكن الجمع بين إعادة الفهرسة والفحص دون كتابة.",
+        "اختر وضع تشغيل واحدًا ضمن التفويض المعتمد.",
+    ),
+    "public_reindex_source_filter_forbidden": (
+        "إعادة الفهرسة لا تقبل تحديد مصدر واحد.",
+        "راجع خيارات التشغيل قبل المحاولة مجددًا.",
+    ),
+    "public_source_not_found": (
+        "المصدر المطلوب غير موجود في السجل.",
+        "اختر مصدرًا مسجلًا ومقبولًا.",
+    ),
+    "public_corpus_commit_failed_compensated": (
+        "فشل حفظ التحديث وتم التعويض عن تغيير الفهرس.",
+        "راجع سلامة التخزين قبل إعادة المحاولة.",
+    ),
+    "public_knowledge_reindex_failed_projection_preserved": (
+        "لم تكتمل إعادة الفهرسة.",
+        "اطلب من المسؤول التحقق من الفهرس قبل إعادة المحاولة.",
+    ),
+}
+_INCOMPLETE_COMPENSATION_CODES = frozenset({
+    "public_source_sync_failed_compensation_incomplete",
+    "public_corpus_commit_failed_compensation_incomplete",
+    "public_source_delete_failed_compensation_incomplete",
+    "public_source_delete_commit_failed_compensation_incomplete",
+    "public_source_restore_failed_compensation_incomplete",
+    "public_source_restore_commit_failed_compensation_incomplete",
+})
+
+
+def _safe_failure(exc: Exception) -> dict[str, str]:
+    # Exact type and one plain-string argument avoid executing an untrusted
+    # __str__ override or treating provider messages as owned contract codes.
+    code = (
+        exc.args[0]
+        if type(exc) is PublicKnowledgeError
+        and len(exc.args) == 1
+        and type(exc.args[0]) is str
+        else None
+    )
+    if code in _INCOMPLETE_COMPENSATION_CODES:
+        message = "فشلت العملية ولم يكتمل التعويض عن التغييرات."
+        action = "أوقف إعادة المحاولة واطلب من المسؤول فحص المخزن والفهرس واستعادة الاتساق."
+    elif code in _SAFE_FAILURE_MESSAGES:
+        message, action = _SAFE_FAILURE_MESSAGES[code]
+    elif isinstance(exc, TimeoutError):
+        code = "public_knowledge_timeout"
+        message = "انتهت مهلة العملية."
+        action = "تحقق من حالة الخدمة ثم أعد المحاولة ضمن حدود التشغيل المعتمدة."
+    elif isinstance(exc, OSError):
+        code = "public_knowledge_io_failed"
+        message = "تعذرت عملية إدخال أو إخراج."
+        action = "اطلب من المسؤول التحقق من الاتصال والتخزين والصلاحيات قبل إعادة المحاولة."
+    else:
+        code = "public_knowledge_operation_failed"
+        message = "تعذر إكمال عملية المعرفة."
+        action = "راجع حالة التشغيل والإعدادات لدى المسؤول قبل إعادة المحاولة؛ لا ترسل الأسرار."
+    return {
+        "error_type": "PublicKnowledgeError" if type(exc) is PublicKnowledgeError else "OperationalError",
+        "reason": code,
+        "message": message,
+        "next_action": action,
+    }
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -906,7 +999,7 @@ class PublicKnowledgeSync:
                     continue
                 summary["sources_failed"] += 1
                 summary["errors"].append(
-                    {"source_id": source_id, "error_type": type(exc).__name__, "reason": str(exc)}
+                    {"source_id": source_id, **_safe_failure(exc)}
                 )
         summary["completed_at"] = self.now()
         if dry_run:
@@ -1364,9 +1457,7 @@ def main() -> int:
         result = {
             "sync_id": "fc20-05-public-economic-knowledge-v1",
             "status": "failed",
-            "error_type": type(exc).__name__,
-            "reason": str(exc),
-            "secrets_exposed": False,
+            **_safe_failure(exc),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 1

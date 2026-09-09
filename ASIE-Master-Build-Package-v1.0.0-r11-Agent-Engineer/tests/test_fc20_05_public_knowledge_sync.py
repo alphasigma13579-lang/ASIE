@@ -402,6 +402,8 @@ def test_dry_run_reports_source_failure_instead_of_unchanged(tmp_path: Path) -> 
             "source_id": "mof-open-data",
             "error_type": "PublicKnowledgeError",
             "reason": "public_source_content_too_short",
+            "message": "لم يحتو المصدر على محتوى كافٍ.",
+            "next_action": "راجع المصدر أو أعد المحاولة لاحقًا دون اعتماد محتوى ناقص.",
         }
     ]
     assert not service.corpus_path.exists()
@@ -696,3 +698,125 @@ def test_failed_reindex_preserves_existing_projection_without_delete_all(tmp_pat
         service.reindex()
     assert failing.deletes == []
     assert len(failing.upserts) == 1
+
+
+# F05-02: exceptions are untrusted at both summary/CLI output boundaries.
+SENSITIVE_MARKER = "F05_SENTINEL_DO_NOT_DISCLOSE"
+HostileFailure = type(SENSITIVE_MARKER, (RuntimeError,), {})
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+@pytest.mark.parametrize("operation", ["extract", "crawl", "upsert"])
+def test_source_failure_summary_does_not_serialize_exception(
+    tmp_path: Path, monkeypatch, capsys, dry_run: bool, operation: str,
+) -> None:
+    service, pinecone = sync(tmp_path, "Official economic content. " * 30)
+    source = source_record()
+    if operation == "crawl":
+        source.update(acquisition_mode="crawl", crawl_max_depth=1, crawl_limit=2)
+
+    def fail(**kwargs):
+        raise HostileFailure(SENSITIVE_MARKER + " credential=value /private/file")
+
+    target = service.pinecone if operation == "upsert" else service.tavily
+    method = "upsert_public_knowledge" if operation == "upsert" else operation
+    monkeypatch.setattr(target, method, fail, raising=False)
+    result = service.run(registry(source), dry_run=dry_run)
+    if operation == "upsert" and dry_run:
+        assert result["status"] == "changed_dry_run"
+        assert result["errors"] == []
+    else:
+        assert result["status"] == "failed"
+        assert result["sources_failed"] == 1
+        assert result["errors"] == [{
+            "source_id": "mof-open-data",
+            "error_type": "OperationalError",
+            "reason": "public_knowledge_operation_failed",
+            "message": "تعذر إكمال عملية المعرفة.",
+            "next_action": "راجع حالة التشغيل والإعدادات لدى المسؤول قبل إعادة المحاولة؛ لا ترسل الأسرار.",
+        }]
+    captured = capsys.readouterr()
+    assert SENSITIVE_MARKER not in json.dumps(result) + captured.out + captured.err
+    assert not service.corpus_path.exists()
+
+
+@pytest.mark.parametrize("stage", ["registry", "build", "run", "reindex"])
+def test_cli_failure_redacts_exception_and_cause(
+    tmp_path: Path, monkeypatch, capsys, stage: str,
+) -> None:
+    service, _ = sync(tmp_path, "Official economic content. " * 30)
+
+    def fail(*args, **kwargs):
+        try:
+            raise OSError(SENSITIVE_MARKER + "/private/file")
+        except OSError as cause:
+            raise HostileFailure(SENSITIVE_MARKER) from cause
+
+    monkeypatch.setattr(public_knowledge_module.sys, "argv",
+                        ["public-knowledge"] + (["--reindex"] if stage == "reindex" else []))
+    monkeypatch.setattr(public_knowledge_module, "load_public_source_registry",
+                        fail if stage == "registry" else lambda *args: registry())
+    monkeypatch.setattr(public_knowledge_module, "build_public_knowledge_sync_from_env",
+                        fail if stage == "build" else lambda *args, **kwargs: service)
+    if stage in {"run", "reindex"}:
+        monkeypatch.setattr(service, stage, fail)
+    assert public_knowledge_module.main() == 1
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["status"] == "failed"
+    assert result["reason"] == "public_knowledge_operation_failed"
+    assert result["error_type"] == "OperationalError"
+    assert result["message"] and result["next_action"]
+    assert "secrets_exposed" not in result  # no unsupported blanket assurance
+    assert SENSITIVE_MARKER not in captured.out + captured.err
+    assert captured.err == ""
+    assert not service.corpus_path.exists()
+
+
+def test_cli_source_failure_uses_safe_nested_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+    service, _ = sync(tmp_path, "Official economic content. " * 30)
+
+    def fail(**kwargs):
+        raise HostileFailure(SENSITIVE_MARKER)
+
+    monkeypatch.setattr(service.tavily, "extract", fail)
+    monkeypatch.setattr(public_knowledge_module.sys, "argv", ["public-knowledge", "--dry-run"])
+    monkeypatch.setattr(public_knowledge_module, "load_public_source_registry", lambda *args: registry())
+    monkeypatch.setattr(public_knowledge_module, "build_public_knowledge_sync_from_env",
+                        lambda *args, **kwargs: service)
+    assert public_knowledge_module.main() == 1
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["sources_failed"] == 1
+    assert result["errors"][0]["reason"] == "public_knowledge_operation_failed"
+    assert SENSITIVE_MARKER not in captured.out + captured.err
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (TimeoutError(SENSITIVE_MARKER), "public_knowledge_timeout"),
+    (PermissionError(SENSITIVE_MARKER), "public_knowledge_io_failed"),
+    (PublicKnowledgeError("public_source_extract_empty"), "public_source_extract_empty"),
+    (PublicKnowledgeError("public_source_extract_empty:" + SENSITIVE_MARKER),
+     "public_knowledge_operation_failed"),
+    (RuntimeError("public_source_extract_empty"), "public_knowledge_operation_failed"),
+])
+def test_safe_failure_accepts_only_owned_exact_codes(exc, expected) -> None:
+    result = public_knowledge_module._safe_failure(exc)
+    assert result["reason"] == expected
+    assert result["message"] and result["next_action"]
+    assert SENSITIVE_MARKER not in json.dumps(result)
+
+
+def test_safe_failure_does_not_call_untrusted_string_conversion() -> None:
+    class UnprintableFailure(RuntimeError):
+        def __str__(self):
+            raise AssertionError("must not stringify")
+    result = public_knowledge_module._safe_failure(UnprintableFailure(SENSITIVE_MARKER))
+    assert result["reason"] == "public_knowledge_operation_failed"
+
+
+@pytest.mark.parametrize("code", sorted(public_knowledge_module._INCOMPLETE_COMPENSATION_CODES))
+def test_incomplete_compensation_requires_manual_recovery(code) -> None:
+    result = public_knowledge_module._safe_failure(PublicKnowledgeError(code))
+    assert result["reason"] == code
+    assert "أوقف إعادة المحاولة" in result["next_action"]
