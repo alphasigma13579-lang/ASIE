@@ -444,6 +444,7 @@ const defaultInputs: ProjectFormInputs = {
   debt_amount: 0,
   annual_interest_rate: 0,
   loan_years: 0,
+  blueprint_items: [],
 };
 
 function formatValue(output: OutputEnvelope, locale: "ar" | "en" = "ar"): string {
