@@ -10,9 +10,9 @@ from copy import deepcopy
 from pathlib import Path
 
 from backend.provider_security_control_plane import TrustedProviderScope
-from backend.public_corpus_store import CorpusStoreError, _json, _token
+from backend.public_corpus_store import CorpusStoreError, _json
 from backend.public_knowledge import (
-    PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _batched, _safe_failure,
+    PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _RECORD_ID_RE, _batched, _safe_failure,
     _safe_source_id, validate_public_source_registry,
     _utc_now, build_feasibility_evidence_context,
     build_unavailable_feasibility_evidence_context,
@@ -35,20 +35,24 @@ def _record_sets(corpus):
     if type(corpus) is not dict or type(corpus.get("sources")) is not dict:
         raise CorpusStoreError("corpus_projection_invalid")
     for source in corpus["sources"].values():
-        if type(source) is not dict or type(source.get("versions", [])) is not list:
+        if (type(source) is not dict
+                or source.get("status") not in ("active", "deleted_tombstone")
+                or type(source.get("versions", [])) is not list):
             raise CorpusStoreError("corpus_projection_invalid")
         versions = source.get("versions", [])
         for version in [source, *versions]:
             if type(version) is not dict or type(version.get("records", [])) is not list:
                 raise CorpusStoreError("corpus_projection_invalid")
             records = version.get("records", [])
+            seen = set()
             for record in records:
                 if type(record) is not dict:
                     raise CorpusStoreError("corpus_projection_invalid")
-                try:
-                    _token(record.get("_id"), 512)
-                except CorpusStoreError:
-                    raise CorpusStoreError("corpus_projection_invalid") from None
+                identifier = record.get("_id")
+                if (type(identifier) is not str or not _RECORD_ID_RE.fullmatch(identifier)
+                        or identifier in seen):
+                    raise CorpusStoreError("corpus_projection_invalid")
+                seen.add(identifier)
             yield source, version is source, records
 
 

@@ -977,7 +977,7 @@ def test_lifecycle_full_compensation_during_search_abstains(tmp_path):
     {"status": "active", "records": [None]},
     {"status": "active", "records": [{"_id": []}]},
     {"status": "active", "records": [{}]},
-    {"status": "tombstoned", "records": [], "versions": [None]},
+    {"status": "deleted_tombstone", "records": [], "versions": [None]},
 ])
 def test_lifecycle_malformed_nested_corpus_fails_before_provider(tmp_path, bad_source):
     service, index, epoch = lifecycle(tmp_path)
@@ -1056,3 +1056,45 @@ def test_lifecycle_empty_cleanup_interruption_recovers_known_ids_only(tmp_path):
         service.reconcile_empty_index(key="cleanup", epoch=epoch)
     assert service.recover()["status"] == "failed_compensated"
     assert set(index.records) == {"unrelated"}
+
+
+@pytest.mark.parametrize("bad_source", [
+    {"status": "active", "records": [{"_id": "_bad"}]},
+    {"status": "deleted_tombstone", "records": [{"_id": ":bad"}]},
+    {"status": "SECRET_UNKNOWN", "records": [{"_id": "valid"}]},
+    {"records": [{"_id": "valid"}]},
+    {"status": "deleted_tombstone", "records": [], "versions": [
+        {"records": [{"_id": "same"}, {"_id": "same"}]}]},
+    {"status": "deleted_tombstone", "records": [
+        {"_id": "same"}, {"_id": "same"}]},
+])
+@pytest.mark.parametrize("operation", ["run", "cleanup"])
+def test_lifecycle_invalid_record_identity_or_state_has_no_effects(tmp_path, bad_source, operation):
+    service, index, epoch = lifecycle(tmp_path)
+    bad = corpus()
+    bad["sources"] = {"broken": bad_source}
+    with service.store.session(scope()) as session:
+        session._db.execute("UPDATE corpus_state SET payload=?", (json.dumps(bad),))
+    with pytest.raises(CorpusStoreError, match="^corpus_projection_invalid$") as caught:
+        if operation == "run":
+            service.run(registry(), key="invalid", epoch=epoch)
+        else:
+            service.reconcile_empty_index(key="invalid", epoch=epoch)
+    assert "SECRET_UNKNOWN" not in str(caught.value)
+    assert not index.calls and not service.tavily.calls
+    with service.store.session(scope()) as session:
+        assert session._db.execute("SELECT COUNT(*) FROM operations").fetchone()[0] == 0
+
+
+def test_lifecycle_same_identity_across_retained_versions_is_valid(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    saved = corpus()
+    saved["sources"] = {"source": {
+        "status": "deleted_tombstone", "records": [{"_id": "valid.id:1"}],
+        "versions": [{"records": [{"_id": "valid.id:1"}]},
+                     {"records": [{"_id": "valid.id:1"}]}]}}
+    with service.store.session(scope()) as session:
+        session._db.execute("UPDATE corpus_state SET payload=?", (json.dumps(saved),))
+    result = service.reconcile_empty_index(key="valid-history", epoch=epoch)
+    assert result["status"] == "empty_projection_reconciled"
+    assert result["records_deleted"] == 1
