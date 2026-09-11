@@ -555,8 +555,11 @@ class _Session:
         _token(key)
         _token(epoch)
         digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest()
-        current = self.snapshot()
-        if epoch != current["restore_epoch"]:
+        current_epoch = self._db.execute(
+            "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone()
+        if current_epoch is None:
+            raise CorpusStoreError("corpus_storage_invalid")
+        if epoch != current_epoch[0]:
             raise CorpusStoreError("corpus_epoch_mismatch")
         row = self._db.execute(
             "SELECT state,request_digest,result_payload FROM operations "
@@ -572,7 +575,7 @@ class _Session:
             if row[2] is None:
                 raise CorpusStoreError("corpus_legacy_result_unavailable")
             return _read_json(row[2])
-        if current["recovery_required"]:
+        if self.snapshot()["recovery_required"]:
             raise CorpusStoreError("corpus_recovery_required")
         return None
 

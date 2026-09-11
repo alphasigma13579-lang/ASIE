@@ -36,14 +36,14 @@ def _record_sets(corpus):
         raise CorpusStoreError("corpus_projection_invalid")
     for source in corpus["sources"].values():
         if (type(source) is not dict
-                or source.get("status") not in ("active", "deleted_tombstone")
-                or type(source.get("versions", [])) is not list):
+                or source.get("status") not in ("active", "deleted_tombstone", "quarantined")
+                or type(source.get("versions")) is not list):
             raise CorpusStoreError("corpus_projection_invalid")
-        versions = source.get("versions", [])
+        versions = source["versions"]
         for version in [source, *versions]:
-            if type(version) is not dict or type(version.get("records", [])) is not list:
+            if type(version) is not dict or type(version.get("records")) is not list:
                 raise CorpusStoreError("corpus_projection_invalid")
-            records = version.get("records", [])
+            records = version["records"]
             seen = set()
             for record in records:
                 if type(record) is not dict:
@@ -288,6 +288,7 @@ class PublicKnowledgeLifecycle:
                 before = session.snapshot()
                 if before["recovery_required"]:
                     return self._unavailable()
+                _projection(before["corpus"])
             response = self.pinecone.search_public_knowledge(scope=scope, query=query, top_k=top_k)
             with self.store.session(self.scope) as session:
                 after = session.snapshot()
