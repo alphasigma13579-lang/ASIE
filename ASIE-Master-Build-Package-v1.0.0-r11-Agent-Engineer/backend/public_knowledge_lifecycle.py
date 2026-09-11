@@ -10,7 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from backend.provider_security_control_plane import TrustedProviderScope
-from backend.public_corpus_store import CorpusStoreError, _json
+from backend.public_corpus_store import CorpusStoreError, _json, _token
 from backend.public_knowledge import (
     PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _batched, _safe_failure,
     _safe_source_id, validate_public_source_registry,
@@ -30,12 +30,34 @@ def _authorize(scope):
         raise CorpusStoreError("corpus_scope_denied") from None
 
 
+def _record_sets(corpus):
+    """Validate nested shapes before projection or effects, including history."""
+    if type(corpus) is not dict or type(corpus.get("sources")) is not dict:
+        raise CorpusStoreError("corpus_projection_invalid")
+    for source in corpus["sources"].values():
+        if type(source) is not dict or type(source.get("versions", [])) is not list:
+            raise CorpusStoreError("corpus_projection_invalid")
+        versions = source.get("versions", [])
+        for version in [source, *versions]:
+            if type(version) is not dict or type(version.get("records", [])) is not list:
+                raise CorpusStoreError("corpus_projection_invalid")
+            records = version.get("records", [])
+            for record in records:
+                if type(record) is not dict:
+                    raise CorpusStoreError("corpus_projection_invalid")
+                try:
+                    _token(record.get("_id"), 512)
+                except CorpusStoreError:
+                    raise CorpusStoreError("corpus_projection_invalid") from None
+            yield source, version is source, records
+
+
 def _projection(corpus):
     records = {}
-    for source in corpus["sources"].values():
-        if source.get("status") != "active":
+    for source, current, values in _record_sets(corpus):
+        if not current or source.get("status") != "active":
             continue
-        for record in source.get("records", []):
+        for record in values:
             identifier = record["_id"]
             if identifier in records:
                 raise CorpusStoreError("corpus_projection_invalid")
@@ -49,6 +71,17 @@ class _Plan(PublicKnowledgeSync):
                          corpus_path=Path("."), now=now)
         self.corpus = deepcopy(corpus)
         self.commands = []
+
+    def reconcile_empty(self):
+        if _projection(self.corpus):
+            raise CorpusStoreError("corpus_cleanup_requires_empty")
+        known = sorted({r["_id"] for _, _, records in _record_sets(self.corpus)
+                        for r in records})
+        deleted = self._delete_ids(known)
+        self.corpus["audit_events"].append({
+            "event": "empty_public_projection_reconciled",
+            "records_deleted": deleted, "at": self.now()})
+        return {"status": "empty_projection_reconciled", "records_deleted": deleted}
 
     def _load(self):
         return deepcopy(self.corpus)
@@ -70,7 +103,11 @@ class _Plan(PublicKnowledgeSync):
 class PublicKnowledgeLifecycle:
     """Explicit platform service. Never construct from customer request options.
 
-    verifier.settled(operation_id) proves prior requests cannot apply late.
+    verifier.settled(operation_id, attempts=journal_steps) proves every recorded
+    attempt terminal, including attempts missing from the adapter after restart.
+    Missing correlation or unknown dispatch outcome must return False. The effect
+    adapter owns durable handle-to-provider-request mapping and retry accounting.
+    No automatic retry is introduced here.
     verifier.matches(operation_id, expected, absent) proves exact compensated
     projection for affected identifiers, including absence. Neither method has
     a permissive default. A timeout, eventual-consistency guess or fixed sleep
@@ -96,11 +133,23 @@ class PublicKnowledgeLifecycle:
     def reindex(self, *, key, epoch):
         return self._execute("reindex", None, key=key, epoch=epoch)
 
-    def _effect(self, action, values):
-        if action == "upsert":
-            self.pinecone.upsert_public_knowledge(scope=self.scope, records=values)
-        else:
-            self.pinecone.delete_public_knowledge(scope=self.scope, record_ids=values)
+    def reconcile_empty_index(self, *, key, epoch):
+        """Explicit known-ID cleanup; ordinary empty reindex still rejects."""
+        return self._execute("reindex", {"reconcile_empty": True}, key=key, epoch=epoch)
+
+    def _effect(self, operation_id, ordinal, action, values):
+        # No fallback to the uncorrelated live client. The trusted injected
+        # adapter must durably bind this handle before dispatching any request.
+        self.pinecone.apply_public_knowledge_effect(
+            scope=self.scope, operation_id=operation_id, step_ordinal=ordinal,
+            action=action, values=deepcopy(values))
+
+    def _settled(self, session, operation_id):
+        pending = session.pending()
+        if self.verifier is None or not pending or pending[0]["operation_id"] != operation_id:
+            return False
+        attempts = [{"ordinal": i, **step} for i, step in enumerate(pending[0]["steps"])]
+        return self.verifier.settled(operation_id, attempts=deepcopy(attempts)) is True
 
     def _execute(self, kind, value, *, key, epoch):
         _authorize(self.scope)
@@ -122,6 +171,7 @@ class PublicKnowledgeLifecycle:
             if replay is not None:
                 return replay
             snap = session.snapshot()
+            _projection(snap["corpus"])
             plan = _Plan(corpus=snap["corpus"], tavily=self.tavily,
                          scope=self.scope, now=self.now)
             try:
@@ -131,6 +181,8 @@ class PublicKnowledgeLifecycle:
                     result = plan.delete_source(request["value"])
                 elif kind == "restore":
                     result = plan.restore_source(request["value"])
+                elif request["value"] == {"reconcile_empty": True}:
+                    result = plan.reconcile_empty()
                 else:
                     result = plan.reindex()
             except Exception as exc:
@@ -148,9 +200,9 @@ class PublicKnowledgeLifecycle:
             try:
                 for action, values in plan.commands:
                     identifiers = [r["_id"] for r in values] if action == "upsert" else values
-                    session.record_step(operation.operation_id, action=action,
+                    ordinal = session.record_step(operation.operation_id, action=action,
                                         record_ids=identifiers)
-                    self._effect(action, values)
+                    self._effect(operation.operation_id, ordinal, action, values)
                 session.commit(operation.operation_id, result=result)
             except Exception:
                 # A commit acknowledgement may fail after commit. Never undo a
@@ -175,7 +227,7 @@ class PublicKnowledgeLifecycle:
                    "message": "تعذر إثبات اتساق المعرفة. أوقف الاستخدام واطلب فحص الاستعادة."}
         operation_id = pending["operation_id"]
         try:
-            if self.verifier is None or self.verifier.settled(operation_id) is not True:
+            if not self._settled(session, operation_id):
                 return blocked
             before = _projection(pending["before"])
             affected = {identifier for step in pending["steps"]
@@ -187,12 +239,12 @@ class PublicKnowledgeLifecycle:
                 for batch in _batched(values, size):
                     batch = list(batch)
                     identifiers = [r["_id"] for r in batch] if action == "upsert" else batch
-                    session.record_step(operation_id, action=action,
+                    ordinal = session.record_step(operation_id, action=action,
                                         record_ids=identifiers, recovery=True)
-                    self._effect(action, batch)
+                    self._effect(operation_id, ordinal, action, batch)
             # The first proof covered original requests only. Compensation
             # creates new requests; prove those terminal before opening reads.
-            if self.verifier.settled(operation_id) is not True:
+            if not self._settled(session, operation_id):
                 return blocked
             if self.verifier.matches(operation_id, deepcopy(expected), list(absent)) is not True:
                 return blocked
@@ -236,7 +288,8 @@ class PublicKnowledgeLifecycle:
             with self.store.session(self.scope) as session:
                 after = session.snapshot()
                 if (after["recovery_required"] or before["restore_epoch"] != after["restore_epoch"]
-                        or before["revision"] != after["revision"]):
+                        or before["revision"] != after["revision"]
+                        or before["operation_watermark"] != after["operation_watermark"]):
                     return self._unavailable()
                 canonical = _projection(after["corpus"])
                 hits = response["payload"]["result"]["hits"]

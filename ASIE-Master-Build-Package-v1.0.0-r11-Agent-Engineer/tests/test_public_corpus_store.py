@@ -546,6 +546,19 @@ class LifecycleIndex:
         self.calls = []
         self.failure = None
         self.on_search = None
+        self.attempts = {}
+        self.before_effect = None
+
+    def apply_public_knowledge_effect(self, *, scope, operation_id, step_ordinal, action, values):
+        identifiers = [r["_id"] for r in values] if action == "upsert" else values
+        attempt = {"ordinal": step_ordinal, "action": action, "record_ids": identifiers}
+        if self.before_effect:
+            self.before_effect(operation_id, attempt)
+        self.attempts[(operation_id, step_ordinal)] = deepcopy(attempt)
+        if action == "upsert":
+            self.upsert_public_knowledge(scope=scope, records=values)
+        else:
+            self.delete_public_knowledge(scope=scope, record_ids=values)
 
     def upsert_public_knowledge(self, *, scope, records):
         self.calls.append("upsert")
@@ -571,8 +584,8 @@ class LifecycleIndex:
             {"_id": key, "_score": 0.9, "fields": {k: v for k, v in record.items() if k != "_id"}}
             for key, record in list(self.records.items())[:top_k]]}}}
 
-    def settled(self, operation_id):
-        return True
+    def settled(self, operation_id, *, attempts):
+        return all(self.attempts.get((operation_id, a["ordinal"])) == a for a in attempts)
 
     def matches(self, operation_id, expected, absent):
         return (all(self.records.get(key) == value for key, value in expected.items())
@@ -833,7 +846,7 @@ def test_lifecycle_late_compensation_requires_second_settlement_proof(tmp_path):
     with pytest.raises(Interrupted):
         service.run(registry(), key="sync", epoch=epoch)
     proofs = iter([True, False])
-    index.settled = lambda _: next(proofs)
+    index.settled = lambda _, **kw: next(proofs)
     index.matches = lambda *_: pytest.fail("parity alone is not settlement")
     assert service.recover()["status"] == "recovery_required"
     with service.store.session(scope()) as session:
@@ -881,7 +894,7 @@ def test_lifecycle_delayed_duplicate_compensation_cannot_cross_next_write(tmp_pa
         delete_now(scope=scope, record_ids=record_ids)
         queued.append((scope, list(record_ids)))
     index.delete_public_knowledge = delete_with_delayed_duplicate
-    index.settled = lambda _: not queued
+    index.settled = lambda _, **kw: not queued
     # Compensation currently matches the empty canonical state, but the delayed
     # duplicate could delete a subsequent successful sync if the gate reopened.
     assert service.recover()["status"] == "recovery_required"
@@ -924,3 +937,122 @@ def test_lifecycle_equivalent_source_spellings_replay_one_operation(tmp_path):
     calls = list(index.calls)
     assert service.delete_source("mof-open-data", key="delete", epoch=epoch) == result
     assert calls == index.calls
+
+
+def test_compensated_begin_replays_same_envelope_without_new_operation(tmp_path):
+    store = PublicCorpusStore(tmp_path)
+    with store.session(scope()) as session:
+        args = request(session)
+        operation = session.begin(**args)
+        session.finish_compensation(operation.operation_id, result={"status": "failed_compensated"})
+    with store.session(scope()) as session:
+        replay = session.begin(**args)
+        assert replay.operation_id == operation.operation_id
+        assert replay.state == "compensated"
+        assert session._db.execute("SELECT COUNT(*) FROM operations").fetchone()[0] == 1
+        assert session._db.execute("SELECT COUNT(*) FROM operation_steps").fetchone()[0] == 0
+        with pytest.raises(CorpusStoreError, match="intent_conflict"):
+            session.begin(**{**args, "intent": {"different": True}})
+
+
+def test_lifecycle_full_compensation_during_search_abstains(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="initial", epoch=epoch)
+    with service.store.session(scope()) as session:
+        before = session.snapshot()
+    def cycle():
+        index.failure = RuntimeError("private")
+        assert service.delete_source("mof-open-data", key="during-read", epoch=epoch)["status"] == "failed_compensated"
+    index.on_search = cycle
+    assert service.evidence(scope=tenant(), principal=tenant_principal(), query="public") == service._unavailable()
+    with service.store.session(scope()) as session:
+        after = session.snapshot()
+    assert before["revision"] == after["revision"]
+    assert not after["recovery_required"]
+    assert after["operation_watermark"] > before["operation_watermark"]
+
+
+@pytest.mark.parametrize("bad_source", [
+    "SECRET_BAD_SOURCE", {"status": "active", "records": "SECRET_BAD_RECORDS"},
+    {"status": "active", "records": [None]},
+    {"status": "active", "records": [{"_id": []}]},
+    {"status": "active", "records": [{}]},
+    {"status": "tombstoned", "records": [], "versions": [None]},
+])
+def test_lifecycle_malformed_nested_corpus_fails_before_provider(tmp_path, bad_source):
+    service, index, epoch = lifecycle(tmp_path)
+    bad = corpus()
+    bad["sources"] = {"broken": bad_source}
+    with service.store.session(scope()) as session:
+        session._db.execute("UPDATE corpus_state SET payload=?", (json.dumps(bad),))
+    with pytest.raises(CorpusStoreError, match="^corpus_projection_invalid$"):
+        service.run(registry(), key="invalid-corpus", epoch=epoch)
+    assert not index.calls and not service.tavily.calls
+
+
+def test_lifecycle_effect_identity_is_journalled_before_dispatch(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    def check_journal(operation_id, attempt):
+        # Read-only separate connection observes committed journal before dispatch.
+        with closing(sqlite3.connect(tmp_path / "public_knowledge.sqlite3")) as db:
+            payload = db.execute(
+                "SELECT payload FROM operation_steps WHERE operation_id=? AND ordinal=?",
+                (operation_id, attempt["ordinal"])).fetchone()
+        assert payload is not None
+        assert json.loads(payload[0]) == {k: v for k, v in attempt.items() if k != "ordinal"}
+    index.before_effect = check_journal
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="original", epoch=epoch)
+    service = PublicKnowledgeLifecycle(
+        store=PublicCorpusStore(tmp_path), scope=scope(), tavily=service.tavily,
+        pinecone=index, verifier=index, now=lambda: NOW)
+    assert service.recover()["status"] == "failed_compensated"
+    assert len(index.attempts) == 2
+    assert len({operation for operation, _ in index.attempts}) == 1
+    assert sorted(ordinal for _, ordinal in index.attempts) == [0, 1]
+
+
+def test_lifecycle_unknown_effect_handle_cannot_clear_recovery(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="original", epoch=epoch)
+    index.attempts.clear()  # Simulate lost adapter correlation after restart.
+    calls = list(index.calls)
+    assert service.recover()["status"] == "recovery_required"
+    assert index.calls == calls
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["recovery_required"]
+
+
+def test_lifecycle_explicit_empty_cleanup_preserves_ordinary_reindex_rejection(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="initial", epoch=epoch)
+    stale = deepcopy(index.records)
+    service.delete_source("mof-open-data", key="delete", epoch=epoch)
+    index.records.update(stale)
+    index.records["unrelated"] = {"_id": "unrelated"}
+    assert service.reindex(key="empty", epoch=epoch)["status"] == "failed"
+    assert set(stale).issubset(index.records)
+    result = service.reconcile_empty_index(key="cleanup", epoch=epoch)
+    assert result["status"] == "empty_projection_reconciled"
+    assert result["records_deleted"] == len(stale)
+    assert set(index.records) == {"unrelated"}
+    calls = list(index.calls)
+    assert service.reconcile_empty_index(key="cleanup", epoch=epoch) == result
+    assert index.calls == calls
+
+
+def test_lifecycle_empty_cleanup_interruption_recovers_known_ids_only(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="initial", epoch=epoch)
+    stale = deepcopy(index.records)
+    service.delete_source("mof-open-data", key="delete", epoch=epoch)
+    index.records.update(stale)
+    index.records["unrelated"] = {"_id": "unrelated"}
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.reconcile_empty_index(key="cleanup", epoch=epoch)
+    assert service.recover()["status"] == "failed_compensated"
+    assert set(index.records) == {"unrelated"}

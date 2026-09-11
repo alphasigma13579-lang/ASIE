@@ -424,7 +424,11 @@ class _Session:
         corpus = _read_corpus(row[2])
         blocked = bool(self._db.execute(
             "SELECT 1 FROM operations WHERE state IN ('prepared','recovery_required') LIMIT 1").fetchone())
+        # Operations are append-only within an epoch. MAX(rowid) detects a
+        # complete prepare/compensate cycle even when corpus revision is unchanged.
+        watermark = self._db.execute("SELECT COALESCE(MAX(rowid),0) FROM operations").fetchone()[0]
         return {"revision": row[0], "restore_epoch": row[1],
+                "operation_watermark": watermark,
                 "corpus": corpus, "recovery_required": blocked}
 
     @_guarded
@@ -453,7 +457,7 @@ class _Session:
             if prior:
                 if prior[3] != digest:
                     raise CorpusStoreError("corpus_intent_conflict")
-                if prior[1] != "committed":
+                if prior[1] not in ("committed", "compensated"):
                     raise CorpusStoreError("corpus_recovery_required")
                 return Operation(*prior[:3])
             if current["recovery_required"]:
