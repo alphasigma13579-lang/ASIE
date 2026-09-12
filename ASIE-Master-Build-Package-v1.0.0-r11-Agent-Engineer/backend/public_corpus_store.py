@@ -216,21 +216,44 @@ def _validate_schema(connection, schema=_SCHEMA):
 
 
 
-def _validate_v1_journal(connection):
-    """Validate retained history under the upgrade transaction before any DDL."""
+def _validate_journal(connection, *, version=1, operation_id=None):
+    """Validate the requested journal rows; full scan only for explicit upgrade."""
     try:
-        for row in connection.execute(
-                "SELECT operation_id,restore_epoch,workload,key_hash,intent_digest,"
-                "kind,base_revision,state,before_payload,after_payload,result_code,"
-                "created_at,updated_at FROM operations"):
+        columns = ("operation_id,restore_epoch,workload,key_hash,intent_digest,"
+                   "kind,base_revision,state,before_payload,after_payload,result_code,"
+                   "created_at,updated_at")
+        if version == 2:
+            columns += ",request_digest,result_payload"
+        where = "" if operation_id is None else " WHERE operation_id=?"
+        args = () if operation_id is None else (operation_id,)
+        for row in connection.execute("SELECT " + columns + " FROM operations" + where, args):
             for value in row[:5]:
                 _token(value)
             if (row[2] != _WORKLOAD or row[5] not in _KINDS
                     or type(row[6]) is not int or row[6] < 0
-                    or row[7] not in ("prepared", "recovery_required", "committed")
-                    or row[10] != ("committed" if row[7] == "committed" else None)
-                    or any(type(value) is not str or not value for value in row[11:])):
+                    or row[7] not in (("prepared", "recovery_required", "committed", "compensated")
+                                     if version == 2 else ("prepared", "recovery_required", "committed"))
+                    or row[10] != (row[7] if row[7] in ("committed", "compensated") else None)
+                    or any(type(value) is not str or not value for value in row[11:13])):
                 raise CorpusStoreError("corpus_storage_invalid")
+            if version == 2:
+                if row[13] is not None:
+                    if (type(row[13]) is not str or len(row[13]) != 64
+                            or any(c not in "0123456789abcdef" for c in row[13])):
+                        raise CorpusStoreError("corpus_storage_invalid")
+                terminal = row[7] in ("committed", "compensated")
+                if not terminal and row[14] is not None:
+                    raise CorpusStoreError("corpus_storage_invalid")
+                if terminal:
+                    if row[14] is None:
+                        if row[13] is not None or row[7] == "compensated":
+                            raise CorpusStoreError("corpus_storage_invalid")
+                    else:
+                        result = _read_json(row[14])
+                        if (type(result) is not dict or type(result.get("status")) is not str
+                                or not result["status"]
+                                or (row[7] == "compensated") != (result["status"] == "failed_compensated")):
+                            raise CorpusStoreError("corpus_storage_invalid")
             _read_corpus(row[8])
             _read_corpus(row[9])
             for expected, (ordinal, payload) in enumerate(connection.execute(
@@ -258,7 +281,7 @@ def _upgrade_v1(connection):
     connection.execute("PRAGMA foreign_keys=OFF")
     try:
         connection.execute("BEGIN IMMEDIATE")
-        _validate_v1_journal(connection)
+        _validate_journal(connection)
         connection.execute("ALTER TABLE operation_steps RENAME TO operation_steps_v1")
         connection.execute("ALTER TABLE operations RENAME TO operations_v1")
         connection.execute("DROP INDEX one_unfinished")
@@ -567,6 +590,8 @@ class _Session:
         rows = self._db.execute(
             "SELECT operation_id,kind,base_revision,state,before_payload,after_payload "
             "FROM operations WHERE state IN ('prepared','recovery_required')").fetchall()
+        for row in rows:
+            _validate_journal(self._db, version=2, operation_id=row[0])
         return [{"operation_id": r[0], "kind": r[1], "base_revision": r[2],
                  "state": r[3], "before": _read_corpus(r[4]), "after": _read_corpus(r[5]),
                  "steps": [_read_json(s[0]) for s in self._db.execute(
@@ -597,10 +622,11 @@ class _Session:
         if epoch != current_epoch[0]:
             raise CorpusStoreError("corpus_epoch_mismatch")
         row = self._db.execute(
-            "SELECT state,request_digest,result_payload FROM operations "
+            "SELECT state,request_digest,result_payload,operation_id FROM operations "
             "WHERE restore_epoch=? AND workload=? AND key_hash=?",
             (epoch, _WORKLOAD, hashlib.sha256(key.encode()).hexdigest())).fetchone()
         if row:
+            _validate_journal(self._db, version=2, operation_id=row[3])
             if row[1] is None:
                 raise CorpusStoreError("corpus_legacy_result_unavailable")
             if row[1] != digest:
