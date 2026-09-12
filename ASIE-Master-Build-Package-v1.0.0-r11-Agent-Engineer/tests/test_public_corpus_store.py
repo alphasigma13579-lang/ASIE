@@ -1181,3 +1181,48 @@ def test_lifecycle_terminal_replay_avoids_current_snapshot(tmp_path, compensated
     with pytest.raises(CorpusStoreError):
         service.run(registry(), key="new-request", epoch=epoch)
     assert index.calls == calls and service.tavily.calls == fetches
+
+
+@pytest.mark.parametrize("target,value", [
+    ("before_payload", "SECRET_INVALID_JSON"),
+    ("after_payload", "[]"),
+    ("before_payload", '{"schema_version":1}'),
+    ("step", "SECRET_INVALID_JSON"),
+    ("step", "[]"),
+    ("step", '{"action":"unknown","record_ids":["valid"]}'),
+    ("step", '{"action":"delete","record_ids":"valid"}'),
+    ("step", '{"action":"delete","record_ids":[]}'),
+    ("step", '{"action":"delete","record_ids":[null]}'),
+    ("step", '{"action":"delete","record_ids":["valid"],"secret":"marker"}'),
+    ("base_revision", -1),
+    ("result_code", "committed"),
+    ("ordinal", 2),
+])
+def test_v1_upgrade_rejects_corrupt_journal_without_altering_original(target, value):
+    from backend.public_corpus_store import _SCHEMA_V1, _upgrade_v1
+    # Disposable in-memory schema A: never reads or migrates an owner database.
+    with closing(sqlite3.connect(":memory:", isolation_level=None)) as db:
+        db.execute("PRAGMA foreign_keys=ON")
+        db.executescript(_SCHEMA_V1)
+        db.execute("INSERT INTO corpus_state VALUES(1,0,'epoch',?)", (json.dumps(corpus()),))
+        db.execute("INSERT INTO operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            "old", "epoch", "public-knowledge-sync", "key", "intent", "sync", 0,
+            "recovery_required", json.dumps(corpus()), json.dumps(corpus()), None,
+            "created", "updated"))
+        db.execute("INSERT INTO operation_steps VALUES('old',0,?)",
+                   (json.dumps({"action": "upsert", "record_ids": ["valid"]}),))
+        if target == "step":
+            db.execute("UPDATE operation_steps SET payload=?", (value,))
+        elif target == "ordinal":
+            db.execute("UPDATE operation_steps SET ordinal=?", (value,))
+        else:
+            assert target in {"before_payload", "after_payload", "base_revision", "result_code"}
+            db.execute(f"UPDATE operations SET {target}=?", (value,))
+        before = list(db.iterdump())
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$") as caught:
+            _upgrade_v1(db)
+        assert "SECRET" not in str(caught.value)
+        assert list(db.iterdump()) == before
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert not db.in_transaction

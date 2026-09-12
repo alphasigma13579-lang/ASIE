@@ -215,6 +215,40 @@ def _validate_schema(connection, schema=_SCHEMA):
 
 
 
+
+def _validate_v1_journal(connection):
+    """Validate retained history under the upgrade transaction before any DDL."""
+    try:
+        for row in connection.execute(
+                "SELECT operation_id,restore_epoch,workload,key_hash,intent_digest,"
+                "kind,base_revision,state,before_payload,after_payload,result_code,"
+                "created_at,updated_at FROM operations"):
+            for value in row[:5]:
+                _token(value)
+            if (row[2] != _WORKLOAD or row[5] not in _KINDS
+                    or type(row[6]) is not int or row[6] < 0
+                    or row[7] not in ("prepared", "recovery_required", "committed")
+                    or row[10] != ("committed" if row[7] == "committed" else None)
+                    or any(type(value) is not str or not value for value in row[11:])):
+                raise CorpusStoreError("corpus_storage_invalid")
+            _read_corpus(row[8])
+            _read_corpus(row[9])
+            for expected, (ordinal, payload) in enumerate(connection.execute(
+                    "SELECT ordinal,payload FROM operation_steps "
+                    "WHERE operation_id=? ORDER BY ordinal", (row[0],))):
+                step = _read_json(payload)
+                if (type(ordinal) is not int or ordinal != expected
+                        or type(step) is not dict or set(step) != {"action", "record_ids"}
+                        or step["action"] not in ("upsert", "delete")
+                        or type(step["record_ids"]) is not list
+                        or not 1 <= len(step["record_ids"]) <= 1000):
+                    raise CorpusStoreError("corpus_storage_invalid")
+                for identifier in step["record_ids"]:
+                    _token(identifier, 512)
+    except CorpusStoreError:
+        raise CorpusStoreError("corpus_storage_invalid") from None
+
+
 def _upgrade_v1(connection):
     """Explicit, transactional compatibility conversion; never invoked implicitly."""
     _validate_schema(connection, _SCHEMA_V1)
@@ -224,6 +258,7 @@ def _upgrade_v1(connection):
     connection.execute("PRAGMA foreign_keys=OFF")
     try:
         connection.execute("BEGIN IMMEDIATE")
+        _validate_v1_journal(connection)
         connection.execute("ALTER TABLE operation_steps RENAME TO operation_steps_v1")
         connection.execute("ALTER TABLE operations RENAME TO operations_v1")
         connection.execute("DROP INDEX one_unfinished")
