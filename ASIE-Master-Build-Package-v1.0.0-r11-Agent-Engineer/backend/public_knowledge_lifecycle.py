@@ -1,0 +1,316 @@
+"""Dark, explicitly injected lifecycle service; no environment or HTTP activation.
+
+The store lock spans preparation, journaling and external effects. Production
+cutover must exclude the legacy JSON writer. Recovery verification is supplied
+by a trusted server adapter; absent settled/parity proof, reads remain blocked.
+"""
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+
+from backend.provider_security_control_plane import TrustedProviderScope
+from backend.public_corpus_store import CorpusStoreError, _json
+from backend.public_knowledge import (
+    PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _RECORD_ID_RE, _batched, _safe_failure,
+    _safe_source_id, validate_public_source_registry,
+    _utc_now, build_feasibility_evidence_context,
+    build_unavailable_feasibility_evidence_context,
+)
+
+_WORKLOAD = "public-knowledge-sync"
+
+
+def _authorize(scope):
+    if type(scope) is not TrustedProviderScope:
+        raise CorpusStoreError("corpus_scope_denied")
+    try:
+        TrustedProviderScope.require_platform_workload(scope, _WORKLOAD)
+    except PermissionError:
+        raise CorpusStoreError("corpus_scope_denied") from None
+
+
+def _record_sets(corpus):
+    """Validate nested shapes before projection or effects, including history."""
+    if type(corpus) is not dict or type(corpus.get("sources")) is not dict:
+        raise CorpusStoreError("corpus_projection_invalid")
+    for source in corpus["sources"].values():
+        if (type(source) is not dict
+                or source.get("status") not in ("active", "deleted_tombstone", "quarantined")
+                or type(source.get("versions")) is not list):
+            raise CorpusStoreError("corpus_projection_invalid")
+        versions = source["versions"]
+        for version in [source, *versions]:
+            if type(version) is not dict or type(version.get("records")) is not list:
+                raise CorpusStoreError("corpus_projection_invalid")
+            records = version["records"]
+            seen = set()
+            for record in records:
+                if type(record) is not dict:
+                    raise CorpusStoreError("corpus_projection_invalid")
+                identifier = record.get("_id")
+                if (type(identifier) is not str or not _RECORD_ID_RE.fullmatch(identifier)
+                        or identifier in seen):
+                    raise CorpusStoreError("corpus_projection_invalid")
+                seen.add(identifier)
+            yield source, version is source, records
+
+
+def _projection(corpus):
+    records = {}
+    for source, current, values in _record_sets(corpus):
+        if not current or source.get("status") != "active":
+            continue
+        for record in values:
+            identifier = record["_id"]
+            if identifier in records:
+                raise CorpusStoreError("corpus_projection_invalid")
+            records[identifier] = deepcopy(record)
+    return records
+
+
+class _Plan(PublicKnowledgeSync):
+    def __init__(self, *, corpus, tavily, scope, now):
+        super().__init__(tavily=tavily, pinecone=None, scope=scope,
+                         corpus_path=Path("."), now=now)
+        self.corpus = deepcopy(corpus)
+        self.commands = []
+
+    def reconcile_empty(self):
+        if _projection(self.corpus):
+            raise CorpusStoreError("corpus_cleanup_requires_empty")
+        known = sorted({r["_id"] for _, _, records in _record_sets(self.corpus)
+                        for r in records})
+        deleted = self._delete_ids(known)
+        self.corpus["audit_events"].append({
+            "event": "empty_public_projection_reconciled",
+            "records_deleted": deleted, "at": self.now()})
+        return {"status": "empty_projection_reconciled", "records_deleted": deleted}
+
+    def _load(self):
+        return deepcopy(self.corpus)
+
+    def _save(self, corpus):
+        self.corpus = deepcopy(corpus)
+
+    def _upsert(self, records):
+        for batch in _batched(records, 100):
+            self.commands.append(("upsert", deepcopy(list(batch))))
+        return len(records)
+
+    def _delete_ids(self, record_ids):
+        for batch in _batched(record_ids, 1000):
+            self.commands.append(("delete", list(batch)))
+        return len(record_ids)
+
+
+class PublicKnowledgeLifecycle:
+    """Explicit platform service. Never construct from customer request options.
+
+    verifier.settled(operation_id, attempts=journal_steps) proves every recorded
+    attempt terminal, including attempts missing from the adapter after restart.
+    Missing correlation or unknown dispatch outcome must return False. The effect
+    adapter owns durable handle-to-provider-request mapping and retry accounting.
+    No automatic retry is introduced here.
+    verifier.matches(operation_id, expected, absent) proves exact compensated
+    projection for affected identifiers, including absence. Neither method has
+    a permissive default. A timeout, eventual-consistency guess or fixed sleep
+    is not proof. No live verifier is installed by this module.
+    """
+
+    def __init__(self, *, store, scope, tavily, pinecone, verifier=None, project_organization_resolver=None, now=_utc_now):
+        _authorize(scope)
+        self.store, self.scope = store, scope
+        self.tavily, self.pinecone = tavily, pinecone
+        self.verifier, self.now = verifier, now
+        self.project_organization_resolver = project_organization_resolver
+
+    def run(self, registry, *, key, epoch):
+        return self._execute("sync", registry, key=key, epoch=epoch)
+
+    def delete_source(self, source_id, *, key, epoch):
+        return self._execute("delete", source_id, key=key, epoch=epoch)
+
+    def restore_source(self, source_id, *, key, epoch):
+        return self._execute("restore", source_id, key=key, epoch=epoch)
+
+    def reindex(self, *, key, epoch):
+        return self._execute("reindex", None, key=key, epoch=epoch)
+
+    def reconcile_empty_index(self, *, key, epoch):
+        """Explicit known-ID cleanup; ordinary empty reindex still rejects."""
+        return self._execute("reindex", {"reconcile_empty": True}, key=key, epoch=epoch)
+
+    def _effect(self, operation_id, ordinal, action, values):
+        # No fallback to the uncorrelated live client. The trusted injected
+        # adapter must durably bind this handle before dispatching any request.
+        self.pinecone.apply_public_knowledge_effect(
+            scope=self.scope, operation_id=operation_id, step_ordinal=ordinal,
+            action=action, values=deepcopy(values))
+
+    def _settled(self, session, operation_id):
+        pending = session.pending()
+        if self.verifier is None or not pending or pending[0]["operation_id"] != operation_id:
+            return False
+        attempts = [{"ordinal": i, **step} for i, step in enumerate(pending[0]["steps"])]
+        return self.verifier.settled(operation_id, attempts=deepcopy(attempts)) is True
+
+    def _execute(self, kind, value, *, key, epoch):
+        _authorize(self.scope)
+        captured = deepcopy(value)
+        _json(captured)
+        try:
+            if kind == "sync":
+                captured = validate_public_source_registry(captured)
+            elif kind in ("delete", "restore"):
+                captured = _safe_source_id(captured)
+        except Exception:
+            # Invalid input retains its stable raw JSON fingerprint and is
+            # handled by the existing safe domain failure path below.
+            pass
+        request = {"kind": kind, "value": captured}
+        _json(request)
+        with self.store.session(self.scope) as session:
+            replay = session.lookup(key=key, epoch=epoch, request=request)
+            if replay is not None:
+                return replay
+            snap = session.snapshot()
+            _projection(snap["corpus"])
+            plan = _Plan(corpus=snap["corpus"], tavily=self.tavily,
+                         scope=self.scope, now=self.now)
+            try:
+                if kind == "sync":
+                    result = plan.run(request["value"])
+                elif kind == "delete":
+                    result = plan.delete_source(request["value"])
+                elif kind == "restore":
+                    result = plan.restore_source(request["value"])
+                elif request["value"] == {"reconcile_empty": True}:
+                    result = plan.reconcile_empty()
+                else:
+                    result = plan.reindex()
+            except Exception as exc:
+                # No index effects have occurred. Persist this terminal outcome
+                # as well so retries cannot silently refetch under the same key.
+                result = {"status": "failed", "error": _safe_failure(exc)}
+                plan.corpus = deepcopy(snap["corpus"])
+                plan.commands = []
+            _projection(plan.corpus)
+            _json(result)
+            operation = session.begin(
+                key=key, epoch=epoch, kind=kind, request=request,
+                intent={"command_count": len(plan.commands)},
+                expected_revision=snap["revision"], after=plan.corpus)
+            try:
+                for action, values in plan.commands:
+                    identifiers = [r["_id"] for r in values] if action == "upsert" else values
+                    ordinal = session.record_step(operation.operation_id, action=action,
+                                        record_ids=identifiers)
+                    self._effect(operation.operation_id, ordinal, action, values)
+                session.commit(operation.operation_id, result=result)
+            except Exception:
+                # A commit acknowledgement may fail after commit. Never undo a
+                # committed projection; re-open/replay resolves the outcome.
+                pending = session.pending()
+                if not pending:
+                    raise CorpusStoreError("corpus_outcome_requires_replay") from None
+                session.mark_recovery_required(operation.operation_id)
+                return self._recover(session, pending[0])
+            return result
+
+    def recover(self):
+        _authorize(self.scope)
+        with self.store.session(self.scope) as session:
+            pending = session.pending()
+            if not pending:
+                return {"status": "no_recovery_needed"}
+            return self._recover(session, pending[0])
+
+    def _recover(self, session, pending):
+        blocked = {"status": "recovery_required",
+                   "message": "تعذر إثبات اتساق المعرفة. أوقف الاستخدام واطلب فحص الاستعادة."}
+        operation_id = pending["operation_id"]
+        try:
+            if not self._settled(session, operation_id):
+                return blocked
+            before = _projection(pending["before"])
+            affected = {identifier for step in pending["steps"]
+                        for identifier in step["record_ids"]}
+            expected = {key: before[key] for key in sorted(affected) if key in before}
+            absent = sorted(affected - before.keys())
+            for action, values, size in (
+                    ("upsert", list(expected.values()), 100), ("delete", absent, 1000)):
+                for batch in _batched(values, size):
+                    batch = list(batch)
+                    identifiers = [r["_id"] for r in batch] if action == "upsert" else batch
+                    ordinal = session.record_step(operation_id, action=action,
+                                        record_ids=identifiers, recovery=True)
+                    self._effect(operation_id, ordinal, action, batch)
+            # The first proof covered original requests only. Compensation
+            # creates new requests; prove those terminal before opening reads.
+            if not self._settled(session, operation_id):
+                return blocked
+            if self.verifier.matches(operation_id, deepcopy(expected), list(absent)) is not True:
+                return blocked
+            result = {"status": "failed_compensated",
+                      "message": "لم تكتمل العملية. احتُفظ بالمعرفة السابقة؛ أعد المحاولة بطلب جديد."}
+            session.finish_compensation(operation_id, result=result)
+            return result
+        except Exception:
+            return blocked
+
+    def evidence(self, *, scope, principal=None, query, top_k=8):
+        """Tenant-scoped read; query is never journalled or stored."""
+        if type(scope) is not TrustedProviderScope:
+            raise CorpusStoreError("corpus_scope_denied")
+        try:
+            TrustedProviderScope.request_context(scope, "search_public_knowledge")
+            # Reissue from the independently authenticated server principal;
+            # agreement between two replaceable scope fields alone is not proof.
+            issued = TrustedProviderScope.for_tenant(
+                principal=principal, project_id=scope.project_id,
+                project_organization_resolver=self.project_organization_resolver)
+            if issued.organization_id != scope.organization_id:
+                raise PermissionError
+            if (scope.preflight or scope.organization_id == "__platform__"
+                    or self.project_organization_resolver is None
+                    or self.project_organization_resolver(scope.project_id) != scope.organization_id):
+                raise PermissionError
+        except Exception:
+            # Resolver failures deny access without exposing backing-store details.
+            raise CorpusStoreError("corpus_scope_denied") from None
+        if type(query) is not str or not 1 <= len(query.strip()) <= 2000:
+            raise CorpusStoreError("corpus_request_invalid")
+        if type(top_k) is not int or not 1 <= top_k <= 50:
+            raise CorpusStoreError("corpus_request_invalid")
+        try:
+            with self.store.session(self.scope) as session:
+                before = session.snapshot()
+                if before["recovery_required"]:
+                    return self._unavailable()
+                _projection(before["corpus"])
+            response = self.pinecone.search_public_knowledge(scope=scope, query=query, top_k=top_k)
+            with self.store.session(self.scope) as session:
+                after = session.snapshot()
+                if (after["recovery_required"] or before["restore_epoch"] != after["restore_epoch"]
+                        or before["revision"] != after["revision"]
+                        or before["operation_watermark"] != after["operation_watermark"]):
+                    return self._unavailable()
+                canonical = _projection(after["corpus"])
+                hits = response["payload"]["result"]["hits"]
+                if type(hits) is not list or len(hits) > top_k:
+                    return self._unavailable()
+                for hit in hits:
+                    record = canonical.get(hit.get("_id"))
+                    fields = hit.get("fields")
+                    if record is None or type(fields) is not dict:
+                        return self._unavailable()
+                    if any(fields.get(name) != record.get(name) for name in _EVIDENCE_REQUIRED_FIELDS):
+                        return self._unavailable()
+                return build_feasibility_evidence_context(response, as_of=self.now())
+        except Exception:
+            return self._unavailable()
+
+    def _unavailable(self):
+        return build_unavailable_feasibility_evidence_context(
+            "public_knowledge_temporarily_unavailable", as_of=self.now())
