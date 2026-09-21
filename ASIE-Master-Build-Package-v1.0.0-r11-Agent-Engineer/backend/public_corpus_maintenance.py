@@ -16,7 +16,8 @@ import sqlite3
 import uuid
 
 from backend.public_corpus_store import (
-    CorpusStoreError, PublicCorpusStore, _Session, _SCHEMA_V3,
+    CorpusStoreError, PublicCorpusStore, _Session, _SCHEMA_V4,
+    _JOURNAL_SEALS, _seal_operation, _validate_completeness,
     _MAINTENANCE_TABLES, _corpus, _json, _MAX_BYTES, _token,
     _INSTALLATION, _BACKUP, _installation_epoch, _check_existing_installation,
 )
@@ -147,10 +148,10 @@ def _readonly(files, *, installing=False, backup=False):
                          uri=True, isolation_level=None, timeout=2)
     try:
         if (not installing and not backup and installed_epoch is None
-                and db.execute("PRAGMA user_version").fetchone()[0] == 3):
+                and db.execute("PRAGMA user_version").fetchone()[0] in (3, 4)):
             raise CorpusStoreError("corpus_installation_incomplete")
         if installed_epoch is not None and (
-                db.execute("PRAGMA user_version").fetchone()[0] != 3 or db.execute(
+                db.execute("PRAGMA user_version").fetchone()[0] not in (3, 4) or db.execute(
                     "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
             raise CorpusStoreError("corpus_installation_incomplete")
         return db
@@ -344,8 +345,13 @@ def _validate_image(image):
 
 
 def _event(db, name, payload):
-    db.execute("INSERT INTO maintenance_events(event,payload) VALUES(?,?)",
-               (name, _json(payload)))
+    if db.execute("PRAGMA user_version").fetchone()[0] == 4:
+        last = db.execute("SELECT last_event FROM journal_seal WHERE id=1").fetchone()[0]
+        db.execute("INSERT INTO maintenance_events VALUES(?,?,?)", (last + 1, name, _json(payload)))
+        db.execute("UPDATE journal_seal SET last_event=? WHERE id=1", (last + 1,))
+    else:
+        db.execute("INSERT INTO maintenance_events(event,payload) VALUES(?,?)",
+                   (name, _json(payload)))
 
 
 def _install(db, *, origin, fingerprint, baseline, parent_epoch, epoch, count=None):
@@ -363,6 +369,22 @@ def _install(db, *, origin, fingerprint, baseline, parent_epoch, epoch, count=No
         db.execute("INSERT INTO imports VALUES(?,1,?)", (fingerprint, count))
     _event(db, origin + "_installed", {"input_sha256": fingerprint,
            "baseline_sha256": baseline, "parent_epoch": parent_epoch, "restore_epoch": epoch})
+
+
+def _harden_legacy_destination(db, baseline):
+    """Only after a trusted independent baseline matched, inside restore's transaction."""
+    for statement in _JOURNAL_SEALS.split(";"):
+        if statement.strip():
+            db.execute(statement)
+    operations = db.execute("SELECT rowid,operation_id FROM operations ORDER BY rowid").fetchall()
+    for number, operation_id in operations:
+        count = db.execute("SELECT COUNT(*) FROM operation_steps WHERE operation_id=?",
+                           (operation_id,)).fetchone()[0]
+        db.execute("INSERT INTO operation_seals VALUES(?,?,?)", (operation_id, number, count))
+    db.execute("INSERT INTO journal_seal VALUES(1,?,?,?)",
+               (len(operations), db.execute("SELECT COUNT(*) FROM maintenance_events").fetchone()[0], baseline))
+    db.execute("PRAGMA user_version=4")
+    _validate_completeness(db)
 
 
 class PublicCorpusMaintenance:
@@ -411,10 +433,11 @@ class PublicCorpusMaintenance:
                 with closing(_new_database(files)) as db:
                     db.execute("BEGIN IMMEDIATE")
                     try:
-                        for statement in _SCHEMA_V3.split(";"):
+                        for statement in _SCHEMA_V4.split(";"):
                             if statement.strip().startswith("CREATE "):
                                 db.execute(statement)
-                        db.execute("PRAGMA user_version=3")
+                        db.execute("PRAGMA user_version=4")
+                        db.execute("INSERT INTO journal_seal VALUES(1,0,0,?)", (_digest(corpus),))
                         epoch = uuid.uuid4().hex
                         db.execute("INSERT INTO corpus_state VALUES(1,1,?,?)",
                                    (epoch, _corpus(corpus)))
@@ -463,10 +486,18 @@ class PublicCorpusMaintenance:
                 _write(files.file(_MANIFEST, exclusive=True), manifest)
                 files.validate()
                 _flush_directory(files)
-        return {"status": "backup_verified", "revision": image["corpus_state"][1]}
+        return {"status": "backup_verified", "revision": image["corpus_state"][1],
+                "journal_completeness": "verified" if image["schema_version"] == 4 else "legacy_unproven"}
 
     @_safe
-    def restore(self, backup_directory, destination):
+    def restore(self, backup_directory, destination, *, baseline_verifier=None):
+        """Legacy v2/v3 needs a trusted independent historical baseline.
+
+        The injected verifier must match the exact semantic digest against an
+        independently retained complete journal checkpoint. It must not derive
+        its expected value from the candidate backup or its adjacent manifest.
+        No live/operator verifier is supplied here; fixtures prove the boundary.
+        """
         _authorize(self.scope)
         _different(backup_directory, destination.directory)
         backup = PublicCorpusStore(backup_directory)
@@ -493,6 +524,17 @@ class PublicCorpusMaintenance:
                         or manifest["revision"] != original["corpus_state"][1]
                         or manifest["restore_epoch"] != original["corpus_state"][2]):
                     raise CorpusStoreError("corpus_manifest_invalid")
+                if original["schema_version"] != 4:
+                    try:
+                        proven = (baseline_verifier is not None and
+                            baseline_verifier.matches_legacy_journal(
+                                semantic_sha256=manifest["semantic_sha256"],
+                                restore_epoch=original["corpus_state"][2],
+                                schema_version=original["schema_version"]) is True)
+                    except Exception:
+                        proven = False
+                    if not proven:
+                        raise CorpusStoreError("corpus_legacy_baseline_required")
                 with destination.session(self.scope, files_only=True) as files:
                     _start_install(files, origin="restore", fingerprint=manifest["database_sha256"])
                     with closing(_new_database(files)) as restored:
@@ -505,6 +547,8 @@ class PublicCorpusMaintenance:
                             _install(restored, origin="restore", fingerprint=manifest["database_sha256"],
                                      baseline=manifest["semantic_sha256"],
                                      parent_epoch=original["corpus_state"][2], epoch=epoch)
+                            if original["schema_version"] != 4:
+                                _harden_legacy_destination(restored, manifest["semantic_sha256"])
                             restored.commit()
                         except BaseException:
                             restored.rollback()
@@ -540,7 +584,7 @@ class PublicCorpusMaintenance:
             image = session.verified_image()
             if epoch != image["corpus_state"][2]:
                 raise CorpusStoreError("corpus_epoch_mismatch")
-            if image["schema_version"] != 3:
+            if image["schema_version"] != 4:
                 raise CorpusStoreError("corpus_maintenance_not_required")
             _validate_image(image)
             state = image["maintenance_state"][0]
@@ -614,6 +658,7 @@ class PublicCorpusMaintenance:
                             "INSERT INTO operations VALUES(?,?,?,?,?,?,?,'prepared',?,?,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL)",
                             (operation_id, epoch, "public-knowledge-sync", key_hash, digest, "reindex",
                              image["corpus_state"][1], payload, payload, digest))
+                        _seal_operation(session._db, operation_id)
                         session._db.execute("UPDATE maintenance_state SET state='rebuilding',operation_id=?,request_key_hash=? WHERE id=1",
                                             (operation_id, key_hash))
                 attempts = [{"ordinal": i, **v} for i, v in enumerate(session.pending()[0]["steps"])]

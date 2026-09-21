@@ -239,8 +239,73 @@ CREATE TABLE maintenance_events(
 _SCHEMA_V3 = _SCHEMA.replace("PRAGMA user_version=2;", _MAINTENANCE_TABLES + "PRAGMA user_version=3;")
 
 
+# V4 is explicit maintenance installation only. Its seals are independent of
+# surviving journal rows; ordinary v2/v3 stores are never silently upgraded.
+_JOURNAL_SEALS = """
+CREATE TABLE journal_seal(
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ last_operation INTEGER NOT NULL CHECK(last_operation>=0),
+ last_event INTEGER NOT NULL CHECK(last_event>=0),
+ baseline_sha256 TEXT NOT NULL
+);
+CREATE TABLE operation_seals(
+ operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id),
+ sequence INTEGER NOT NULL UNIQUE CHECK(sequence>=1),
+ step_count INTEGER NOT NULL CHECK(step_count>=0)
+);
+"""
+_SCHEMA_V4 = _SCHEMA_V3.replace("PRAGMA user_version=3;", _JOURNAL_SEALS + "PRAGMA user_version=4;")
+
+
+def _validate_completeness(connection):
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        return
+    seals = connection.execute("SELECT * FROM journal_seal").fetchall()
+    if len(seals) != 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+    identifier, last_operation, last_event, baseline = seals[0]
+    if (identifier != 1 or type(last_operation) is not int or last_operation < 0
+            or type(last_event) is not int or last_event < 0
+            or type(baseline) is not str or len(baseline) != 64
+            or any(c not in "0123456789abcdef" for c in baseline)):
+        raise CorpusStoreError("corpus_storage_invalid")
+    operations = connection.execute("SELECT rowid,operation_id FROM operations ORDER BY rowid").fetchall()
+    expected = connection.execute(
+        "SELECT sequence,operation_id,step_count FROM operation_seals ORDER BY sequence").fetchall()
+    if len(operations) != last_operation or len(expected) != last_operation:
+        raise CorpusStoreError("corpus_storage_invalid")
+    actual_steps = {}
+    for operation_id, ordinal in connection.execute(
+            "SELECT operation_id,ordinal FROM operation_steps ORDER BY operation_id,ordinal"):
+        count = actual_steps.get(operation_id, 0)
+        if type(ordinal) is not int or ordinal != count:
+            raise CorpusStoreError("corpus_storage_invalid")
+        actual_steps[operation_id] = count + 1
+    for number, (operation, seal) in enumerate(zip(operations, expected), 1):
+        if (operation != (number, seal[1]) or type(seal[0]) is not int or seal[0] != number
+                or type(seal[2]) is not int or seal[2] < 0
+                or actual_steps.pop(seal[1], 0) != seal[2]):
+            raise CorpusStoreError("corpus_storage_invalid")
+    if actual_steps:
+        raise CorpusStoreError("corpus_storage_invalid")
+    events = connection.execute("SELECT sequence FROM maintenance_events ORDER BY sequence").fetchall()
+    if len(events) != last_event or any(row != (i,) for i, row in enumerate(events, 1)):
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
+def _seal_operation(connection, operation_id):
+    """Caller inserts the operation and its seal in one existing transaction."""
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        return
+    last = connection.execute("SELECT last_operation FROM journal_seal WHERE id=1").fetchone()[0]
+    if connection.execute("SELECT rowid FROM operations WHERE operation_id=?", (operation_id,)).fetchone() != (last + 1,):
+        raise CorpusStoreError("corpus_storage_invalid")
+    connection.execute("INSERT INTO operation_seals VALUES(?,?,0)", (operation_id, last + 1))
+    connection.execute("UPDATE journal_seal SET last_operation=? WHERE id=1", (last + 1,))
+
+
 def _validate_maintenance(connection):
-    if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
         return
     rows = connection.execute("SELECT * FROM maintenance_state").fetchall()
     if len(rows) != 1:
@@ -272,6 +337,9 @@ def _validate_maintenance(connection):
                 or any(c not in "0123456789abcdef" for c in fingerprint)
                 or version != 1 or type(count) is not int or count < 0):
             raise CorpusStoreError("corpus_storage_invalid")
+    receipts = connection.execute("SELECT * FROM imports").fetchall()
+    if len(receipts) > 1:
+        raise CorpusStoreError("corpus_storage_invalid")
     latest_install = None
     installed_epochs = set()
     last_rebuild = None
@@ -354,7 +422,10 @@ def _schema_signature(schema=_SCHEMA):
 
 def _validate_schema(connection, schema=None):
     if schema is None:
-        schema = _SCHEMA_V3 if connection.execute("PRAGMA user_version").fetchone()[0] == 3 else _SCHEMA
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        schema = {2: _SCHEMA, 3: _SCHEMA_V3, 4: _SCHEMA_V4}.get(version)
+        if schema is None:
+            raise CorpusStoreError("corpus_schema_unsupported")
     actual = {(kind, name): " ".join(sql.split())
               for kind, name, sql in connection.execute(
                   "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL")}
@@ -545,7 +616,7 @@ def _check_existing_installation(files, installed_epoch):
             return  # Existing empty store: normal initialization validates it.
         if len(header) == 100 and header[:16] == b"SQLite format 3\0":
             version = int.from_bytes(header[60:64], "big")
-            if version == 3:
+            if version in (3, 4):
                 raise CorpusStoreError("corpus_installation_incomplete")
             if version in (0, 1, 2):
                 return
@@ -560,9 +631,9 @@ def _check_existing_installation(files, installed_epoch):
                             uri=True, timeout=2, isolation_level=None)
     try:
         version = probe.execute("PRAGMA user_version").fetchone()[0]
-        if version == 3 and installed_epoch is None:
+        if version in (3, 4) and installed_epoch is None:
             raise CorpusStoreError("corpus_installation_incomplete")
-        if installed_epoch is not None and (version != 3 or probe.execute(
+        if installed_epoch is not None and (version not in (3, 4) or probe.execute(
                 "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
             raise CorpusStoreError("corpus_installation_incomplete")
     finally:
@@ -627,15 +698,15 @@ class PublicCorpusStore:
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version == 3 and installed_epoch is None:
+            if version in (3, 4) and installed_epoch is None:
                 raise CorpusStoreError("corpus_installation_incomplete")
             if installed_epoch is not None:
-                if version != 3 or connection.execute(
+                if version not in (3, 4) or connection.execute(
                         "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,):
                     raise CorpusStoreError("corpus_installation_incomplete")
             if version == 1 and upgrade_v1 is not True:
                 raise CorpusStoreError("corpus_upgrade_required")
-            if version not in (0, 1, _VERSION, 3):
+            if version not in (0, 1, _VERSION, 3, 4):
                 raise CorpusStoreError("corpus_schema_unsupported")
             if version == 0 and connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table'").fetchone():
@@ -664,6 +735,7 @@ class PublicCorpusStore:
                 connection.commit()
             _validate_schema(connection)
             _validate_maintenance(connection)
+            _validate_completeness(connection)
             session = _Session(connection)
             yielded = True
             yield session
@@ -726,7 +798,9 @@ class _Session:
         self._check()
         self._db.execute("BEGIN IMMEDIATE")
         try:
+            _validate_completeness(self._db)
             yield
+            _validate_completeness(self._db)
             self._db.commit()
         except BaseException:
             self._db.rollback()
@@ -741,10 +815,11 @@ class _Session:
         if self._db.execute("PRAGMA foreign_key_check").fetchall():
             raise CorpusStoreError("corpus_storage_invalid")
         _validate_schema(self._db)
-        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (_VERSION, 3):
+        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (_VERSION, 3, 4):
             raise CorpusStoreError("corpus_schema_unsupported")
         _validate_journal(self._db, version=_VERSION)
         _validate_maintenance(self._db)
+        _validate_completeness(self._db)
         return "ok"
 
     @_guarded
@@ -777,18 +852,22 @@ class _Session:
         image = {"schema_version": version,
                  "corpus_state": [*state[:3], _read_corpus(state[3])],
                  "operations": operations, "operation_steps": steps}
-        if version == 3:
+        if version in (3, 4):
             image["maintenance_state"] = [list(row) for row in self._db.execute("SELECT * FROM maintenance_state")]
             image["imports"] = [list(row) for row in self._db.execute("SELECT * FROM imports ORDER BY fingerprint")]
             image["maintenance_events"] = [[n, event, _read_json(payload)] for n, event, payload in
                 self._db.execute("SELECT * FROM maintenance_events ORDER BY sequence")]
+        if version == 4:
+            image["journal_seal"] = [list(row) for row in self._db.execute("SELECT * FROM journal_seal")]
+            image["operation_seals"] = [list(row) for row in self._db.execute(
+                "SELECT * FROM operation_seals ORDER BY sequence")]
         _validate_revision_chain(image)
         return image
 
     @_guarded
     def maintenance_required(self):
         self._check()
-        if self._db.execute("PRAGMA user_version").fetchone()[0] != 3:
+        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
             return False
         _validate_maintenance(self._db)
         return self._db.execute("SELECT state FROM maintenance_state").fetchone()[0] != "ready"
@@ -796,6 +875,7 @@ class _Session:
     @_guarded
     def snapshot(self):
         self._check()
+        _validate_completeness(self._db)
         row = self._db.execute(
             "SELECT revision,restore_epoch,payload FROM corpus_state WHERE id=1").fetchone()
         if row is None:
@@ -849,6 +929,7 @@ class _Session:
                 "INSERT INTO operations VALUES(?,?,?,?,?,?,?,'prepared',?,?,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL)",
                 (operation, epoch, _WORKLOAD, key_hash, digest, kind,
                  expected_revision, _corpus(current["corpus"]), after_text, request_digest))
+            _seal_operation(self._db, operation)
         self._owned.add(operation)
         return Operation(operation, "prepared", None)
 
@@ -876,6 +957,9 @@ class _Session:
                 (operation_id,)).fetchone()[0]
             self._db.execute("INSERT INTO operation_steps VALUES(?,?,?)",
                              (operation_id, ordinal, payload))
+            if self._db.execute("PRAGMA user_version").fetchone()[0] == 4:
+                self._db.execute("UPDATE operation_seals SET step_count=step_count+1 WHERE operation_id=?",
+                                 (operation_id,))
         return ordinal
 
     def _prepared(self, operation_id):
@@ -912,6 +996,7 @@ class _Session:
     @_guarded
     def pending(self):
         self._check()
+        _validate_completeness(self._db)
         rows = self._db.execute(
             "SELECT operation_id,kind,base_revision,state,before_payload,after_payload "
             "FROM operations WHERE state IN ('prepared','recovery_required')").fetchall()
@@ -940,6 +1025,7 @@ class _Session:
         _token(key)
         _token(epoch)
         digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest()
+        _validate_completeness(self._db)
         current_epoch = self._db.execute(
             "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone()
         if current_epoch is None:

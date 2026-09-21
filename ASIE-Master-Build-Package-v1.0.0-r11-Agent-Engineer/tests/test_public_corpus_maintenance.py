@@ -78,6 +78,17 @@ def service(store, index):
         project_organization_resolver=lambda project: project.removeprefix("project-"), now=lambda: NOW)
 
 
+class HistoricalBaseline:
+    """Test-only checkpoint retained BEFORE backup; never learned from a candidate."""
+    def __init__(self, known_image):
+        self.digest = _digest(known_image)
+        self.epoch = known_image["corpus_state"][2]
+        self.version = known_image["schema_version"]
+
+    def matches_legacy_journal(self, *, semantic_sha256, restore_epoch, schema_version):
+        return (semantic_sha256, restore_epoch, schema_version) == (self.digest, self.epoch, self.version)
+
+
 class Index(LifecycleIndex):
     def __init__(self):
         super().__init__()
@@ -431,13 +442,14 @@ def test_restore_interruption_after_copy_cannot_expose_old_writable_epoch(tmp_pa
     source = v2_store(tmp_path)
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "backup")
+    baseline = HistoricalBaseline(image(source))
     maintenance.backup(source, backup)
     target = PublicCorpusStore(directory(tmp_path, "restored"))
     def interrupt(*args, **kwargs):
         raise Interrupted()
     monkeypatch.setattr(module, "_install", interrupt)
     with pytest.raises(Interrupted):
-        maintenance.restore(backup, target)
+        maintenance.restore(backup, target, baseline_verifier=baseline)
     with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
         with target.session(scope()):
             pytest.fail("interrupted restore became writable")
@@ -477,17 +489,18 @@ def v2_store(tmp_path):
     return store
 
 
-def test_v2_backup_restores_as_v3_without_upgrading_original(tmp_path):
+def test_v2_backup_restores_as_v4_with_independent_baseline_without_upgrading_original(tmp_path):
     source = v2_store(tmp_path)
     before = image(source)
     assert before["schema_version"] == 2
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "backup")
+    baseline = HistoricalBaseline(image(source))
     maintenance.backup(source, backup)
     target = PublicCorpusStore(directory(tmp_path, "restored"))
-    maintenance.restore(backup, target)
+    maintenance.restore(backup, target, baseline_verifier=baseline)
     after = image(target)
-    assert after["schema_version"] == 3
+    assert after["schema_version"] == 4
     assert after["corpus_state"][3] == before["corpus_state"][3]
     assert after["operations"] == before["operations"]
     assert after["operation_steps"] == before["operation_steps"]
@@ -503,9 +516,10 @@ def test_restored_unfinished_old_operation_is_preserved_not_falsely_settled(tmp_
                       intent={}, expected_revision=snap["revision"], after=snap["corpus"])
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "backup")
+    baseline = HistoricalBaseline(image(source))
     maintenance.backup(source, backup)
     target = PublicCorpusStore(directory(tmp_path, "restored"))
-    maintenance.restore(backup, target)
+    maintenance.restore(backup, target, baseline_verifier=baseline)
     before = image(target)
     index = Index()
     index.settled = lambda *a, **kw: False
@@ -542,9 +556,10 @@ def test_inherited_recovery_key_is_durable_before_any_compensation_effect(tmp_pa
                       intent={}, expected_revision=snap["revision"], after=snap["corpus"])
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "backup")
+    baseline = HistoricalBaseline(image(source))
     maintenance.backup(source, backup)
     target = PublicCorpusStore(directory(tmp_path, "restored"))
-    maintenance.restore(backup, target)
+    maintenance.restore(backup, target, baseline_verifier=baseline)
     index = Index()
     index.failure = Interrupted()
     epoch = image(target)["corpus_state"][2]
@@ -635,7 +650,8 @@ def test_backup_artifact_cannot_run_before_explicit_restore(tmp_path, monkeypatc
             raise Interrupted()
         monkeypatch.setattr(module, "_write", interrupt_manifest)
         with pytest.raises(Interrupted):
-            maintenance.backup(source, backup)
+            baseline = HistoricalBaseline(image(source))
+    maintenance.backup(source, backup)
         monkeypatch.setattr(module, "_write", write)
     else:
         assert maintenance.backup(source, backup)["status"] == "backup_verified"
@@ -652,10 +668,10 @@ def test_backup_artifact_cannot_run_before_explicit_restore(tmp_path, monkeypatc
     target = PublicCorpusStore(directory(tmp_path, "restored"))
     if interrupted:
         with pytest.raises(CorpusStoreError):
-            maintenance.restore(backup, target)
+            maintenance.restore(backup, target, baseline_verifier=baseline)
         assert not (target.directory / "public_knowledge.sqlite3").exists()
     else:
-        assert maintenance.restore(backup, target)["status"] == "restored"
+        assert maintenance.restore(backup, target, baseline_verifier=baseline)["status"] == "restored"
         restored = image(target)
         assert restored["corpus_state"][2] != original["corpus_state"][2]
         assert restored["corpus_state"][3] == original["corpus_state"][3]
@@ -766,6 +782,7 @@ def test_new_destination_rejects_existing_sidecars(tmp_path, monkeypatch, method
     path = write_legacy(tmp_path)
     source = v2_store(tmp_path)
     backup = directory(tmp_path, "source-backup")
+    baseline = HistoricalBaseline(image(source))
     if method == "restore":
         maintenance.backup(source, backup)
     target = PublicCorpusStore(directory(tmp_path, "target"))
@@ -783,7 +800,7 @@ def test_new_destination_rejects_existing_sidecars(tmp_path, monkeypatch, method
         elif method == "backup":
             maintenance.backup(source, target.directory)
         else:
-            maintenance.restore(backup, target)
+            maintenance.restore(backup, target, baseline_verifier=baseline)
     assert sidecar.read_bytes() == b"UNRELATED_SIDECAR"
     assert not (target.directory / "public_knowledge.installation").exists()
     assert not (target.directory / "public_knowledge.backup").exists()
@@ -1008,9 +1025,10 @@ def test_broken_revision_chain_denied_before_backup_or_rebuild(tmp_path, damage)
         session.commit(operation.operation_id)
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "valid-backup")
+    baseline = HistoricalBaseline(image(source))
     maintenance.backup(source, backup)
     restored = PublicCorpusStore(directory(tmp_path, "restored"))
-    maintenance.restore(backup, restored)
+    maintenance.restore(backup, restored, baseline_verifier=baseline)
     epoch = image(restored)["corpus_state"][2]
     with closing(sqlite3.connect(restored.directory / "public_knowledge.sqlite3")) as db:
         if damage == "before":
@@ -1090,3 +1108,161 @@ def test_missing_compensated_journal_row_cannot_hide_in_revision_chain(tmp_path)
     with pytest.raises(CorpusStoreError):
         PublicCorpusMaintenance(scope=scope()).backup(source, target)
     assert not (target / "public_knowledge.backup").exists()
+
+
+@pytest.mark.parametrize("state", ["prepared", "committed", "compensated"])
+@pytest.mark.parametrize("damage", ["operation_tail", "step_tail", "all_steps"])
+def test_v4_seals_detect_suffix_loss_before_backup_or_effect(tmp_path, state, damage):
+    maintenance, store, _ = install(tmp_path)
+    index = Index()
+    epoch = image(store)["corpus_state"][2]
+    maintenance.rebuild(store, epoch=epoch, key="initial", adapter=index, verifier=index)
+    with store.session(scope()) as session:
+        snap = session.snapshot()
+        op = session.begin(key="suffix", epoch=epoch, kind="reindex", intent={},
+                           expected_revision=snap["revision"], after=snap["corpus"])
+        session.record_step(op.operation_id, action="upsert", record_ids=["record-a"])
+        session.record_step(op.operation_id, action="delete", record_ids=["record-b"])
+        if state == "committed":
+            session.commit(op.operation_id)
+        elif state == "compensated":
+            session.finish_compensation(op.operation_id, result={"status": "failed_compensated"})
+    with closing(sqlite3.connect(store.directory / "public_knowledge.sqlite3")) as db:
+        if damage == "operation_tail":
+            db.execute("DELETE FROM operation_steps WHERE operation_id=?", (op.operation_id,))
+            db.execute("DELETE FROM operation_seals WHERE operation_id=?", (op.operation_id,))
+            db.execute("DELETE FROM operations WHERE operation_id=?", (op.operation_id,))
+        elif damage == "step_tail":
+            db.execute("DELETE FROM operation_steps WHERE operation_id=? AND ordinal=1", (op.operation_id,))
+        else:
+            db.execute("DELETE FROM operation_steps WHERE operation_id=?", (op.operation_id,))
+        db.commit()
+        assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    rejected = directory(tmp_path, "rejected")
+    calls = deepcopy(index.calls)
+    for action in (lambda: image(store), lambda: maintenance.backup(store, rejected),
+                   lambda: service(store, index).reindex(key="next", epoch=epoch)):
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            action()
+    assert index.calls == calls
+    assert not (rejected / "public_knowledge.backup").exists()
+
+
+def test_extra_import_receipt_cannot_return_false_already_imported(tmp_path):
+    maintenance, store, path = install(tmp_path)
+    candidate = history()
+    path.write_text(json.dumps(candidate))
+    raw = path.read_bytes()
+    with closing(sqlite3.connect(store.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("INSERT INTO imports VALUES(?,1,2)", (hashlib.sha256(raw).hexdigest(),))
+        db.commit()
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        maintenance.import_legacy(path.parent, store)
+    assert path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("proof", ["missing", "wrong", "exception"])
+def test_legacy_restore_needs_independent_baseline_before_destination_io(tmp_path, proof):
+    source = v2_store(tmp_path)
+    baseline = HistoricalBaseline(image(source))
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    assert maintenance.backup(source, backup)["journal_completeness"] == "legacy_unproven"
+    if proof == "missing":
+        verifier = None
+    elif proof == "wrong":
+        baseline.digest = "0" * 64
+        verifier = baseline
+    else:
+        def fail(**kwargs):
+            raise RuntimeError("SECRET_BASELINE_MARKER")
+        verifier = SimpleNamespace(matches_legacy_journal=fail)
+    target = PublicCorpusStore(directory(tmp_path, "destination"))
+    with pytest.raises(CorpusStoreError, match="^corpus_legacy_baseline_required$"):
+        maintenance.restore(backup, target, baseline_verifier=verifier)
+    assert not list(target.directory.iterdir())
+
+
+def test_v4_operation_and_step_seals_rollback_with_writer_failure(tmp_path, monkeypatch):
+    import backend.public_corpus_store as module
+    maintenance, store, _ = install(tmp_path)
+    index = Index()
+    epoch = image(store)["corpus_state"][2]
+    maintenance.rebuild(store, epoch=epoch, key="initial", adapter=index, verifier=index)
+    before = image(store)
+    original = module._seal_operation
+    def interrupted(db, operation_id):
+        original(db, operation_id)
+        raise RuntimeError("injected transaction failure")
+    monkeypatch.setattr(module, "_seal_operation", interrupted)
+    with store.session(scope()) as session:
+        with pytest.raises(RuntimeError, match="injected"):
+            session.begin(key="rollback", epoch=epoch, kind="reindex", intent={},
+                          expected_revision=before["corpus_state"][1], after=before["corpus_state"][3])
+    assert image(store) == before
+    monkeypatch.setattr(module, "_seal_operation", original)
+    with store.session(scope()) as session:
+        snap = session.snapshot()
+        op = session.begin(key="next", epoch=epoch, kind="reindex", intent={},
+                           expected_revision=snap["revision"], after=snap["corpus"])
+        session._db.execute("CREATE TEMP TRIGGER fail_step_seal BEFORE UPDATE ON operation_seals "
+                            "BEGIN SELECT RAISE(ABORT,'injected'); END")
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_unavailable$"):
+            session.record_step(op.operation_id, action="upsert", record_ids=["test"])
+        session._db.execute("DROP TRIGGER fail_step_seal")
+        assert session.pending()[0]["steps"] == []
+        assert session._db.execute("SELECT step_count FROM operation_seals WHERE operation_id=?",
+                                   (op.operation_id,)).fetchone() == (0,)
+        assert session.record_step(op.operation_id, action="upsert", record_ids=["test"]) == 0
+    verified = image(store)
+    assert verified["journal_seal"][0][1] == len(verified["operations"])
+
+
+@pytest.mark.parametrize("damage", ["seal_missing", "step_seal_missing", "event_tail", "counter_changed"])
+def test_v4_control_records_and_event_tail_are_required(tmp_path, damage):
+    maintenance, store, _ = install(tmp_path)
+    index = Index()
+    epoch = image(store)["corpus_state"][2]
+    maintenance.rebuild(store, epoch=epoch, key="ready", adapter=index, verifier=index)
+    with closing(sqlite3.connect(store.directory / "public_knowledge.sqlite3")) as db:
+        if damage == "seal_missing":
+            db.execute("DELETE FROM journal_seal")
+        elif damage == "step_seal_missing":
+            db.execute("DELETE FROM operation_seals")
+        elif damage == "event_tail":
+            db.execute("DELETE FROM maintenance_events WHERE sequence=(SELECT MAX(sequence) FROM maintenance_events)")
+        else:
+            db.execute("UPDATE journal_seal SET last_operation=last_operation+1")
+        db.commit()
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        image(store)
+
+
+def test_inherited_unfinished_steps_remain_sealed_after_restore(tmp_path):
+    maintenance, source, _ = install(tmp_path)
+    index = Index()
+    epoch = image(source)["corpus_state"][2]
+    maintenance.rebuild(source, epoch=epoch, key="ready", adapter=index, verifier=index)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        op = session.begin(key="unfinished", epoch=epoch, kind="reindex", intent={},
+                           expected_revision=snap["revision"], after=snap["corpus"])
+        session.record_step(op.operation_id, action="upsert",
+                            record_ids=[canonical_record()["_id"]])
+    original = image(source)
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, target)
+    restored = image(target)
+    assert restored["operation_seals"] == original["operation_seals"]
+    assert restored["journal_seal"][0][1] == original["journal_seal"][0][1]
+    with closing(sqlite3.connect(target.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("DELETE FROM operation_steps WHERE operation_id=?", (op.operation_id,))
+        db.commit()
+    calls = deepcopy(index.calls)
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        maintenance.rebuild(target, epoch=restored["corpus_state"][2], key="recover",
+                            adapter=index, verifier=index)
+    assert index.calls == calls
