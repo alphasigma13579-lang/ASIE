@@ -645,13 +645,13 @@ def test_backup_artifact_cannot_run_before_explicit_restore(tmp_path, monkeypatc
     maintenance = PublicCorpusMaintenance(scope=scope())
     backup = directory(tmp_path, "backup")
     write = module._write
+    baseline = HistoricalBaseline(original)
     if interrupted:
         def interrupt_manifest(fd, value):
             raise Interrupted()
         monkeypatch.setattr(module, "_write", interrupt_manifest)
         with pytest.raises(Interrupted):
-            baseline = HistoricalBaseline(image(source))
-    maintenance.backup(source, backup)
+            maintenance.backup(source, backup)
         monkeypatch.setattr(module, "_write", write)
     else:
         assert maintenance.backup(source, backup)["status"] == "backup_verified"
