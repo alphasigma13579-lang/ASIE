@@ -425,6 +425,42 @@ def _validate_journal(connection, *, version=1, operation_id=None):
         raise CorpusStoreError("corpus_storage_invalid") from None
 
 
+
+def _validate_revision_chain(image):
+    """Explicit maintenance only: verify append-only revision/projection history."""
+    operations = image["operations"]
+    installations = [(event, payload) for _, event, payload in image.get("maintenance_events", [])
+                     if event in ("import_installed", "restore_installed")]
+    imported = bool(installations and installations[0][0] == "import_installed")
+    revision = 1 if imported else 0
+    projection = operations[0][9] if operations else image["corpus_state"][3]
+    if imported and hashlib.sha256(_json(projection).encode("utf-8")).hexdigest() != installations[0][1]["baseline_sha256"]:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if installations:
+        epochs = ([] if imported else [installations[0][1]["parent_epoch"]])
+        epochs += [payload["restore_epoch"] for _, payload in installations]
+    else:
+        epochs = [image["corpus_state"][2]]
+    order = {epoch: ordinal for ordinal, epoch in enumerate(epochs)}
+    previous_epoch = -1
+    unfinished = False
+    for operation in operations:
+        epoch, base, state, before, after = (operation[2], operation[7], operation[8],
+                                           operation[9], operation[10])
+        position = order.get(epoch)
+        if (unfinished or position is None or position < previous_epoch
+                or base != revision or before != projection):
+            raise CorpusStoreError("corpus_storage_invalid")
+        previous_epoch = position
+        if state == "committed":
+            revision += 1
+            projection = after
+        elif state != "compensated":
+            unfinished = True
+    if revision != image["corpus_state"][1] or projection != image["corpus_state"][3]:
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
 def _upgrade_v1(connection):
     """Explicit, transactional compatibility conversion; never invoked implicitly."""
     _validate_schema(connection, _SCHEMA_V1)
@@ -743,6 +779,7 @@ class _Session:
             image["imports"] = [list(row) for row in self._db.execute("SELECT * FROM imports ORDER BY fingerprint")]
             image["maintenance_events"] = [[n, event, _read_json(payload)] for n, event, payload in
                 self._db.execute("SELECT * FROM maintenance_events ORDER BY sequence")]
+        _validate_revision_chain(image)
         return image
 
     @_guarded

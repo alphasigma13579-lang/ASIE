@@ -996,3 +996,53 @@ def test_repeated_restore_preserves_valid_epoch_chain(tmp_path):
     assert [row[1] for row in verified["maintenance_events"]] == [
         "import_installed", "restore_installed", "restore_installed"]
     assert verified["corpus_state"][3] == image(original)["corpus_state"][3]
+
+
+@pytest.mark.parametrize("damage", ["before", "base_revision", "final_projection", "epoch"])
+def test_broken_revision_chain_denied_before_backup_or_rebuild(tmp_path, damage):
+    source = v2_store(tmp_path)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        operation = session.begin(key="second", epoch=snap["restore_epoch"], kind="sync",
+                                  intent={}, expected_revision=snap["revision"], after=history())
+        session.commit(operation.operation_id)
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "valid-backup")
+    maintenance.backup(source, backup)
+    restored = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, restored)
+    epoch = image(restored)["corpus_state"][2]
+    with closing(sqlite3.connect(restored.directory / "public_knowledge.sqlite3")) as db:
+        if damage == "before":
+            first = db.execute("SELECT before_payload FROM operations ORDER BY rowid LIMIT 1").fetchone()[0]
+            db.execute("UPDATE operations SET before_payload=? WHERE operation_id=?", (first, operation.operation_id))
+        elif damage == "base_revision":
+            db.execute("UPDATE operations SET base_revision=9 WHERE operation_id=?", (operation.operation_id,))
+        elif damage == "epoch":
+            db.execute("UPDATE operations SET restore_epoch='unknown-epoch' WHERE operation_id=?", (operation.operation_id,))
+        else:
+            db.execute("UPDATE corpus_state SET payload=?", (json.dumps(legacy()),))
+        db.commit()
+    rejected = directory(tmp_path, "rejected-backup")
+    index = Index()
+    for action in (lambda: image(restored), lambda: maintenance.backup(restored, rejected),
+                   lambda: maintenance.rebuild(restored, epoch=epoch, key="denied", adapter=index, verifier=index)):
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            action()
+    assert not index.calls
+    assert not (rejected / "public_knowledge.backup").exists()
+
+
+def test_compensation_does_not_advance_revision_chain(tmp_path):
+    source = v2_store(tmp_path)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        operation = session.begin(key="compensated", epoch=snap["restore_epoch"], kind="sync",
+                                  intent={}, expected_revision=snap["revision"], after=history())
+        session.finish_compensation(operation.operation_id, result={"status": "failed_compensated"})
+        next_op = session.begin(key="next", epoch=snap["restore_epoch"], kind="sync",
+                                intent={}, expected_revision=snap["revision"], after=history())
+        session.commit(next_op.operation_id)
+    verified = image(source)
+    assert verified["corpus_state"][1] == 2
+    assert [operation[8] for operation in verified["operations"]] == ["committed", "compensated", "committed"]

@@ -1600,7 +1600,8 @@ def test_maintenance_image_normalizes_json_format_not_semantic_content():
         assert session.verified_image() == image
         session._db.execute("UPDATE corpus_state SET payload=?",
                             (json.dumps(corpus(9)),))
-        assert session.verified_image() != image
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            session.verified_image()
 
 
 def test_maintenance_rejects_orphan_steps_even_when_sqlite_integrity_passes():
