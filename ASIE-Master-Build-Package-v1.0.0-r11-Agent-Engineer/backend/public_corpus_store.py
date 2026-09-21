@@ -273,6 +273,7 @@ def _validate_maintenance(connection):
                 or version != 1 or type(count) is not int or count < 0):
             raise CorpusStoreError("corpus_storage_invalid")
     latest_install = None
+    installed_epochs = set()
     last_rebuild = None
     for sequence, event, payload in connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"):
         if type(sequence) is not int or sequence < 1:
@@ -296,6 +297,20 @@ def _validate_maintenance(connection):
                 except CorpusStoreError:
                     raise CorpusStoreError("corpus_storage_invalid") from None
         if installation:
+            parent, installed = parsed["parent_epoch"], parsed["restore_epoch"]
+            if installed == parent or installed in installed_epochs:
+                raise CorpusStoreError("corpus_storage_invalid")
+            if latest_install is not None:
+                if event != "restore_installed" or parent != latest_install[1]["restore_epoch"]:
+                    raise CorpusStoreError("corpus_storage_invalid")
+            elif event == "import_installed":
+                if parent != "initial-import" or connection.execute(
+                        "SELECT 1 FROM imports WHERE fingerprint=?", (parsed["input_sha256"],)).fetchone() is None:
+                    raise CorpusStoreError("corpus_storage_invalid")
+            elif connection.execute("SELECT 1 FROM imports LIMIT 1").fetchone() is not None:
+                # A restore rooted in ordinary v2 has no prior import receipt.
+                raise CorpusStoreError("corpus_storage_invalid")
+            installed_epochs.update((parent, installed))
             latest_install = (event, parsed)
         else:
             operation = connection.execute(

@@ -948,3 +948,51 @@ def test_maintenance_events_require_matching_journal_operation(tmp_path, damage)
     with pytest.raises(CorpusStoreError):
         maintenance.backup(store, target)
     assert not (target / "public_knowledge.backup").exists()
+
+
+@pytest.mark.parametrize("damage", ["forged_middle", "wrong_parent", "reused_epoch", "repeated_import"])
+def test_installation_history_must_form_one_epoch_chain(tmp_path, damage):
+    maintenance, source, _ = install(tmp_path)
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    restored = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, restored)
+    with closing(sqlite3.connect(restored.directory / "public_knowledge.sqlite3")) as db:
+        rows = db.execute("SELECT sequence,event,payload FROM maintenance_events ORDER BY sequence").fetchall()
+        first = json.loads(rows[0][2])
+        final = json.loads(rows[-1][2])
+        if damage == "forged_middle":
+            forged = dict(final, parent_epoch=first["restore_epoch"], restore_epoch="forged-epoch")
+            db.execute("UPDATE maintenance_events SET sequence=3 WHERE sequence=2")
+            db.execute("INSERT INTO maintenance_events VALUES(2,'restore_installed',?)", (json.dumps(forged),))
+        elif damage == "wrong_parent":
+            final["parent_epoch"] = "not-the-predecessor"
+            db.execute("UPDATE maintenance_events SET payload=? WHERE sequence=2", (json.dumps(final),))
+        elif damage == "reused_epoch":
+            final["restore_epoch"] = first["restore_epoch"]
+            db.execute("UPDATE maintenance_events SET payload=? WHERE sequence=2", (json.dumps(final),))
+        else:
+            db.execute("UPDATE maintenance_events SET event='import_installed' WHERE sequence=2")
+        db.commit()
+    rejected = directory(tmp_path, "rejected-backup")
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        image(restored)
+    with pytest.raises(CorpusStoreError):
+        maintenance.backup(restored, rejected)
+    assert not (rejected / "public_knowledge.backup").exists()
+
+
+def test_repeated_restore_preserves_valid_epoch_chain(tmp_path):
+    maintenance, original, _ = install(tmp_path)
+    first_backup = directory(tmp_path, "first-backup")
+    maintenance.backup(original, first_backup)
+    first = PublicCorpusStore(directory(tmp_path, "first-restore"))
+    maintenance.restore(first_backup, first)
+    second_backup = directory(tmp_path, "second-backup")
+    maintenance.backup(first, second_backup)
+    second = PublicCorpusStore(directory(tmp_path, "second-restore"))
+    maintenance.restore(second_backup, second)
+    verified = image(second)
+    assert [row[1] for row in verified["maintenance_events"]] == [
+        "import_installed", "restore_installed", "restore_installed"]
+    assert verified["corpus_state"][3] == image(original)["corpus_state"][3]
