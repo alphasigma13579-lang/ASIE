@@ -20,7 +20,9 @@ from test_public_corpus_store import (
 
 def directory(tmp_path, name):
     target = tmp_path / name
-    target.mkdir(mode=0o700)
+    # Python 3.13 mkdir(0700) installs an OWNER RIGHTS ACE on Windows.
+    # Inherit the fixture's explicit service-user/SYSTEM/Admin ACL instead.
+    target.mkdir(mode=0o777 if os.name == "nt" else 0o700)
     return target
 
 
