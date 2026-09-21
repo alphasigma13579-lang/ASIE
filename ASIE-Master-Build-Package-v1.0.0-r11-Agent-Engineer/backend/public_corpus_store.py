@@ -212,6 +212,83 @@ COMMIT;
 """
 
 
+# Version 3 is installed only by explicit maintenance into a new destination.
+# Ordinary v2 stores remain v2; no owner database is upgraded on application start.
+_MAINTENANCE_TABLES = """
+CREATE TABLE maintenance_state(
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ origin TEXT NOT NULL CHECK(origin IN ('import','restore')),
+ input_sha256 TEXT NOT NULL,
+ baseline_sha256 TEXT NOT NULL,
+ parent_epoch TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','rebuilding','ready')),
+ operation_id TEXT REFERENCES operations(operation_id)
+);
+CREATE TABLE imports(
+ fingerprint TEXT PRIMARY KEY,
+ format_version INTEGER NOT NULL CHECK(format_version=1),
+ record_count INTEGER NOT NULL CHECK(record_count>=0)
+);
+CREATE TABLE maintenance_events(
+ sequence INTEGER PRIMARY KEY,
+ event TEXT NOT NULL,
+ payload TEXT NOT NULL
+);
+"""
+_SCHEMA_V3 = _SCHEMA.replace("PRAGMA user_version=2;", _MAINTENANCE_TABLES + "PRAGMA user_version=3;")
+
+
+def _validate_maintenance(connection):
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+        return
+    rows = connection.execute("SELECT * FROM maintenance_state").fetchall()
+    if len(rows) != 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+    row = rows[0]
+    if (row[0] != 1 or row[1] not in ("import", "restore")
+            or row[5] not in ("pending", "rebuilding", "ready")):
+        raise CorpusStoreError("corpus_storage_invalid")
+    for digest in row[2:4]:
+        if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise CorpusStoreError("corpus_storage_invalid")
+    _token(row[4])
+    if row[5] == "pending" and row[6] is not None:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[5] != "pending":
+        operation = connection.execute(
+            "SELECT kind,state,restore_epoch FROM operations WHERE operation_id=?", (row[6],)).fetchone()
+        epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
+        if (operation is None or operation[0] != "reindex" or operation[2] != epoch
+                or operation[1] not in (("prepared", "recovery_required")
+                                       if row[5] == "rebuilding" else ("committed",))):
+            raise CorpusStoreError("corpus_storage_invalid")
+    for fingerprint, version, count in connection.execute("SELECT * FROM imports"):
+        if (type(fingerprint) is not str or len(fingerprint) != 64
+                or any(c not in "0123456789abcdef" for c in fingerprint)
+                or version != 1 or type(count) is not int or count < 0):
+            raise CorpusStoreError("corpus_storage_invalid")
+    latest_install = None
+    for sequence, event, payload in connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"):
+        if type(sequence) is not int or sequence < 1:
+            raise CorpusStoreError("corpus_storage_invalid")
+        _token(event)
+        parsed = _read_json(payload)
+        if type(parsed) is not dict:
+            raise CorpusStoreError("corpus_storage_invalid")
+        if event in ("import_installed", "restore_installed"):
+            latest_install = (event, parsed)
+    epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
+    expected = {"input_sha256": row[2], "baseline_sha256": row[3],
+                "parent_epoch": row[4], "restore_epoch": epoch}
+    if latest_install != (row[1] + "_installed", expected):
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[1] == "restore" and epoch == row[4]:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[1] == "import" and connection.execute(
+            "SELECT 1 FROM imports WHERE fingerprint=?", (row[2],)).fetchone() is None:
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
 def _schema_signature(schema=_SCHEMA):
     expected = {}
     for statement in schema.split(";"):
@@ -223,7 +300,9 @@ def _schema_signature(schema=_SCHEMA):
     return expected
 
 
-def _validate_schema(connection, schema=_SCHEMA):
+def _validate_schema(connection, schema=None):
+    if schema is None:
+        schema = _SCHEMA_V3 if connection.execute("PRAGMA user_version").fetchone()[0] == 3 else _SCHEMA
     actual = {(kind, name): " ".join(sql.split())
               for kind, name, sql in connection.execute(
                   "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL")}
@@ -348,7 +427,7 @@ class PublicCorpusStore:
         self.lock_timeout = float(lock_timeout)
 
     @contextmanager
-    def session(self, scope: TrustedProviderScope, *, upgrade_v1=False):
+    def session(self, scope: TrustedProviderScope, *, upgrade_v1=False, files_only=False):
         # Exact type plus proof-bearing native method: no duck-typed authority.
         if type(scope) is not TrustedProviderScope:
             raise CorpusStoreError("corpus_scope_denied")
@@ -382,13 +461,17 @@ class PublicCorpusStore:
                     if time.monotonic() >= deadline:
                         raise CorpusStoreError("corpus_busy") from None
                     time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+            if files_only is True:
+                yielded = True
+                yield files
+                return
             database = files.database()
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             if version == 1 and upgrade_v1 is not True:
                 raise CorpusStoreError("corpus_upgrade_required")
-            if version not in (0, 1, _VERSION):
+            if version not in (0, 1, _VERSION, 3):
                 raise CorpusStoreError("corpus_schema_unsupported")
             if version == 0 and connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table'").fetchone():
@@ -416,6 +499,7 @@ class PublicCorpusStore:
                 connection.execute("PRAGMA user_version=2")
                 connection.commit()
             _validate_schema(connection)
+            _validate_maintenance(connection)
             session = _Session(connection)
             yielded = True
             yield session
@@ -493,9 +577,10 @@ class _Session:
         if self._db.execute("PRAGMA foreign_key_check").fetchall():
             raise CorpusStoreError("corpus_storage_invalid")
         _validate_schema(self._db)
-        if self._db.execute("PRAGMA user_version").fetchone()[0] != _VERSION:
+        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (_VERSION, 3):
             raise CorpusStoreError("corpus_schema_unsupported")
         _validate_journal(self._db, version=_VERSION)
+        _validate_maintenance(self._db)
         return "ok"
 
     @_guarded
@@ -524,9 +609,24 @@ class _Session:
                 "SELECT operation_id,ordinal,payload FROM operation_steps "
                 "ORDER BY operation_id,ordinal")
         ]
-        return {"schema_version": _VERSION,
-                "corpus_state": [*state[:3], _read_corpus(state[3])],
-                "operations": operations, "operation_steps": steps}
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        image = {"schema_version": version,
+                 "corpus_state": [*state[:3], _read_corpus(state[3])],
+                 "operations": operations, "operation_steps": steps}
+        if version == 3:
+            image["maintenance_state"] = [list(row) for row in self._db.execute("SELECT * FROM maintenance_state")]
+            image["imports"] = [list(row) for row in self._db.execute("SELECT * FROM imports ORDER BY fingerprint")]
+            image["maintenance_events"] = [[n, event, _read_json(payload)] for n, event, payload in
+                self._db.execute("SELECT * FROM maintenance_events ORDER BY sequence")]
+        return image
+
+    @_guarded
+    def maintenance_required(self):
+        self._check()
+        if self._db.execute("PRAGMA user_version").fetchone()[0] != 3:
+            return False
+        _validate_maintenance(self._db)
+        return self._db.execute("SELECT state FROM maintenance_state").fetchone()[0] != "ready"
 
     @_guarded
     def snapshot(self):
@@ -543,7 +643,7 @@ class _Session:
         watermark = self._db.execute("SELECT COALESCE(MAX(rowid),0) FROM operations").fetchone()[0]
         return {"revision": row[0], "restore_epoch": row[1],
                 "operation_watermark": watermark,
-                "corpus": corpus, "recovery_required": blocked}
+                "corpus": corpus, "recovery_required": blocked or self.maintenance_required()}
 
     @_guarded
     def begin(self, *, key, epoch, kind, intent, expected_revision, after, request=None):
@@ -626,6 +726,8 @@ class _Session:
     @_guarded
     def commit(self, operation_id, *, result=None):
         self._check()
+        if self.maintenance_required():
+            raise CorpusStoreError("corpus_recovery_required")
         _token(operation_id)
         result_text = _terminal_result(
             {"status": "committed"} if result is None else result, "committed")
@@ -703,6 +805,8 @@ class _Session:
     def finish_compensation(self, operation_id, *, result):
         """Caller must establish settled external effects and projection parity first."""
         self._check()
+        if self.maintenance_required():
+            raise CorpusStoreError("corpus_recovery_required")
         _token(operation_id)
         result_text = _terminal_result(result, "compensated")
         with self._transaction():

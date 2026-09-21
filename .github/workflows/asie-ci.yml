@@ -2,7 +2,7 @@ name: ASIE CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, codex/public-knowledge-lifecycle]
   workflow_dispatch:
 
 permissions:

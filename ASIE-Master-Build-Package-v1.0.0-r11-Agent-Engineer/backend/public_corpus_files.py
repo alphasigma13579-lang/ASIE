@@ -61,27 +61,37 @@ class StoreFiles:
             self.close()
             raise UnsafeStorePath() from None
 
-    def file(self, name):
+    def file(self, name, *, readonly=False, exclusive=False, create=True):
         if name not in ("public_knowledge.lock", "public_knowledge.sqlite3",
                         "public_knowledge.sqlite3-wal", "public_knowledge.sqlite3-shm",
-                        "public_knowledge.sqlite3-journal"):
+                        "public_knowledge.sqlite3-journal", "public_knowledge.manifest.json",
+                        "public_knowledge_corpus.json"):
+            raise UnsafeStorePath()
+        if readonly and (exclusive or create):
             raise UnsafeStorePath()
         if name in self._files:
+            if exclusive:
+                raise UnsafeStorePath()
             return self._files[name]
         try:
             if self._win:
                 import msvcrt
                 handle = self._win.open(self.path / name, directory=False,
-                                        transient=name.endswith("-journal"))
+                                        transient=name.endswith("-journal"), readonly=readonly,
+                                        exclusive=exclusive, create=create)
                 try:
                     self._win.private(handle)
-                    fd = msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
+                    fd = msvcrt.open_osfhandle(handle, (os.O_RDONLY if readonly else os.O_RDWR) | os.O_BINARY)
                 except BaseException:
                     self._win.close(handle)
                     raise
             else:
-                fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW |
-                             os.O_CLOEXEC | os.O_NONBLOCK, 0o600, dir_fd=self._root_fd)
+                flags = (os.O_RDONLY if readonly else os.O_RDWR) | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+                if create:
+                    flags |= os.O_CREAT
+                if exclusive:
+                    flags |= os.O_EXCL | os.O_CREAT
+                fd = os.open(name, flags, 0o600, dir_fd=self._root_fd)
             self._fds.append(fd)
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
@@ -196,15 +206,16 @@ class _Windows:
         finally:
             self.kernel.LocalFree(text)
 
-    def open(self, path, *, directory, transient=False):
+    def open(self, path, *, directory, transient=False, readonly=False, exclusive=False, create=True):
         if self.kernel.GetDriveTypeW(str(path.anchor)) != 3:  # fixed local disk only
             raise UnsafeStorePath()
         # Pin persistent entries against replacement. The rollback journal alone
         # shares deletion: SQLite retires it during WAL initialization, inside
         # the verified service-private directory (not an untrusted namespace).
-        access = 0x20080 if directory else 0xC0020080
+        access = 0x20080 if directory else (0x80020080 if readonly else 0xC0020080)
+        disposition = 3 if directory or not create else (1 if exclusive else 4)
         handle = self.kernel.CreateFileW(str(path), access, 7 if transient else 3, None,
-                                        3 if directory else 4, 0x02200000, None)
+                                        disposition, 0x02200000, None)
         if handle == self.c.c_void_p(-1).value:
             raise UnsafeStorePath()
         info = (self.w.DWORD * 13)()  # BY_HANDLE_FILE_INFORMATION: 52 bytes
