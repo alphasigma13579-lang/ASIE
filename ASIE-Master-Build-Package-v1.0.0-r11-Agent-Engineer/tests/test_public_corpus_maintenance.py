@@ -72,7 +72,8 @@ def image(store):
 
 def service(store, index):
     return PublicKnowledgeLifecycle(store=store, scope=scope(),
-        tavily=FakeTavily("official facts"), pinecone=index, verifier=index, now=lambda: NOW)
+        tavily=FakeTavily("official facts"), pinecone=index, verifier=index,
+        project_organization_resolver=lambda project: project.removeprefix("project-"), now=lambda: NOW)
 
 
 class Index(LifecycleIndex):
@@ -106,7 +107,7 @@ def test_import_preserves_original_history_audit_and_idempotence(tmp_path):
 
 @pytest.mark.parametrize("corruption", [
     "duplicate_record", "duplicate_version", "missing_metadata", "wrong_owner",
-    "version_mismatch", "chunk_count", "project_context", "bad_tombstone", "bad_audit",
+    "version_mismatch", "chunk_count", "project_context", "bad_tombstone", "active_deleted", "bad_audit",
 ])
 def test_invalid_import_rejected_before_destination_database(tmp_path, corruption):
     value = history()
@@ -127,6 +128,8 @@ def test_invalid_import_rejected_before_destination_database(tmp_path, corruptio
         source["project_id"] = "PRIVATE_MARKER"
     elif corruption == "bad_tombstone":
         source["status"] = "deleted_tombstone"
+    elif corruption == "active_deleted":
+        source["deleted_at"] = NOW
     else:
         value["audit_events"][0]["source_id"] = "missing"
     path = write_legacy(tmp_path, value)
@@ -417,3 +420,136 @@ def test_legacy_file_path_controls_preserve_target(tmp_path, kind):
         PublicCorpusMaintenance(scope=scope()).import_legacy(path.parent, store)
     assert path.read_bytes() == before
     assert not (store.directory / "public_knowledge.sqlite3").exists()
+
+
+def test_restore_interruption_after_copy_cannot_expose_old_writable_epoch(tmp_path, monkeypatch):
+    import backend.public_corpus_maintenance as module
+    from test_public_corpus_store import Interrupted
+    source = v2_store(tmp_path)
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    def interrupt(*args, **kwargs):
+        raise Interrupted()
+    monkeypatch.setattr(module, "_install", interrupt)
+    with pytest.raises(Interrupted):
+        maintenance.restore(backup, target)
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        with target.session(scope()):
+            pytest.fail("interrupted restore became writable")
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        maintenance.backup(target, directory(tmp_path, "partial-backup"))
+
+
+def test_import_commit_before_seal_is_recoverable_but_not_automatically_readable(tmp_path, monkeypatch):
+    import backend.public_corpus_maintenance as module
+    from test_public_corpus_store import Interrupted
+    path = write_legacy(tmp_path)
+    original = path.read_bytes()
+    target = PublicCorpusStore(directory(tmp_path, "imported"))
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    seal = module._seal_install
+    def interrupt(*args, **kwargs):
+        raise Interrupted()
+    monkeypatch.setattr(module, "_seal_install", interrupt)
+    with pytest.raises(Interrupted):
+        maintenance.import_legacy(path.parent, target)
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        with target.session(scope()):
+            pytest.fail("unverified import became readable")
+    monkeypatch.setattr(module, "_seal_install", seal)
+    assert maintenance.import_legacy(path.parent, target)["status"] == "already_imported"
+    assert image(target)["corpus_state"][3] == legacy()
+    assert path.read_bytes() == original
+
+
+def v2_store(tmp_path):
+    store = PublicCorpusStore(directory(tmp_path, "v2-source"))
+    with store.session(scope()) as session:
+        snap = session.snapshot()
+        op = session.begin(key="v2-write", epoch=snap["restore_epoch"], kind="sync",
+                           intent={"purpose": "test"}, expected_revision=0, after=legacy())
+        session.commit(op.operation_id)
+    return store
+
+
+def test_v2_backup_restores_as_v3_without_upgrading_original(tmp_path):
+    source = v2_store(tmp_path)
+    before = image(source)
+    assert before["schema_version"] == 2
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, target)
+    after = image(target)
+    assert after["schema_version"] == 3
+    assert after["corpus_state"][3] == before["corpus_state"][3]
+    assert after["operations"] == before["operations"]
+    assert after["operation_steps"] == before["operation_steps"]
+    assert after["corpus_state"][2] != before["corpus_state"][2]
+    assert image(source) == before
+
+
+def test_restored_unfinished_old_operation_is_preserved_not_falsely_settled(tmp_path):
+    source = v2_store(tmp_path)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        session.begin(key="unfinished", epoch=snap["restore_epoch"], kind="reindex",
+                      intent={}, expected_revision=snap["revision"], after=snap["corpus"])
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, target)
+    before = image(target)
+    index = Index()
+    index.settled = lambda *a, **kw: False
+    assert maintenance.rebuild(target, key="new", epoch=before["corpus_state"][2],
+                               adapter=index, verifier=index)["status"] == "recovery_required"
+    assert image(target) == before and not index.calls
+    index.settled = LifecycleIndex.settled.__get__(index, Index)
+    assert maintenance.rebuild(target, key="new", epoch=before["corpus_state"][2],
+                               adapter=index, verifier=index)["status"] == "rebuilt"
+    with target.session(scope()) as session:
+        assert not session.snapshot()["recovery_required"]
+        assert session._db.execute(
+            "SELECT state FROM operations WHERE operation_id=?",
+            (before["operations"][-1][1],)).fetchone() == ("compensated",)
+    assert image(source)["operations"][-1][8] == "prepared"
+
+
+def test_provider_exception_does_not_leak_to_result_or_journal(tmp_path):
+    maintenance, store, _ = install(tmp_path)
+    index = Index()
+    index.failure = RuntimeError("SECRET_CREDENTIAL_MARKER")
+    epoch = image(store)["corpus_state"][2]
+    result = maintenance.rebuild(store, key="rebuild", epoch=epoch, adapter=index, verifier=index)
+    assert result["status"] == "recovery_required"
+    assert "SECRET_CREDENTIAL_MARKER" not in json.dumps(result) + json.dumps(image(store))
+
+
+def test_inherited_recovery_key_is_durable_before_any_compensation_effect(tmp_path):
+    from test_public_corpus_store import Interrupted
+    source = v2_store(tmp_path)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        session.begin(key="old", epoch=snap["restore_epoch"], kind="delete",
+                      intent={}, expected_revision=snap["revision"], after=snap["corpus"])
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, target)
+    index = Index()
+    index.failure = Interrupted()
+    epoch = image(target)["corpus_state"][2]
+    with pytest.raises(Interrupted):
+        maintenance.rebuild(target, key="recovery-key", epoch=epoch, adapter=index, verifier=index)
+    calls = deepcopy(index.calls)
+    with pytest.raises(CorpusStoreError, match="^corpus_intent_conflict$"):
+        maintenance.rebuild(target, key="different-key", epoch=epoch, adapter=index, verifier=index)
+    assert index.calls == calls
+    assert maintenance.rebuild(target, key="recovery-key", epoch=epoch,
+                               adapter=index, verifier=index)["status"] == "rebuilt"

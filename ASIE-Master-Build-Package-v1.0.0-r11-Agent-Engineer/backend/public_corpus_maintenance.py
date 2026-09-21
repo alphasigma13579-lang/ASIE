@@ -18,6 +18,7 @@ import uuid
 from backend.public_corpus_store import (
     CorpusStoreError, PublicCorpusStore, _Session, _SCHEMA_V3,
     _MAINTENANCE_TABLES, _corpus, _json, _MAX_BYTES, _token,
+    _INSTALLATION, _installation_epoch,
 )
 from backend.public_corpus_files import UnsafeStorePath
 from backend.public_knowledge_lifecycle import _authorize, _projection, _record_sets
@@ -114,14 +115,46 @@ def _different(left, right):
         raise CorpusStoreError("corpus_destination_not_new")
 
 
-def _readonly(files):
+def _readonly(files, *, installing=False):
+    installed_epoch = None if installing else _installation_epoch(files)
     files.file(_DB, readonly=True, create=False)
     for suffix in ("-wal", "-shm", "-journal"):
         if os.path.lexists(files.path / (_DB + suffix)):
             files.file(_DB + suffix, readonly=True, create=False)
     files.validate()
-    return sqlite3.connect((files.path / _DB).as_uri() + "?mode=ro",
-                           uri=True, isolation_level=None, timeout=2)
+    db = sqlite3.connect((files.path / _DB).as_uri() + "?mode=ro",
+                         uri=True, isolation_level=None, timeout=2)
+    try:
+        if installed_epoch is not None and (
+                db.execute("PRAGMA user_version").fetchone()[0] != 3 or db.execute(
+                    "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
+            raise CorpusStoreError("corpus_installation_incomplete")
+        return db
+    except BaseException:
+        db.close()
+        raise
+
+
+def _start_install(files):
+    if os.path.lexists(files.path / _DB):
+        raise CorpusStoreError("corpus_destination_not_new")
+    fd = files.file(_INSTALLATION, exclusive=True)
+    os.fsync(fd)
+    _flush_directory(files)
+
+
+def _seal_install(files, epoch):
+    fd = files.file(_INSTALLATION, create=False)
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.ftruncate(fd, 0)
+    payload = b"ready:" + _token(epoch).encode("ascii")
+    while payload:
+        written = os.write(fd, payload)
+        if written <= 0:
+            raise CorpusStoreError("corpus_maintenance_failed")
+        payload = payload[written:]
+    os.fsync(fd)
+    _flush_directory(files)
 
 
 def _new_database(files):
@@ -187,7 +220,7 @@ def _validate_corpus(value):
                     _parse_utc(version["retained_at"], field="retained_at")
             if version_numbers != sorted(set(version_numbers)):
                 raise ValueError
-            if source["status"] == "deleted_tombstone" and not source.get("deleted_at"):
+            if (source["status"] == "deleted_tombstone") != ("deleted_at" in source):
                 raise ValueError
             for key in ("source_url", "last_checked_at", "last_changed_at", "last_result", "deleted_at"):
                 if key in source and (type(source[key]) is not str or not source[key]):
@@ -233,7 +266,7 @@ def _install(db, *, origin, fingerprint, baseline, parent_epoch, epoch, count=No
                 db.execute(statement)
         db.execute("PRAGMA user_version=3")
     db.execute("DELETE FROM maintenance_state")
-    db.execute("INSERT INTO maintenance_state VALUES(1,?,?,?,?, 'pending',NULL)",
+    db.execute("INSERT INTO maintenance_state VALUES(1,?,?,?,?, 'pending',NULL,NULL)",
                (origin, fingerprint, baseline, parent_epoch))
     db.execute("UPDATE corpus_state SET restore_epoch=? WHERE id=1", (epoch,))
     if origin == "import":
@@ -260,13 +293,23 @@ class PublicCorpusMaintenance:
             count = _validate_corpus(corpus)
             incoming.validate()
             with destination.session(self.scope, files_only=True) as files:
-                if (files.path / _DB).exists():
-                    with closing(_readonly(files)) as db:
+                if os.path.lexists(files.path / _DB):
+                    with closing(_readonly(files, installing=True)) as db:
                         image = _Session(db).verified_image()
+                        _validate_image(image)
                         receipt = image.get("imports", [])
                         if [fingerprint, 1, count] not in receipt:
                             raise CorpusStoreError("corpus_destination_not_new")
+                        try:
+                            sealed_epoch = _installation_epoch(files)
+                        except CorpusStoreError as error:
+                            if str(error) != "corpus_installation_incomplete":
+                                raise
+                            sealed_epoch = None
+                        if sealed_epoch != image["corpus_state"][2]:
+                            _seal_install(files, image["corpus_state"][2])
                         return {"status": "already_imported", "records": count}
+                _start_install(files)
                 with closing(_new_database(files)) as db:
                     db.execute("BEGIN IMMEDIATE")
                     try:
@@ -287,10 +330,10 @@ class PublicCorpusMaintenance:
                     image = _Session(db).verified_image()
                     if image["corpus_state"][3] != corpus:
                         raise CorpusStoreError("corpus_semantic_mismatch")
-                with closing(_readonly(files)) as db:
+                with closing(_readonly(files, installing=True)) as db:
                     if _Session(db).verified_image() != image:
                         raise CorpusStoreError("corpus_semantic_mismatch")
-                _flush_directory(files)
+                _seal_install(files, epoch)
             if _file_digest(fd) != fingerprint:
                 raise CorpusStoreError("corpus_source_changed")
         return {"status": "imported", "records": count, "rebuild_required": True}
@@ -352,6 +395,7 @@ class PublicCorpusMaintenance:
                         or manifest["restore_epoch"] != original["corpus_state"][2]):
                     raise CorpusStoreError("corpus_manifest_invalid")
                 with destination.session(self.scope, files_only=True) as files:
+                    _start_install(files)
                     with closing(_new_database(files)) as restored:
                         source.backup(restored)
                         if _Session(restored).verified_image() != original:
@@ -371,11 +415,11 @@ class PublicCorpusMaintenance:
                                 or image["operations"] != original["operations"]
                                 or image["operation_steps"] != original["operation_steps"]):
                             raise CorpusStoreError("corpus_semantic_mismatch")
-                    with closing(_readonly(files)) as check:
+                    with closing(_readonly(files, installing=True)) as check:
                         if _Session(check).verified_image() != image:
                             raise CorpusStoreError("corpus_semantic_mismatch")
                     files.validate()
-                    _flush_directory(files)
+                    _seal_install(files, epoch)
             if _file_digest(fd) != manifest["database_sha256"]:
                 raise CorpusStoreError("corpus_source_changed")
         return {"status": "restored", "rebuild_required": True}
@@ -409,9 +453,15 @@ class PublicCorpusMaintenance:
                     op[pos] for op in image["operations"] for pos in (9, 10)]:
                 known.update(r["_id"] for _, _, records in _record_sets(corpus) for r in records)
             key_hash = hashlib.sha256(key.encode()).hexdigest()
+            if state[7] is not None and state[7] != key_hash:
+                raise CorpusStoreError("corpus_intent_conflict")
             blocked = {"status": "recovery_required", "message": "لم يثبت اكتمال استعادة المعرفة بعد."}
             pending = session.pending()
-            if pending and (state[5] != "rebuilding" or pending[0]["operation_id"] != state[6]):
+            inherited = bool(pending and state[5] == "pending" and state[1] == "restore")
+            if pending and not inherited and (
+                    state[5] != "rebuilding" or pending[0]["operation_id"] != state[6]):
+                return blocked
+            if inherited and pending[0]["before"] != image["corpus_state"][3]:
                 return blocked
             if pending and any(identifier not in known for step in pending[0]["steps"]
                                for identifier in step["record_ids"]):
@@ -428,6 +478,34 @@ class PublicCorpusMaintenance:
             try:
                 if verifier.quiescent(epoch=epoch) is not True:
                     return blocked
+                if inherited:
+                    old_id = pending[0]["operation_id"]
+                    if not self._settled(session, old_id, verifier):
+                        return blocked
+                    with session._transaction():
+                        session._db.execute("UPDATE maintenance_state SET request_key_hash=? WHERE id=1",
+                                            (key_hash,))
+                    self._apply(session, old_id, expected, known, adapter)
+                    if (not self._settled(session, old_id, verifier)
+                            or verifier.matches_namespace(epoch=epoch, expected=deepcopy(expected)) is not True):
+                        return blocked
+                    # Preserve the old identity and before-image. Only verified
+                    # compensation closes the inherited operation; the separate
+                    # maintenance gate stays closed throughout this transaction.
+                    with session._transaction():
+                        current = session.snapshot()
+                        row = session._db.execute(
+                            "SELECT base_revision,before_payload,state FROM operations WHERE operation_id=?",
+                            (old_id,)).fetchone()
+                        if (row[0] != current["revision"] or json.loads(row[1]) != current["corpus"]
+                                or row[2] not in ("prepared", "recovery_required")):
+                            raise CorpusStoreError("corpus_revision_conflict")
+                        session._db.execute(
+                            "UPDATE operations SET state='compensated',result_code='compensated',"
+                            "result_payload=?,updated_at=CURRENT_TIMESTAMP WHERE operation_id=?",
+                            (_json({"status": "failed_compensated"}), old_id))
+                        _event(session._db, "inherited_operation_compensated",
+                               {"restore_epoch": epoch, "operation_id": old_id})
                 if operation_id is None:
                     operation_id = uuid.uuid4().hex
                     payload = _corpus(image["corpus_state"][3])
@@ -437,21 +515,13 @@ class PublicCorpusMaintenance:
                             "INSERT INTO operations VALUES(?,?,?,?,?,?,?,'prepared',?,?,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL)",
                             (operation_id, epoch, "public-knowledge-sync", key_hash, digest, "reindex",
                              image["corpus_state"][1], payload, payload, digest))
-                        session._db.execute("UPDATE maintenance_state SET state='rebuilding',operation_id=? WHERE id=1",
-                                            (operation_id,))
+                        session._db.execute("UPDATE maintenance_state SET state='rebuilding',operation_id=?,request_key_hash=? WHERE id=1",
+                                            (operation_id, key_hash))
                 attempts = [{"ordinal": i, **v} for i, v in enumerate(session.pending()[0]["steps"])]
                 if verifier.settled(operation_id, attempts=deepcopy(attempts)) is not True:
                     return blocked
-                for action, values, batch_size in (
-                        ("upsert", [expected[k] for k in sorted(expected)], 100),
-                        ("delete", sorted(known - expected.keys()), 1000)):
-                    for start in range(0, len(values), batch_size):
-                        batch = deepcopy(values[start:start + batch_size])
-                        ids = [v["_id"] for v in batch] if action == "upsert" else batch
-                        ordinal = session.record_step(operation_id, action=action, record_ids=ids, recovery=True)
-                        adapter.apply_public_knowledge_effect(
-                            scope=self.scope, operation_id=operation_id, step_ordinal=ordinal,
-                            action=action, values=batch)
+                if not inherited:
+                    self._apply(session, operation_id, expected, known, adapter)
                 attempts = [{"ordinal": i, **v} for i, v in enumerate(session.pending()[0]["steps"])]
                 if (verifier.settled(operation_id, attempts=deepcopy(attempts)) is not True
                         or verifier.matches_namespace(epoch=epoch, expected=deepcopy(expected)) is not True):
@@ -463,7 +533,28 @@ class PublicCorpusMaintenance:
                         (_json({"status": "rebuilt"}), operation_id))
                     session._db.execute("UPDATE corpus_state SET revision=revision+1 WHERE id=1")
                     session._db.execute("UPDATE maintenance_state SET state='ready' WHERE id=1")
-                    _event(session._db, "index_rebuild_verified", {"restore_epoch": epoch})
+                    _event(session._db, "index_rebuild_verified", {"restore_epoch": epoch, "operation_id": operation_id})
                 return {"status": "rebuilt", "records": len(expected)}
             except Exception:
                 return blocked
+
+
+    @staticmethod
+    def _settled(session, operation_id, verifier):
+        pending = session.pending()
+        if not pending or pending[0]["operation_id"] != operation_id:
+            return False
+        attempts = [{"ordinal": i, **step} for i, step in enumerate(pending[0]["steps"])]
+        return verifier.settled(operation_id, attempts=deepcopy(attempts)) is True
+
+    def _apply(self, session, operation_id, expected, known, adapter):
+        for action, values, batch_size in (
+                ("upsert", [expected[k] for k in sorted(expected)], 100),
+                ("delete", sorted(known - expected.keys()), 1000)):
+            for start in range(0, len(values), batch_size):
+                batch = deepcopy(values[start:start + batch_size])
+                ids = [v["_id"] for v in batch] if action == "upsert" else batch
+                ordinal = session.record_step(operation_id, action=action, record_ids=ids, recovery=True)
+                adapter.apply_public_knowledge_effect(
+                    scope=self.scope, operation_id=operation_id, step_ordinal=ordinal,
+                    action=action, values=batch)

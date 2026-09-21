@@ -64,7 +64,7 @@ class StoreFiles:
     def file(self, name, *, readonly=False, exclusive=False, create=True):
         if name not in ("public_knowledge.lock", "public_knowledge.sqlite3",
                         "public_knowledge.sqlite3-wal", "public_knowledge.sqlite3-shm",
-                        "public_knowledge.sqlite3-journal", "public_knowledge.manifest.json",
+                        "public_knowledge.sqlite3-journal", "public_knowledge.manifest.json", "public_knowledge.installation",
                         "public_knowledge_corpus.json"):
             raise UnsafeStorePath()
         if readonly and (exclusive or create):

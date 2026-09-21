@@ -222,7 +222,8 @@ CREATE TABLE maintenance_state(
  baseline_sha256 TEXT NOT NULL,
  parent_epoch TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('pending','rebuilding','ready')),
- operation_id TEXT REFERENCES operations(operation_id)
+ operation_id TEXT REFERENCES operations(operation_id),
+ request_key_hash TEXT
 );
 CREATE TABLE imports(
  fingerprint TEXT PRIMARY KEY,
@@ -252,13 +253,17 @@ def _validate_maintenance(connection):
         if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise CorpusStoreError("corpus_storage_invalid")
     _token(row[4])
+    if row[7] is not None and (type(row[7]) is not str or len(row[7]) != 64
+            or any(c not in "0123456789abcdef" for c in row[7])):
+        raise CorpusStoreError("corpus_storage_invalid")
     if row[5] == "pending" and row[6] is not None:
         raise CorpusStoreError("corpus_storage_invalid")
     if row[5] != "pending":
         operation = connection.execute(
-            "SELECT kind,state,restore_epoch FROM operations WHERE operation_id=?", (row[6],)).fetchone()
+            "SELECT kind,state,restore_epoch,key_hash FROM operations WHERE operation_id=?", (row[6],)).fetchone()
         epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
         if (operation is None or operation[0] != "reindex" or operation[2] != epoch
+                or row[7] is None or operation[3] != row[7]
                 or operation[1] not in (("prepared", "recovery_required")
                                        if row[5] == "rebuilding" else ("committed",))):
             raise CorpusStoreError("corpus_storage_invalid")
@@ -268,6 +273,7 @@ def _validate_maintenance(connection):
                 or version != 1 or type(count) is not int or count < 0):
             raise CorpusStoreError("corpus_storage_invalid")
     latest_install = None
+    last_rebuild = None
     for sequence, event, payload in connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"):
         if type(sequence) is not int or sequence < 1:
             raise CorpusStoreError("corpus_storage_invalid")
@@ -277,10 +283,14 @@ def _validate_maintenance(connection):
             raise CorpusStoreError("corpus_storage_invalid")
         if event in ("import_installed", "restore_installed"):
             latest_install = (event, parsed)
+        if event == "index_rebuild_verified":
+            last_rebuild = parsed
     epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
     expected = {"input_sha256": row[2], "baseline_sha256": row[3],
                 "parent_epoch": row[4], "restore_epoch": epoch}
     if latest_install != (row[1] + "_installed", expected):
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[5] == "ready" and last_rebuild != {"restore_epoch": epoch, "operation_id": row[6]}:
         raise CorpusStoreError("corpus_storage_invalid")
     if row[1] == "restore" and epoch == row[4]:
         raise CorpusStoreError("corpus_storage_invalid")
@@ -416,6 +426,24 @@ class Operation:
     result_code: str | None
 
 
+_INSTALLATION = "public_knowledge.installation"
+
+
+def _installation_epoch(files):
+    """A crash during copy must never expose a writable pre-restore epoch."""
+    if not os.path.lexists(files.path / _INSTALLATION):
+        return None
+    fd = files.file(_INSTALLATION, create=False)
+    os.lseek(fd, 0, os.SEEK_SET)
+    value = os.read(fd, 256)
+    if not value.startswith(b"ready:") or len(value) >= 256:
+        raise CorpusStoreError("corpus_installation_incomplete")
+    try:
+        return _token(value[6:].decode("ascii"))
+    except (CorpusStoreError, UnicodeError):
+        raise CorpusStoreError("corpus_installation_incomplete") from None
+
+
 class PublicCorpusStore:
     """Constructing a store performs no I/O; directory is provisioned by operator."""
 
@@ -465,10 +493,15 @@ class PublicCorpusStore:
                 yielded = True
                 yield files
                 return
+            installed_epoch = _installation_epoch(files)
             database = files.database()
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if installed_epoch is not None:
+                if version != 3 or connection.execute(
+                        "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,):
+                    raise CorpusStoreError("corpus_installation_incomplete")
             if version == 1 and upgrade_v1 is not True:
                 raise CorpusStoreError("corpus_upgrade_required")
             if version not in (0, 1, _VERSION, 3):
