@@ -13,7 +13,7 @@ from backend.provider_security_control_plane import TrustedProviderScope
 from backend.public_corpus_store import CorpusStoreError, _json
 from backend.public_knowledge import (
     PublicKnowledgeSync, _EVIDENCE_REQUIRED_FIELDS, _RECORD_ID_RE, _batched, _safe_failure,
-    _safe_source_id, validate_public_source_registry,
+    _safe_source_id, validate_public_source_registry, validate_public_knowledge_record,
     _utc_now, build_feasibility_evidence_context,
     build_unavailable_feasibility_evidence_context,
 )
@@ -56,12 +56,20 @@ def _record_sets(corpus):
             yield source, version is source, records
 
 
+def _index_record(record):
+    try:
+        validate_public_knowledge_record(record)
+    except Exception:
+        raise CorpusStoreError("corpus_projection_invalid") from None
+
+
 def _projection(corpus):
     records = {}
     for source, current, values in _record_sets(corpus):
         if not current or source.get("status") != "active":
             continue
         for record in values:
+            _index_record(record)
             identifier = record["_id"]
             if identifier in records:
                 raise CorpusStoreError("corpus_projection_invalid")
@@ -176,6 +184,11 @@ class PublicKnowledgeLifecycle:
                 return replay
             snap = session.snapshot()
             _projection(snap["corpus"])
+            if kind == "restore" and type(request["value"]) is str:
+                source = snap["corpus"]["sources"].get(request["value"])
+                if source is not None:
+                    for record in source["records"]:
+                        _index_record(record)
             plan = _Plan(corpus=snap["corpus"], tavily=self.tavily,
                          scope=self.scope, now=self.now)
             try:

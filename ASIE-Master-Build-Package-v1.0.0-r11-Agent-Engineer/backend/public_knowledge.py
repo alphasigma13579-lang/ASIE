@@ -1221,6 +1221,53 @@ _EVIDENCE_TEXT_FIELDS = tuple(
 )
 
 
+
+def validate_public_knowledge_record(record: Any) -> None:
+    """Validate indexable canonical content without provider I/O or age expiry.
+
+    Retained content may be old; read-time freshness remains the evidence
+    adapter's responsibility. This checks structure and lineage, not a new
+    source admission or permission to fetch.
+    """
+    try:
+        allowed = {"_id", "chunk_index", "chunk_count", "source_of_truth",
+                   *_EVIDENCE_REQUIRED_FIELDS}
+        if type(record) is not dict or set(record) != allowed:
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+        if type(record["_id"]) is not str or not _RECORD_ID_RE.fullmatch(record["_id"]):
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+        for field in _EVIDENCE_TEXT_FIELDS:
+            value = record[field]
+            maximum = 8_000 if field == "chunk_text" else 2_000
+            if type(value) is not str or not value.strip() or len(value) > maximum:
+                raise PublicKnowledgeError("public_knowledge_record_invalid")
+        for field in ("version", "freshness_days", "chunk_index", "chunk_count"):
+            if type(record[field]) is not int or record[field] < 1:
+                raise PublicKnowledgeError("public_knowledge_record_invalid")
+        confidence = record["confidence"]
+        if (type(confidence) not in (int, float) or not math.isfinite(confidence)
+                or not 0 <= confidence <= 1 or record["chunk_index"] > record["chunk_count"]
+                or record["source_of_truth"] is not False
+                or record["authority"] not in _OFFICIAL_AUTHORITIES
+                or record["admission_status"] != "auto_admitted_official_open"
+                or record["data_classification"] != "public"
+                or not _SHA256_RE.fullmatch(record["content_sha256"])
+                or _safe_source_id(record["source_id"]) != record["source_id"]):
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+        if record["evidence_ref"] != f"public:{record['source_id']}:sha256:{record['content_sha256']}":
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+        _canonical_url(record["source_url"])
+        _validated_license_ref(record["license_ref"])
+        retrieved = _parse_utc(record["retrieved_at"], field="retrieved_at")
+        fresh = _parse_utc(record["fresh_until"], field="fresh_until")
+        expires = _parse_utc(record["expires_at"], field="expires_at")
+        if (fresh != retrieved + timedelta(days=record["freshness_days"])
+                or expires < fresh or _content_anomalies(record["chunk_text"])):
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+    except (KeyError, TypeError, ValueError, OverflowError, PublicKnowledgeError):
+        raise PublicKnowledgeError("public_knowledge_record_invalid") from None
+
+
 def _feasibility_evidence_context(
     *,
     as_of: str,
