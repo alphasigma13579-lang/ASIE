@@ -102,9 +102,10 @@ def _validate_operation_digests(connection):
     if connection.execute(
             "SELECT 1 FROM operations WHERE "
             "typeof(key_hash)!='text' OR length(CAST(key_hash AS BLOB))!=64 OR "
-            "key_hash GLOB '*[^0123456789abcdef]*' OR "
+            "key_hash GLOB '*[^0123456789abcdef]*' OR instr(key_hash,char(0))!=0 OR "
             "typeof(intent_digest)!='text' OR length(CAST(intent_digest AS BLOB))!=64 OR "
-            "intent_digest GLOB '*[^0123456789abcdef]*' LIMIT 1").fetchone():
+            "intent_digest GLOB '*[^0123456789abcdef]*' OR "
+            "instr(intent_digest,char(0))!=0 LIMIT 1").fetchone():
         raise CorpusStoreError("corpus_storage_invalid")
 
 

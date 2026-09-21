@@ -1345,7 +1345,8 @@ def test_terminal_writer_rejects_invalid_result_before_mutation(state, result):
 
 
 @pytest.mark.parametrize("column", ["key_hash", "intent_digest"])
-@pytest.mark.parametrize("value", ["a" * 63, "g" * 64, "A" * 64, "a" * 64 + "\x00suffix"])
+@pytest.mark.parametrize("value", ["a" * 63, "g" * 64, "A" * 64, "a" * 64 + "\x00suffix",
+                                   "a" * 63 + "\x00", "a" * 31 + "\x00" + "b" * 32])
 def test_malformed_digest_cannot_turn_terminal_replay_into_new_operation(column, value):
     with memory_session() as session:
         args = {**request(session), "request": {"kind": "sync"}}
