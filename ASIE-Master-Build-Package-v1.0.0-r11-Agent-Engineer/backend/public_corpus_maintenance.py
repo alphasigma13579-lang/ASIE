@@ -149,10 +149,18 @@ def _readonly(files, *, installing=False, backup=False):
         raise
 
 
-def _start_install(files):
+def _start_install(files, *, origin, fingerprint):
     if os.path.lexists(files.path / _DB) or os.path.lexists(files.path / _BACKUP):
         raise CorpusStoreError("corpus_destination_not_new")
+    if origin not in ("import", "restore"):
+        raise CorpusStoreError("corpus_installation_incomplete")
     fd = files.file(_INSTALLATION, exclusive=True)
+    payload = ("pending:" + origin + ":" + fingerprint).encode("ascii")
+    while payload:
+        written = os.write(fd, payload)
+        if written <= 0:
+            raise CorpusStoreError("corpus_maintenance_failed")
+        payload = payload[written:]
     os.fsync(fd)
     _flush_directory(files)
 
@@ -261,13 +269,34 @@ def _validate_corpus(value):
             if "last_anomalies" in source and (type(source["last_anomalies"]) is not list
                     or any(type(v) is not str or not v for v in source["last_anomalies"])):
                 raise ValueError
+        event_fields = {
+            "source_version_activated": {"event", "source_id", "version", "at"},
+            "source_quarantined": {"event", "source_id", "anomalies", "at"},
+            "source_deleted": {"event", "source_id", "at"},
+            "source_restored": {"event", "source_id", "at"},
+            "public_namespace_reindexed": {"event", "records", "stale_records_deleted", "at"},
+            "empty_public_projection_reconciled": {"event", "records_deleted", "at"},
+        }
+        anomaly_codes = {
+            "prompt_injection_suspected", "content_encoding_corrupt",
+            "sensitive_secret_pattern", "sensitive_personal_identifier_pattern",
+            "public_source_extract_url_mismatch", "public_source_crawl_url_mismatch",
+        }
         for event in value["audit_events"]:
             if (type(event) is not dict or type(event.get("event")) is not str
-                    or type(event.get("at")) is not str or not event["at"]):
+                    or event["event"] not in event_fields
+                    or set(event) != event_fields[event["event"]]):
                 raise ValueError
-            _token(event["event"])
             _parse_utc(event["at"], field="at")
             if "source_id" in event and event["source_id"] not in value["sources"]:
+                raise ValueError
+            for field in ("version", "records", "stale_records_deleted", "records_deleted"):
+                if field in event and (type(event[field]) is not int
+                        or event[field] < (1 if field == "version" else 0)):
+                    raise ValueError
+            if "anomalies" in event and (type(event["anomalies"]) is not list
+                    or not event["anomalies"]
+                    or any(type(v) is not str or v not in anomaly_codes for v in event["anomalies"])):
                 raise ValueError
         return count
     except Exception:
@@ -336,10 +365,16 @@ class PublicCorpusMaintenance:
                             sealed_epoch = None
                         _verify_source(incoming, fd, fingerprint)
                         if sealed_epoch != image["corpus_state"][2]:
+                            marker = files.file(_INSTALLATION, readonly=True, create=False)
+                            if _read(marker, 256) != ("pending:import:" + fingerprint).encode("ascii"):
+                                raise CorpusStoreError("corpus_installation_incomplete")
+                            state = image["maintenance_state"][0]
+                            if state[1] != "import" or state[2] != fingerprint or state[5] != "pending":
+                                raise CorpusStoreError("corpus_installation_incomplete")
                             _seal_install(files, image["corpus_state"][2])
                         _verify_source(incoming, fd, fingerprint)
                         return {"status": "already_imported", "records": count}
-                _start_install(files)
+                _start_install(files, origin="import", fingerprint=fingerprint)
                 with closing(_new_database(files)) as db:
                     db.execute("BEGIN IMMEDIATE")
                     try:
@@ -426,7 +461,7 @@ class PublicCorpusMaintenance:
                         or manifest["restore_epoch"] != original["corpus_state"][2]):
                     raise CorpusStoreError("corpus_manifest_invalid")
                 with destination.session(self.scope, files_only=True) as files:
-                    _start_install(files)
+                    _start_install(files, origin="restore", fingerprint=manifest["database_sha256"])
                     with closing(_new_database(files)) as restored:
                         source.backup(restored)
                         if _Session(restored).verified_image() != original:

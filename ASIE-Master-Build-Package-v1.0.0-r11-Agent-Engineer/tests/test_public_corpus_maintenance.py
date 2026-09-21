@@ -100,7 +100,7 @@ def test_import_preserves_original_history_audit_and_idempotence(tmp_path):
     assert first["imports"] == [[hashlib.sha256(original).hexdigest(), 1, 2]]
     assert maintenance.import_legacy(path.parent, store)["status"] == "already_imported"
     assert image(store) == first and path.read_bytes() == original
-    value["audit_events"].append({"event": "note", "at": NOW})
+    value["audit_events"].append({"event": "source_restored", "source_id": "mof-open-data", "at": NOW})
     path.write_text(json.dumps(value))
     with pytest.raises(CorpusStoreError, match="^corpus_destination_not_new$"):
         maintenance.import_legacy(path.parent, store)
@@ -661,3 +661,68 @@ def test_backup_artifact_cannot_run_before_explicit_restore(tmp_path, monkeypatc
         with target.session(scope()) as session:
             assert session.snapshot()["recovery_required"]
     assert image(source) == original
+
+
+@pytest.mark.parametrize("field", ["project_id", "organization_id", "query", "owner_notes", "payload"])
+def test_import_rejects_private_or_unknown_audit_fields(tmp_path, field):
+    value = legacy()
+    value["audit_events"][0][field] = "PRIVATE_AUDIT_MARKER"
+    path = write_legacy(tmp_path, value)
+    original = path.read_bytes()
+    target = PublicCorpusStore(directory(tmp_path, "destination"))
+    with pytest.raises(CorpusStoreError) as caught:
+        PublicCorpusMaintenance(scope=scope()).import_legacy(path.parent, target)
+    assert "PRIVATE_AUDIT_MARKER" not in str(caught.value)
+    assert path.read_bytes() == original
+    assert not (target.directory / "public_knowledge.sqlite3").exists()
+
+
+def test_canonical_audit_event_schemas_preserve_all_supported_events():
+    value = legacy()
+    value["audit_events"].extend([
+        {"event": "source_quarantined", "source_id": "mof-open-data",
+         "anomalies": ["prompt_injection_suspected"], "at": NOW},
+        {"event": "source_deleted", "source_id": "mof-open-data", "at": NOW},
+        {"event": "source_restored", "source_id": "mof-open-data", "at": NOW},
+        {"event": "public_namespace_reindexed", "records": 1, "stale_records_deleted": 0, "at": NOW},
+        {"event": "empty_public_projection_reconciled", "records_deleted": 1, "at": NOW},
+    ])
+    before = deepcopy(value)
+    assert _validate_corpus(value) == 1
+    assert value == before
+    for event in [
+        {"event": "unknown", "at": NOW},
+        {"event": "source_version_activated", "source_id": "mof-open-data", "version": True, "at": NOW},
+        {"event": "source_quarantined", "source_id": "mof-open-data", "anomalies": ["PRIVATE_AUDIT_MARKER"], "at": NOW},
+        {"event": "public_namespace_reindexed", "records": "PRIVATE_AUDIT_MARKER", "stale_records_deleted": 0, "at": NOW},
+    ]:
+        invalid = deepcopy(value)
+        invalid["audit_events"].append(event)
+        with pytest.raises(CorpusStoreError, match="^corpus_import_invalid$"):
+            _validate_corpus(invalid)
+
+
+def test_interrupted_restore_cannot_be_resealed_by_legacy_import(tmp_path, monkeypatch):
+    import backend.public_corpus_maintenance as module
+    from test_public_corpus_store import Interrupted
+    maintenance, original, path = install(tmp_path)
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(original, backup)
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    def interrupt(*args, **kwargs):
+        raise Interrupted()
+    monkeypatch.setattr(module, "_install", interrupt)
+    with pytest.raises(Interrupted):
+        maintenance.restore(backup, target)
+    marker = target.directory / "public_knowledge.installation"
+    before = marker.read_bytes()
+    assert before.startswith(b"pending:restore:")
+    database = target.directory / "public_knowledge.sqlite3"
+    saved = database.read_bytes()
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        maintenance.import_legacy(path.parent, target)
+    assert marker.read_bytes() == before
+    assert database.read_bytes() == saved
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        with target.session(scope()):
+            pytest.fail("old epoch exposed after cross-operation retry")
