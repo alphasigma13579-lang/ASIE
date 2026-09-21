@@ -245,7 +245,18 @@ def _validate_corpus(value):
             allowed = {"status", "source_url", "content_sha256", "current_version",
                        "records", "versions", "last_checked_at", "last_changed_at",
                        "last_result", "last_anomalies", "deleted_at"}
-            if set(source) - allowed:
+            required = {"status", "source_url", "records", "versions", "last_checked_at", "last_result"}
+            status = source.get("status")
+            results = {"active": {"changed_upserted", "unchanged", "restored", "quarantined"},
+                       "deleted_tombstone": {"deleted"}, "quarantined": {"quarantined"}}
+            if status != "quarantined":
+                required |= {"content_sha256", "current_version", "last_changed_at"}
+            if (set(source) - allowed or not required <= set(source)
+                    or status not in results or source["last_result"] not in results[status]):
+                raise ValueError
+            if source["last_result"] == "quarantined" and not source.get("last_anomalies"):
+                raise ValueError
+            if status == "quarantined" and "last_changed_at" in source:
                 raise ValueError
             if source["status"] == "quarantined" and (
                     source["records"] or source["versions"]

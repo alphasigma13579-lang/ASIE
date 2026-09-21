@@ -297,8 +297,20 @@ def _validate_maintenance(connection):
                     raise CorpusStoreError("corpus_storage_invalid") from None
         if installation:
             latest_install = (event, parsed)
-        if event == "index_rebuild_verified":
-            last_rebuild = parsed
+        else:
+            operation = connection.execute(
+                "SELECT kind,state,restore_epoch FROM operations WHERE operation_id=?",
+                (parsed["operation_id"],)).fetchone()
+            if (operation is None or latest_install is None
+                    or parsed["restore_epoch"] != latest_install[1]["restore_epoch"]):
+                raise CorpusStoreError("corpus_storage_invalid")
+            if event == "index_rebuild_verified":
+                if operation != ("reindex", "committed", parsed["restore_epoch"]):
+                    raise CorpusStoreError("corpus_storage_invalid")
+                last_rebuild = parsed
+            elif (operation[1] != "compensated" or operation[2] == parsed["restore_epoch"]
+                    or latest_install[0] != "restore_installed"):
+                raise CorpusStoreError("corpus_storage_invalid")
     epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
     expected = {"input_sha256": row[2], "baseline_sha256": row[3],
                 "parent_epoch": row[4], "restore_epoch": epoch}

@@ -324,6 +324,7 @@ def test_tombstones_and_history_not_reintroduced_during_rebuild(tmp_path):
     value = history()
     value["sources"]["mof-open-data"]["status"] = "deleted_tombstone"
     value["sources"]["mof-open-data"]["deleted_at"] = NOW
+    value["sources"]["mof-open-data"]["last_result"] = "deleted"
     maintenance, store, _ = install(tmp_path, value)
     index = Index()
     record = value["sources"]["mof-open-data"]["records"][0]
@@ -838,6 +839,7 @@ def test_canonical_empty_quarantine_and_active_anomaly_are_preserved():
     source["versions"] = []
     source.pop("current_version")
     source.pop("content_sha256")
+    source.pop("last_changed_at")
     value["audit_events"] = [{"event": "source_quarantined", "source_id": "mof-open-data",
                               "anomalies": ["prompt_injection_suspected"], "at": NOW}]
     assert _validate_corpus(value) == 0
@@ -881,4 +883,68 @@ def test_invalid_historical_maintenance_event_blocks_image_and_backup(tmp_path, 
             action()
         assert "PRIVATE_MAINTENANCE_MARKER" not in str(caught.value)
     assert not (target / "public_knowledge.sqlite3").exists()
+    assert not (target / "public_knowledge.backup").exists()
+
+
+@pytest.mark.parametrize("field", ["source_url", "last_checked_at", "last_changed_at", "last_result"])
+def test_import_requires_canonical_active_metadata(tmp_path, field):
+    value = legacy()
+    del value["sources"]["mof-open-data"][field]
+    path = write_legacy(tmp_path, value)
+    target = PublicCorpusStore(directory(tmp_path, "destination"))
+    with pytest.raises(CorpusStoreError, match="^corpus_import_invalid$"):
+        PublicCorpusMaintenance(scope=scope()).import_legacy(path.parent, target)
+    assert not (target.directory / "public_knowledge.sqlite3").exists()
+
+
+@pytest.mark.parametrize("status,result", [
+    ("active", "deleted"), ("deleted_tombstone", "restored"),
+    ("deleted_tombstone", "unchanged"), ("quarantined", "changed_upserted"),
+])
+def test_source_status_and_result_cannot_contradict(status, result):
+    value = legacy()
+    source = value["sources"]["mof-open-data"]
+    source["status"], source["last_result"] = status, result
+    if status == "deleted_tombstone":
+        source["deleted_at"] = NOW
+    if status == "quarantined":
+        source["records"] = []
+        for key in ("current_version", "content_sha256", "last_changed_at"):
+            source.pop(key)
+    with pytest.raises(CorpusStoreError, match="^corpus_import_invalid$"):
+        _validate_corpus(value)
+
+
+@pytest.mark.parametrize("damage", ["missing", "wrong_state", "wrong_kind", "wrong_epoch", "false_compensation"])
+def test_maintenance_events_require_matching_journal_operation(tmp_path, damage):
+    maintenance, store, _ = install(tmp_path)
+    index = Index()
+    epoch = image(store)["corpus_state"][2]
+    maintenance.rebuild(store, epoch=epoch, key="ready", adapter=index, verifier=index)
+    with closing(sqlite3.connect(store.directory / "public_knowledge.sqlite3")) as db:
+        event, raw = db.execute(
+            "SELECT event,payload FROM maintenance_events WHERE event='index_rebuild_verified'").fetchone()
+        payload = json.loads(raw)
+        operation_id = payload["operation_id"]
+        if damage == "missing":
+            payload["operation_id"] = "nonexistent"
+        elif damage == "wrong_epoch":
+            payload["restore_epoch"] = "different"
+        elif damage == "false_compensation":
+            event = "inherited_operation_compensated"
+        elif damage == "wrong_kind":
+            db.execute("UPDATE operations SET kind='sync' WHERE operation_id=?", (operation_id,))
+        else:
+            db.execute("UPDATE operations SET state='compensated',result_code='compensated' WHERE operation_id=?",
+                       (operation_id,))
+        # Historical row followed by valid latest rebuild: validating only the
+        # last rebuild event would miss the invalid reference.
+        db.execute("INSERT INTO maintenance_events(event,payload) VALUES(?,?)", (event, json.dumps(payload)))
+        db.execute("INSERT INTO maintenance_events(event,payload) VALUES('index_rebuild_verified',?)", (raw,))
+        db.commit()
+    target = directory(tmp_path, "backup")
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        image(store)
+    with pytest.raises(CorpusStoreError):
+        maintenance.backup(store, target)
     assert not (target / "public_knowledge.backup").exists()
