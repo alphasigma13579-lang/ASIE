@@ -1566,3 +1566,89 @@ def test_invalid_expiry_rejected_before_fetch_and_terminal_replayed():
         assert not index.calls and not index.attempts and not service.tavily.calls
     invalid["sources"][0]["expiry_days"] = 30
     assert validate_public_source_registry(invalid)["sources"][0]["expiry_days"] == 30
+
+
+def test_maintenance_image_includes_terminal_pending_history_and_row_identity():
+    with memory_session() as session:
+        first = session.begin(**request(session, key="finished"))
+        session.record_step(first.operation_id, action="upsert", record_ids=["public-one"])
+        session.commit(first.operation_id, result={"status": "committed", "count": 1})
+        second = session.begin(**request(session, key="pending", number=2))
+        session.record_step(second.operation_id, action="delete", record_ids=["public-one"])
+        before = list(session._db.iterdump())
+        image = session.verified_image()
+        assert list(session._db.iterdump()) == before
+        assert image["schema_version"] == 2
+        assert image["corpus_state"] == [1, 1, "epoch", corpus()]
+        assert [row[0] for row in image["operations"]] == [1, 2]
+        assert [row[1] for row in image["operations"]] == [
+            first.operation_id, second.operation_id]
+        assert image["operations"][0][15] == {"status": "committed", "count": 1}
+        assert image["operations"][1][15] is None
+        assert len(image["operation_steps"]) == 2
+        image["corpus_state"][3]["audit_events"].clear()
+        assert session.snapshot()["corpus"] == corpus()
+
+
+def test_maintenance_image_normalizes_json_format_not_semantic_content():
+    with memory_session() as session:
+        operation = session.begin(**request(session))
+        session.commit(operation.operation_id)
+        image = session.verified_image()
+        session._db.execute("UPDATE corpus_state SET payload=?",
+                            (json.dumps(corpus(), indent=4),))
+        assert session.verified_image() == image
+        session._db.execute("UPDATE corpus_state SET payload=?",
+                            (json.dumps(corpus(9)),))
+        assert session.verified_image() != image
+
+
+def test_maintenance_rejects_orphan_steps_even_when_sqlite_integrity_passes():
+    with memory_session() as session:
+        session._db.execute("PRAGMA foreign_keys=OFF")
+        session._db.execute("INSERT INTO operation_steps VALUES('missing',0,?)",
+                            (json.dumps({"action": "delete", "record_ids": ["valid"]}),))
+        session._db.execute("PRAGMA foreign_keys=ON")
+        assert session._db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+        before = list(session._db.iterdump())
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            session.verified_image()
+        assert list(session._db.iterdump()) == before
+
+
+@pytest.mark.parametrize("column,value", [
+    ("before_payload", '{"schema_version":1}'),
+    ("after_payload", '{"schema_version":1}'),
+    ("result_payload", '{"status":"failed_compensated"}'),
+    ("request_digest", "SECRET_MALFORMED_DIGEST"),
+    ("key_hash", "a" * 64 + "\x00SECRET"),
+    ("intent_digest", "SECRET_MALFORMED_DIGEST"),
+])
+def test_maintenance_checks_entire_journal_without_mutation_or_raw_leak(column, value):
+    with memory_session() as session:
+        operation = session.begin(**request(session))
+        session.commit(operation.operation_id)
+        session._db.execute(f"UPDATE operations SET {column}=?", (value,))
+        assert session._db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+        before = list(session._db.iterdump())
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$") as caught:
+            session.verified_image()
+        assert "SECRET" not in str(caught.value)
+        assert list(session._db.iterdump()) == before
+
+
+@pytest.mark.parametrize("version", [0, 1, 3])
+def test_maintenance_rejects_mismatched_schema_version(version):
+    with memory_session() as session:
+        session._db.execute(f"PRAGMA user_version={version}")
+        before = list(session._db.iterdump())
+        with pytest.raises(CorpusStoreError, match="^corpus_schema_unsupported$"):
+            session.verified_image()
+        assert list(session._db.iterdump()) == before
+
+
+def test_maintenance_image_cannot_be_used_after_session_close(tmp_path):
+    with PublicCorpusStore(tmp_path).session(scope()) as session:
+        assert session.verified_image()["operations"] == []
+    with pytest.raises(CorpusStoreError, match="^corpus_session_closed$"):
+        session.verified_image()

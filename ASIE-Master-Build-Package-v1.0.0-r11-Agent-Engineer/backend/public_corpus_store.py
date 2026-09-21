@@ -493,7 +493,40 @@ class _Session:
         if self._db.execute("PRAGMA foreign_key_check").fetchall():
             raise CorpusStoreError("corpus_storage_invalid")
         _validate_schema(self._db)
+        if self._db.execute("PRAGMA user_version").fetchone()[0] != _VERSION:
+            raise CorpusStoreError("corpus_schema_unsupported")
+        _validate_journal(self._db, version=_VERSION)
         return "ok"
+
+    @_guarded
+    def verified_image(self):
+        """Internal semantic image for maintenance, never a customer response.
+
+        Includes row identities because operation_watermark is replay/read-gate
+        state. JSON whitespace is immaterial; all fields and retained history
+        remain significant. The owning session holds the exclusive process lock.
+        This does not authorize an import, restore, provider call or index read.
+        """
+        self.verify_integrity()
+        state = self._db.execute(
+            "SELECT id,revision,restore_epoch,payload FROM corpus_state").fetchone()
+        operations = []
+        for row in self._db.execute("SELECT rowid,* FROM operations ORDER BY rowid"):
+            values = list(row)
+            # rowid precedes the v2 journal columns; decode only JSON fields.
+            for position in (9, 10, 15):
+                if values[position] is not None:
+                    values[position] = _read_json(values[position])
+            operations.append(values)
+        steps = [
+            [operation_id, ordinal, _read_json(payload)]
+            for operation_id, ordinal, payload in self._db.execute(
+                "SELECT operation_id,ordinal,payload FROM operation_steps "
+                "ORDER BY operation_id,ordinal")
+        ]
+        return {"schema_version": _VERSION,
+                "corpus_state": [*state[:3], _read_corpus(state[3])],
+                "operations": operations, "operation_steps": steps}
 
     @_guarded
     def snapshot(self):
