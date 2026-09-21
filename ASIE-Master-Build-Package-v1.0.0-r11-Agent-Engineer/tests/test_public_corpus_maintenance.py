@@ -553,3 +553,66 @@ def test_inherited_recovery_key_is_durable_before_any_compensation_effect(tmp_pa
     assert index.calls == calls
     assert maintenance.rebuild(target, key="recovery-key", epoch=epoch,
                                adapter=index, verifier=index)["status"] == "rebuilt"
+
+
+@pytest.mark.parametrize("repeat", [False, True])
+@pytest.mark.parametrize("mutation", ["atomic_replace", "in_place"])
+def test_concurrent_legacy_change_cannot_be_accepted_as_current(tmp_path, monkeypatch, repeat, mutation):
+    from concurrent.futures import ThreadPoolExecutor
+    import backend.public_corpus_maintenance as module
+    path = write_legacy(tmp_path)
+    original = path.read_bytes()
+    store = PublicCorpusStore(directory(tmp_path, "imported"))
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    before = None
+    if repeat:
+        maintenance.import_legacy(path.parent, store)
+        before = image(store)
+    changed = history()
+    replacement = json.dumps(changed).encode()
+    outcomes = []
+    verified = module._Session.verified_image
+
+    def mutate():
+        try:
+            if mutation == "atomic_replace":
+                temporary = path.with_suffix(".replacement")
+                temporary.write_bytes(replacement)
+                temporary.chmod(0o600)
+                temporary.replace(path)
+            else:
+                path.write_bytes(replacement)
+            return "changed"
+        except PermissionError:
+            # Windows pinned handles can prevent the attempted write/replacement.
+            assert os.name == "nt"
+            return "prevented"
+
+    def after_initial_validation(session):
+        result = verified(session)
+        if not outcomes:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                outcomes.append(pool.submit(mutate).result(timeout=10))
+        return result
+
+    monkeypatch.setattr(module._Session, "verified_image", after_initial_validation)
+    failure = None
+    try:
+        result = maintenance.import_legacy(path.parent, store)
+    except CorpusStoreError as error:
+        failure = error
+    assert len(outcomes) == 1
+    monkeypatch.setattr(module._Session, "verified_image", verified)
+    if outcomes == ["prevented"]:
+        assert failure is None
+        assert result["status"] == ("already_imported" if repeat else "imported")
+        assert path.read_bytes() == original
+    else:
+        assert str(failure) in ("corpus_path_invalid", "corpus_source_changed")
+        assert path.read_bytes() == replacement
+        if repeat:
+            assert image(store) == before
+        else:
+            with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+                with store.session(scope()):
+                    pytest.fail("changed source produced a sealed import")

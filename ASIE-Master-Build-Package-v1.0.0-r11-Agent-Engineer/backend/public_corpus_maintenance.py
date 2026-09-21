@@ -94,6 +94,14 @@ def _file_digest(fd):
         digest.update(chunk)
 
 
+def _verify_source(files, fd, fingerprint):
+    # A digest of a pinned descriptor alone misses pathname replacement.
+    files.validate()
+    if _file_digest(fd) != fingerprint:
+        raise CorpusStoreError("corpus_source_changed")
+    files.validate()
+
+
 def _write(fd, value):
     payload = _json(value).encode("utf-8")
     while payload:
@@ -306,8 +314,10 @@ class PublicCorpusMaintenance:
                             if str(error) != "corpus_installation_incomplete":
                                 raise
                             sealed_epoch = None
+                        _verify_source(incoming, fd, fingerprint)
                         if sealed_epoch != image["corpus_state"][2]:
                             _seal_install(files, image["corpus_state"][2])
+                        _verify_source(incoming, fd, fingerprint)
                         return {"status": "already_imported", "records": count}
                 _start_install(files)
                 with closing(_new_database(files)) as db:
@@ -333,9 +343,9 @@ class PublicCorpusMaintenance:
                 with closing(_readonly(files, installing=True)) as db:
                     if _Session(db).verified_image() != image:
                         raise CorpusStoreError("corpus_semantic_mismatch")
+                _verify_source(incoming, fd, fingerprint)
                 _seal_install(files, epoch)
-            if _file_digest(fd) != fingerprint:
-                raise CorpusStoreError("corpus_source_changed")
+            _verify_source(incoming, fd, fingerprint)
         return {"status": "imported", "records": count, "rebuild_required": True}
 
     @_safe
@@ -419,9 +429,9 @@ class PublicCorpusMaintenance:
                         if _Session(check).verified_image() != image:
                             raise CorpusStoreError("corpus_semantic_mismatch")
                     files.validate()
+                    _verify_source(incoming, fd, manifest["database_sha256"])
                     _seal_install(files, epoch)
-            if _file_digest(fd) != manifest["database_sha256"]:
-                raise CorpusStoreError("corpus_source_changed")
+            _verify_source(incoming, fd, manifest["database_sha256"])
         return {"status": "restored", "rebuild_required": True}
 
     @_safe
