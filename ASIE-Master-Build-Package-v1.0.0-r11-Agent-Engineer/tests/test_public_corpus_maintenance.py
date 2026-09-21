@@ -1046,3 +1046,47 @@ def test_compensation_does_not_advance_revision_chain(tmp_path):
     verified = image(source)
     assert verified["corpus_state"][1] == 2
     assert [operation[8] for operation in verified["operations"]] == ["committed", "compensated", "committed"]
+
+
+def test_missing_historical_maintenance_event_rejects_image_backup_and_rebuild(tmp_path):
+    maintenance, source, _ = install(tmp_path)
+    index = Index()
+    epoch = image(source)["corpus_state"][2]
+    maintenance.rebuild(source, epoch=epoch, key="ready", adapter=index, verifier=index)
+    backup = directory(tmp_path, "backup")
+    maintenance.backup(source, backup)
+    restored = PublicCorpusStore(directory(tmp_path, "restored"))
+    maintenance.restore(backup, restored)
+    new_epoch = image(restored)["corpus_state"][2]
+    with closing(sqlite3.connect(restored.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("DELETE FROM maintenance_events WHERE sequence=2")
+        db.commit()
+    target = directory(tmp_path, "rejected")
+    calls = deepcopy(index.calls)
+    for action in (lambda: image(restored), lambda: maintenance.backup(restored, target),
+                   lambda: maintenance.rebuild(restored, epoch=new_epoch, key="retry", adapter=index, verifier=index)):
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            action()
+    assert index.calls == calls
+    assert not (target / "public_knowledge.backup").exists()
+
+
+def test_missing_compensated_journal_row_cannot_hide_in_revision_chain(tmp_path):
+    source = v2_store(tmp_path)
+    with source.session(scope()) as session:
+        snap = session.snapshot()
+        compensated = session.begin(key="compensated", epoch=snap["restore_epoch"], kind="sync",
+                                    intent={}, expected_revision=snap["revision"], after=history())
+        session.finish_compensation(compensated.operation_id, result={"status": "failed_compensated"})
+        final = session.begin(key="final", epoch=snap["restore_epoch"], kind="sync",
+                              intent={}, expected_revision=snap["revision"], after=history())
+        session.commit(final.operation_id)
+    with closing(sqlite3.connect(source.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("DELETE FROM operations WHERE operation_id=?", (compensated.operation_id,))
+        db.commit()
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        image(source)
+    target = directory(tmp_path, "rejected")
+    with pytest.raises(CorpusStoreError):
+        PublicCorpusMaintenance(scope=scope()).backup(source, target)
+    assert not (target / "public_knowledge.backup").exists()

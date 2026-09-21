@@ -275,8 +275,9 @@ def _validate_maintenance(connection):
     latest_install = None
     installed_epochs = set()
     last_rebuild = None
-    for sequence, event, payload in connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"):
-        if type(sequence) is not int or sequence < 1:
+    for expected_sequence, (sequence, event, payload) in enumerate(
+            connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"), 1):
+        if type(sequence) is not int or sequence != expected_sequence:
             raise CorpusStoreError("corpus_storage_invalid")
         parsed = _read_json(payload)
         installation = event in ("import_installed", "restore_installed")
@@ -444,7 +445,9 @@ def _validate_revision_chain(image):
     order = {epoch: ordinal for ordinal, epoch in enumerate(epochs)}
     previous_epoch = -1
     unfinished = False
-    for operation in operations:
+    for expected_rowid, operation in enumerate(operations, 1):
+        if type(operation[0]) is not int or operation[0] != expected_rowid:
+            raise CorpusStoreError("corpus_storage_invalid")
         epoch, base, state, before, after = (operation[2], operation[7], operation[8],
                                            operation[9], operation[10])
         position = order.get(epoch)
