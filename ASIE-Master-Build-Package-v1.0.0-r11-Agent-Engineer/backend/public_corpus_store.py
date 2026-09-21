@@ -501,6 +501,8 @@ class PublicCorpusStore:
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version == 3 and installed_epoch is None:
+                raise CorpusStoreError("corpus_installation_incomplete")
             if installed_epoch is not None:
                 if version != 3 or connection.execute(
                         "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,):

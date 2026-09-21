@@ -726,3 +726,28 @@ def test_interrupted_restore_cannot_be_resealed_by_legacy_import(tmp_path, monke
     with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
         with target.session(scope()):
             pytest.fail("old epoch exposed after cross-operation retry")
+
+
+def test_ready_v3_without_installation_marker_cannot_run_or_be_backed_up(tmp_path):
+    maintenance, store, path = install(tmp_path)
+    index = Index()
+    epoch = image(store)["corpus_state"][2]
+    assert maintenance.rebuild(store, epoch=epoch, key="ready", adapter=index, verifier=index)["status"] == "rebuilt"
+    before = image(store)
+    assert before["maintenance_state"][0][5] == "ready"
+    marker = store.directory / "public_knowledge.installation"
+    marker.unlink()  # Disposable artifact only: simulate copying DB without seal.
+    calls = deepcopy(index.calls)
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        with store.session(scope()):
+            pytest.fail("markerless v3 admitted")
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        maintenance.rebuild(store, epoch=epoch, key="retry", adapter=index, verifier=index)
+    target = directory(tmp_path, "backup")
+    with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
+        maintenance.backup(store, target)
+    with pytest.raises(CorpusStoreError):
+        maintenance.import_legacy(path.parent, store)
+    assert index.calls == calls
+    assert not marker.exists()
+    assert not (target / "public_knowledge.sqlite3").exists()

@@ -139,6 +139,9 @@ def _readonly(files, *, installing=False, backup=False):
     db = sqlite3.connect((files.path / _DB).as_uri() + "?mode=ro",
                          uri=True, isolation_level=None, timeout=2)
     try:
+        if (not installing and not backup and installed_epoch is None
+                and db.execute("PRAGMA user_version").fetchone()[0] == 3):
+            raise CorpusStoreError("corpus_installation_incomplete")
         if installed_epoch is not None and (
                 db.execute("PRAGMA user_version").fetchone()[0] != 3 or db.execute(
                     "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
