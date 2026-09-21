@@ -427,6 +427,7 @@ class Operation:
 
 
 _INSTALLATION = "public_knowledge.installation"
+_BACKUP = "public_knowledge.backup"
 
 
 def _installation_epoch(files):
@@ -493,6 +494,8 @@ class PublicCorpusStore:
                 yielded = True
                 yield files
                 return
+            if os.path.lexists(files.path / _BACKUP):
+                raise CorpusStoreError("corpus_backup_requires_restore")
             installed_epoch = _installation_epoch(files)
             database = files.database()
             files.validate()

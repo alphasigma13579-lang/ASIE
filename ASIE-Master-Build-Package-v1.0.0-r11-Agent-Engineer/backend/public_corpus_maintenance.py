@@ -18,7 +18,7 @@ import uuid
 from backend.public_corpus_store import (
     CorpusStoreError, PublicCorpusStore, _Session, _SCHEMA_V3,
     _MAINTENANCE_TABLES, _corpus, _json, _MAX_BYTES, _token,
-    _INSTALLATION, _installation_epoch,
+    _INSTALLATION, _BACKUP, _installation_epoch,
 )
 from backend.public_corpus_files import UnsafeStorePath
 from backend.public_knowledge_lifecycle import _authorize, _projection, _record_sets
@@ -123,7 +123,13 @@ def _different(left, right):
         raise CorpusStoreError("corpus_destination_not_new")
 
 
-def _readonly(files, *, installing=False):
+def _readonly(files, *, installing=False, backup=False):
+    if os.path.lexists(files.path / _BACKUP) and not backup:
+        raise CorpusStoreError("corpus_backup_requires_restore")
+    if backup:
+        marker = files.file(_BACKUP, readonly=True, create=False)
+        if _read(marker, 16) != b"backup-v1":
+            raise CorpusStoreError("corpus_backup_invalid")
     installed_epoch = None if installing else _installation_epoch(files)
     files.file(_DB, readonly=True, create=False)
     for suffix in ("-wal", "-shm", "-journal"):
@@ -144,9 +150,23 @@ def _readonly(files, *, installing=False):
 
 
 def _start_install(files):
-    if os.path.lexists(files.path / _DB):
+    if os.path.lexists(files.path / _DB) or os.path.lexists(files.path / _BACKUP):
         raise CorpusStoreError("corpus_destination_not_new")
     fd = files.file(_INSTALLATION, exclusive=True)
+    os.fsync(fd)
+    _flush_directory(files)
+
+
+def _start_backup(files):
+    if os.path.lexists(files.path / _DB) or os.path.lexists(files.path / _INSTALLATION):
+        raise CorpusStoreError("corpus_destination_not_new")
+    fd = files.file(_BACKUP, exclusive=True)
+    payload = b"backup-v1"
+    while payload:
+        written = os.write(fd, payload)
+        if written <= 0:
+            raise CorpusStoreError("corpus_maintenance_failed")
+        payload = payload[written:]
     os.fsync(fd)
     _flush_directory(files)
 
@@ -357,13 +377,14 @@ class PublicCorpusMaintenance:
             image = _Session(original).verified_image()
             _validate_image(image)
             with destination.session(self.scope, files_only=True) as files:
+                _start_backup(files)
                 with closing(_new_database(files)) as copied:
                     original.backup(copied)
                     if _Session(copied).verified_image() != image:
                         raise CorpusStoreError("corpus_semantic_mismatch")
                     if copied.execute("PRAGMA journal_mode=DELETE").fetchone()[0].lower() != "delete":
                         raise CorpusStoreError("corpus_durability_unavailable")
-                with closing(_readonly(files)) as check:
+                with closing(_readonly(files, backup=True)) as check:
                     if _Session(check).verified_image() != image:
                         raise CorpusStoreError("corpus_semantic_mismatch")
                 fd = files.file(_DB)
@@ -396,7 +417,7 @@ class PublicCorpusMaintenance:
             fd = incoming.file(_DB, readonly=True, create=False)
             if _file_digest(fd) != manifest["database_sha256"]:
                 raise CorpusStoreError("corpus_backup_digest_mismatch")
-            with closing(_readonly(incoming)) as source:
+            with closing(_readonly(incoming, backup=True)) as source:
                 original = _Session(source).verified_image()
                 _validate_image(original)
                 if (manifest["semantic_sha256"] != _digest(original)

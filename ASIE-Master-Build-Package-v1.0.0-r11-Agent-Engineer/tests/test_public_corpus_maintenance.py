@@ -618,3 +618,46 @@ def test_concurrent_legacy_change_cannot_be_accepted_as_current(tmp_path, monkey
             with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
                 with store.session(scope()):
                     pytest.fail("changed source produced a sealed import")
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_backup_artifact_cannot_run_before_explicit_restore(tmp_path, monkeypatch, interrupted):
+    import backend.public_corpus_maintenance as module
+    from test_public_corpus_store import Interrupted
+    source = v2_store(tmp_path)
+    original = image(source)
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    backup = directory(tmp_path, "backup")
+    write = module._write
+    if interrupted:
+        def interrupt_manifest(fd, value):
+            raise Interrupted()
+        monkeypatch.setattr(module, "_write", interrupt_manifest)
+        with pytest.raises(Interrupted):
+            maintenance.backup(source, backup)
+        monkeypatch.setattr(module, "_write", write)
+    else:
+        assert maintenance.backup(source, backup)["status"] == "backup_verified"
+    assert (backup / "public_knowledge.backup").read_bytes() == b"backup-v1"
+    database = backup / "public_knowledge.sqlite3"
+    saved = database.read_bytes()
+    with monkeypatch.context() as guarded:
+        guarded.setattr(sqlite3, "connect", lambda *a, **kw: pytest.fail("backup opened as live database"))
+        with pytest.raises(CorpusStoreError, match="^corpus_backup_requires_restore$"):
+            with PublicCorpusStore(backup).session(scope()):
+                pytest.fail("backup became runnable")
+    assert database.read_bytes() == saved
+    assert not (backup / "public_knowledge.sqlite3-wal").exists()
+    target = PublicCorpusStore(directory(tmp_path, "restored"))
+    if interrupted:
+        with pytest.raises(CorpusStoreError):
+            maintenance.restore(backup, target)
+        assert not (target.directory / "public_knowledge.sqlite3").exists()
+    else:
+        assert maintenance.restore(backup, target)["status"] == "restored"
+        restored = image(target)
+        assert restored["corpus_state"][2] != original["corpus_state"][2]
+        assert restored["corpus_state"][3] == original["corpus_state"][3]
+        with target.session(scope()) as session:
+            assert session.snapshot()["recovery_required"]
+    assert image(source) == original

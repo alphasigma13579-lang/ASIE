@@ -65,7 +65,7 @@ class StoreFiles:
         if name not in ("public_knowledge.lock", "public_knowledge.sqlite3",
                         "public_knowledge.sqlite3-wal", "public_knowledge.sqlite3-shm",
                         "public_knowledge.sqlite3-journal", "public_knowledge.manifest.json", "public_knowledge.installation",
-                        "public_knowledge_corpus.json"):
+                        "public_knowledge_corpus.json", "public_knowledge.backup"):
             raise UnsafeStorePath()
         if readonly and (exclusive or create):
             raise UnsafeStorePath()
