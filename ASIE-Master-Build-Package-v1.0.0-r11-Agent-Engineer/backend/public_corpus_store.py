@@ -246,7 +246,8 @@ CREATE TABLE journal_seal(
  id INTEGER PRIMARY KEY CHECK(id=1),
  last_operation INTEGER NOT NULL CHECK(last_operation>=0),
  last_event INTEGER NOT NULL CHECK(last_event>=0),
- baseline_sha256 TEXT NOT NULL
+ baseline_sha256 TEXT NOT NULL,
+ baseline_event INTEGER NOT NULL CHECK(baseline_event>=1)
 );
 CREATE TABLE operation_seals(
  operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id),
@@ -263,9 +264,10 @@ def _validate_completeness(connection):
     seals = connection.execute("SELECT * FROM journal_seal").fetchall()
     if len(seals) != 1:
         raise CorpusStoreError("corpus_storage_invalid")
-    identifier, last_operation, last_event, baseline = seals[0]
+    identifier, last_operation, last_event, baseline, baseline_event = seals[0]
     if (identifier != 1 or type(last_operation) is not int or last_operation < 0
             or type(last_event) is not int or last_event < 0
+            or type(baseline_event) is not int or not 1 <= baseline_event <= last_event
             or type(baseline) is not str or len(baseline) != 64
             or any(c not in "0123456789abcdef" for c in baseline)):
         raise CorpusStoreError("corpus_storage_invalid")
@@ -290,6 +292,20 @@ def _validate_completeness(connection):
         raise CorpusStoreError("corpus_storage_invalid")
     events = connection.execute("SELECT sequence FROM maintenance_events ORDER BY sequence").fetchall()
     if len(events) != last_event or any(row != (i,) for i, row in enumerate(events, 1)):
+        raise CorpusStoreError("corpus_storage_invalid")
+
+    # The seal retains its installation anchor across later restores. Import
+    # anchors bind to the initial corpus; legacy hardening anchors bind to the
+    # independently verified semantic-image digest recorded by that restore.
+    anchor = connection.execute(
+        "SELECT event,payload FROM maintenance_events WHERE sequence=?",
+        (baseline_event,)).fetchone()
+    if anchor is None or anchor[0] not in ("import_installed", "restore_installed"):
+        raise CorpusStoreError("corpus_storage_invalid")
+    payload = _read_json(anchor[1])
+    if type(payload) is not dict or payload.get("baseline_sha256") != baseline:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if anchor[0] == "import_installed" and baseline_event != 1:
         raise CorpusStoreError("corpus_storage_invalid")
 
 

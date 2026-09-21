@@ -381,8 +381,9 @@ def _harden_legacy_destination(db, baseline):
         count = db.execute("SELECT COUNT(*) FROM operation_steps WHERE operation_id=?",
                            (operation_id,)).fetchone()[0]
         db.execute("INSERT INTO operation_seals VALUES(?,?,?)", (operation_id, number, count))
-    db.execute("INSERT INTO journal_seal VALUES(1,?,?,?)",
-               (len(operations), db.execute("SELECT COUNT(*) FROM maintenance_events").fetchone()[0], baseline))
+    event_count = db.execute("SELECT COUNT(*) FROM maintenance_events").fetchone()[0]
+    db.execute("INSERT INTO journal_seal VALUES(1,?,?,?,?)",
+               (len(operations), event_count, baseline, event_count))
     db.execute("PRAGMA user_version=4")
     _validate_completeness(db)
 
@@ -437,7 +438,7 @@ class PublicCorpusMaintenance:
                             if statement.strip().startswith("CREATE "):
                                 db.execute(statement)
                         db.execute("PRAGMA user_version=4")
-                        db.execute("INSERT INTO journal_seal VALUES(1,0,0,?)", (_digest(corpus),))
+                        db.execute("INSERT INTO journal_seal VALUES(1,0,0,?,1)", (_digest(corpus),))
                         epoch = uuid.uuid4().hex
                         db.execute("INSERT INTO corpus_state VALUES(1,1,?,?)",
                                    (epoch, _corpus(corpus)))

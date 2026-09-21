@@ -1266,3 +1266,68 @@ def test_inherited_unfinished_steps_remain_sealed_after_restore(tmp_path):
         maintenance.rebuild(target, epoch=restored["corpus_state"][2], key="recover",
                             adapter=index, verifier=index)
     assert index.calls == calls
+
+
+@pytest.mark.parametrize("origin", ["import", "v2", "v3"])
+def test_baseline_anchor_survives_repeated_restore_and_rejects_digest_mutation(tmp_path, origin):
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    if origin == "v2":
+        source = PublicCorpusStore(directory(tmp_path, "source"))
+        with source.session(scope()) as session:
+            session.snapshot()
+    else:
+        maintenance, source, _ = install(tmp_path)
+        if origin == "v3":
+            # Legacy installation fixture, before v4 completeness seals existed.
+            with closing(sqlite3.connect(source.directory / "public_knowledge.sqlite3")) as db:
+                db.execute("DROP TABLE operation_seals")
+                db.execute("DROP TABLE journal_seal")
+                db.execute("PRAGMA user_version=3")
+                db.commit()
+    original = image(source)
+    proof = HistoricalBaseline(original)
+    expected_baseline = (_digest(original["corpus_state"][3]) if origin == "import"
+                         else proof.digest)
+    for generation in range(2):
+        backup = directory(tmp_path, "backup-" + str(generation))
+        maintenance.backup(source, backup)
+        destination = PublicCorpusStore(directory(tmp_path, "restore-" + str(generation)))
+        maintenance.restore(backup, destination, baseline_verifier=proof)
+        verified = image(destination)
+        seal = verified["journal_seal"][0]
+        assert seal[3] == expected_baseline
+        anchor = next(event for event in verified["maintenance_events"] if event[0] == seal[4])
+        assert anchor[2]["baseline_sha256"] == expected_baseline
+        assert anchor[1] == ("import_installed" if origin == "import" else "restore_installed")
+        source = destination
+    epoch = image(source)["corpus_state"][2]
+    with closing(sqlite3.connect(source.directory / "public_knowledge.sqlite3")) as db:
+        changed = ("0" if expected_baseline[0] != "0" else "1") + expected_baseline[1:]
+        db.execute("UPDATE journal_seal SET baseline_sha256=?", (changed,))
+        db.commit()
+    rejected = directory(tmp_path, "rejected-backup")
+    index = Index()
+    for action in (
+            lambda: image(source),
+            lambda: maintenance.backup(source, rejected),
+            lambda: maintenance.rebuild(source, epoch=epoch, key="reject",
+                                        adapter=index, verifier=index)):
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            action()
+    assert not (rejected / "public_knowledge.sqlite3").exists()
+    assert index.calls == []
+
+
+@pytest.mark.parametrize("anchor", [0, 2, 999])
+def test_baseline_anchor_cannot_point_to_rebuild_or_absent_event(tmp_path, anchor):
+    maintenance, source, _ = install(tmp_path)
+    index = Index()
+    epoch = image(source)["corpus_state"][2]
+    assert maintenance.rebuild(source, epoch=epoch, key="initial",
+                               adapter=index, verifier=index)["status"] == "rebuilt"
+    with closing(sqlite3.connect(source.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("PRAGMA ignore_check_constraints=ON")
+        db.execute("UPDATE journal_seal SET baseline_event=?", (anchor,))
+        db.commit()
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        image(source)
