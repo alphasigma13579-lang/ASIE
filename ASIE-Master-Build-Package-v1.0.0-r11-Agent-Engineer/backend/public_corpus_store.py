@@ -277,11 +277,25 @@ def _validate_maintenance(connection):
     for sequence, event, payload in connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"):
         if type(sequence) is not int or sequence < 1:
             raise CorpusStoreError("corpus_storage_invalid")
-        _token(event)
         parsed = _read_json(payload)
-        if type(parsed) is not dict:
+        installation = event in ("import_installed", "restore_installed")
+        expected_fields = ({"input_sha256", "baseline_sha256", "parent_epoch", "restore_epoch"}
+                           if installation else {"restore_epoch", "operation_id"})
+        if (event not in ("import_installed", "restore_installed",
+                          "inherited_operation_compensated", "index_rebuild_verified")
+                or type(parsed) is not dict or set(parsed) != expected_fields):
             raise CorpusStoreError("corpus_storage_invalid")
-        if event in ("import_installed", "restore_installed"):
+        for key, value in parsed.items():
+            if key.endswith("_sha256"):
+                if (type(value) is not str or len(value) != 64
+                        or any(c not in "0123456789abcdef" for c in value)):
+                    raise CorpusStoreError("corpus_storage_invalid")
+            else:
+                try:
+                    _token(value)
+                except CorpusStoreError:
+                    raise CorpusStoreError("corpus_storage_invalid") from None
+        if installation:
             latest_install = (event, parsed)
         if event == "index_rebuild_verified":
             last_rebuild = parsed
@@ -453,7 +467,22 @@ def _check_existing_installation(files, installed_epoch):
         if installed_epoch is not None:
             raise CorpusStoreError("corpus_installation_incomplete")
         return
-    files.file(name, readonly=True, create=False)
+    descriptor = files.file(name, readonly=True, create=False)
+    if installed_epoch is None:
+        # Explicit v3 installation checkpoints before writing its ready seal.
+        # Inspect only the pinned main-file header on the ordinary v2 hot path;
+        # the normal connection still validates the actual WAL-aware version.
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        header = os.read(descriptor, 100)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        if not header:
+            return  # Existing empty store: normal initialization validates it.
+        if len(header) == 100 and header[:16] == b"SQLite format 3\0":
+            version = int.from_bytes(header[60:64], "big")
+            if version == 3:
+                raise CorpusStoreError("corpus_installation_incomplete")
+            if version in (0, 1, 2):
+                return
     for suffix in ("-wal", "-shm", "-journal"):
         if os.path.lexists(files.path / (name + suffix)):
             files.file(name + suffix, readonly=True, create=False)

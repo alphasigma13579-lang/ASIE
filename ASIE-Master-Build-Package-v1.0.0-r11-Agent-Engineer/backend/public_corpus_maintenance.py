@@ -159,7 +159,14 @@ def _readonly(files, *, installing=False, backup=False):
         raise
 
 
+def _reject_sidecars(files):
+    if any(os.path.lexists(files.path / (_DB + suffix))
+           for suffix in ("-wal", "-shm", "-journal")):
+        raise CorpusStoreError("corpus_destination_not_new")
+
+
 def _start_install(files, *, origin, fingerprint):
+    _reject_sidecars(files)
     if os.path.lexists(files.path / _DB) or os.path.lexists(files.path / _BACKUP):
         raise CorpusStoreError("corpus_destination_not_new")
     if origin not in ("import", "restore"):
@@ -176,6 +183,7 @@ def _start_install(files, *, origin, fingerprint):
 
 
 def _start_backup(files):
+    _reject_sidecars(files)
     if os.path.lexists(files.path / _DB) or os.path.lexists(files.path / _INSTALLATION):
         raise CorpusStoreError("corpus_destination_not_new")
     fd = files.file(_BACKUP, exclusive=True)
@@ -204,14 +212,10 @@ def _seal_install(files, epoch):
 
 
 def _new_database(files):
-    def reject_sidecars():
-        if any(os.path.lexists(files.path / (_DB + suffix))
-               for suffix in ("-wal", "-shm", "-journal")):
-            raise CorpusStoreError("corpus_destination_not_new")
-    reject_sidecars()
+    _reject_sidecars(files)
     files.file(_DB, exclusive=True)
     files.validate()
-    reject_sidecars()
+    _reject_sidecars(files)
     db = sqlite3.connect(files.path / _DB, isolation_level=None, timeout=2)
     try:
         db.execute("PRAGMA synchronous=FULL")

@@ -784,6 +784,8 @@ def test_new_destination_rejects_existing_sidecars(tmp_path, monkeypatch, method
         else:
             maintenance.restore(backup, target)
     assert sidecar.read_bytes() == b"UNRELATED_SIDECAR"
+    assert not (target.directory / "public_knowledge.installation").exists()
+    assert not (target.directory / "public_knowledge.backup").exists()
     assert not (target.directory / "public_knowledge.sqlite3").exists()
 
 
@@ -802,6 +804,8 @@ def test_new_destination_rejects_linked_sidecar_without_touching_target(tmp_path
     with pytest.raises(CorpusStoreError, match="^corpus_destination_not_new$"):
         PublicCorpusMaintenance(scope=scope()).import_legacy(path.parent, target)
     assert original.read_bytes() == b"DO_NOT_MODIFY"
+    assert not (target.directory / "public_knowledge.installation").exists()
+    assert not (target.directory / "public_knowledge.backup").exists()
     assert not (target.directory / "public_knowledge.sqlite3").exists()
 
 
@@ -837,3 +841,44 @@ def test_canonical_empty_quarantine_and_active_anomaly_are_preserved():
     value["audit_events"] = [{"event": "source_quarantined", "source_id": "mof-open-data",
                               "anomalies": ["prompt_injection_suspected"], "at": NOW}]
     assert _validate_corpus(value) == 0
+
+
+def test_existing_v2_session_uses_one_sqlite_connection(tmp_path, monkeypatch):
+    store = v2_store(tmp_path)
+    original = image(store)
+    connect = sqlite3.connect
+    calls = []
+    def counted_connect(*args, **kwargs):
+        calls.append((args, kwargs))
+        return connect(*args, **kwargs)
+    monkeypatch.setattr(sqlite3, "connect", counted_connect)
+    assert image(store) == original
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("event,payload", [
+    ("unknown_event", {"owner_notes": "PRIVATE_MAINTENANCE_MARKER"}),
+    ("import_installed", {"input_sha256": "a" * 64, "baseline_sha256": "b" * 64,
+                          "parent_epoch": "parent", "restore_epoch": "old",
+                          "owner_notes": "PRIVATE_MAINTENANCE_MARKER"}),
+    ("restore_installed", {"input_sha256": "invalid", "baseline_sha256": "b" * 64,
+                           "parent_epoch": "parent", "restore_epoch": "old"}),
+    ("inherited_operation_compensated", {"restore_epoch": "old", "operation_id": []}),
+    ("index_rebuild_verified", {"restore_epoch": "old", "operation_id": "op",
+                                "owner_notes": "PRIVATE_MAINTENANCE_MARKER"}),
+    ("index_rebuild_verified", {"restore_epoch": "old"}),
+])
+def test_invalid_historical_maintenance_event_blocks_image_and_backup(tmp_path, event, payload):
+    maintenance, store, _ = install(tmp_path)
+    # Keep the authoritative latest install untouched: reject bad history too.
+    with closing(sqlite3.connect(store.directory / "public_knowledge.sqlite3")) as db:
+        db.execute("UPDATE maintenance_events SET sequence=2 WHERE sequence=1")
+        db.execute("INSERT INTO maintenance_events VALUES(1,?,?)", (event, json.dumps(payload)))
+        db.commit()
+    target = directory(tmp_path, "backup")
+    for action in (lambda: image(store), lambda: maintenance.backup(store, target)):
+        with pytest.raises(CorpusStoreError) as caught:
+            action()
+        assert "PRIVATE_MAINTENANCE_MARKER" not in str(caught.value)
+    assert not (target / "public_knowledge.sqlite3").exists()
+    assert not (target / "public_knowledge.backup").exists()
