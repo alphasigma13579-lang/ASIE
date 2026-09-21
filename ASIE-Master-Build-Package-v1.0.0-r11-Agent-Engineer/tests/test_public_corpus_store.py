@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from contextlib import closing
+from contextlib import closing, contextmanager
 import multiprocessing as mp
+import hashlib
 import os
 from pathlib import Path
 import sqlite3
@@ -750,8 +751,8 @@ def test_v1_requires_explicit_upgrade_and_preserves_corpus(tmp_path):
                     ("old-pending", "recovery_required", None)):
                 db.execute(
                     "INSERT INTO operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (operation_id, "epoch", "public-knowledge-sync", operation_id,
-                     "legacy-intent", "sync", 3, state, json.dumps(corpus()),
+                    (operation_id, "epoch", "public-knowledge-sync", hashlib.sha256(operation_id.encode()).hexdigest(),
+                     hashlib.sha256(b"legacy-intent").hexdigest(), "sync", 3, state, json.dumps(corpus()),
                      json.dumps(corpus(2)), result_code, "created", "updated"))
                 db.execute("INSERT INTO operation_steps VALUES(?,0,?)",
                            (operation_id, json.dumps({"action": "upsert", "record_ids": ["old"]})))
@@ -1184,6 +1185,8 @@ def test_lifecycle_terminal_replay_avoids_current_snapshot(tmp_path, compensated
 
 
 @pytest.mark.parametrize("target,value", [
+    ("key_hash", "truncated"),
+    ("intent_digest", "A" * 64),
     ("before_payload", "SECRET_INVALID_JSON"),
     ("after_payload", "[]"),
     ("before_payload", '{"schema_version":1}'),
@@ -1206,7 +1209,8 @@ def test_v1_upgrade_rejects_corrupt_journal_without_altering_original(target, va
         db.executescript(_SCHEMA_V1)
         db.execute("INSERT INTO corpus_state VALUES(1,0,'epoch',?)", (json.dumps(corpus()),))
         db.execute("INSERT INTO operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-            "old", "epoch", "public-knowledge-sync", "key", "intent", "sync", 0,
+            "old", "epoch", "public-knowledge-sync", hashlib.sha256(b"key").hexdigest(),
+            hashlib.sha256(b"intent").hexdigest(), "sync", 0,
             "recovery_required", json.dumps(corpus()), json.dumps(corpus()), None,
             "created", "updated"))
         db.execute("INSERT INTO operation_steps VALUES('old',0,?)",
@@ -1216,7 +1220,7 @@ def test_v1_upgrade_rejects_corrupt_journal_without_altering_original(target, va
         elif target == "ordinal":
             db.execute("UPDATE operation_steps SET ordinal=?", (value,))
         else:
-            assert target in {"before_payload", "after_payload", "base_revision", "result_code"}
+            assert target in {"before_payload", "after_payload", "base_revision", "result_code", "key_hash", "intent_digest"}
             db.execute(f"UPDATE operations SET {target}=?", (value,))
         before = list(db.iterdump())
         with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$") as caught:
@@ -1304,3 +1308,86 @@ def test_lifecycle_anomalous_update_retains_only_previous_approved_records(tmp_p
     fetches = list(service.tavily.calls)
     assert service.run(registry(), key="anomalous-update", epoch=epoch) == result
     assert service.tavily.calls == fetches and index.calls == calls
+
+
+@contextmanager
+def memory_session():
+    """Isolated storage semantics; platform filesystem coverage stays separate."""
+    from backend.public_corpus_store import _SCHEMA, _Session
+    with closing(sqlite3.connect(":memory:", isolation_level=None)) as db:
+        db.execute("PRAGMA foreign_keys=ON")
+        db.executescript(_SCHEMA)
+        db.execute("INSERT INTO corpus_state VALUES(1,0,'epoch',?)",
+                   (json.dumps(corpus()),))
+        yield _Session(db)
+
+
+@pytest.mark.parametrize("state,result", [
+    ("committed", []), ("committed", {"status": None}),
+    ("committed", {"status": ""}), ("committed", {"status": "failed_compensated"}),
+    ("compensated", []), ("compensated", {"status": None}),
+    ("compensated", {"status": ""}), ("compensated", {"status": "committed"}),
+])
+def test_terminal_writer_rejects_invalid_result_before_mutation(state, result):
+    with memory_session() as session:
+        args = {**request(session), "request": {"kind": "sync"}}
+        operation = session.begin(**args)
+        before = list(session._db.iterdump())
+        finish = session.commit if state == "committed" else session.finish_compensation
+        with pytest.raises(CorpusStoreError, match="^corpus_payload_invalid$"):
+            finish(operation.operation_id, result=result)
+        assert list(session._db.iterdump()) == before
+        assert session.snapshot()["recovery_required"]
+        valid = {"status": "committed" if state == "committed" else "failed_compensated"}
+        finish(operation.operation_id, result=valid)
+        assert session.lookup(key=args["key"], epoch=args["epoch"],
+                              request=args["request"]) == valid
+
+
+@pytest.mark.parametrize("column", ["key_hash", "intent_digest"])
+@pytest.mark.parametrize("value", ["a" * 63, "g" * 64, "A" * 64, "a" * 64 + "\x00suffix"])
+def test_malformed_digest_cannot_turn_terminal_replay_into_new_operation(column, value):
+    with memory_session() as session:
+        args = {**request(session), "request": {"kind": "sync"}}
+        operation = session.begin(**args)
+        session.commit(operation.operation_id)
+        session._db.execute(f"UPDATE operations SET {column}=?", (value,))
+        before = list(session._db.iterdump())
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            session.lookup(key=args["key"], epoch=args["epoch"], request=args["request"])
+        with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+            session.begin(**args)
+        assert list(session._db.iterdump()) == before
+
+
+@pytest.mark.parametrize("column", ["key_hash", "intent_digest"])
+def test_corrupt_digest_blocks_lifecycle_before_fetch(tmp_path, column):
+    service, index, epoch = lifecycle(tmp_path)
+    service.run(registry(), key="done", epoch=epoch)
+    with service.store.session(scope()) as session:
+        session._db.execute(f"UPDATE operations SET {column}='truncated'")
+    calls, fetches = list(index.calls), list(service.tavily.calls)
+    with pytest.raises(CorpusStoreError, match="^corpus_storage_invalid$"):
+        service.run(registry(), key="done", epoch=epoch)
+    assert index.calls == calls and service.tavily.calls == fetches
+
+
+def test_recovery_unknown_valid_identifier_never_reaches_verifier(tmp_path):
+    service, index, epoch = lifecycle(tmp_path)
+    index.records["unrelated"] = {"_id": "unrelated", "text": "outside operation"}
+    index.failure = Interrupted()
+    with pytest.raises(Interrupted):
+        service.run(registry(), key="interrupted", epoch=epoch)
+    with service.store.session(scope()) as session:
+        session._db.execute("UPDATE operation_steps SET payload=?", (
+            json.dumps({"action": "delete", "record_ids": ["unrelated"]}),))
+    calls, records = list(index.calls), deepcopy(index.records)
+    index.settled = lambda *a, **kw: pytest.fail("unknown ID reached verifier")
+    index.matches = lambda *a, **kw: pytest.fail("unknown ID reached parity")
+    assert service.recover()["status"] == "recovery_required"
+    assert index.calls == calls and index.records == records
+    with service.store.session(scope()) as session:
+        assert session.snapshot()["recovery_required"]
+    assert service.evidence(scope=tenant(), principal=tenant_principal(),
+                            query="blocked") == service._unavailable()
+    assert index.calls == calls

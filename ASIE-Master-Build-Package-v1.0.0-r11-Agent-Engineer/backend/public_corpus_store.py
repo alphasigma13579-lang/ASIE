@@ -83,6 +83,31 @@ def _json(value):
         raise CorpusStoreError("corpus_payload_invalid") from None
 
 
+def _terminal_result(value, state):
+    """One invariant for terminal writers and journal readers."""
+    encoded = _json(value)
+    if (type(value) is not dict or type(value.get("status")) is not str
+            or not value["status"]
+            or (state == "compensated") != (value["status"] == "failed_compensated")):
+        raise CorpusStoreError("corpus_payload_invalid")
+    return encoded
+
+
+def _validate_operation_digests(connection):
+    """Reject malformed identity even when a damaged key would miss lookup.
+
+    Scan only digest columns, not retained corpus/step history. This is O(n)
+    in journal rows; the process lock keeps validation and lookup consistent.
+    """
+    if connection.execute(
+            "SELECT 1 FROM operations WHERE "
+            "typeof(key_hash)!='text' OR length(CAST(key_hash AS BLOB))!=64 OR "
+            "key_hash GLOB '*[^0123456789abcdef]*' OR "
+            "typeof(intent_digest)!='text' OR length(CAST(intent_digest AS BLOB))!=64 OR "
+            "intent_digest GLOB '*[^0123456789abcdef]*' LIMIT 1").fetchone():
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
 def _corpus(value):
     encoded = _json(value)
     if (type(value) is not dict or type(value.get("schema_version")) is not int
@@ -217,8 +242,9 @@ def _validate_schema(connection, schema=_SCHEMA):
 
 
 def _validate_journal(connection, *, version=1, operation_id=None):
-    """Validate the requested journal rows; full scan only for explicit upgrade."""
+    """Validate selected payloads and all lookup-identity digest shapes."""
     try:
+        _validate_operation_digests(connection)
         columns = ("operation_id,restore_epoch,workload,key_hash,intent_digest,"
                    "kind,base_revision,state,before_payload,after_payload,result_code,"
                    "created_at,updated_at")
@@ -249,11 +275,7 @@ def _validate_journal(connection, *, version=1, operation_id=None):
                         if row[13] is not None or row[7] == "compensated":
                             raise CorpusStoreError("corpus_storage_invalid")
                     else:
-                        result = _read_json(row[14])
-                        if (type(result) is not dict or type(result.get("status")) is not str
-                                or not result["status"]
-                                or (row[7] == "compensated") != (result["status"] == "failed_compensated")):
-                            raise CorpusStoreError("corpus_storage_invalid")
+                        _terminal_result(_read_json(row[14]), row[7])
             _read_corpus(row[8])
             _read_corpus(row[9])
             for expected, (ordinal, payload) in enumerate(connection.execute(
@@ -505,6 +527,7 @@ class _Session:
         key_hash = hashlib.sha256(key.encode()).hexdigest()
         request_digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest() if request is not None else None
         with self._transaction():
+            _validate_operation_digests(self._db)
             current = self.snapshot()
             if epoch != current["restore_epoch"]:
                 raise CorpusStoreError("corpus_epoch_mismatch")
@@ -570,7 +593,8 @@ class _Session:
     def commit(self, operation_id, *, result=None):
         self._check()
         _token(operation_id)
-        result_text = _json({"status": "committed"} if result is None else result)
+        result_text = _terminal_result(
+            {"status": "committed"} if result is None else result, "committed")
         with self._transaction():
             base, payload, _ = self._prepared(operation_id)
             _read_corpus(payload)
@@ -621,6 +645,7 @@ class _Session:
             raise CorpusStoreError("corpus_storage_invalid")
         if epoch != current_epoch[0]:
             raise CorpusStoreError("corpus_epoch_mismatch")
+        _validate_operation_digests(self._db)
         row = self._db.execute(
             "SELECT state,request_digest,result_payload,operation_id FROM operations "
             "WHERE restore_epoch=? AND workload=? AND key_hash=?",
@@ -645,7 +670,7 @@ class _Session:
         """Caller must establish settled external effects and projection parity first."""
         self._check()
         _token(operation_id)
-        result_text = _json(result)
+        result_text = _terminal_result(result, "compensated")
         with self._transaction():
             row = self._db.execute(
                 "SELECT base_revision,before_payload FROM operations "

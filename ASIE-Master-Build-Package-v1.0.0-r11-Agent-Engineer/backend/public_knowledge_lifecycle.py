@@ -231,11 +231,18 @@ class PublicKnowledgeLifecycle:
                    "message": "تعذر إثبات اتساق المعرفة. أوقف الاستخدام واطلب فحص الاستعادة."}
         operation_id = pending["operation_id"]
         try:
-            if not self._settled(session, operation_id):
-                return blocked
-            before = _projection(pending["before"])
+            # Validate ownership before any verifier or compensation call.
+            # Retained versions matter for tombstone cleanup and old-ID deletion.
+            known = {record["_id"] for corpus in (pending["before"], pending["after"])
+                     for _, _, records in _record_sets(corpus) for record in records}
             affected = {identifier for step in pending["steps"]
                         for identifier in step["record_ids"]}
+            if not affected <= known:
+                return blocked
+            before = _projection(pending["before"])
+            _projection(pending["after"])
+            if not self._settled(session, operation_id):
+                return blocked
             expected = {key: before[key] for key in sorted(affected) if key in before}
             absent = sorted(affected - before.keys())
             for action, values, size in (
