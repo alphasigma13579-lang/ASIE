@@ -27,6 +27,11 @@ from backend.public_knowledge import validate_public_knowledge_record, _safe_sou
 _DB = "public_knowledge.sqlite3"
 _MANIFEST = "public_knowledge.manifest.json"
 _LEGACY = "public_knowledge_corpus.json"
+_ANOMALY_CODES = frozenset({
+    "prompt_injection_suspected", "content_encoding_corrupt",
+    "sensitive_secret_pattern", "sensitive_personal_identifier_pattern",
+    "public_source_extract_url_mismatch", "public_source_crawl_url_mismatch",
+})
 
 
 def _safe(fn):
@@ -197,8 +202,14 @@ def _seal_install(files, epoch):
 
 
 def _new_database(files):
+    def reject_sidecars():
+        if any(os.path.lexists(files.path / (_DB + suffix))
+               for suffix in ("-wal", "-shm", "-journal")):
+            raise CorpusStoreError("corpus_destination_not_new")
+    reject_sidecars()
     files.file(_DB, exclusive=True)
     files.validate()
+    reject_sidecars()
     db = sqlite3.connect(files.path / _DB, isolation_level=None, timeout=2)
     try:
         db.execute("PRAGMA synchronous=FULL")
@@ -229,6 +240,10 @@ def _validate_corpus(value):
                        "records", "versions", "last_checked_at", "last_changed_at",
                        "last_result", "last_anomalies", "deleted_at"}
             if set(source) - allowed:
+                raise ValueError
+            if source["status"] == "quarantined" and (
+                    source["records"] or source["versions"]
+                    or source.get("current_version") is not None or source.get("content_sha256") is not None):
                 raise ValueError
             version_numbers = []
             for current, version in [(False, v) for v in source["versions"]] + [(True, source)]:
@@ -269,8 +284,11 @@ def _validate_corpus(value):
                     _parse_utc(source[key], field=key)
             if "source_url" in source:
                 _canonical_url(source["source_url"])
+            if "last_result" in source and source["last_result"] not in {
+                    "quarantined", "unchanged", "changed_upserted", "deleted", "restored"}:
+                raise ValueError
             if "last_anomalies" in source and (type(source["last_anomalies"]) is not list
-                    or any(type(v) is not str or not v for v in source["last_anomalies"])):
+                    or any(type(v) is not str or v not in _ANOMALY_CODES for v in source["last_anomalies"])):
                 raise ValueError
         event_fields = {
             "source_version_activated": {"event", "source_id", "version", "at"},
@@ -279,11 +297,6 @@ def _validate_corpus(value):
             "source_restored": {"event", "source_id", "at"},
             "public_namespace_reindexed": {"event", "records", "stale_records_deleted", "at"},
             "empty_public_projection_reconciled": {"event", "records_deleted", "at"},
-        }
-        anomaly_codes = {
-            "prompt_injection_suspected", "content_encoding_corrupt",
-            "sensitive_secret_pattern", "sensitive_personal_identifier_pattern",
-            "public_source_extract_url_mismatch", "public_source_crawl_url_mismatch",
         }
         for event in value["audit_events"]:
             if (type(event) is not dict or type(event.get("event")) is not str
@@ -299,7 +312,7 @@ def _validate_corpus(value):
                     raise ValueError
             if "anomalies" in event and (type(event["anomalies"]) is not list
                     or not event["anomalies"]
-                    or any(type(v) is not str or v not in anomaly_codes for v in event["anomalies"])):
+                    or any(type(v) is not str or v not in _ANOMALY_CODES for v in event["anomalies"])):
                 raise ValueError
         return count
     except Exception:

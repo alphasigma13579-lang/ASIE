@@ -445,6 +445,33 @@ def _installation_epoch(files):
         raise CorpusStoreError("corpus_installation_incomplete") from None
 
 
+
+def _check_existing_installation(files, installed_epoch):
+    """Inspect existing stores without creating writable SQLite sidecars."""
+    name = "public_knowledge.sqlite3"
+    if not os.path.lexists(files.path / name):
+        if installed_epoch is not None:
+            raise CorpusStoreError("corpus_installation_incomplete")
+        return
+    files.file(name, readonly=True, create=False)
+    for suffix in ("-wal", "-shm", "-journal"):
+        if os.path.lexists(files.path / (name + suffix)):
+            files.file(name + suffix, readonly=True, create=False)
+    files.validate()
+    probe = sqlite3.connect((files.path / name).as_uri() + "?mode=ro",
+                            uri=True, timeout=2, isolation_level=None)
+    try:
+        version = probe.execute("PRAGMA user_version").fetchone()[0]
+        if version == 3 and installed_epoch is None:
+            raise CorpusStoreError("corpus_installation_incomplete")
+        if installed_epoch is not None and (version != 3 or probe.execute(
+                "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
+            raise CorpusStoreError("corpus_installation_incomplete")
+    finally:
+        probe.close()
+    files.validate()
+
+
 class PublicCorpusStore:
     """Constructing a store performs no I/O; directory is provisioned by operator."""
 
@@ -497,6 +524,7 @@ class PublicCorpusStore:
             if os.path.lexists(files.path / _BACKUP):
                 raise CorpusStoreError("corpus_backup_requires_restore")
             installed_epoch = _installation_epoch(files)
+            _check_existing_installation(files, installed_epoch)
             database = files.database()
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)

@@ -738,9 +738,13 @@ def test_ready_v3_without_installation_marker_cannot_run_or_be_backed_up(tmp_pat
     marker = store.directory / "public_knowledge.installation"
     marker.unlink()  # Disposable artifact only: simulate copying DB without seal.
     calls = deepcopy(index.calls)
+    artifacts = [store.directory / ("public_knowledge.sqlite3" + suffix)
+                 for suffix in ("", "-wal", "-shm", "-journal")]
+    saved = {p.name: p.read_bytes() if p.exists() else None for p in artifacts}
     with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
         with store.session(scope()):
             pytest.fail("markerless v3 admitted")
+    assert {p.name: p.read_bytes() if p.exists() else None for p in artifacts} == saved
     with pytest.raises(CorpusStoreError, match="^corpus_installation_incomplete$"):
         maintenance.rebuild(store, epoch=epoch, key="retry", adapter=index, verifier=index)
     target = directory(tmp_path, "backup")
@@ -751,3 +755,85 @@ def test_ready_v3_without_installation_marker_cannot_run_or_be_backed_up(tmp_pat
     assert index.calls == calls
     assert not marker.exists()
     assert not (target / "public_knowledge.sqlite3").exists()
+
+
+@pytest.mark.parametrize("method", ["import", "backup", "restore"])
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_new_destination_rejects_existing_sidecars(tmp_path, monkeypatch, method, suffix):
+    import backend.public_corpus_maintenance as module
+    maintenance = PublicCorpusMaintenance(scope=scope())
+    path = write_legacy(tmp_path)
+    source = v2_store(tmp_path)
+    backup = directory(tmp_path, "source-backup")
+    if method == "restore":
+        maintenance.backup(source, backup)
+    target = PublicCorpusStore(directory(tmp_path, "target"))
+    sidecar = target.directory / ("public_knowledge.sqlite3" + suffix)
+    sidecar.write_bytes(b"UNRELATED_SIDECAR")
+    sidecar.chmod(0o600)
+    real_connect = sqlite3.connect
+    def guarded_connect(database, *args, **kwargs):
+        assert str(target.directory).replace("\\", "/") not in str(database).replace("\\", "/")
+        return real_connect(database, *args, **kwargs)
+    monkeypatch.setattr(sqlite3, "connect", guarded_connect)
+    with pytest.raises(CorpusStoreError, match="^corpus_destination_not_new$"):
+        if method == "import":
+            maintenance.import_legacy(path.parent, target)
+        elif method == "backup":
+            maintenance.backup(source, target.directory)
+        else:
+            maintenance.restore(backup, target)
+    assert sidecar.read_bytes() == b"UNRELATED_SIDECAR"
+    assert not (target.directory / "public_knowledge.sqlite3").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX links; Windows rejects all existing sidecars above")
+@pytest.mark.parametrize("kind", ["symlink", "hardlink"])
+def test_new_destination_rejects_linked_sidecar_without_touching_target(tmp_path, kind):
+    path = write_legacy(tmp_path)
+    target = PublicCorpusStore(directory(tmp_path, "target"))
+    original = tmp_path / "unrelated"
+    original.write_bytes(b"DO_NOT_MODIFY")
+    sidecar = target.directory / "public_knowledge.sqlite3-wal"
+    if kind == "symlink":
+        sidecar.symlink_to(original)
+    else:
+        os.link(original, sidecar)
+    with pytest.raises(CorpusStoreError, match="^corpus_destination_not_new$"):
+        PublicCorpusMaintenance(scope=scope()).import_legacy(path.parent, target)
+    assert original.read_bytes() == b"DO_NOT_MODIFY"
+    assert not (target.directory / "public_knowledge.sqlite3").exists()
+
+
+@pytest.mark.parametrize("damage", ["records", "history", "anomalies", "result"])
+def test_reject_noncanonical_quarantine_or_diagnostic_metadata(damage):
+    value = history()
+    source = value["sources"]["mof-open-data"]
+    if damage in ("records", "history"):
+        source["status"] = "quarantined"
+        if damage == "history":
+            source["records"] = []
+            source.pop("current_version")
+            source.pop("content_sha256")
+    elif damage == "anomalies":
+        source["last_anomalies"] = ["PRIVATE_METADATA_MARKER"]
+    else:
+        source["last_result"] = "PRIVATE_METADATA_MARKER"
+    with pytest.raises(CorpusStoreError, match="^corpus_import_invalid$"):
+        _validate_corpus(value)
+
+
+def test_canonical_empty_quarantine_and_active_anomaly_are_preserved():
+    value = legacy()
+    source = value["sources"]["mof-open-data"]
+    source["last_result"] = "quarantined"
+    source["last_anomalies"] = ["prompt_injection_suspected"]
+    assert _validate_corpus(value) == 1  # Previous approved records remain active.
+    source["status"] = "quarantined"
+    source["records"] = []
+    source["versions"] = []
+    source.pop("current_version")
+    source.pop("content_sha256")
+    value["audit_events"] = [{"event": "source_quarantined", "source_id": "mof-open-data",
+                              "anomalies": ["prompt_injection_suspected"], "at": NOW}]
+    assert _validate_corpus(value) == 0
