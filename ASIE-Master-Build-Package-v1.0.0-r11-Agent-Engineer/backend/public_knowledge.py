@@ -115,6 +115,10 @@ class PublicKnowledgeError(RuntimeError):
 # Operational summaries are an output boundary: never serialize exception text,
 # class names, causes or tracebacks. Only exact, owned codes may cross it.
 _SAFE_FAILURE_MESSAGES = {
+    "invalid_public_source_freshness_expiry": (
+        "مدة انتهاء المصدر أقصر من مدة حداثته.",
+        "صحح مدد المصدر المعتمد قبل إعادة المحاولة بطلب جديد.",
+    ),
     "public_source_content_too_short": (
         "لم يحتوِ المصدر على محتوى كافٍ.",
         "راجع المصدر أو أعد المحاولة لاحقًا دون اعتماد محتوى ناقص.",
@@ -391,6 +395,8 @@ def _validate_source(source: Mapping[str, Any]) -> dict[str, Any]:
             raise PublicKnowledgeError("public_source_trust_anchor_mismatch")
         _positive_int(normalized.get("freshness_days"), field="freshness_days")
         _positive_int(normalized.get("expiry_days"), field="expiry_days")
+        if normalized["expiry_days"] < normalized["freshness_days"]:
+            raise PublicKnowledgeError("invalid_public_source_freshness_expiry")
         acquisition_mode = str(normalized.get("acquisition_mode") or "extract").strip()
         if acquisition_mode not in {"extract", "crawl"}:
             raise PublicKnowledgeError("invalid_public_source_acquisition_mode")
@@ -1253,6 +1259,8 @@ def validate_public_knowledge_record(record: Any) -> None:
                 or record["data_classification"] != "public"
                 or not _SHA256_RE.fullmatch(record["content_sha256"])
                 or _safe_source_id(record["source_id"]) != record["source_id"]):
+            raise PublicKnowledgeError("public_knowledge_record_invalid")
+        if record["_id"] != f"public-{record['source_id']}-{record['chunk_index']:04d}":
             raise PublicKnowledgeError("public_knowledge_record_invalid")
         if record["evidence_ref"] != f"public:{record['source_id']}:sha256:{record['content_sha256']}":
             raise PublicKnowledgeError("public_knowledge_record_invalid")

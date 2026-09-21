@@ -1464,10 +1464,18 @@ def test_malformed_record_contract_rejected_without_effects(field, value):
 
 
 @pytest.mark.parametrize("side", ["before", "after"])
-def test_invalid_recovery_record_keeps_gate_before_verifier(side):
+@pytest.mark.parametrize("corruption", ["missing_license", "source_identity", "chunk_identity", "owner_identity"])
+def test_invalid_recovery_record_keeps_gate_before_verifier(side, corruption):
     valid = corpus_with_record(canonical_record())
     invalid = deepcopy(valid)
-    invalid["sources"]["mof-open-data"]["records"][0].pop("license_ref")
+    record = invalid["sources"]["mof-open-data"]["records"][0]
+    if corruption == "missing_license":
+        record.pop("license_ref")
+    elif corruption == "owner_identity":
+        invalid["sources"]["other-source"] = invalid["sources"].pop("mof-open-data")
+    else:
+        record["_id"] = ("public-other-source-0001" if corruption == "source_identity"
+                         else "public-mof-open-data-0002")
     with memory_session() as session:
         before = invalid if side == "before" else valid
         after = invalid if side == "after" else valid
@@ -1497,3 +1505,64 @@ def test_complete_old_record_is_indexable_but_not_fresh_evidence():
         as_of="2030-01-01T00:00:00Z")
     assert result["status"] == "not_ready"
     assert result["gaps"][0]["reason"] == "evidence_stale"
+
+
+@pytest.mark.parametrize("operation", ["reindex", "restore"])
+@pytest.mark.parametrize("identifier", ["public-other-source-0001", "public-mof-open-data-0002"])
+def test_mismatched_canonical_identity_rejected_before_journal(operation, identifier):
+    record = canonical_record()
+    record["_id"] = identifier
+    with memory_session() as session:
+        saved = corpus_with_record(record, "deleted_tombstone" if operation == "restore" else "active")
+        session._db.execute("UPDATE corpus_state SET payload=?", (json.dumps(saved),))
+        unchanged = list(session._db.iterdump())
+        index = LifecycleIndex()
+        service = lifecycle_in_memory(session, index)
+        with pytest.raises(CorpusStoreError, match="^corpus_projection_invalid$"):
+            if operation == "restore":
+                service.restore_source("mof-open-data", key="mismatch", epoch="epoch")
+            else:
+                service.reindex(key="mismatch", epoch="epoch")
+        assert list(session._db.iterdump()) == unchanged
+        assert not index.calls and not index.attempts and not service.tavily.calls
+
+
+@pytest.mark.parametrize("operation", ["reindex", "restore"])
+@pytest.mark.parametrize("owner", ["other-source", "UPPERCASE"])
+def test_record_owner_mismatch_blocks_before_effects(operation, owner):
+    with memory_session() as session:
+        saved = corpus_with_record(canonical_record(),
+                                   "deleted_tombstone" if operation == "restore" else "active")
+        saved["sources"][owner] = saved["sources"].pop("mof-open-data")
+        session._db.execute("UPDATE corpus_state SET payload=?", (json.dumps(saved),))
+        unchanged = list(session._db.iterdump())
+        index = LifecycleIndex()
+        service = lifecycle_in_memory(session, index)
+        with pytest.raises(CorpusStoreError, match="^corpus_projection_invalid$"):
+            if operation == "restore":
+                service.restore_source(owner, key="owner", epoch="epoch")
+            else:
+                service.reindex(key="owner", epoch="epoch")
+        assert list(session._db.iterdump()) == unchanged
+        assert not index.calls and not index.attempts and not service.tavily.calls
+
+
+def test_invalid_expiry_rejected_before_fetch_and_terminal_replayed():
+    from backend.public_knowledge import PublicKnowledgeError, validate_public_source_registry
+    invalid = registry()
+    invalid["sources"][0]["freshness_days"] = 30
+    invalid["sources"][0]["expiry_days"] = 29
+    with pytest.raises(PublicKnowledgeError, match="^invalid_public_source_freshness_expiry$"):
+        validate_public_source_registry(invalid)
+    with memory_session() as session:
+        index = LifecycleIndex()
+        service = lifecycle_in_memory(session, index)
+        result = service.run(invalid, key="invalid-expiry", epoch="epoch")
+        assert result["status"] == "failed"
+        assert result["error"]["reason"] == "invalid_public_source_freshness_expiry"
+        unchanged = list(session._db.iterdump())
+        assert service.run(invalid, key="invalid-expiry", epoch="epoch") == result
+        assert list(session._db.iterdump()) == unchanged
+        assert not index.calls and not index.attempts and not service.tavily.calls
+    invalid["sources"][0]["expiry_days"] = 30
+    assert validate_public_source_registry(invalid)["sources"][0]["expiry_days"] == 30

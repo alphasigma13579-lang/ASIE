@@ -34,7 +34,12 @@ def _record_sets(corpus):
     """Validate nested shapes before projection or effects, including history."""
     if type(corpus) is not dict or type(corpus.get("sources")) is not dict:
         raise CorpusStoreError("corpus_projection_invalid")
-    for source in corpus["sources"].values():
+    for source_id, source in corpus["sources"].items():
+        try:
+            if type(source_id) is not str or _safe_source_id(source_id) != source_id:
+                raise ValueError
+        except Exception:
+            raise CorpusStoreError("corpus_projection_invalid") from None
         if (type(source) is not dict
                 or source.get("status") not in ("active", "deleted_tombstone", "quarantined")
                 or type(source.get("versions")) is not list):
@@ -52,6 +57,9 @@ def _record_sets(corpus):
                 if (type(identifier) is not str or not _RECORD_ID_RE.fullmatch(identifier)
                         or identifier in seen):
                     raise CorpusStoreError("corpus_projection_invalid")
+                if version is source and source["status"] == "active":
+                    if record.get("source_id") != source_id:
+                        raise CorpusStoreError("corpus_projection_invalid")
                 seen.add(identifier)
             yield source, version is source, records
 
@@ -188,6 +196,8 @@ class PublicKnowledgeLifecycle:
                 source = snap["corpus"]["sources"].get(request["value"])
                 if source is not None:
                     for record in source["records"]:
+                        if record.get("source_id") != request["value"]:
+                            raise CorpusStoreError("corpus_projection_invalid")
                         _index_record(record)
             plan = _Plan(corpus=snap["corpus"], tavily=self.tavily,
                          scope=self.scope, now=self.now)
