@@ -18,7 +18,7 @@ import uuid
 from backend.public_corpus_store import (
     CorpusStoreError, PublicCorpusStore, _Session, _SCHEMA_V3,
     _MAINTENANCE_TABLES, _corpus, _json, _MAX_BYTES, _token,
-    _INSTALLATION, _BACKUP, _installation_epoch,
+    _INSTALLATION, _BACKUP, _installation_epoch, _check_existing_installation,
 )
 from backend.public_corpus_files import UnsafeStorePath
 from backend.public_knowledge_lifecycle import _authorize, _projection, _record_sets
@@ -136,6 +136,8 @@ def _readonly(files, *, installing=False, backup=False):
         if _read(marker, 16) != b"backup-v1":
             raise CorpusStoreError("corpus_backup_invalid")
     installed_epoch = None if installing else _installation_epoch(files)
+    if not installing and not backup:
+        _check_existing_installation(files, installed_epoch)
     files.file(_DB, readonly=True, create=False)
     for suffix in ("-wal", "-shm", "-journal"):
         if os.path.lexists(files.path / (_DB + suffix)):

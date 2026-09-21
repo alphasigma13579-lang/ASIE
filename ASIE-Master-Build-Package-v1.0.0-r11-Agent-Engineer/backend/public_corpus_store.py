@@ -458,7 +458,10 @@ def _check_existing_installation(files, installed_epoch):
         if os.path.lexists(files.path / (name + suffix)):
             files.file(name + suffix, readonly=True, create=False)
     files.validate()
-    probe = sqlite3.connect((files.path / name).as_uri() + "?mode=ro",
+    # Preliminary admission must not create even empty WAL/SHM files.
+    # Installation seals are written only after the installing connection closes.
+    # Normal WAL-aware schema/epoch validation still runs below before admission.
+    probe = sqlite3.connect((files.path / name).as_uri() + "?mode=ro&immutable=1",
                             uri=True, timeout=2, isolation_level=None)
     try:
         version = probe.execute("PRAGMA user_version").fetchone()[0]
