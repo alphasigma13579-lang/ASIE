@@ -212,6 +212,219 @@ COMMIT;
 """
 
 
+# Version 3 is installed only by explicit maintenance into a new destination.
+# Ordinary v2 stores remain v2; no owner database is upgraded on application start.
+_MAINTENANCE_TABLES = """
+CREATE TABLE maintenance_state(
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ origin TEXT NOT NULL CHECK(origin IN ('import','restore')),
+ input_sha256 TEXT NOT NULL,
+ baseline_sha256 TEXT NOT NULL,
+ parent_epoch TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','rebuilding','ready')),
+ operation_id TEXT REFERENCES operations(operation_id),
+ request_key_hash TEXT
+);
+CREATE TABLE imports(
+ fingerprint TEXT PRIMARY KEY,
+ format_version INTEGER NOT NULL CHECK(format_version=1),
+ record_count INTEGER NOT NULL CHECK(record_count>=0)
+);
+CREATE TABLE maintenance_events(
+ sequence INTEGER PRIMARY KEY,
+ event TEXT NOT NULL,
+ payload TEXT NOT NULL
+);
+"""
+_SCHEMA_V3 = _SCHEMA.replace("PRAGMA user_version=2;", _MAINTENANCE_TABLES + "PRAGMA user_version=3;")
+
+
+# V4 is explicit maintenance installation only. Its seals are independent of
+# surviving journal rows; ordinary v2/v3 stores are never silently upgraded.
+_JOURNAL_SEALS = """
+CREATE TABLE journal_seal(
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ last_operation INTEGER NOT NULL CHECK(last_operation>=0),
+ last_event INTEGER NOT NULL CHECK(last_event>=0),
+ baseline_sha256 TEXT NOT NULL,
+ baseline_event INTEGER NOT NULL CHECK(baseline_event>=1)
+);
+CREATE TABLE operation_seals(
+ operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id),
+ sequence INTEGER NOT NULL UNIQUE CHECK(sequence>=1),
+ step_count INTEGER NOT NULL CHECK(step_count>=0)
+);
+"""
+_SCHEMA_V4 = _SCHEMA_V3.replace("PRAGMA user_version=3;", _JOURNAL_SEALS + "PRAGMA user_version=4;")
+
+
+def _validate_completeness(connection):
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        return
+    seals = connection.execute("SELECT * FROM journal_seal").fetchall()
+    if len(seals) != 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+    identifier, last_operation, last_event, baseline, baseline_event = seals[0]
+    if (identifier != 1 or type(last_operation) is not int or last_operation < 0
+            or type(last_event) is not int or last_event < 0
+            or type(baseline_event) is not int or not 1 <= baseline_event <= last_event
+            or type(baseline) is not str or len(baseline) != 64
+            or any(c not in "0123456789abcdef" for c in baseline)):
+        raise CorpusStoreError("corpus_storage_invalid")
+    operations = connection.execute("SELECT rowid,operation_id FROM operations ORDER BY rowid").fetchall()
+    expected = connection.execute(
+        "SELECT sequence,operation_id,step_count FROM operation_seals ORDER BY sequence").fetchall()
+    if len(operations) != last_operation or len(expected) != last_operation:
+        raise CorpusStoreError("corpus_storage_invalid")
+    actual_steps = {}
+    for operation_id, ordinal in connection.execute(
+            "SELECT operation_id,ordinal FROM operation_steps ORDER BY operation_id,ordinal"):
+        count = actual_steps.get(operation_id, 0)
+        if type(ordinal) is not int or ordinal != count:
+            raise CorpusStoreError("corpus_storage_invalid")
+        actual_steps[operation_id] = count + 1
+    for number, (operation, seal) in enumerate(zip(operations, expected), 1):
+        if (operation != (number, seal[1]) or type(seal[0]) is not int or seal[0] != number
+                or type(seal[2]) is not int or seal[2] < 0
+                or actual_steps.pop(seal[1], 0) != seal[2]):
+            raise CorpusStoreError("corpus_storage_invalid")
+    if actual_steps:
+        raise CorpusStoreError("corpus_storage_invalid")
+    events = connection.execute("SELECT sequence FROM maintenance_events ORDER BY sequence").fetchall()
+    if len(events) != last_event or any(row != (i,) for i, row in enumerate(events, 1)):
+        raise CorpusStoreError("corpus_storage_invalid")
+
+    # The seal retains its installation anchor across later restores. Import
+    # anchors bind to the initial corpus; legacy hardening anchors bind to the
+    # independently verified semantic-image digest recorded by that restore.
+    anchor = connection.execute(
+        "SELECT event,payload FROM maintenance_events WHERE sequence=?",
+        (baseline_event,)).fetchone()
+    if anchor is None or anchor[0] not in ("import_installed", "restore_installed"):
+        raise CorpusStoreError("corpus_storage_invalid")
+    payload = _read_json(anchor[1])
+    if type(payload) is not dict or payload.get("baseline_sha256") != baseline:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if anchor[0] == "import_installed" and baseline_event != 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
+def _seal_operation(connection, operation_id):
+    """Caller inserts the operation and its seal in one existing transaction."""
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        return
+    last = connection.execute("SELECT last_operation FROM journal_seal WHERE id=1").fetchone()[0]
+    if connection.execute("SELECT rowid FROM operations WHERE operation_id=?", (operation_id,)).fetchone() != (last + 1,):
+        raise CorpusStoreError("corpus_storage_invalid")
+    connection.execute("INSERT INTO operation_seals VALUES(?,?,0)", (operation_id, last + 1))
+    connection.execute("UPDATE journal_seal SET last_operation=? WHERE id=1", (last + 1,))
+
+
+def _validate_maintenance(connection):
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
+        return
+    rows = connection.execute("SELECT * FROM maintenance_state").fetchall()
+    if len(rows) != 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+    row = rows[0]
+    if (row[0] != 1 or row[1] not in ("import", "restore")
+            or row[5] not in ("pending", "rebuilding", "ready")):
+        raise CorpusStoreError("corpus_storage_invalid")
+    for digest in row[2:4]:
+        if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise CorpusStoreError("corpus_storage_invalid")
+    _token(row[4])
+    if row[7] is not None and (type(row[7]) is not str or len(row[7]) != 64
+            or any(c not in "0123456789abcdef" for c in row[7])):
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[5] == "pending" and row[6] is not None:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[5] != "pending":
+        operation = connection.execute(
+            "SELECT kind,state,restore_epoch,key_hash FROM operations WHERE operation_id=?", (row[6],)).fetchone()
+        epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
+        if (operation is None or operation[0] != "reindex" or operation[2] != epoch
+                or row[7] is None or operation[3] != row[7]
+                or operation[1] not in (("prepared", "recovery_required")
+                                       if row[5] == "rebuilding" else ("committed",))):
+            raise CorpusStoreError("corpus_storage_invalid")
+    for fingerprint, version, count in connection.execute("SELECT * FROM imports"):
+        if (type(fingerprint) is not str or len(fingerprint) != 64
+                or any(c not in "0123456789abcdef" for c in fingerprint)
+                or version != 1 or type(count) is not int or count < 0):
+            raise CorpusStoreError("corpus_storage_invalid")
+    receipts = connection.execute("SELECT * FROM imports").fetchall()
+    if len(receipts) > 1:
+        raise CorpusStoreError("corpus_storage_invalid")
+    latest_install = None
+    installed_epochs = set()
+    last_rebuild = None
+    for expected_sequence, (sequence, event, payload) in enumerate(
+            connection.execute("SELECT * FROM maintenance_events ORDER BY sequence"), 1):
+        if type(sequence) is not int or sequence != expected_sequence:
+            raise CorpusStoreError("corpus_storage_invalid")
+        parsed = _read_json(payload)
+        installation = event in ("import_installed", "restore_installed")
+        expected_fields = ({"input_sha256", "baseline_sha256", "parent_epoch", "restore_epoch"}
+                           if installation else {"restore_epoch", "operation_id"})
+        if (event not in ("import_installed", "restore_installed",
+                          "inherited_operation_compensated", "index_rebuild_verified")
+                or type(parsed) is not dict or set(parsed) != expected_fields):
+            raise CorpusStoreError("corpus_storage_invalid")
+        for key, value in parsed.items():
+            if key.endswith("_sha256"):
+                if (type(value) is not str or len(value) != 64
+                        or any(c not in "0123456789abcdef" for c in value)):
+                    raise CorpusStoreError("corpus_storage_invalid")
+            else:
+                try:
+                    _token(value)
+                except CorpusStoreError:
+                    raise CorpusStoreError("corpus_storage_invalid") from None
+        if installation:
+            parent, installed = parsed["parent_epoch"], parsed["restore_epoch"]
+            if installed == parent or installed in installed_epochs:
+                raise CorpusStoreError("corpus_storage_invalid")
+            if latest_install is not None:
+                if event != "restore_installed" or parent != latest_install[1]["restore_epoch"]:
+                    raise CorpusStoreError("corpus_storage_invalid")
+            elif event == "import_installed":
+                if parent != "initial-import" or connection.execute(
+                        "SELECT 1 FROM imports WHERE fingerprint=?", (parsed["input_sha256"],)).fetchone() is None:
+                    raise CorpusStoreError("corpus_storage_invalid")
+            elif connection.execute("SELECT 1 FROM imports LIMIT 1").fetchone() is not None:
+                # A restore rooted in ordinary v2 has no prior import receipt.
+                raise CorpusStoreError("corpus_storage_invalid")
+            installed_epochs.update((parent, installed))
+            latest_install = (event, parsed)
+        else:
+            operation = connection.execute(
+                "SELECT kind,state,restore_epoch FROM operations WHERE operation_id=?",
+                (parsed["operation_id"],)).fetchone()
+            if (operation is None or latest_install is None
+                    or parsed["restore_epoch"] != latest_install[1]["restore_epoch"]):
+                raise CorpusStoreError("corpus_storage_invalid")
+            if event == "index_rebuild_verified":
+                if operation != ("reindex", "committed", parsed["restore_epoch"]):
+                    raise CorpusStoreError("corpus_storage_invalid")
+                last_rebuild = parsed
+            elif (operation[1] != "compensated" or operation[2] == parsed["restore_epoch"]
+                    or latest_install[0] != "restore_installed"):
+                raise CorpusStoreError("corpus_storage_invalid")
+    epoch = connection.execute("SELECT restore_epoch FROM corpus_state").fetchone()[0]
+    expected = {"input_sha256": row[2], "baseline_sha256": row[3],
+                "parent_epoch": row[4], "restore_epoch": epoch}
+    if latest_install != (row[1] + "_installed", expected):
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[5] == "ready" and last_rebuild != {"restore_epoch": epoch, "operation_id": row[6]}:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[1] == "restore" and epoch == row[4]:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if row[1] == "import" and connection.execute(
+            "SELECT 1 FROM imports WHERE fingerprint=?", (row[2],)).fetchone() is None:
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
 def _schema_signature(schema=_SCHEMA):
     expected = {}
     for statement in schema.split(";"):
@@ -223,7 +436,12 @@ def _schema_signature(schema=_SCHEMA):
     return expected
 
 
-def _validate_schema(connection, schema=_SCHEMA):
+def _validate_schema(connection, schema=None):
+    if schema is None:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        schema = {2: _SCHEMA, 3: _SCHEMA_V3, 4: _SCHEMA_V4}.get(version)
+        if schema is None:
+            raise CorpusStoreError("corpus_schema_unsupported")
     actual = {(kind, name): " ".join(sql.split())
               for kind, name, sql in connection.execute(
                   "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL")}
@@ -295,6 +513,44 @@ def _validate_journal(connection, *, version=1, operation_id=None):
         raise CorpusStoreError("corpus_storage_invalid") from None
 
 
+
+def _validate_revision_chain(image):
+    """Explicit maintenance only: verify append-only revision/projection history."""
+    operations = image["operations"]
+    installations = [(event, payload) for _, event, payload in image.get("maintenance_events", [])
+                     if event in ("import_installed", "restore_installed")]
+    imported = bool(installations and installations[0][0] == "import_installed")
+    revision = 1 if imported else 0
+    projection = operations[0][9] if operations else image["corpus_state"][3]
+    if imported and hashlib.sha256(_json(projection).encode("utf-8")).hexdigest() != installations[0][1]["baseline_sha256"]:
+        raise CorpusStoreError("corpus_storage_invalid")
+    if installations:
+        epochs = ([] if imported else [installations[0][1]["parent_epoch"]])
+        epochs += [payload["restore_epoch"] for _, payload in installations]
+    else:
+        epochs = [image["corpus_state"][2]]
+    order = {epoch: ordinal for ordinal, epoch in enumerate(epochs)}
+    previous_epoch = -1
+    unfinished = False
+    for expected_rowid, operation in enumerate(operations, 1):
+        if type(operation[0]) is not int or operation[0] != expected_rowid:
+            raise CorpusStoreError("corpus_storage_invalid")
+        epoch, base, state, before, after = (operation[2], operation[7], operation[8],
+                                           operation[9], operation[10])
+        position = order.get(epoch)
+        if (unfinished or position is None or position < previous_epoch
+                or base != revision or before != projection):
+            raise CorpusStoreError("corpus_storage_invalid")
+        previous_epoch = position
+        if state == "committed":
+            revision += 1
+            projection = after
+        elif state != "compensated":
+            unfinished = True
+    if revision != image["corpus_state"][1] or projection != image["corpus_state"][3]:
+        raise CorpusStoreError("corpus_storage_invalid")
+
+
 def _upgrade_v1(connection):
     """Explicit, transactional compatibility conversion; never invoked implicitly."""
     _validate_schema(connection, _SCHEMA_V1)
@@ -337,6 +593,70 @@ class Operation:
     result_code: str | None
 
 
+_INSTALLATION = "public_knowledge.installation"
+_BACKUP = "public_knowledge.backup"
+
+
+def _installation_epoch(files):
+    """A crash during copy must never expose a writable pre-restore epoch."""
+    if not os.path.lexists(files.path / _INSTALLATION):
+        return None
+    fd = files.file(_INSTALLATION, create=False)
+    os.lseek(fd, 0, os.SEEK_SET)
+    value = os.read(fd, 256)
+    if not value.startswith(b"ready:") or len(value) >= 256:
+        raise CorpusStoreError("corpus_installation_incomplete")
+    try:
+        return _token(value[6:].decode("ascii"))
+    except (CorpusStoreError, UnicodeError):
+        raise CorpusStoreError("corpus_installation_incomplete") from None
+
+
+
+def _check_existing_installation(files, installed_epoch):
+    """Inspect existing stores without creating writable SQLite sidecars."""
+    name = "public_knowledge.sqlite3"
+    if not os.path.lexists(files.path / name):
+        if installed_epoch is not None:
+            raise CorpusStoreError("corpus_installation_incomplete")
+        return
+    descriptor = files.file(name, readonly=True, create=False)
+    if installed_epoch is None:
+        # Explicit v3 installation checkpoints before writing its ready seal.
+        # Inspect only the pinned main-file header on the ordinary v2 hot path;
+        # the normal connection still validates the actual WAL-aware version.
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        header = os.read(descriptor, 100)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        if not header:
+            return  # Existing empty store: normal initialization validates it.
+        if len(header) == 100 and header[:16] == b"SQLite format 3\0":
+            version = int.from_bytes(header[60:64], "big")
+            if version in (3, 4):
+                raise CorpusStoreError("corpus_installation_incomplete")
+            if version in (0, 1, 2):
+                return
+    for suffix in ("-wal", "-shm", "-journal"):
+        if os.path.lexists(files.path / (name + suffix)):
+            files.file(name + suffix, readonly=True, create=False)
+    files.validate()
+    # Preliminary admission must not create even empty WAL/SHM files.
+    # Installation seals are written only after the installing connection closes.
+    # Normal WAL-aware schema/epoch validation still runs below before admission.
+    probe = sqlite3.connect((files.path / name).as_uri() + "?mode=ro&immutable=1",
+                            uri=True, timeout=2, isolation_level=None)
+    try:
+        version = probe.execute("PRAGMA user_version").fetchone()[0]
+        if version in (3, 4) and installed_epoch is None:
+            raise CorpusStoreError("corpus_installation_incomplete")
+        if installed_epoch is not None and (version not in (3, 4) or probe.execute(
+                "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,)):
+            raise CorpusStoreError("corpus_installation_incomplete")
+    finally:
+        probe.close()
+    files.validate()
+
+
 class PublicCorpusStore:
     """Constructing a store performs no I/O; directory is provisioned by operator."""
 
@@ -348,7 +668,7 @@ class PublicCorpusStore:
         self.lock_timeout = float(lock_timeout)
 
     @contextmanager
-    def session(self, scope: TrustedProviderScope, *, upgrade_v1=False):
+    def session(self, scope: TrustedProviderScope, *, upgrade_v1=False, files_only=False):
         # Exact type plus proof-bearing native method: no duck-typed authority.
         if type(scope) is not TrustedProviderScope:
             raise CorpusStoreError("corpus_scope_denied")
@@ -382,13 +702,27 @@ class PublicCorpusStore:
                     if time.monotonic() >= deadline:
                         raise CorpusStoreError("corpus_busy") from None
                     time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+            if files_only is True:
+                yielded = True
+                yield files
+                return
+            if os.path.lexists(files.path / _BACKUP):
+                raise CorpusStoreError("corpus_backup_requires_restore")
+            installed_epoch = _installation_epoch(files)
+            _check_existing_installation(files, installed_epoch)
             database = files.database()
             files.validate()
             connection = sqlite3.connect(database, timeout=2, isolation_level=None)
             version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version in (3, 4) and installed_epoch is None:
+                raise CorpusStoreError("corpus_installation_incomplete")
+            if installed_epoch is not None:
+                if version not in (3, 4) or connection.execute(
+                        "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone() != (installed_epoch,):
+                    raise CorpusStoreError("corpus_installation_incomplete")
             if version == 1 and upgrade_v1 is not True:
                 raise CorpusStoreError("corpus_upgrade_required")
-            if version not in (0, 1, _VERSION):
+            if version not in (0, 1, _VERSION, 3, 4):
                 raise CorpusStoreError("corpus_schema_unsupported")
             if version == 0 and connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table'").fetchone():
@@ -416,6 +750,8 @@ class PublicCorpusStore:
                 connection.execute("PRAGMA user_version=2")
                 connection.commit()
             _validate_schema(connection)
+            _validate_maintenance(connection)
+            _validate_completeness(connection)
             session = _Session(connection)
             yielded = True
             yield session
@@ -478,7 +814,9 @@ class _Session:
         self._check()
         self._db.execute("BEGIN IMMEDIATE")
         try:
+            _validate_completeness(self._db)
             yield
+            _validate_completeness(self._db)
             self._db.commit()
         except BaseException:
             self._db.rollback()
@@ -493,11 +831,67 @@ class _Session:
         if self._db.execute("PRAGMA foreign_key_check").fetchall():
             raise CorpusStoreError("corpus_storage_invalid")
         _validate_schema(self._db)
+        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (_VERSION, 3, 4):
+            raise CorpusStoreError("corpus_schema_unsupported")
+        _validate_journal(self._db, version=_VERSION)
+        _validate_maintenance(self._db)
+        _validate_completeness(self._db)
         return "ok"
+
+    @_guarded
+    def verified_image(self):
+        """Internal semantic image for maintenance, never a customer response.
+
+        Includes row identities because operation_watermark is replay/read-gate
+        state. JSON whitespace is immaterial; all fields and retained history
+        remain significant. The owning session holds the exclusive process lock.
+        This does not authorize an import, restore, provider call or index read.
+        """
+        self.verify_integrity()
+        state = self._db.execute(
+            "SELECT id,revision,restore_epoch,payload FROM corpus_state").fetchone()
+        operations = []
+        for row in self._db.execute("SELECT rowid,* FROM operations ORDER BY rowid"):
+            values = list(row)
+            # rowid precedes the v2 journal columns; decode only JSON fields.
+            for position in (9, 10, 15):
+                if values[position] is not None:
+                    values[position] = _read_json(values[position])
+            operations.append(values)
+        steps = [
+            [operation_id, ordinal, _read_json(payload)]
+            for operation_id, ordinal, payload in self._db.execute(
+                "SELECT operation_id,ordinal,payload FROM operation_steps "
+                "ORDER BY operation_id,ordinal")
+        ]
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        image = {"schema_version": version,
+                 "corpus_state": [*state[:3], _read_corpus(state[3])],
+                 "operations": operations, "operation_steps": steps}
+        if version in (3, 4):
+            image["maintenance_state"] = [list(row) for row in self._db.execute("SELECT * FROM maintenance_state")]
+            image["imports"] = [list(row) for row in self._db.execute("SELECT * FROM imports ORDER BY fingerprint")]
+            image["maintenance_events"] = [[n, event, _read_json(payload)] for n, event, payload in
+                self._db.execute("SELECT * FROM maintenance_events ORDER BY sequence")]
+        if version == 4:
+            image["journal_seal"] = [list(row) for row in self._db.execute("SELECT * FROM journal_seal")]
+            image["operation_seals"] = [list(row) for row in self._db.execute(
+                "SELECT * FROM operation_seals ORDER BY sequence")]
+        _validate_revision_chain(image)
+        return image
+
+    @_guarded
+    def maintenance_required(self):
+        self._check()
+        if self._db.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
+            return False
+        _validate_maintenance(self._db)
+        return self._db.execute("SELECT state FROM maintenance_state").fetchone()[0] != "ready"
 
     @_guarded
     def snapshot(self):
         self._check()
+        _validate_completeness(self._db)
         row = self._db.execute(
             "SELECT revision,restore_epoch,payload FROM corpus_state WHERE id=1").fetchone()
         if row is None:
@@ -510,7 +904,7 @@ class _Session:
         watermark = self._db.execute("SELECT COALESCE(MAX(rowid),0) FROM operations").fetchone()[0]
         return {"revision": row[0], "restore_epoch": row[1],
                 "operation_watermark": watermark,
-                "corpus": corpus, "recovery_required": blocked}
+                "corpus": corpus, "recovery_required": blocked or self.maintenance_required()}
 
     @_guarded
     def begin(self, *, key, epoch, kind, intent, expected_revision, after, request=None):
@@ -551,6 +945,7 @@ class _Session:
                 "INSERT INTO operations VALUES(?,?,?,?,?,?,?,'prepared',?,?,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,NULL)",
                 (operation, epoch, _WORKLOAD, key_hash, digest, kind,
                  expected_revision, _corpus(current["corpus"]), after_text, request_digest))
+            _seal_operation(self._db, operation)
         self._owned.add(operation)
         return Operation(operation, "prepared", None)
 
@@ -578,6 +973,9 @@ class _Session:
                 (operation_id,)).fetchone()[0]
             self._db.execute("INSERT INTO operation_steps VALUES(?,?,?)",
                              (operation_id, ordinal, payload))
+            if self._db.execute("PRAGMA user_version").fetchone()[0] == 4:
+                self._db.execute("UPDATE operation_seals SET step_count=step_count+1 WHERE operation_id=?",
+                                 (operation_id,))
         return ordinal
 
     def _prepared(self, operation_id):
@@ -593,6 +991,8 @@ class _Session:
     @_guarded
     def commit(self, operation_id, *, result=None):
         self._check()
+        if self.maintenance_required():
+            raise CorpusStoreError("corpus_recovery_required")
         _token(operation_id)
         result_text = _terminal_result(
             {"status": "committed"} if result is None else result, "committed")
@@ -612,6 +1012,7 @@ class _Session:
     @_guarded
     def pending(self):
         self._check()
+        _validate_completeness(self._db)
         rows = self._db.execute(
             "SELECT operation_id,kind,base_revision,state,before_payload,after_payload "
             "FROM operations WHERE state IN ('prepared','recovery_required')").fetchall()
@@ -640,6 +1041,7 @@ class _Session:
         _token(key)
         _token(epoch)
         digest = hashlib.sha256(_json({"contract": _REPLAY_CONTRACT, "request": request}).encode()).hexdigest()
+        _validate_completeness(self._db)
         current_epoch = self._db.execute(
             "SELECT restore_epoch FROM corpus_state WHERE id=1").fetchone()
         if current_epoch is None:
@@ -670,6 +1072,8 @@ class _Session:
     def finish_compensation(self, operation_id, *, result):
         """Caller must establish settled external effects and projection parity first."""
         self._check()
+        if self.maintenance_required():
+            raise CorpusStoreError("corpus_recovery_required")
         _token(operation_id)
         result_text = _terminal_result(result, "compensated")
         with self._transaction():

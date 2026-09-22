@@ -244,6 +244,9 @@ class PublicKnowledgeLifecycle:
     def recover(self):
         _authorize(self.scope)
         with self.store.session(self.scope) as session:
+            if session.maintenance_required():
+                return {"status": "recovery_required",
+                        "message": "تحتاج المعرفة إلى تحقق مستقل قبل استخدامها."}
             pending = session.pending()
             if not pending:
                 return {"status": "no_recovery_needed"}

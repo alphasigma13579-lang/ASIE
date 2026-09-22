@@ -1,7 +1,7 @@
 name: Public corpus isolated storage
 on:
   pull_request:
-    branches: [main]
+    branches: [main, codex/public-knowledge-lifecycle]
     paths:
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_store.py'
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_knowledge_lifecycle.py'
@@ -9,6 +9,8 @@ on:
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_files.py'
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_public_corpus_store.py'
       - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_fc20_05_public_knowledge_sync.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/backend/public_corpus_maintenance.py'
+      - 'ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_public_corpus_maintenance.py'
       - '.github/workflows/public-corpus-store.yml'
 permissions:
   contents: read
@@ -19,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 20 || 10 }}
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 10 }}
     defaults:
       run:
         working-directory: ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer
@@ -33,4 +35,4 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install pytest==8.3.5
-      - run: python -m pytest -v --durations=20 --full-trace tests/test_public_corpus_store.py
+      - run: python -m pytest -x -v --durations=20 --tb=short tests/test_public_corpus_maintenance.py tests/test_public_corpus_store.py
