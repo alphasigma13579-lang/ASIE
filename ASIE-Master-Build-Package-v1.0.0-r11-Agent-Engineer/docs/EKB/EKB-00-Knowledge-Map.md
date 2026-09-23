@@ -53,7 +53,7 @@
 |---|---|---|
 | `docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json` | `FROZEN` | يحمي مسار AAS والملفات المجمدة |
 | `docs/AIA-01-Intelligence-Constitution-v1.0.0.md` | `FINAL / BINDING` | يحكم حدود الذكاء وSanad وAI |
-| `docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1-Candidate.md` | `CANDIDATE FOR FINAL REVIEW` | يحدد تشغيل AIA كمكمل لا Runtime ثانٍ |
+| `docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1.md` | `FINAL_ADOPTED_CONTROLLED_BASELINE` | يحدد تشغيل AIA كمكمل لا Runtime ثانٍ |
 | `docs/ACR-DIB-001-Dynamic-Input-Blueprint.md` | `DRAFT FOR IMPLEMENTATION` | يحدد DIB وApproved Input Manifest |
 | `docs/ASIE-DIB-LIVE-INTEGRATION-EXECUTION-PLAN-2026-07-25.md` | `CONTROLLED IMPLEMENTATION PLAN` | يخطط ربط DIB بالمسار الحي |
 | `docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md` | `CONTROLLED BASELINE` | يحكم المسميات |
