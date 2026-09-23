@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | DOC-AAS-FREEZE | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json` | `FROZEN` | `VERIFIED_IN_GITHUB` | AAS Runtime Freeze manifest and frozen file hashes. |
 | DOC-AIA-01 | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/AIA-01-Intelligence-Constitution-v1.0.0.md` | `FINAL_BINDING` | `VERIFIED_IN_GITHUB` | Sovereign intelligence constitution. |
-| DOC-AIA-02 | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1-Candidate.md` | `CANDIDATE_FOR_FINAL_REVIEW` | `VERIFIED_IN_GITHUB` | Intelligence operating architecture, not frozen. |
+| DOC-AIA-02 | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/AIA-02-Intelligence-Operating-Architecture-v1.2.1.md` | `FINAL_ADOPTED_CONTROLLED_BASELINE` | `VERIFIED_IN_GITHUB` | Intelligence operating architecture; adopted controlled baseline, with production activation gated. |
 | DOC-ACR-DIB-001 | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-DIB-001-Dynamic-Input-Blueprint.md` | `DRAFT_FOR_IMPLEMENTATION` | `VERIFIED_IN_GITHUB` | Governs Dynamic Input Blueprint and Approved Input Manifest. |
 | DOC-DIB-LIVE | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ASIE-DIB-LIVE-INTEGRATION-EXECUTION-PLAN-2026-07-25.md` | `CONTROLLED_IMPLEMENTATION_PLAN` | `VERIFIED_IN_GITHUB` | Plan to connect DIB runtime to live product path. |
 | DOC-CANONICAL-TERMS | `ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md` | `CONTROLLED_BASELINE` | `VERIFIED_IN_GITHUB` | Human terminology authority. |

@@ -7,7 +7,7 @@ This directory is the canonical runnable workspace for the ASIE repository.
 1. [`AGENTS.md`](AGENTS.md) — engineering rules and frozen runtime boundaries.
 2. [`docs/PROJECT-ORIENTATION.md`](docs/PROJECT-ORIENTATION.md) — product paths and current build direction.
 3. [`docs/IMPLEMENTATION-STATUS-MATRIX.md`](docs/IMPLEMENTATION-STATUS-MATRIX.md) — implemented, planned, disabled, and reference-only capabilities.
-4. [`docs/ASIE-CANONICAL-DOCUMENT-REGISTER-v1.1.0.json`](docs/ASIE-CANONICAL-DOCUMENT-REGISTER-v1.1.0.json) — document authority.
+4. [`docs/ASIE-CANONICAL-DOCUMENT-REGISTER-v1.2.0.json`](docs/ASIE-CANONICAL-DOCUMENT-REGISTER-v1.2.0.json) — document authority.
 5. [`docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md`](docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md) — architectural names and runtime identifiers.
 6. [`docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md`](docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md) — HTTP routes, sealed output keys, and public projection names.
 
