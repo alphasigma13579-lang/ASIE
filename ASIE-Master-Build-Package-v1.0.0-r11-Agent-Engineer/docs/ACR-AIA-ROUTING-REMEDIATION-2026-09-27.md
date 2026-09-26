@@ -1,9 +1,10 @@
-# ACR-AIA-05 — تصحيح مسارات الذكاء والموقع إلى AAS المحكوم
+# ACR-AIA-ROUTING-REMEDIATION — تصحيح مسارات الذكاء والموقع إلى AAS المحكوم
 
 ## Identification — بيانات الطلب
 
-- ACR ID: `ACR-AIA-05`.
-- تاريخ الطلب: 2026-09-26، المنطقة الزمنية Asia/Riyadh.
+- ACR ID: `ACR-AIA-ROUTING-REMEDIATION`؛ معرف وصفي مستقل لا يعيد تخصيص أي رقم محجوز في AIA-02 §32.
+- تاريخ إعداد المسودة الأولى: 2026-09-26؛ تاريخ هذا التصحيح: 2026-09-27، المنطقة الزمنية Asia/Riyadh.
+- سجل التصحيح: أعيدت تسمية مسودة PR #170 عند `23d6fb0b4840e1bdb9fc5e78d9315e553063cc14` بعد اكتشاف تعارض هويتها مع الرقم المحجوز. تاريخ Git يحفظها؛ لا تُعامل كبديل أو alias للعقد المحجوز.
 - الحالة: **PROPOSED / REVIEW_REQUIRED**؛ مقترح للمراجعة، لا موافقة تنفيذ أو نشر.
 - صاحب الطلب: مالك ASIE؛ أُجيز إعداد الطلب بعد مناقشة المسار، ولا تُنسب هذه الموافقة إلى سلطة معمارية لم تسجل قرارها بعد.
 - معدّ المقترح: Engineering. المراجعون المطلوبون: سلطة المعمارية/AAS، وأمن العزل والمزودات، وحوكمة AI؛ لم يُسجل اعتمادهم في هذه الوثيقة.
@@ -17,6 +18,20 @@
 [PROGRAM-CLOSE-10](PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md) و[قرار التجميد](../../EMERGENCY-RELEASE-FREEZE.json) يحكمان المعالجة والإصدار. [FOUNDATION-COMPLETE-20، §6](FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md) يقصر اقتراح تغيير الملفات المجمدة على FC20-12؛ [السجل الآلي](../../FOUNDATION-COMPLETE-20.json) يصف FC20-12 حاليًا ضمن Decision Council v2 وgoverned AAS dispatch.
 
 لذلك يطلب هذا ACR قرارًا مسجلًا يحدد هل يُقبل إصلاح التوجيه المحدود ضمن ملكية FC20-12 أم يحتاج تعديل نطاق برنامج مستقل أولًا. **لا يتوسع نطاق FC20-12 ضمنيًا، ولا تمنح FC20-08/09/10/13 سلطة تعديل التجميد.** تبقى اعتماديات الحزم وحالاتها كما هي؛ لا تحرر الوثيقة مانع predecessor، ولا تصف FC20-12 أو FC20-16 بالمكتمل. إذا لم يُحسم هذا الشرط، تبقى الشريحة المجمدة غير مصرح بها.
+
+شرط بدء التنفيذ المجمد إضافي وليس ضمنيًا: استيفاء اعتماديات FC20-12 (`FC20-08` و`FC20-09` و`FC20-11`) بأدلة إغلاق وحالة مطابقة في السجل الآلي الفعال، مع اعتماد ACR والنطاق. لا تكفي موافقة هذا الطلب وحدها. أي اقتراح لتغيير النطاق أو الاعتماديات يمر بتعديل برنامج/سجل آلي مستقل مضبوط ومعتمد، يعيّن المالك والاعتماديات صراحة ويحافظ على البوابات الدستورية والتجميد؛ لا تعدله هذه الوثيقة ولا تفترض إجازته.
+
+### ملكية الطلبات القائمة دون إعادة تخصيصها
+
+| المرجع الحاكم | الملكية التي تبقى محفوظة | حدود هذا الطلب |
+|---|---|---|
+| AIA-02 §8.7 و§32: ACR-AIA-05 | Market Intelligence & Reference Cost Modules | لا يحل طلب التصحيح محله، ولا يعلن استيفاء متطلباته أو يضيف reference cost/Finance |
+| AIA-02 §8.7 و§32: ACR-AIA-09 | AI Experience v2؛ request v2 وnarrative overlay v1؛ result v1 يبقى As-Built guard | تفاصيل عقد AI وربطه وتفعيله تحسم في ACR-AIA-09 مستقل؛ التصحيح يحدد نقطة العبور فقط |
+| AIA-02 §8.7 و§32: ACR-AIA-10 | External Data Connector Gate | لا تسجيل أو فتح موصلات خارجية من مجرد هذا الطلب |
+| [ACR-FC20-10](ACR-FC20-10-CONSENTED-LOCATION-2026-08-28.md) | الموقع الموافق عليه؛ توسيع APIs/Maps يحتاج امتدادًا له | امتداد الخرائط يبقى موافقة مستقلة محكومة |
+| FC20-12 وPROGRAM-CLOSE-10 وقرار التجميد | نطاق AAS المجمد والتجميد الموافق عليه | لا تجاوز للاعتماديات أو تحديث manifest بهذا PR |
+
+أسماء ACR-AIA-05/09/10 محجوزة في المرجع المعتمد، ولا يفترض هذا الجدول وجود ملفات مستقلة لها أو اكتمالها. اعتماد التصحيح لا يعوض اعتماد المالك المختص لأي شريحة.
 
 المرجع المعماري المعتمد هو [AIA-01](AIA-01-Intelligence-Constitution-v1.0.0.md) و[AIA-02 v1.2.1 النهائي](AIA-02-Intelligence-Operating-Architecture-v1.2.1.md)، وليس نسخة Candidate مؤرشفة. أي حاجة لتغيير قاعدة دستورية، بما فيها السماح باتصال متصفح لا تستوعبه الحدود المعتمدة، تُرفع عبر ICCR مستقل؛ هذا ACR لا يمنح إعفاءً دستوريًا.
 
@@ -62,7 +77,7 @@ Kernel → Heart Controller → Hearts → Bus Controller
 
 طلب تفسير سياق معتمد
   → نفس حدود HTTP وAAS
-  → module.ai_integration / AIIntegrationShell القائم
+  → socket.ai.integration الوحيد → module.ai_integration / AIIntegrationShell القائم
   → Trusted Prompt Assembly → ModelRouter المحكوم → DeepSeek
   ← validation + grounding + امتناع/مراجعة → عرض باللغة المختارة
 
@@ -73,7 +88,8 @@ Project Run v1 → تسلسله المالي/القرار/اللقطة الحا�
 - API يستقبل نية محدودة؛ لا يبني عميل مزود ولا يستدعي provider service/handler مباشرة. يشتق tenant/project/scope من الجلسة والمشروع لا من ادعاء المتصفح.
 - منشئ الرسائل الخادمي يستعمل هوية source module مسجلة يملكها Workflow، لا module/socket من المتصفح. يتحقق مالك التنفيذ من التفويض الخادمي وملكية السياق قبل أي أثر؛ التسجيل وحده ليس صلاحية.
 - Workflow يستعمل نفس ModuleRuntime ونفس Bus/Registry؛ لا يُنشأ `RunScopedModuleRuntime` قبل وجود run، ولا تُختلق run_id أو snapshot_id لإرضاء عقد v1.
-- وحدات الموقع والسوق تجمع المرشحات خلف سوكتات مسجلة. التنسيق لا يحسب Finance ولا يتصل به.
+- وحدات الموقع والسوق تجمع المرشحات خلف سوكتات مسجلة بعد استيفاء ملكية ACR-AIA-05/10 وامتداد ACR-FC20-10 حيث ينطبق. التنسيق لا يحسب Finance ولا يتصل به.
+- التفسير في الخريطة هدف لاحق مشروط بـACR-AIA-09، لا تصريح لاستدعاء مزود حاليًا. لا يمر request v2 عبر binding v1 بالافتراض؛ التوافق وتسجيل الربط في السوكت الوحيد يحتاجان تصميمًا معتمدًا وفحوص تكافؤ وتجميدًا محكومًا.
 - إنشاء السياق ومراجعته واعتماده يمر بأوامر مسجلة إلى مالك كتابة السياق؛ Workflow ينسق الأوامر، وhandler الكتابة لا يعيد استدعاء Workflow على الأمر نفسه. Repository تبقى آلية التخزين داخل هذا المالك، لا مسار كتابة بديل من HTTP.
 - قراءة السياق تبقى قراءة مخولة بلا تشغيل مزود. إخفاء الواجهة أو wrapper جديد لا يغلق مسار POST المتجاوز: كل منفذ قديم إمّا يعاد توجيهه إلى الأمر المحكوم أو يفشل برسالة انتقال آمنة قبل أي أثر.
 - المخرجات تعود للعميل كمعنى أعمال ومصادر وحدود وخطوة تالية، بلا contract/engine/hash/secret diagnostics. العربية افتراضية واللغة المختارة تشمل الفشل والتفسير؛ [EKB-08](EKB/EKB-08-Customer-Language-and-Presentation-Contract.md) حاكم.
@@ -104,13 +120,13 @@ Tavily يرسل query محدودًا ونطاقات مسموحة؛ Google يرس
 | `location.resolve.v1` / `location.resolved.v1` | `socket.location.resolve` | `module.location_context` |
 | `market.context.build.v1` / `market.context.candidate.v1` | `socket.market.context` | `module.market_context` |
 | `intelligence.context.command.v1` / `intelligence.context.result.v1` | `socket.intelligence.context` | `module.intelligence_context` |
-| `ai.integration.request.v2` / `ai.integration.result.v2` | `socket.ai.integration.v2` | نفس `module.ai_integration`؛ لا بوابة جديدة |
+| إحالة AI فقط: `ai.integration.request.v2`؛ المخرجات المعتمدة `ai.integration.result.v1` و`ai.narrative.overlay.v1` | `socket.ai.integration` الموجود والوحيد؛ لا سوكت جديد أو معاد تسميته | `module.ai_integration` / AIIntegrationShell؛ التصميم والعقود والربط تحت ACR-AIA-09 مستقل، لا تسجيل بهذا الطلب |
 
-- v1 للذكاء يبقى disabled محليًا بعقوده واختباراته. v2 إضافي في shell نفسه، منفصل dispatch ولا fallback صامت إلى v1 أو إلى الخدمة المباشرة.
-- Request v2 يفرض tenant/project/context/version/receipt/op refs وlocale؛ run/snapshot لا يُطلبان لـcontext build، ولا يقبلان إلا عند مرجع فعلي مخول. input_hash والقالب وprompt_hash يحسبها الخادم؛ raw prompt أو URL/namespace اختاره المتصفح ممنوع.
+- v1 للذكاء يبقى disabled محليًا بعقوده واختباراته. امتداد AI Experience v2 مملوك لـACR-AIA-09؛ لا ينشئ هذا التصحيح عقد AI آخر أو سوكتًا ثانيًا أو يفعّل shell. الربط في السوكت الحالي وتعامل Registry مع نسخ الطلب يثبتان هناك قبل التنفيذ؛ لا fallback صامت إلى v1 أو إلى الخدمة المباشرة.
+- متطلبات المدخل التالية تُرفع إلى ACR-AIA-09 للتصميم والتحقق، ولا تعتمد هنا كعقد Request v2 مسجل: tenant/project/context/version/receipt/op refs وlocale؛ run/snapshot لا يُطلبان لـcontext build، ولا يقبلان إلا عند مرجع فعلي مخول. input_hash والقالب وprompt_hash يحسبها الخادم؛ raw prompt أو URL/namespace اختاره المتصفح ممنوع.
 - العقود تحدد أنواع الحقول والطول/enums/extra-field rejection، وليس مجرد presence validation. حارس السلطة الخادمي ينقلها إلى الوحدة ولا يكتفي بأن module_id مسجل.
 - Bus يحمل مراجع سياق وأدلة وبصمات لا prompt خام أو أسرار أو passages. Trusted Prompt Assembly داخل shell فقط بعد إعادة التحقق من الهوية والإيصال والإصدار والمصدر.
-- Result v2 structured: locale، claims مرتبطة بـevidence_refs، limits/missing evidence، abstention/review status. schema وcitation resolution والسياسة تُتحقق خارج النموذج؛ ثقة النموذج الذاتية ليست احتمالًا إحصائيًا موثوقًا.
+- لا يقترح هذا الطلب result v2. متطلبات العرض locale وclaims المرتبطة بـevidence_refs وlimits/missing evidence وabstention/review تُطابق بعقد result v1 الحالي مع الحفاظ على As-Built guard، وبـnarrative overlay v1 تحت ACR-AIA-09. إن لم يستوعبها العقد، يرفع الأثر هناك ولا يُخترع عقد هنا. schema وcitation resolution والسياسة تُتحقق خارج النموذج؛ ثقة النموذج الذاتية ليست احتمالًا إحصائيًا موثوقًا.
 - المحتوى المسترجع بيانات غير موثوقة لا تعليمات. النص المعتمد يربط بموضع/إصدار/إسناد قابل للتحقق؛ metadata وحدها لا تكفي لتفسير مضمون مصدر. عند غياب passages معتمدة يمتنع عن التحليل ويشرح النقص.
 - منع numeric ownership لا يمنع اقتباس حقيقة منشورة موثقة ومراجعة؛ لكنه يمنع إنشاء assumption مالي نهائي أو حساب NPV/IRR/DSCR أو قرار تمويل.
 - current HTTP paths لا تُعاد تسميتها في موضعها. تبقى projections المسجلة حيث تستوعب المعنى؛ أي كسر يتطلب API version/migration صريحة. تسجل تغييرات response/types/clients بالتوافق.
@@ -143,7 +159,7 @@ Tavily يرسل query محدودًا ونطاقات مسموحة؛ Google يرس
 - الإذن الحالي `platform.manage`/platform_admin لا يُخفف لتشغيل المالك؛ البريد/اسم asie لا يمنحان دورًا. لا cross-tenant حتى للطلب ذي context_id صحيح.
 - الإيصال مربوط بالسياق والنسخة والبصمة ومدة الاعتماد؛ التحقق والاستهلاك atomic مع operation ledger. replay لنفس العملية يعيد نتيجتها، لا يستهلك إيصالًا ثانيًا؛ changed body/key conflict يرفض. stale/expired/revoked context يفشل قبل client construction.
 - GPS بموافقة، وتأكيد موقع المشروع مستقل عن إذن الجهاز. لا حفظ raw location قبل التأكيد. العنوان اليدوي لا يتحول تلقائيًا إلى location معتمد.
-- Maps SDK يُحجب قبل موافقة عرضه وتفويض تشغيله، وkill state يمنع تحميلًا جديدًا/بحثًا جديدًا؛ لا يَعِد بإزالة اتصال SDK بدأ. قيود key/referrer/API، attribution/terms/retention وحدود الإرسال توثق قبل التشغيل. إن استلزم ذلك خروجًا دستوريًا، لا يشغّل قبل ICCR.
+- Maps SDK يُحجب قبل موافقة عرضه وتفويض تشغيله، وkill state يمنع تحميلًا جديدًا/بحثًا جديدًا؛ لا يَعِد بإزالة اتصال SDK بدأ. قيود key/referrer/API، attribution/terms/retention وحدود الإرسال توثق قبل التشغيل. لا يبدأ توصيل أو تشغيل الخرائط قبل Product PR معتمد وACR-AIA-10 وامتداد ACR-FC20-10 المقبول؛ وإذا مسّ التنفيذ السطح المجمد يلزم أيضًا نطاق FC20-12 واعتماد ACR وتحديث التجميد وفق PROGRAM-CLOSE-10 وقرار التجميد. أي خروج دستوري يحتاج ICCR مستقلًا، وأي تعديل لـAIA-02 يحتاج IACR. التفعيل الخارجي قرار مستقل تحت FC20-16 مطابق للرأس والبيئة والمدة. ليست أي بوابة من هذه بديلًا عن الأخرى.
 - نتائج Places ليست تلقائيًا داخل دائرة البحث: locationBias انحياز لا حد هندسي. لا تعرض مسافة/نطاقًا صارمًا دون حساب موثق وفلترة إذا وُعد المستخدم بذلك.
 - الأخطاء والـaudit والملخصات تستخدم allowlist من حالات آمنة؛ لا `str(exc)` أو أسرار أو اسم متغير سري. التفاصيل الفنية في سجل مشرف محمي ومنقح، لا raw exception dump.
 - telemetry: حالة/مدة/محاولات/usage/request correlation فقط؛ لا prompt/passages/secret/location raw في Bus/audit/log. رد المزود الكبير/غير الصحيح يرفض قبل الحفظ.
@@ -151,7 +167,7 @@ Tavily يرسل query محدودًا ونطاقات مسموحة؛ Google يرس
 
 ## Migration and Rollback — الانتقال والتراجع
 
-1. بعد موافقة السلطة على النطاق، تنفذ شرائح صغيرة: تسجيل/توجيه داكن، سياق ومعاملات، shell v2 وإغلاق الاستدعاء المباشر، ثم عرض/سند. يُثبت كل جزء باختبارات قبل التالي.
+1. لا تبدأ شريحة مجمدة حتى يعتمد النطاق وACR وتثبت اعتماديات FC20-12 (`FC20-08` و`FC20-09` و`FC20-11`) في السجل الآلي الفعال. أي إعادة نطاق/اعتماديات تتطلب قرار برنامج وسجل آلي مستقلًا معتمدًا، لا موافقة هذا الطلب. بعد تحقق ذلك تكون الشرائح: تسجيل/توجيه داكن، سياق ومعاملات، إحالة امتداد shell إلى ACR-AIA-09 وإغلاق الاستدعاء المباشر وفق موافقاته، ثم عرض/سند. شرائح المزودات والخرائط تحتاج كذلك المراجع المالكة المذكورة أعلاه. يُثبت كل جزء باختبارات قبل التالي.
 2. إبقاء السجلات التاريخية والقراءات والإيصالات كما هي. Legacy context لا يعاد اعتماده لمجرد وجود state/hash؛ إعادة تقييم خادمية تولد نسخة جديدة مع provenance وتحافظ على الأصل.
 3. لا ترحيل بيانات المالك في هذه الشريحة. إن احتاج schema إضافة، تكون additive مع خطة نسخ/استعادة وموافقة مستقلة واختبار توافق الإصدار السابق؛ لا حذف JSON/SQLite أو reuse namespace مشتركة.
 4. التراجع يوقف أوامر القدرات الجديدة ومحاولات إعادتها ويحافظ على البيانات؛ يعود إلى إصدار رسمي known-safe مع تعطيل المنافذ المتجاوزة. **لا يعيد HTTP → provider أو HTTP → كتابة Pre-Run المباشرة كحل سريع.**
@@ -164,19 +180,20 @@ Tavily يرسل query محدودًا ونطاقات مسموحة؛ Google يرس
 
 | البوابة | الإثبات الإيجابي والسلبي المطلوب |
 |---|---|
-| السلطة والتجميد | قرار نطاق FC20-12، ACR معتمد، diff محصور وmanifest old/new؛ بقية frozen hashes ثابتة |
+| السلطة والتجميد | قرار نطاق FC20-12 وACR معتمد، وإثبات اعتماديات FC20-08/09/11 في السجل الفعال؛ أي إعادة نطاق تعتمد في برنامج/سجل مستقل؛ diff محصور وmanifest old/new وبقية frozen hashes ثابتة |
 | عبور فعلي | spy/trace على Runtime→Bus→Socket→handler، رفض الرسالة قبل provider construction؛ static import guard على HTTP كفحص مساعد لا بديل سلوكي |
 | منافذ قديمة | create/pre-run/review/approval/location/market/narrative لا تكتب أو تجلب خارج dispatcher؛ manual direct requests تفشل أو تمر بالمسار نفسه |
 | الصلاحية والعزل | unauthenticated/non-admin/cross-tenant/project/context/receipt denied دون client أو write؛ scope خادمي لا namespace متصفح |
 | السياق | server state/hash، malformed/extra fields denied، durable idempotency وفingerprint conflict، concurrency/CAS/receipt consume وانقطاع/استئناف |
 | المزودات | default denied وkey-only denied، deadline/size/retry/circuit/kill tests مع transports اصطناعية؛ لا شبكة حقيقية |
 | المصادر والموقع | unadmitted/revoked/ref-only URL denied، consent/confirm/manual، no pre-confirm persist وPlaces retention/attribution |
-| AI shell | v1 disabled parity، v2 same shell، injection/schema/unknown citations/ungrounded claims/controlled verdict rejected؛ abstention عند metadata-only، no raw prompt in Bus |
+| AI shell | تحت ACR-AIA-09: v1 disabled parity، سوكت AI الوحيد socket.ai.integration وربط request v2 المعتمد؛ رفض أي سوكت AI إضافي وfallback مباشر، injection/schema/unknown citations/ungrounded claims/controlled verdict rejected؛ abstention عند metadata-only، no raw prompt in Bus |
 | المخرجات والفشل | sentinel سري في استثناء وفي رد مزود لا يظهر في UI/summary/audit؛ لغة كاملة وسبب أعمال وتعافٍ |
 | سلامة المسار الرسمي | ProjectRun v1 golden/parity وSnapshot immutability وعدم partial/fake Snapshot وعدم AI/market→Finance |
 | UI وسند | موافقة الموقع، حالات نقص وفشل بالعربية، سند إلى الحقل الصحيح وحفظ/عودة؛ لا استدعاء AI من سند |
 | البيانات والتراجع | مخزن أصلي، private/public separation، index rebuild معزول، نسخ/استعادة وتراجع capability دون bypass |
-| الفهرسة | وجود روابط EKB، الحالة PROPOSED لا APPROVED، مرجع AIA-02 النهائي لا Candidate، ربط الخطة |
+| الخرائط والموصلات | Product PR وACR-AIA-10 وامتداد ACR-FC20-10؛ رفض تشغيل SDK بمجرد ICCR أو flag، فصل سلطة التجميد عن FC20-16 والتفويض الدستوري |
+| الفهرسة | وجود روابط EKB، الحالة PROPOSED لا APPROVED، مرجع AIA-02 النهائي لا Candidate، ربط الخطة؛ مطابقة هوية ACR ومالك AI والسوكت والاعتماديات مع السجلات لا مجرد وجود الملف |
 
 الفحوص المستهدفة تتبع الملفات الفعلية. اختبارات الأمان وسلامة البيانات والعزل إلزامية. البوابة الكاملة/build/freeze/parity والمراجعات المطلوبة تُجمع مرة على الرأس النهائي؛ لا تعاد بلا تغيير مؤثر أو فشل متقلب موثق. TestSprite غير المفعّل ليس بوابة هذه المرحلة ولا سببًا لتعطيل المراجعة المتاحة.
 
@@ -188,12 +205,13 @@ Tavily يرسل query محدودًا ونطاقات مسموحة؛ Google يرس
 |---|---|
 | موافقة إعداد ACR | صريحة من المالك في 2026-09-26 |
 | اعتماد معماري ونطاق FC20-12 | مطلوب؛ غير مسجل هنا |
-| تصريح بناء داكن | غير ممنوح قبل القرار والتجميد المحكوم؛ لا تشغيل مزود |
-| حسم معاملة SDK/الحاجة لـICCR | مطلوب قبل live map؛ لا استثناء ضمني |
+| تصريح بناء داكن مجمد | غير ممنوح قبل القرار والتجميد المحكوم وإثبات اعتماديات FC20-08/09/11 في السجل الفعال؛ تغيير البرنامج/السجل يحتاج موافقة مستقلة؛ لا تشغيل مزود |
+| ملكية AI | ACR-AIA-09 مستقل مطلوب قبل امتداد العقود/الربط/التفعيل؛ سوكت واحد فقط |
+| الخرائط ومعاملة SDK | Product PR وACR-AIA-10 وامتداد ACR-FC20-10، وبوابات التجميد إن تأثرت؛ ICCR عند خروج دستوري وIACR عند تعديل AIA-02؛ لا استثناء ضمني |
 | تشغيل Hostinger/Canary | قرار FC20-16 مستقل exact-head/environment/time؛ غير ممنوح |
 | اكتمال بيتا/الدعوات | غير مثبت؛ الدعوات مغلقة |
 
-نقطة التوقف الآن: PR توثيقي فقط؛ لا كود أو frozen hash أو سجل حزمة أو بيانات أو مفاتيح أو نشر. المهمة التالية: مراجعة ACR وحسم السلطة والـallowlist، ثم خطة وهدف قصير لأول شريحة توجيه داكن فقط بعد الموافقة. تبقى لوحة الإدارة وتصحيح النشاط والتعريب وتشغيل المالك في ترتيب خطة البيتا؛ لا تُحذف لصالح هذا العلاج.
+نقطة التوقف الآن: PR توثيقي فقط؛ لا كود أو frozen hash أو سجل حزمة أو بيانات أو مفاتيح أو نشر. المهمة التالية: مراجعة ACR ثم فحص قراءة فقط لحسم النطاق والـallowlist وحالة اعتماديات FC20-08/09/11 والطلبات المالكة. لا تنتقل إلى خطة بناء داكن مجمد من مجرد الموافقة على المسودة؛ يلزم تحقق شروط التنفيذ أعلاه، وأي إعادة نطاق تعتمد مستقلة. لا تغيير للسجل الآلي في هذا PR. تبقى لوحة الإدارة وتصحيح النشاط والتعريب وتشغيل المالك في ترتيب خطة البيتا؛ لا تُحذف لصالح هذا العلاج.
 
 ## Evidence — مراجع الفحص المثبتة
 
