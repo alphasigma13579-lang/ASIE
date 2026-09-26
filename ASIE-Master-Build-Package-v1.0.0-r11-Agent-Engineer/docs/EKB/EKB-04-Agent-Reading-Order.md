@@ -5,6 +5,7 @@
 | هدف هندسي حقيقي: بناء أو تغيير أو مراجعة أو تحقيق أو اختبار أو نشر | EKB-09 Goal Planning and Truthful Engineering Contract | الخطة المعتمدة، المجال المتأثر، والعقود ذات الصلة | بدء التنفيذ بلا خطة وهدف نشط، أو الموافقة بلا دليل، أو وصف حالة بلا إثبات. |
 | Runtime / AAS | AAS Freeze | Canonical Terminology + affected code | تعديل frozen files دون ACR. |
 | AI / Sanad / AIA | AIA-01 | AIA-02 + domain file | تفعيل AI Provider أو network fetch. |
+| إصلاح توجيه السوق / الموقع / Pre-Run / التفسير | AIA-01 + AIA-02 النهائي + [تدقيق المسارات](../ASIE-AIA-PARALLEL-ROUTING-AUDIT-2026-09-23.md) | [ACR-AIA-ROUTING-REMEDIATION المقترح](../ACR-AIA-ROUTING-REMEDIATION-2026-09-27.md) + خطة بيتا المالك + سلطة FC20-12 والتجميد واعتماديات FC20-08/09/11 + ملكية ACR-AIA-09/10 وامتداد ACR-FC20-10 | التنفيذ من مقترح غير معتمد، أو استدعاء مزود/كتابة سياق تتجاوز AAS، أو إنشاء بوابة/Runtime أو سوكت AI موازٍ، أو تجاوز الاعتماديات أو اعتبار موافقة المسودة تصريح بناء. |
 | DIB | ACR-DIB-001 | DIB Live Plan + DIB domain files | Finance من raw inputs. |
 | API | Canonical API Register | `src/api.ts`, backend handler, tests | Route غير مسجل. |
 | Finance | Finance Engine domain | code/tests + MC domain | AI يولد أرقامًا نهائية. |
