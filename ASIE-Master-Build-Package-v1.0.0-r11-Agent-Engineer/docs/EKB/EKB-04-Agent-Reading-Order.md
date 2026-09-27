@@ -6,6 +6,7 @@
 | Runtime / AAS | AAS Freeze | Canonical Terminology + affected code | تعديل frozen files دون ACR. |
 | AI / Sanad / AIA | AIA-01 | AIA-02 + domain file | تفعيل AI Provider أو network fetch. |
 | إصلاح توجيه السوق / الموقع / Pre-Run / التفسير | AIA-01 + AIA-02 النهائي + [تدقيق المسارات](../ASIE-AIA-PARALLEL-ROUTING-AUDIT-2026-09-23.md) | [ACR-AIA-ROUTING-REMEDIATION المقترح](../ACR-AIA-ROUTING-REMEDIATION-2026-09-27.md) + خطة بيتا المالك + سلطة FC20-12 والتجميد واعتماديات FC20-08/09/11 + ملكية ACR-AIA-09/10 وامتداد ACR-FC20-10 | التنفيذ من مقترح غير معتمد، أو استدعاء مزود/كتابة سياق تتجاوز AAS، أو إنشاء بوابة/Runtime أو سوكت AI موازٍ، أو تجاوز الاعتماديات أو اعتبار موافقة المسودة تصريح بناء. |
+| فصل نطاق إصلاح التوجيه داخل البرنامج | EKB-09 + PROGRAM-CLOSE-10 + FOUNDATION والسجل الآلي | [طلب فصل FC20-12 المقترح](../FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md) + ACR التصحيح + اعتمادياته والطلبات المالكة | اعتبار فصل مقترح تصريح تنفيذ، تعديل حالات الحزم أو اعتمادياتها ضمنيًا، أو إعلان اكتمال الأب من شريحة. |
 | DIB | ACR-DIB-001 | DIB Live Plan + DIB domain files | Finance من raw inputs. |
 | API | Canonical API Register | `src/api.ts`, backend handler, tests | Route غير مسجل. |
 | Finance | Finance Engine domain | code/tests + MC domain | AI يولد أرقامًا نهائية. |
