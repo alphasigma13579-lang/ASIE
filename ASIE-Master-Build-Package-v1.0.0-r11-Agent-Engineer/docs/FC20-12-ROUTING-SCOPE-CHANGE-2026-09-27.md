@@ -47,7 +47,7 @@
 | FC20-01/02/03/04 | إعادة مطابقة أدلة اكتمالها ونطاق استخدامها على رأس التنفيذ؛ اختلاف الدليل يوقف الشريحة المتأثرة | لا استنتاج تشغيل من حالة COMPLETE |
 | سلطة التجميد | ACR تصحيح التوجيه معتمد بحدوده، version/manifest old-new، تكافؤ v1 وتراجع | لا تعديل kernel/bus/workflow/assembly أو إسقاط الحظر العام |
 | متطلبات السياق ذات الصلة بـFC20-08 | ملكية وهوية مشروع، مراجع أدلة، إصدار وبصمة، قفل/إيصال ومراجعة وإبطال/تقادم في كل أمر يستخدمها؛ إثبات رفض النقص والتعارض والتزوير | لا COMPLETE لـ08 ولا تركيب استراتيجي شامل أو تغذية المجلس |
-| متطلبات AI ذات الصلة بـFC20-09 | ACR-AIA-09 مستقل قبل امتداد العقد/الربط؛ سياق محدود معتمد، قالب خادمي، grounding/abstention/review، منع حقن التعليمات والأرقام والحكم والأدوات | لا COMPLETE لـ09 ولا مقابلة/Templates/Questions كاملة أو تفعيل DeepSeek |
+| متطلبات AI ذات الصلة بـFC20-09 | ACR-AIA-09 مستقل قبل امتداد العقد/الربط؛ سياق محدود معتمد، قالب خادمي، grounding/abstention/review، منع حقن التعليمات والأرقام المالية النهائية والحكم والأدوات | لا COMPLETE لـ09 ولا مقابلة/Templates/Questions كاملة أو تفعيل DeepSeek |
 | متطلبات الإدخال ذات الصلة بـFC20-11 | سياق خادمي ومراجع موثقة، رفض raw file/chat/manifest مزور؛ لا إنشاء إدخال مالي أو تمرير إلى Finance في التوجيه | لا COMPLETE لـ11 ولا PDF quote/blueprint intake كامل |
 | السوق والموقع | ACR-AIA-05 وACR-AIA-10 وامتداد ACR-FC20-10 حيث ينطبق، وقبول مصادر فعلي وموافقة موقع وصلاحيات | لا زحف جديد أو توسعة تلقائية لمصدر مرجعي؛ SDK يحتاج Product PR والتفويض الدستوري عند لزومه |
 | التخزين والعزل | الحفاظ على #166/#167، فحوص كتابة مخولة وtransaction/CAS/idempotency وعدم تسرب أو فساد عند الفشل | لا ترحيل بيانات المالك أو مزامنة فهرس حي |
@@ -73,11 +73,11 @@
 | ضبط التجميد | `docs/ASIE-AAS-Runtime-Freeze-Manifest-v1.0.json` | تحديث محكوم لاحقًا بمعرف ACR وإصدار وبصمات قديمة/جديدة؛ لا تغيير الآن |
 | مداخل وتنسيق | `backend/asie_local_api.py`، `backend/intelligence_workflow.py`، `backend/intelligence_prerun_service.py` | إغلاق التجاوزات وحصر أوامر السياق؛ لا إعادة كتابة عامة |
 | ملاك التنفيذ | `backend/ai_integration.py`، `backend/live_intelligence_product.py`، `backend/live_provider_clients.py`، `backend/provider_security_control_plane.py`، `backend/repository.py` | أثر خلف القبول وتوافق التخزين؛ ربط AI فقط بعد ACR-AIA-09 |
-| سجل العقود | `registry/asie-canonical-terminology.v1.json`، `registry/asie-canonical-api-output.v1.json`، ووثيقتا السجل في docs | تسجيل controlled contracts/API والتوافق؛ لا عقد مالي/قرار جديد |
+| سجل العقود | `registry/asie-canonical-terminology.v1.json`، `registry/asie-canonical-api-output.v1.json`، `docs/ASIE-CANONICAL-TERMINOLOGY-REGISTER-v1.0.0.md`، `docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md` | تسجيل controlled contracts/API والتوافق؛ لا عقد مالي/قرار جديد |
 | عميل متأثر | `src/api.ts` | توافق الاستجابة والفشل الآمن فقط؛ أي عنصر عرض أو ملف types إضافي يعين في allowlist الشريحة قبل التنفيذ، لا توسعة تلقائية |
 | اختبارات مقترحة | `tests/test_aia_routing_remediation.py`، `tests/test_runtime_freeze.py`، `tests/test_intelligence_workflow.py`، `tests/test_intelligence_prerun_service.py`، `tests/test_live_intelligence_product.py` | الأول اسم ملف مقترح غير منفذ؛ البقية متأثرة وتراجع حسب المخاطر، لا حذف assertion سليم |
 
-خارج القائمة: Finance وDecision Council و`aas_kernel.py` و`heart_controller.py` و`bus_controller.py` و`system_bus.py` و`project_run_workflow.py` و`snapshot_assembly.py` و`runtime_freeze.py`. لا تعديل اللقطات التاريخية أو السجل الأصلي للأدلة أو مناطق الأرشيف. ملف/محول جديد خارج القائمة أو تغيير الترتيب يستلزم تعديل نطاق معتمد قبل كتابة الكود؛ لا يسمح به الاسم الوصفي للشريحة.
+خارج القائمة: Finance وDecision Council و`aas_kernel.py` و`heart_controller.py` و`bus_controller.py` و`system_bus.py` و`project_run_workflow.py` و`snapshot_assembly.py` و`runtime_freeze.py`. لا تعديل اللقطات التاريخية أو إعادة كتابة تاريخ الأدلة أو مناطق الأرشيف؛ الكتابة المخولة للسياق لا تغير مصادر الحقيقة التاريخية. ملف/محول جديد خارج القائمة أو تغيير الترتيب يستلزم تعديل نطاق معتمد قبل كتابة الكود؛ لا يسمح به الاسم الوصفي للشريحة.
 
 ## 7. بوابات الاختبار والأدلة
 
@@ -93,7 +93,7 @@
 | R-AI | حدود الذكاء | منع prompt injection والأدوات/أرقام Finance/Verdict، رفض schema/citations غير الصالحة، امتناع دون passages معتمدة |
 | R-POLICY | سياسة المصدر والموقع والإيقاف | رفض المصدر غير المقبول وغياب موافقة الموقع؛ الإيقاف يمنع الطلبات الجديدة والإعادة؛ لا ادعاء إلغاء طلب أرسل |
 | R-FAIL | الفشل والمحتوى | علامة سر اختبارية لا تظهر في UI/ملخص/تدقيق؛ رسالة عربية مفهومة وإجراء تعافٍ، no direct fallback؛ حدود المهلة والإعادة |
-| R-FREEZE | حدود التجميد والتراجع | تغير البصمات المصرح بها فقط، no parallel runtime/bus/AI socket، عودة مستقلة إلى baseline مع سلامة البيانات |
+| R-FREEZE | حدود التجميد والتراجع | تغير البصمات المصرح بها فقط، no parallel runtime/bus/AI socket، تراجع إلى إصدار known-safe مع سلامة البيانات وبقاء منافذ التجاوز القديمة معطلة؛ لا رجوع إلى baseline يعيدها ولا مسار مباشر بديل |
 
 الدليل لكل شريحة: head SHA، paths، أسماء اختبارات ونتائجها وworkflow/artifact، مراجعات على الرأس نفسه، compatibility/rollback، ومخاطر متبقية. لا يخفض اختبار الأمان/العزل/سلامة البيانات بدعوى الاقتصاد؛ لا تعاد اختبارات غير متأثرة دون سبب. لا تستبدل خطة اختبار بدليل نجاح أو قبول جاهزية. TestSprite غير المفعّل ليس بوابة لهذه المرحلة.
 
