@@ -623,6 +623,83 @@
         "missing context/synthesis/receipt fails closed",
         "no silent fallback from v2 to v1",
         "freeze hashes change only through approved manifest update"
+      ],
+      "execution_slices": [
+        {
+          "schema": "asie.foundation.routing-registration.v1",
+          "id": "routing_repair",
+          "state": "REGISTERED_BLOCKED",
+          "registry_effect": "REGISTRATION_ONLY",
+          "execution_authorized": false,
+          "scope_document": {
+            "url": "https://github.com/alphasigma13579-lang/ASIE/blob/d8fdedd8c768c0eb4604465fdcf870417131aff0/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md",
+            "commit_sha": "d8fdedd8c768c0eb4604465fdcf870417131aff0",
+            "blob_sha": "20e3374e01ebf64260ff4d54b15b44503a0b154f"
+          },
+          "owner_scope_decision": {
+            "id": "DECISION-FC20-12-ROUTING-SCOPE-2026-09-27",
+            "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/171#issuecomment-5851434784",
+            "recorded_at": "2026-09-27T00:56:14Z",
+            "effect": "SCOPE_ORDERING_ONLY"
+          },
+          "package_entry_dependencies": [
+            "FC20-01",
+            "FC20-02",
+            "FC20-03",
+            "FC20-04"
+          ],
+          "required_entry_controls": {
+            "program_scope_synchronization": {
+              "owner": "Repository and Release Governance",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "frozen_routing_acr": {
+              "owner": "AAS Architecture",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "exact_head_foundation_recheck": {
+              "owner": "Engineering",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "fc20_08_context_integrity": {
+              "owner": "Approved Intelligence Context",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "fc20_09_ai_contract": {
+              "owner": "AI Governance / ACR-AIA-09",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "fc20_11_trusted_input": {
+              "owner": "DIB / Approved Input Manifest",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "market_location_source_authority": {
+              "owner": "ACR-AIA-05/10 and ACR-FC20-10",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "storage_166_167_compatibility": {
+              "owner": "Knowledge Storage / Engineering",
+              "status": "PENDING",
+              "evidence": null
+            },
+            "single_active_execution": {
+              "owner": "Repository and Release Governance",
+              "status": "PENDING",
+              "evidence": null
+            }
+          },
+          "closure_effect": "NONE",
+          "network_authorized": false,
+          "provider_activation_authorized": false,
+          "deployment_authorized": false
+        }
       ]
     },
     {
