@@ -189,7 +189,7 @@ def validate_routing_registration(manifest: dict) -> None:
             assert "execution_slices" not in package, "unexpected_slice_owner"
     parent = packages["FC20-12"]
     assert parent["state"] == "ACR_REQUIRED", "parent_state_not_preserved"
-    assert parent["depends_on"] == ["FC20-08", "FC20-09", "FC20-11"]
+    assert parent["depends_on"] == ["FC20-08", "FC20-09", "FC20-11"], "parent_dependencies_not_preserved"
     slices = parent.get("execution_slices")
     assert isinstance(slices, list) and len(slices) == 1, "missing_or_duplicate_slice"
     record = slices[0]
@@ -237,9 +237,9 @@ def validate_routing_registration(manifest: dict) -> None:
         assert controls[control] == {
             "owner": owner, "status": "PENDING", "evidence": None,
         }, f"unapproved_control_claim:{control}"
-    assert packages["FC20-16"]["state"] == "BLOCKED_BY_PREDECESSOR"
+    assert packages["FC20-16"]["state"] == "BLOCKED_BY_PREDECESSOR", "release_package_not_blocked"
     assert set(packages["FC20-16"]["depends_on"]) == REQUIRED_PACKAGE_IDS - {"FC20-16"}
-    assert sum(package["state"] == "IN_PROGRESS" for package in packages.values()) <= 1
+    assert sum(package["state"] == "IN_PROGRESS" for package in packages.values()) <= 1, "multiple_active_packages"
     assert set(manifest["frozen_files"]) == EXPECTED_FROZEN_FILES
     assert manifest["rules"]["frozen_runtime_changes_require_separate_acr"] is True
     assert manifest["current_release_verdict"] == "BLOCK"
@@ -247,7 +247,7 @@ def validate_routing_registration(manifest: dict) -> None:
         "public_release_authorized", "external_network_authorized",
         "provider_activation_authorized",
     ):
-        assert manifest[key] is False
+        assert manifest[key] is False, "unauthorized_program_effect"
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
@@ -300,11 +300,19 @@ def test_routing_registration_rejects_unapproved_mutations(path: tuple, value: o
         validate_routing_registration(manifest)
 
 
-@pytest.mark.parametrize("mutation", [
-    "duplicate_slice", "other_owner", "parent_state", "parent_dependencies",
-    "entry_incomplete", "release_state", "release_authority", "second_active_package",
+@pytest.mark.parametrize("mutation,expected_error", [
+    ("duplicate_slice", "missing_or_duplicate_slice"),
+    ("other_owner", "unexpected_slice_owner"),
+    ("parent_state", "parent_state_not_preserved"),
+    ("parent_dependencies", "parent_dependencies_not_preserved"),
+    ("entry_incomplete", "incomplete_entry_package"),
+    ("release_state", "release_package_not_blocked"),
+    ("release_authority", "unauthorized_program_effect"),
+    ("second_active_package", "multiple_active_packages"),
 ])
-def test_routing_registration_preserves_program_boundaries(mutation: str) -> None:
+def test_routing_registration_preserves_program_boundaries(
+    mutation: str, expected_error: str,
+) -> None:
     """Reject mutations that weaken parent, dependency, or release boundaries."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
@@ -325,7 +333,7 @@ def test_routing_registration_preserves_program_boundaries(mutation: str) -> Non
         manifest["public_release_authorized"] = True
     elif mutation == "second_active_package":
         packages["FC20-11"]["state"] = "IN_PROGRESS"
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=f"^{expected_error}$"):
         validate_routing_registration(manifest)
 
 

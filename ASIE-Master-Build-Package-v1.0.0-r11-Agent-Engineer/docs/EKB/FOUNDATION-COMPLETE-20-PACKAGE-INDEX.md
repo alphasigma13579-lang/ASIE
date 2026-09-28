@@ -19,4 +19,4 @@ Package IDs are `FC20-01` through `FC20-16`. Do not create a separate package-st
 - Parent dependencies FC20-08/09/11, all 16 package states/completion evidence, and FC20-16 release gates stay unchanged. FC20-05 remains the only active package.
 - No runtime, provider, secret, data migration, or Hostinger authority is granted.
 
-This is navigation to the machine record, not an alternative current-state ledger. PR #171 is still a separate review dependency; this link does not merge or approve it.
+This is navigation to the machine record, not an alternative current-state ledger. [PR #171](https://github.com/alphasigma13579-lang/ASIE/pull/171) was merged into `main` at [`25a82786d874aea6c37afa2f982210299d9edd10`](https://github.com/alphasigma13579-lang/ASIE/commit/25a82786d874aea6c37afa2f982210299d9edd10) as the documentation predecessor. That merge does not approve the routing ACR, grant build eligibility, or authorize frozen-runtime changes, providers, deployment, or invitations.
