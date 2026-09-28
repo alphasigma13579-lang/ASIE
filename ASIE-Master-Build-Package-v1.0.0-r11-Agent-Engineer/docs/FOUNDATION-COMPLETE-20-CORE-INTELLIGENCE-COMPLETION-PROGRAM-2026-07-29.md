@@ -97,11 +97,20 @@ The machine manifest now represents `FC20-12.execution_slices[0]`, ID `routing_r
 - FC20-01/02/03/04 must be complete; their evidence must also be rechecked on the later implementation candidate, not merely reused by name.
 - Scope/program synchronization, the frozen routing ACR, exact-head foundation recheck, relevant FC20-08 context controls, FC20-09/ACR-AIA-09 controls, FC20-11 trusted-input controls, market/location/source authorities, #166/#167 storage compatibility, and single-active execution are cumulative entry controls. Partial controls do not mark those packages complete.
 - FC20-12's original `depends_on = FC20-08/09/11` remains unchanged for parent closure and Decision Council/Snapshot work. No package status or completion evidence changes.
-- FC20-05 remains the sole active package. This registration cannot start a second execution. Resolving sequencing requires a separately recorded program decision, not changing a parent status to satisfy a test.
+- FC20-05 remains the sole package recorded IN_PROGRESS. The later ordering/hold record below distinguishes preserved progress from execution; registration still cannot start a second execution or change a parent status to satisfy a test.
 - `test_foundation_complete_20_program.py` validates the exact registration-only schema and rejects absent/duplicate/unknown slices, changed scope/decision references, missing controls, invented approvals, execution flags, parent-dependency changes, or release effects.
 - The checker is a repository/CI guard, not a runtime dispatcher, signature verifier, or service authorization boundary. It verifies recorded consistency, not the identity or authority of a reviewer. Adding JSON or passing CI never approves the underlying decisions.
 - This schema deliberately supports **no executable slice state**. A later transition requires approved scope and specialized ACR decisions, exact-candidate evidence, an approved evidence-bearing schema/checker update and review on that head. Setting a status or boolean alone is rejected. Frozen code still needs its own controlled ACR/freeze change.
 - Network, provider activation, deployment, invitations, and parent closure remain unauthorized. The owner-beta plan and merged #166/#167 work are retained.
+
+
+### Owner routing priority and FC20-05 checkpoint — 2026-09-28
+
+The [owner decision](https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335) authorizes routing priority and this governance PR/tests only. [Checkpoint and retained obligations](FC20-ROUTING-PRIORITY-AND-FC20-05-CHECKPOINT-2026-09-28.md) preserve #166/#167 and all remaining FC20-05 closure requirements. This update is reviewed as a program-ordering change, not an approval of specialized ACRs or frozen-build eligibility.
+
+The machine manifest's `execution_sequence` v1 has effect **PRIORITY_AND_HOLD_ONLY**: FC20-12/routing_repair is the priority target, FC20-05 has an explicit execution hold with its progress state still IN_PROGRESS, and `active_target = null`. No fictitious COMPLETE/OPEN/PAUSED package state is introduced. The CI check counts non-held IN_PROGRESS packages and every IN_PROGRESS slice, including slices inside held packages, together; this version rejects any active claim or nonempty slot while entry authority is absent. It is repository consistency, not a runtime lock or live-process cancellation.
+
+All sixteen package records, dependencies, completion evidence, routing entry controls and false execution/network/provider/deployment flags are unchanged. The current blocked registration schema is retained. A later owner-reviewed evidence-bearing eligibility/checker transition is necessary before opening a slot; this ordering record neither supplies PASS evidence nor relaxes the original parent closure dependencies. A resume decision for FC20-05 must preserve the checkpoint and prove no other active execution, with an exact-head recheck. No automatic resume on merge, retries or reviewer failure. Release remains BLOCK.
 
 ### Phase E — Product completeness and operations
 
