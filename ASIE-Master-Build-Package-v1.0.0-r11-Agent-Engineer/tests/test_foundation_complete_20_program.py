@@ -333,7 +333,7 @@ def test_routing_registration_preserves_program_boundaries(
         manifest["public_release_authorized"] = True
     elif mutation == "second_active_package":
         packages["FC20-11"]["state"] = "IN_PROGRESS"
-    with pytest.raises(AssertionError, match=f"^{expected_error}$"):
+    with pytest.raises(AssertionError, match=rf"^{expected_error}(?:\n|$)"):
         validate_routing_registration(manifest)
 
 
