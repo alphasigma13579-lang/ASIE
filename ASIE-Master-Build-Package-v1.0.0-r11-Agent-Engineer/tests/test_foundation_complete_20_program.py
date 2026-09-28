@@ -422,6 +422,7 @@ def test_routing_registration_is_visible_in_governing_views() -> None:
 
 
 def test_ordering_preserves_progress_but_holds_execution() -> None:
+    """Preserve unfinished package progress while all execution remains held."""
     manifest = load_manifest()
     validate_execution_sequence(manifest)
     validate_routing_registration(manifest)
@@ -433,6 +434,7 @@ def test_ordering_preserves_progress_but_holds_execution() -> None:
 
 
 def test_sequence_is_required_not_an_optional_activity_override() -> None:
+    """Reject routing registration when the required execution sequence is absent."""
     manifest = load_manifest()
     manifest.pop("execution_sequence")
     with pytest.raises(AssertionError, match="missing_execution_sequence"):
@@ -460,6 +462,7 @@ def test_sequence_is_required_not_an_optional_activity_override() -> None:
     (("execution_authorized",), True),
 ])
 def test_sequence_rejects_unapproved_mutations(path: tuple, value: object) -> None:
+    """Reject unapproved changes to ordering, holds, or execution authority."""
     manifest = load_manifest()
     target = manifest["execution_sequence"]
     for key in path[:-1]:
@@ -474,6 +477,7 @@ def test_sequence_rejects_unapproved_mutations(path: tuple, value: object) -> No
     "max_active_executions", "active_target", "held_packages",
 ])
 def test_sequence_rejects_missing_fields(field: str) -> None:
+    """Reject an execution sequence missing any required field."""
     manifest = load_manifest()
     manifest["execution_sequence"].pop(field)
     with pytest.raises(AssertionError, match="unknown_or_missing_sequence_field"):
@@ -481,6 +485,7 @@ def test_sequence_rejects_missing_fields(field: str) -> None:
 
 
 def test_sequence_counts_package_and_slice_execution_together() -> None:
+    """Count package and slice claims together and reject concurrent execution."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     packages["FC20-11"]["state"] = "IN_PROGRESS"
@@ -494,6 +499,7 @@ def test_sequence_counts_package_and_slice_execution_together() -> None:
 
 @pytest.mark.parametrize("claim", ["package", "routing_slice", "held_package_slice"])
 def test_empty_slot_denies_even_one_unrecorded_execution(claim: str) -> None:
+    """Reject unrecorded execution, including slices inside a held package."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     if claim == "package":
@@ -513,6 +519,7 @@ def test_empty_slot_denies_even_one_unrecorded_execution(claim: str) -> None:
 
 @pytest.mark.parametrize("state", ["OPEN", "PAUSED", "COMPLETE"])
 def test_hold_does_not_rewrite_package_progress_to_pass_the_check(state: str) -> None:
+    """Reject state rewrites that disguise the held package's unfinished progress."""
     manifest = load_manifest()
     package = next(item for item in manifest["packages"] if item["id"] == "FC20-05")
     package["state"] = state
@@ -521,6 +528,7 @@ def test_hold_does_not_rewrite_package_progress_to_pass_the_check(state: str) ->
 
 
 def test_sequence_decision_checkpoint_and_governing_links_are_present() -> None:
+    """Verify the decision, retained checkpoints, and governing-document links."""
     manifest = load_manifest()
     sequence = manifest["execution_sequence"]
     package_root = Path(__file__).resolve().parents[1]
