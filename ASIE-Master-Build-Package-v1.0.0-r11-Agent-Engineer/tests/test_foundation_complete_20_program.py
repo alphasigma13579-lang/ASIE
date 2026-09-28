@@ -126,6 +126,7 @@ def test_complete_package_evidence_uses_exact_sha_and_workflow_ids() -> None:
         assert evidence["residual_risk_review"]["frozen_files_changed"] is False
 
 def test_fc20_04_completion_gates_fc20_05_without_authorizing_launch() -> None:
+    """Verify completed predecessors open FC20-05 without authorizing launch."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     fc20_03 = packages["FC20-03"]
@@ -250,6 +251,7 @@ def validate_routing_registration(manifest: dict) -> None:
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
+    """Accept the blocked registration without granting execution authority."""
     manifest = load_manifest()
     validate_routing_registration(manifest)
     parent = next(package for package in manifest["packages"] if package["id"] == "FC20-12")
@@ -257,6 +259,7 @@ def test_routing_registration_is_valid_but_not_executable() -> None:
 
 
 def test_routing_registration_cannot_be_omitted() -> None:
+    """Reject a manifest that omits the required routing registration."""
     manifest = load_manifest()
     parent = next(package for package in manifest["packages"] if package["id"] == "FC20-12")
     parent.pop("execution_slices")
@@ -286,6 +289,7 @@ def test_routing_registration_cannot_be_omitted() -> None:
     (("unknown_execution_override",), True),
 ])
 def test_routing_registration_rejects_unapproved_mutations(path: tuple, value: object) -> None:
+    """Reject unauthorized changes to routing scope, controls, or effect flags."""
     manifest = load_manifest()
     parent = next(package for package in manifest["packages"] if package["id"] == "FC20-12")
     target = parent["execution_slices"][0]
@@ -301,6 +305,7 @@ def test_routing_registration_rejects_unapproved_mutations(path: tuple, value: o
     "entry_incomplete", "release_state", "release_authority", "second_active_package",
 ])
 def test_routing_registration_preserves_program_boundaries(mutation: str) -> None:
+    """Reject mutations that weaken parent, dependency, or release boundaries."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     parent = packages["FC20-12"]
@@ -325,6 +330,7 @@ def test_routing_registration_preserves_program_boundaries(mutation: str) -> Non
 
 
 def test_routing_registration_is_visible_in_governing_views() -> None:
+    """Require governing views to expose the same blocked registration and decision."""
     package_root = Path(__file__).resolve().parents[1]
     paths = [
         "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
