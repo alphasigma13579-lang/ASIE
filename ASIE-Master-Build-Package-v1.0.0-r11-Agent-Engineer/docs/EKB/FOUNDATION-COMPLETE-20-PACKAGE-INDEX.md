@@ -7,3 +7,16 @@ This is an EKB navigation view, not a parallel status authority.
 - Release/remediation authority: `../PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md` and `/EMERGENCY-RELEASE-FREEZE.json`
 
 Package IDs are `FC20-01` through `FC20-16`. Do not create a separate package-status document. Update the machine manifest atomically with implementation and exact-commit evidence.
+
+## FC20-12 routing slice — registration only
+
+- Machine location: `/FOUNDATION-COMPLETE-20.json → packages[FC20-12].execution_slices[routing_repair]`.
+- State: **`REGISTERED_BLOCKED` / `REGISTRATION_ONLY`**; this is not build eligibility.
+- [Owner ordering decision](https://github.com/alphasigma13579-lang/ASIE/pull/171#issuecomment-5851434784); [pinned proposal](https://github.com/alphasigma13579-lang/ASIE/blob/d8fdedd8c768c0eb4604465fdcf870417131aff0/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md).
+- Human explanation and entry-control ownership: the program's “FC20-12 routing registration” section.
+- [Routing ACR](../ACR-AIA-ROUTING-REMEDIATION-2026-09-27.md) remains proposed; specialist/frozen approvals are not inferred from owner ordering consent.
+- Checker: `tests/test_foundation_complete_20_program.py` rejects any executable status/flag under the registration-only schema. A later approved schema/checker with exact-head evidence is needed for an eligibility transition; CI consistency is not an approval.
+- Parent dependencies FC20-08/09/11, all 16 package states/completion evidence, and FC20-16 release gates stay unchanged. FC20-05 remains the only active package.
+- No runtime, provider, secret, data migration, or Hostinger authority is granted.
+
+This is navigation to the machine record, not an alternative current-state ledger. [PR #171](https://github.com/alphasigma13579-lang/ASIE/pull/171) was merged into `main` at [`25a82786d874aea6c37afa2f982210299d9edd10`](https://github.com/alphasigma13579-lang/ASIE/commit/25a82786d874aea6c37afa2f982210299d9edd10) as the documentation predecessor. That merge does not approve the routing ACR, grant build eligibility, or authorize frozen-runtime changes, providers, deployment, or invitations.

@@ -44,9 +44,9 @@ The following are executable-source findings at the baseline, not judgments copi
 |---|---:|---|---|---|
 | FC20-01 | P0 | Canonical completeness ledger and EKB domain completion | COMPLETE | No |
 | FC20-02 | P0 | Governed source registry and Tavily admission | COMPLETE | IACR/ACR for external-source activation |
-| FC20-03 | P0 | External provider security control plane | IN PROGRESS | IACR/ACR |
-| FC20-04 | P0 | External evidence persistence, review, and job lifecycle | Blocked | No frozen mutation |
-| FC20-05 | P0 | Vision 2030 knowledge authority and Pinecone lifecycle | Blocked | Provider/source activation gate |
+| FC20-03 | P0 | External provider security control plane | COMPLETE | IACR/ACR |
+| FC20-04 | P0 | External evidence persistence, review, and job lifecycle | COMPLETE | No frozen mutation |
+| FC20-05 | P0 | Public economic knowledge authority and Pinecone lifecycle | IN PROGRESS | Provider/source activation gate |
 | FC20-06 | P1 | National and global economic intelligence | Blocked | ACR-AIA-04 class gate |
 | FC20-07 | P1 | Market estimation, sector intelligence, and reference cost completion | Blocked | Market contracts/ACR |
 | FC20-08 | P1 | Approved intelligence context, strategic and consulting synthesis | Blocked | AIA contract gate |
@@ -86,6 +86,22 @@ DeepSeek is admitted only through the existing AI shell, Google Maps becomes a c
 `FC20-12`
 
 Decision Council v2 and Snapshot admission require a separate frozen-boundary ACR. Decision Council v1 parity, one-version-per-run dispatch, rollback, and a new freeze manifest are mandatory. There is no silent fallback and no parallel runtime.
+
+
+### FC20-12 routing registration — 2026-09-27
+
+The [owner scope decision](https://github.com/alphasigma13579-lang/ASIE/pull/171#issuecomment-5851434784) records agreement on the proposed ordering of a dark routing repair inside FC20-12. Its [pinned scope proposal](https://github.com/alphasigma13579-lang/ASIE/blob/d8fdedd8c768c0eb4604465fdcf870417131aff0/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md) is a separate review artifact, not an approved frozen-build or release decision.
+
+The machine manifest now represents `FC20-12.execution_slices[0]`, ID `routing_repair`, as **`REGISTERED_BLOCKED` / `REGISTRATION_ONLY`**. This synchronization is proposed for review; it does not make the owner's scope decision operational before governing approval. All nine entry-control records remain `PENDING` with no evidence. The existing full-parent dependency rule remains operative until a later approved, tested eligibility transition.
+
+- FC20-01/02/03/04 must be complete; their evidence must also be rechecked on the later implementation candidate, not merely reused by name.
+- Scope/program synchronization, the frozen routing ACR, exact-head foundation recheck, relevant FC20-08 context controls, FC20-09/ACR-AIA-09 controls, FC20-11 trusted-input controls, market/location/source authorities, #166/#167 storage compatibility, and single-active execution are cumulative entry controls. Partial controls do not mark those packages complete.
+- FC20-12's original `depends_on = FC20-08/09/11` remains unchanged for parent closure and Decision Council/Snapshot work. No package status or completion evidence changes.
+- FC20-05 remains the sole active package. This registration cannot start a second execution. Resolving sequencing requires a separately recorded program decision, not changing a parent status to satisfy a test.
+- `test_foundation_complete_20_program.py` validates the exact registration-only schema and rejects absent/duplicate/unknown slices, changed scope/decision references, missing controls, invented approvals, execution flags, parent-dependency changes, or release effects.
+- The checker is a repository/CI guard, not a runtime dispatcher, signature verifier, or service authorization boundary. It verifies recorded consistency, not the identity or authority of a reviewer. Adding JSON or passing CI never approves the underlying decisions.
+- This schema deliberately supports **no executable slice state**. A later transition requires approved scope and specialized ACR decisions, exact-candidate evidence, an approved evidence-bearing schema/checker update and review on that head. Setting a status or boolean alone is rejected. Frozen code still needs its own controlled ACR/freeze change.
+- Network, provider activation, deployment, invitations, and parent closure remain unauthorized. The owner-beta plan and merged #166/#167 work are retained.
 
 ### Phase E — Product completeness and operations
 
