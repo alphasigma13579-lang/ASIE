@@ -622,7 +622,7 @@ def test_routing_v2_rejects_unverified_eligibility_claims(field: str, value: obj
 
 
 @pytest.mark.parametrize("mutation", ["missing_control", "unknown_control", "verified_without_proof",
-                                     "forged_proof", "changed_owner", "unknown_field"])
+                                     "forged_proof", "changed_owner", "forged_verification", "unknown_field"])
 def test_routing_v2_control_evidence_fails_closed(mutation: str) -> None:
     manifest = load_manifest()
     record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
@@ -637,8 +637,10 @@ def test_routing_v2_control_evidence_fails_closed(mutation: str) -> None:
         controls["single_active_execution"]["evidence"] = {"url": "https://example.invalid/pass"}
     elif mutation == "changed_owner":
         controls["single_active_execution"]["owner"] = "browser"
-    else:
+    elif mutation == "forged_verification":
         controls["single_active_execution"]["verification"] = {"result": "PASS"}
+    else:
+        controls["single_active_execution"]["unexpected"] = "bypass"
     with pytest.raises(AssertionError):
         validate_routing_registration(manifest)
 
