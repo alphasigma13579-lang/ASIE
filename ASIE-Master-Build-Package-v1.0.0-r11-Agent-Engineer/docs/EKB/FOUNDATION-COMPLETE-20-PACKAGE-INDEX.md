@@ -36,3 +36,8 @@ This is navigation to the machine record, not an alternative current-state ledge
 
 - [دليل مطابقة دخول إصلاح التوجيه — 2026-09-29](../FC20-12-ROUTING-ENTRY-EVIDENCE-2026-09-29.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ يكمل حزمة الدخول القائمة على main@`702dfdb68f4cfd6975fb2874f841bc27c79dc85c`، بدءًا من سلطة مزامنة البرنامج والأدلة الناقصة للضوابط التسعة.
 - مصدر الحالات يبقى السجل الآلي. مطابقة التسجيل والأولوية ليست أهلية بناء؛ لا PASS أو تعديل مخطط أو تنفيذ أو اعتماد ACR أو تحرير إصدار من هذا الدليل أو دمجه. يقرأ قبل إعداد انتقال أهلية لاحق، مع البرنامج والسجل وACR وطلب النطاق.
+
+## Routing eligibility transition — proposal only
+
+- [مقترح انتقال أهلية التوجيه — 2026-09-29](../FC20-12-ROUTING-ELIGIBILITY-PROPOSAL-2026-09-29.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ بعد #175، يحدد دليل الدخول وقرار البدء ودليل التسليم المقترحة، وقائمة ملفات/فحوص تطبيق حاكم مستقل.
+- لا يغير schema/status/control/slot الحالية ولا يوافق على ACR أو كود مجمد؛ شروط الدخول التسعة و08/09/11 لإغلاق الأب وFC20-16 وخطة المالك وcheckpoint محفوظة. يقرأ بعد حزمة الدخول ودليل المطابقة؛ قبول التصميم ليس تشغيلًا أو نشرًا.
