@@ -258,7 +258,7 @@ def validate_execution_sequence(manifest: dict) -> None:
     assert not active, "unrecorded_active_execution"
 
 
-def validate_routing_registration(manifest: dict) -> None:
+def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
     """Fail closed: a later approved schema/checker change is required to execute."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
@@ -279,6 +279,7 @@ def validate_routing_registration(manifest: dict) -> None:
         "asie.foundation.routing-eligibility.v2",
     }, "unapproved_slice_schema"
     is_v2 = schema == "asie.foundation.routing-eligibility.v2"
+    assert is_v2 or allow_historical_v1, "current_schema_downgrade"
     fields = {
         "schema", "id", "state", "registry_effect", "execution_authorized",
         "scope_document", "owner_scope_decision", "package_entry_dependencies",
@@ -599,7 +600,7 @@ def test_routing_v1_blocked_record_remains_compatible() -> None:
     record.pop("eligibility_record")
     for control in record["required_entry_controls"].values():
         control.pop("verification")
-    validate_routing_registration(manifest)
+    validate_routing_registration(manifest, allow_historical_v1=True)
 
 
 @pytest.mark.parametrize("field,value", [
@@ -653,4 +654,41 @@ def test_routing_v2_cannot_fill_slot_or_authorize_execution() -> None:
     }
     record["execution_authorized"] = True
     with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_current_manifest_rejects_silent_v1_downgrade() -> None:
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    record["schema"] = "asie.foundation.routing-registration.v1"
+    record["registry_effect"] = "REGISTRATION_ONLY"
+    record.pop("design_decision")
+    record.pop("eligibility_record")
+    for control in record["required_entry_controls"].values():
+        control.pop("verification")
+    with pytest.raises(AssertionError, match="current_schema_downgrade"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("id", "invented_decision"),
+    ("record_url", "https://example.invalid/approval"),
+    ("recorded_at", "2026-01-01T00:00:00Z"),
+    ("effect", "BUILD_AUTHORIZED"),
+    ("proposal_commit_sha", "0" * 40),
+    ("proposal_blob_sha", "0" * 40),
+])
+def test_routing_v2_pins_design_decision(field: str, value: object) -> None:
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    record["design_decision"][field] = value
+    with pytest.raises(AssertionError, match="design_decision_mismatch"):
+        validate_routing_registration(manifest)
+
+
+def test_routing_v2_requires_design_decision() -> None:
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    record.pop("design_decision")
+    with pytest.raises(AssertionError, match="unknown_or_missing_slice_field"):
         validate_routing_registration(manifest)
