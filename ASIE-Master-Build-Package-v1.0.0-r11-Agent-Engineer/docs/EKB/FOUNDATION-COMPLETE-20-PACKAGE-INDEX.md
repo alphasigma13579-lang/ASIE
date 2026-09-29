@@ -31,3 +31,8 @@ This is navigation to the machine record, not an alternative current-state ledge
 - [قرار الأولوية وcheckpoint](../FC20-ROUTING-PRIORITY-AND-FC20-05-CHECKPOINT-2026-09-28.md) و[سجل المالك](https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335): إعداد تغيير حاكم واختباراته فقط، لا دمج أو بناء.
 - Machine authority: `/FOUNDATION-COMPLETE-20.json → execution_sequence`؛ **PRIORITY_AND_HOLD_ONLY**، FC20-05 held with progress IN_PROGRESS, routing priority blocked, active slot empty.
 - No parent closure or release effects. This view is navigation only; specialized approvals and actual entry evidence remain required.
+
+## Routing entry evidence after #174 — derived snapshot only
+
+- [دليل مطابقة دخول إصلاح التوجيه — 2026-09-29](../FC20-12-ROUTING-ENTRY-EVIDENCE-2026-09-29.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ يكمل حزمة الدخول القائمة على main@`702dfdb68f4cfd6975fb2874f841bc27c79dc85c`، بدءًا من سلطة مزامنة البرنامج والأدلة الناقصة للضوابط التسعة.
+- مصدر الحالات يبقى السجل الآلي. مطابقة التسجيل والأولوية ليست أهلية بناء؛ لا PASS أو تعديل مخطط أو تنفيذ أو اعتماد ACR أو تحرير إصدار من هذا الدليل أو دمجه. يقرأ قبل إعداد انتقال أهلية لاحق، مع البرنامج والسجل وACR وطلب النطاق.
