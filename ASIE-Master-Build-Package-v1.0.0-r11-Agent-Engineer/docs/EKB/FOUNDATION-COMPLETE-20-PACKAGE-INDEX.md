@@ -16,7 +16,7 @@ Package IDs are `FC20-01` through `FC20-16`. Do not create a separate package-st
 - Human explanation and entry-control ownership: the program's “FC20-12 routing registration” section.
 - [Routing ACR](../ACR-AIA-ROUTING-REMEDIATION-2026-09-27.md) remains proposed; specialist/frozen approvals are not inferred from owner ordering consent.
 - Checker: `tests/test_foundation_complete_20_program.py` rejects any executable status/flag under the registration-only schema. A later approved schema/checker with exact-head evidence is needed for an eligibility transition; CI consistency is not an approval.
-- Parent dependencies FC20-08/09/11, all 16 package states/completion evidence, and FC20-16 release gates stay unchanged. FC20-05 remains the only active package.
+- Parent dependencies FC20-08/09/11, all 16 package states/completion evidence, and FC20-16 release gates stay unchanged. FC20-05 remains recorded IN_PROGRESS; the later ordering/hold record below separates retained progress from active execution.
 - No runtime, provider, secret, data migration, or Hostinger authority is granted.
 
 This is navigation to the machine record, not an alternative current-state ledger. [PR #171](https://github.com/alphasigma13579-lang/ASIE/pull/171) was merged into `main` at [`25a82786d874aea6c37afa2f982210299d9edd10`](https://github.com/alphasigma13579-lang/ASIE/commit/25a82786d874aea6c37afa2f982210299d9edd10) as the documentation predecessor. That merge does not approve the routing ACR, grant build eligibility, or authorize frozen-runtime changes, providers, deployment, or invitations.
@@ -25,3 +25,9 @@ This is navigation to the machine record, not an alternative current-state ledge
 
 - [حزمة اعتماد دخول إصلاح التوجيه](../FC20-12-ROUTING-ENTRY-APPROVAL-PACK-2026-09-28.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ تجمع متطلبات القرارات والأدلة التسع وترتيب FC20-05 والاختبارات، وليست مصدر حالة أو تصريح بناء.
 - تُقرأ قبل إعداد انتقال أهلية التوجيه مع البرنامج والسجل وACR وطلب النطاق؛ لا تغيّر أي حالة أو اعتماد أو مخطط تحقق. دمج الحزمة كمقترح لا يغلق بوابة أو يفتح تنفيذًا أو شبكة أو نشرًا.
+
+## Routing priority / retained FC20-05 work — owner decision, governance review
+
+- [قرار الأولوية وcheckpoint](../FC20-ROUTING-PRIORITY-AND-FC20-05-CHECKPOINT-2026-09-28.md) و[سجل المالك](https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335): إعداد تغيير حاكم واختباراته فقط، لا دمج أو بناء.
+- Machine authority: `/FOUNDATION-COMPLETE-20.json → execution_sequence`؛ **PRIORITY_AND_HOLD_ONLY**، FC20-05 held with progress IN_PROGRESS, routing priority blocked, active slot empty.
+- No parent closure or release effects. This view is navigation only; specialized approvals and actual entry evidence remain required.

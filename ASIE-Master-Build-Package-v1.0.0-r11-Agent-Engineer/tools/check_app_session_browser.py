@@ -310,7 +310,7 @@ class AppSessionBrowserChecks(unittest.TestCase):
                 if locale == "en":
                     page.get_by_role("button", name="English", exact=True).first.click()
                 links = page.locator(".asie-page-link")
-                self.assertEqual(len(stages), links.count())
+                expect(links).to_have_count(len(stages), timeout=5000)
                 for index, stage in enumerate(stages):
                     links.nth(index).click()
                     page.wait_for_function("expected => window.location.hash === expected", arg=f"#{stage}")

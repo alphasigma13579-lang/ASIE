@@ -9,6 +9,32 @@
   "public_release_authorized": false,
   "external_network_authorized": false,
   "provider_activation_authorized": false,
+  "execution_sequence": {
+    "schema": "asie.foundation.execution-sequence.v1",
+    "record_effect": "PRIORITY_AND_HOLD_ONLY",
+    "ordering_decision": {
+      "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
+      "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
+      "recorded_at": "2026-09-28T07:10:06Z",
+      "effect": "ORDERING_AND_GOVERNANCE_PR_ONLY"
+    },
+    "priority_target": {
+      "kind": "slice",
+      "package_id": "FC20-12",
+      "slice_id": "routing_repair"
+    },
+    "max_active_executions": 1,
+    "active_target": null,
+    "held_packages": [
+      {
+        "package_id": "FC20-05",
+        "reason": "ROUTING_PRIORITY_PENDING_ENTRY",
+        "checkpoint_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-ROUTING-PRIORITY-AND-FC20-05-CHECKPOINT-2026-09-28.md",
+        "checkpoint_base_commit": "d56e4e5cdbb67f7e079956cba1b9cf58736a210f",
+        "resume_requirement": "OWNER_DECISION_AND_EXACT_HEAD_RECHECK"
+      }
+    ]
+  },
   "rules": {
     "single_source_of_truth": true,
     "docs_only_completion_forbidden": true,

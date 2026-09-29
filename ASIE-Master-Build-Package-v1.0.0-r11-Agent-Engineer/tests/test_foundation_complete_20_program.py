@@ -179,6 +179,74 @@ ROUTING_CONTROL_OWNERS = {
 }
 
 
+# Program ordering is repository governance, never a runtime permission or lock.
+# v1 intentionally admits no active target while routing entry controls are pending.
+ORDERING_DECISION = json.loads(r'''{
+    "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
+    "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
+    "recorded_at": "2026-09-28T07:10:06Z",
+    "effect": "ORDERING_AND_GOVERNANCE_PR_ONLY"
+}''')
+HELD_PACKAGES = json.loads(r'''[
+    {
+        "package_id": "FC20-05",
+        "reason": "ROUTING_PRIORITY_PENDING_ENTRY",
+        "checkpoint_document": "ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-ROUTING-PRIORITY-AND-FC20-05-CHECKPOINT-2026-09-28.md",
+        "checkpoint_base_commit": "d56e4e5cdbb67f7e079956cba1b9cf58736a210f",
+        "resume_requirement": "OWNER_DECISION_AND_EXACT_HEAD_RECHECK"
+    }
+]''')
+
+
+def active_execution_targets(packages: list[dict], held_ids: set[str]) -> list[str]:
+    """Count package and slice claims; a package hold never hides its slices."""
+    active = []
+    for package in packages:
+        if package["state"] == "IN_PROGRESS" and package["id"] not in held_ids:
+            active.append(package["id"])
+        slices = package.get("execution_slices", [])
+        assert isinstance(slices, list), "invalid_execution_slices"
+        for record in slices:
+            assert isinstance(record, dict), "invalid_execution_slice"
+            if record.get("state") == "IN_PROGRESS":
+                active.append(package["id"] + "/" + record["id"])
+    return active
+
+
+def validate_execution_sequence(manifest: dict) -> None:
+    """Validate the owner's ordering/hold record without enabling execution."""
+    sequence = manifest.get("execution_sequence")
+    assert isinstance(sequence, dict), "missing_execution_sequence"
+    assert set(sequence) == {
+        "schema", "record_effect", "ordering_decision", "priority_target",
+        "max_active_executions", "active_target", "held_packages",
+    }, "unknown_or_missing_sequence_field"
+    assert sequence["schema"] == "asie.foundation.execution-sequence.v1", "sequence_schema"
+    assert sequence["record_effect"] == "PRIORITY_AND_HOLD_ONLY", "sequence_effect"
+    assert sequence["ordering_decision"] == ORDERING_DECISION, "ordering_decision_mismatch"
+    assert sequence["priority_target"] == {
+        "kind": "slice", "package_id": "FC20-12", "slice_id": "routing_repair",
+    }, "priority_target_mismatch"
+    assert type(sequence["max_active_executions"]) is int
+    assert sequence["max_active_executions"] == 1, "execution_limit"
+    assert sequence["active_target"] is None, "execution_entry_not_authorized"
+    assert sequence["held_packages"] == HELD_PACKAGES, "checkpoint_hold_mismatch"
+
+    packages = manifest["packages"]
+    by_id = {package["id"]: package for package in packages}
+    assert set(by_id) == REQUIRED_PACKAGE_IDS and len(by_id) == len(packages)
+    assert by_id["FC20-05"]["state"] == "IN_PROGRESS", "held_package_state_mismatch"
+    for package in packages:
+        assert package["state"] in {
+            "OPEN", "BLOCKED_BY_PREDECESSOR", "ACR_REQUIRED", "IN_PROGRESS", "COMPLETE",
+        }, "unapproved_package_state"
+    held_ids = {entry["package_id"] for entry in sequence["held_packages"]}
+    active = active_execution_targets(packages, held_ids)
+    assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
+    # Empty slot is a deliberate stop, not an exemption for one unrecorded execution.
+    assert not active, "unrecorded_active_execution"
+
+
 def validate_routing_registration(manifest: dict) -> None:
     """Fail closed: a later approved schema/checker change is required to execute."""
     packages = {package["id"]: package for package in manifest["packages"]}
@@ -248,6 +316,7 @@ def validate_routing_registration(manifest: dict) -> None:
         "provider_activation_authorized",
     ):
         assert manifest[key] is False, "unauthorized_program_effect"
+    validate_execution_sequence(manifest)
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
@@ -350,3 +419,137 @@ def test_routing_registration_is_visible_in_governing_views() -> None:
         assert "routing_repair" in text
         assert "REGISTERED_BLOCKED" in text
         assert "5851434784" in text
+
+
+def test_ordering_preserves_progress_but_holds_execution() -> None:
+    """Preserve unfinished package progress while no active execution target is recorded."""
+    manifest = load_manifest()
+    validate_execution_sequence(manifest)
+    validate_routing_registration(manifest)
+    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == []
+    packages = {package["id"]: package for package in manifest["packages"]}
+    assert packages["FC20-05"]["state"] == "IN_PROGRESS"
+    assert packages["FC20-12"]["execution_slices"][0]["state"] == "REGISTERED_BLOCKED"
+    assert packages["FC20-12"]["execution_slices"][0]["execution_authorized"] is False
+
+
+def test_sequence_is_required_not_an_optional_activity_override() -> None:
+    """Reject routing registration when the required execution sequence is absent."""
+    manifest = load_manifest()
+    manifest.pop("execution_sequence")
+    with pytest.raises(AssertionError, match="missing_execution_sequence"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("schema",), "unknown.v2"),
+    (("record_effect",), "BUILD_AUTHORIZED"),
+    (("ordering_decision", "record_url"), "https://example.invalid/approval"),
+    (("ordering_decision", "recorded_at"), "2026-01-01T00:00:00Z"),
+    (("ordering_decision", "effect"), "FROZEN_BUILD_APPROVED"),
+    (("priority_target", "package_id"), "FC20-11"),
+    (("priority_target", "slice_id"), "parallel_runtime"),
+    (("max_active_executions",), 2),
+    (("max_active_executions",), True),
+    (("active_target",), {"kind": "slice", "package_id": "FC20-12", "slice_id": "routing_repair"}),
+    (("active_target",), False),
+    (("held_packages",), []),
+    (("held_packages",), HELD_PACKAGES * 2),
+    (("held_packages", 0, "package_id"), "FC20-11"),
+    (("held_packages", 0, "checkpoint_base_commit"), "0" * 40),
+    (("held_packages", 0, "checkpoint_document"), "docs/nonexistent.md"),
+    (("held_packages", 0, "resume_requirement"), "AUTOMATIC_ON_MERGE"),
+    (("execution_authorized",), True),
+])
+def test_sequence_rejects_unapproved_mutations(path: tuple, value: object) -> None:
+    """Reject unapproved changes to ordering, holds, or execution authority."""
+    manifest = load_manifest()
+    target = manifest["execution_sequence"]
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field", [
+    "schema", "record_effect", "ordering_decision", "priority_target",
+    "max_active_executions", "active_target", "held_packages",
+])
+def test_sequence_rejects_missing_fields(field: str) -> None:
+    """Reject an execution sequence missing any required field."""
+    manifest = load_manifest()
+    manifest["execution_sequence"].pop(field)
+    with pytest.raises(AssertionError, match="unknown_or_missing_sequence_field"):
+        validate_routing_registration(manifest)
+
+
+def test_sequence_counts_package_and_slice_execution_together() -> None:
+    """Count package and slice claims together and reject concurrent execution."""
+    manifest = load_manifest()
+    packages = {package["id"]: package for package in manifest["packages"]}
+    packages["FC20-11"]["state"] = "IN_PROGRESS"
+    packages["FC20-12"]["execution_slices"][0]["state"] = "IN_PROGRESS"
+    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == [
+        "FC20-11", "FC20-12/routing_repair",
+    ]
+    with pytest.raises(AssertionError, match="multiple_active_executions"):
+        validate_execution_sequence(manifest)
+
+
+@pytest.mark.parametrize("claim", ["package", "routing_slice", "held_package_slice"])
+def test_empty_slot_denies_even_one_unrecorded_execution(claim: str) -> None:
+    """Reject unrecorded execution, including slices inside a held package."""
+    manifest = load_manifest()
+    packages = {package["id"]: package for package in manifest["packages"]}
+    if claim == "package":
+        packages["FC20-11"]["state"] = "IN_PROGRESS"
+    elif claim == "routing_slice":
+        packages["FC20-12"]["execution_slices"][0]["state"] = "IN_PROGRESS"
+    else:
+        packages["FC20-05"]["execution_slices"] = [
+            {"id": "hidden_work", "state": "IN_PROGRESS"},
+        ]
+    with pytest.raises(AssertionError, match="unrecorded_active_execution"):
+        validate_execution_sequence(manifest)
+    # Full registration also rejects the unauthorized state/owner.
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("state", ["OPEN", "PAUSED", "COMPLETE"])
+def test_hold_does_not_rewrite_package_progress_to_pass_the_check(state: str) -> None:
+    """Reject state rewrites that disguise the held package's unfinished progress."""
+    manifest = load_manifest()
+    package = next(item for item in manifest["packages"] if item["id"] == "FC20-05")
+    package["state"] = state
+    with pytest.raises(AssertionError, match="held_package_state_mismatch"):
+        validate_execution_sequence(manifest)
+
+
+def test_sequence_decision_checkpoint_and_governing_links_are_present() -> None:
+    """Verify the decision, retained checkpoints, and governing-document links."""
+    manifest = load_manifest()
+    sequence = manifest["execution_sequence"]
+    package_root = Path(__file__).resolve().parents[1]
+    checkpoint_path = MANIFEST_PATH.parent / sequence["held_packages"][0]["checkpoint_document"]
+    checkpoint = checkpoint_path.read_text(encoding="utf-8")
+    for required in (
+        sequence["ordering_decision"]["record_url"],
+        sequence["ordering_decision"]["recorded_at"],
+        sequence["held_packages"][0]["checkpoint_base_commit"],
+        "2dccc2c45c2b1967e277edf6db6a681a04b2654a",
+        "435777008e01bafc73ab3bca86cc8945e311b610",
+        "NOT_BUILD_READY", "active_target = null", "historical-baseline verifier",
+        "OWNER_ORDERING_DECISION_RECORDED",
+    ):
+        assert required in checkpoint
+    for relative_path in (
+        "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
+        "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md",
+        "docs/ACR-AIA-ROUTING-REMEDIATION-2026-09-27.md",
+        "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md",
+    ):
+        text = (package_root / relative_path).read_text(encoding="utf-8")
+        assert checkpoint_path.name in text
+        assert "PRIORITY_AND_HOLD_ONLY" in text
