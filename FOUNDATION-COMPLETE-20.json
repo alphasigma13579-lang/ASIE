@@ -652,10 +652,10 @@
       ],
       "execution_slices": [
         {
-          "schema": "asie.foundation.routing-registration.v1",
+          "schema": "asie.foundation.routing-eligibility.v2",
           "id": "routing_repair",
           "state": "REGISTERED_BLOCKED",
-          "registry_effect": "REGISTRATION_ONLY",
+          "registry_effect": "EVIDENCE_TRACKING_ONLY",
           "execution_authorized": false,
           "scope_document": {
             "url": "https://github.com/alphasigma13579-lang/ASIE/blob/d8fdedd8c768c0eb4604465fdcf870417131aff0/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md",
@@ -678,53 +678,80 @@
             "program_scope_synchronization": {
               "owner": "Repository and Release Governance",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "frozen_routing_acr": {
               "owner": "AAS Architecture",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "exact_head_foundation_recheck": {
               "owner": "Engineering",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "fc20_08_context_integrity": {
               "owner": "Approved Intelligence Context",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "fc20_09_ai_contract": {
               "owner": "AI Governance / ACR-AIA-09",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "fc20_11_trusted_input": {
               "owner": "DIB / Approved Input Manifest",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "market_location_source_authority": {
               "owner": "ACR-AIA-05/10 and ACR-FC20-10",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "storage_166_167_compatibility": {
               "owner": "Knowledge Storage / Engineering",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             },
             "single_active_execution": {
               "owner": "Repository and Release Governance",
               "status": "PENDING",
-              "evidence": null
+              "evidence": null,
+              "verification": null
             }
           },
           "closure_effect": "NONE",
           "network_authorized": false,
           "provider_activation_authorized": false,
-          "deployment_authorized": false
+          "deployment_authorized": false,
+          "design_decision": {
+            "id": "DECISION-FC20-12-ROUTING-ELIGIBILITY-DESIGN-2026-09-30",
+            "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/176#issuecomment-5898867883",
+            "recorded_at": "2026-09-29T21:04:54Z",
+            "effect": "DESIGN_AND_GOVERNANCE_PR_ONLY",
+            "proposal_commit_sha": "d9172df54bd9cf4f7b1332f8a8da90ce93b99204",
+            "proposal_blob_sha": "1fff4ec999a600c4c1c80f550780dd48f4c3c30d"
+          },
+          "eligibility_record": {
+            "subject": null,
+            "commands": [],
+            "paths": [],
+            "environment": "DARK_OFFLINE",
+            "entry_decision": null,
+            "start_decision": null,
+            "delivery_evidence": null,
+            "invalidation_events": []
+          }
         }
       ]
     },

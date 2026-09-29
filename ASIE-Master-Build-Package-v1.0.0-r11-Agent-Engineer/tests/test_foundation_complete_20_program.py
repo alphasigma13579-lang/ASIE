@@ -179,6 +179,17 @@ ROUTING_CONTROL_OWNERS = {
 }
 
 
+# Owner accepted the design and this bounded governance PR, not routing execution.
+ELIGIBILITY_DESIGN_DECISION = {
+    "id": "DECISION-FC20-12-ROUTING-ELIGIBILITY-DESIGN-2026-09-30",
+    "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/176#issuecomment-5898867883",
+    "recorded_at": "2026-09-29T21:04:54Z",
+    "effect": "DESIGN_AND_GOVERNANCE_PR_ONLY",
+    "proposal_commit_sha": "d9172df54bd9cf4f7b1332f8a8da90ce93b99204",
+    "proposal_blob_sha": "1fff4ec999a600c4c1c80f550780dd48f4c3c30d"
+}
+
+
 # Program ordering is repository governance, never a runtime permission or lock.
 # v1 intentionally admits no active target while routing entry controls are pending.
 ORDERING_DECISION = json.loads(r'''{
@@ -262,16 +273,39 @@ def validate_routing_registration(manifest: dict) -> None:
     assert isinstance(slices, list) and len(slices) == 1, "missing_or_duplicate_slice"
     record = slices[0]
     assert isinstance(record, dict)
-    assert set(record) == {
+    schema = record.get("schema")
+    assert schema in {
+        "asie.foundation.routing-registration.v1",
+        "asie.foundation.routing-eligibility.v2",
+    }, "unapproved_slice_schema"
+    is_v2 = schema == "asie.foundation.routing-eligibility.v2"
+    fields = {
         "schema", "id", "state", "registry_effect", "execution_authorized",
         "scope_document", "owner_scope_decision", "package_entry_dependencies",
         "required_entry_controls", "closure_effect", "network_authorized",
         "provider_activation_authorized", "deployment_authorized",
-    }, "unknown_or_missing_slice_field"
-    assert record["schema"] == "asie.foundation.routing-registration.v1"
+    }
+    if is_v2:
+        fields |= {"design_decision", "eligibility_record"}
+    assert set(record) == fields, "unknown_or_missing_slice_field"
     assert record["id"] == "routing_repair"
+    # This goal installs an evidence-bearing record, not entry or start authority.
     assert record["state"] == "REGISTERED_BLOCKED", "unapproved_slice_state"
-    assert record["registry_effect"] == "REGISTRATION_ONLY"
+    assert record["registry_effect"] == (
+        "EVIDENCE_TRACKING_ONLY" if is_v2 else "REGISTRATION_ONLY"
+    ), "unapproved_registry_effect"
+    if is_v2:
+        assert record["design_decision"] == ELIGIBILITY_DESIGN_DECISION, "design_decision_mismatch"
+        assert record["eligibility_record"] == {
+            "subject": None,
+            "commands": [],
+            "paths": [],
+            "environment": "DARK_OFFLINE",
+            "entry_decision": None,
+            "start_decision": None,
+            "delivery_evidence": None,
+            "invalidation_events": [],
+        }, "unapproved_eligibility_claim"
     assert record["closure_effect"] == "NONE"
     for key in (
         "execution_authorized", "network_authorized",
@@ -302,9 +336,10 @@ def validate_routing_registration(manifest: dict) -> None:
     controls = record["required_entry_controls"]
     assert isinstance(controls, dict) and set(controls) == set(ROUTING_CONTROL_OWNERS)
     for control, owner in ROUTING_CONTROL_OWNERS.items():
-        assert controls[control] == {
-            "owner": owner, "status": "PENDING", "evidence": None,
-        }, f"unapproved_control_claim:{control}"
+        expected = {"owner": owner, "status": "PENDING", "evidence": None}
+        if is_v2:
+            expected["verification"] = None
+        assert controls[control] == expected, f"unapproved_control_claim:{control}"
     assert packages["FC20-16"]["state"] == "BLOCKED_BY_PREDECESSOR", "release_package_not_blocked"
     assert set(packages["FC20-16"]["depends_on"]) == REQUIRED_PACKAGE_IDS - {"FC20-16"}
     assert sum(package["state"] == "IN_PROGRESS" for package in packages.values()) <= 1, "multiple_active_packages"
@@ -553,3 +588,67 @@ def test_sequence_decision_checkpoint_and_governing_links_are_present() -> None:
         text = (package_root / relative_path).read_text(encoding="utf-8")
         assert checkpoint_path.name in text
         assert "PRIORITY_AND_HOLD_ONLY" in text
+
+def test_routing_v1_blocked_record_remains_compatible() -> None:
+    """Historical v1 registration remains valid only in its blocked form."""
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    record["schema"] = "asie.foundation.routing-registration.v1"
+    record["registry_effect"] = "REGISTRATION_ONLY"
+    record.pop("design_decision")
+    record.pop("eligibility_record")
+    for control in record["required_entry_controls"].values():
+        control.pop("verification")
+    validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("subject", {"commit_sha": "0" * 40}),
+    ("commands", ["geocode"]),
+    ("paths", ["backend/aas_kernel.py"]),
+    ("environment", "LIVE"),
+    ("entry_decision", {"effect": "APPROVED"}),
+    ("start_decision", {"effect": "START"}),
+    ("delivery_evidence", {"status": "PASS"}),
+    ("invalidation_events", [{"event": "REVOKED"}]),
+])
+def test_routing_v2_rejects_unverified_eligibility_claims(field: str, value: object) -> None:
+    """Metadata or a claimed decision cannot independently open the blocked slice."""
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    record["eligibility_record"][field] = value
+    with pytest.raises(AssertionError, match="unapproved_eligibility_claim"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ["missing_control", "unknown_control", "verified_without_proof",
+                                     "forged_proof", "changed_owner", "unknown_field"])
+def test_routing_v2_control_evidence_fails_closed(mutation: str) -> None:
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    controls = record["required_entry_controls"]
+    if mutation == "missing_control":
+        controls.pop("single_active_execution")
+    elif mutation == "unknown_control":
+        controls["invented_bypass"] = controls["single_active_execution"].copy()
+    elif mutation == "verified_without_proof":
+        controls["single_active_execution"]["status"] = "VERIFIED"
+    elif mutation == "forged_proof":
+        controls["single_active_execution"]["evidence"] = {"url": "https://example.invalid/pass"}
+    elif mutation == "changed_owner":
+        controls["single_active_execution"]["owner"] = "browser"
+    else:
+        controls["single_active_execution"]["verification"] = {"result": "PASS"}
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_routing_v2_cannot_fill_slot_or_authorize_execution() -> None:
+    manifest = load_manifest()
+    record = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][0]
+    manifest["execution_sequence"]["active_target"] = {
+        "kind": "slice", "package_id": "FC20-12", "slice_id": "routing_repair",
+    }
+    record["execution_authorized"] = True
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)

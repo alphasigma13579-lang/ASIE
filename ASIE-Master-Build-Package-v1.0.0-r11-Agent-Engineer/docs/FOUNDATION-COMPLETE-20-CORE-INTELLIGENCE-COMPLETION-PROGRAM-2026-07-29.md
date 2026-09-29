@@ -89,6 +89,10 @@ Decision Council v2 and Snapshot admission require a separate frozen-boundary AC
 
 
 ### FC20-12 routing registration — 2026-09-27
+### FC20-12 evidence-register guard — 2026-09-30
+
+[قرار المالك المحدود](https://github.com/alphasigma13579-lang/ASIE/pull/176#issuecomment-5898867883) يقبل تصميم انتقال الأهلية وإعداد حارس مستقل، لا يوافق على الدخول أو البدء. السجل الحالي يرفع تمثيل الشريحة المحجوبة إلى `asie.foundation.routing-eligibility.v2` مع `EVIDENCE_TRACKING_ONLY` وحقول موضوع الدليل والقرار والتسليم؛ جميعها فارغة، والضوابط التسعة `PENDING`. يبقى `routing_repair = REGISTERED_BLOCKED` و`active_target = null`، والتجميد والإصدار والشبكة والمزودات محجوبة. حارس المستودع يقبل v1 التاريخي المحجوب ويرفض ادعاءات v2 غير المثبتة؛ لا يعد إثبات هوية أو موافقة أو قفلًا تشغيليًا. ترقية الحالة لاحقًا تتطلب دليلًا حقيقيًا، اعتماد اختصاصات ومالك، وآلية تحقق مستقلة على الرأس المعني قبل أي تغيير للحارس أو بدء كود؛ لا يفتح هذا PR تلك المرحلة.
+
 
 The [owner scope decision](https://github.com/alphasigma13579-lang/ASIE/pull/171#issuecomment-5851434784) records agreement on the proposed ordering of a dark routing repair inside FC20-12. Its [pinned scope proposal](https://github.com/alphasigma13579-lang/ASIE/blob/d8fdedd8c768c0eb4604465fdcf870417131aff0/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-ROUTING-SCOPE-CHANGE-2026-09-27.md) is a separate review artifact, not an approved frozen-build or release decision.
 

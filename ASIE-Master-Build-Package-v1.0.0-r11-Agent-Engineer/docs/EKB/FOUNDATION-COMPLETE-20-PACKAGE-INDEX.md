@@ -9,6 +9,10 @@ This is an EKB navigation view, not a parallel status authority.
 Package IDs are `FC20-01` through `FC20-16`. Do not create a separate package-status document. Update the machine manifest atomically with implementation and exact-commit evidence.
 
 ## FC20-12 routing slice — registration only
+### FC20-12 evidence-register guard — 2026-09-30
+
+[قرار المالك المحدود](https://github.com/alphasigma13579-lang/ASIE/pull/176#issuecomment-5898867883) يقبل تصميم انتقال الأهلية وإعداد حارس مستقل، لا يوافق على الدخول أو البدء. السجل الحالي يرفع تمثيل الشريحة المحجوبة إلى `asie.foundation.routing-eligibility.v2` مع `EVIDENCE_TRACKING_ONLY` وحقول موضوع الدليل والقرار والتسليم؛ جميعها فارغة، والضوابط التسعة `PENDING`. يبقى `routing_repair = REGISTERED_BLOCKED` و`active_target = null`، والتجميد والإصدار والشبكة والمزودات محجوبة. حارس المستودع يقبل v1 التاريخي المحجوب ويرفض ادعاءات v2 غير المثبتة؛ لا يعد إثبات هوية أو موافقة أو قفلًا تشغيليًا. ترقية الحالة لاحقًا تتطلب دليلًا حقيقيًا، اعتماد اختصاصات ومالك، وآلية تحقق مستقلة على الرأس المعني قبل أي تغيير للحارس أو بدء كود؛ لا يفتح هذا PR تلك المرحلة.
+
 
 - Machine location: `/FOUNDATION-COMPLETE-20.json → packages[FC20-12].execution_slices[routing_repair]`.
 - State: **`REGISTERED_BLOCKED` / `REGISTRATION_ONLY`**; this is not build eligibility.
