@@ -422,7 +422,7 @@ def test_routing_registration_is_visible_in_governing_views() -> None:
 
 
 def test_ordering_preserves_progress_but_holds_execution() -> None:
-    """Preserve unfinished package progress while all execution remains held."""
+    """Preserve unfinished package progress while no active execution target is recorded."""
     manifest = load_manifest()
     validate_execution_sequence(manifest)
     validate_routing_registration(manifest)
