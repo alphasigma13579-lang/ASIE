@@ -112,6 +112,10 @@ The machine manifest's `execution_sequence` v1 has effect **PRIORITY_AND_HOLD_ON
 
 All sixteen package records, dependencies, completion evidence, routing entry controls and false execution/network/provider/deployment flags are unchanged. The current blocked registration schema is retained. A later owner-reviewed evidence-bearing eligibility/checker transition is necessary before opening a slot; this ordering record neither supplies PASS evidence nor relaxes the original parent closure dependencies. A resume decision for FC20-05 must preserve the checkpoint and prove no other active execution, with an exact-head recheck. No automatic resume on merge, retries or reviewer failure. Release remains BLOCK.
 
+### FC20-12 evidence-register guard — 2026-09-30
+
+[The owner's design-only decision](https://github.com/alphasigma13579-lang/ASIE/pull/176#issuecomment-5898867883) permits this separate governance PR, not routing execution. The current slice uses `asie.foundation.routing-eligibility.v2` / `EVIDENCE_TRACKING_ONLY`, with an empty evidence subject, decisions and delivery record. All nine controls remain `PENDING`, `routing_repair` remains `REGISTERED_BLOCKED`, and `active_target = null`. The v1 description above is a historical registration snapshot, not the current schema. CI rejects unsupported v2 claims; it does not validate a reviewer's identity or authorize runtime. Entry, start and delivery require later exact-head evidence, specialist/owner decisions and a separately reviewed guard transition.
+
 ### Phase E — Product completeness and operations
 
 `FC20-13 + FC20-14 + FC20-15`
