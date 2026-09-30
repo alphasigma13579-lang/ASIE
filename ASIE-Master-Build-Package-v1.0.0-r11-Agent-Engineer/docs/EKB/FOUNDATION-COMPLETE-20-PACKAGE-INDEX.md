@@ -21,6 +21,11 @@ Package IDs are `FC20-01` through `FC20-16`. Do not create a separate package-st
 
 This is navigation to the machine record, not an alternative current-state ledger. [PR #171](https://github.com/alphasigma13579-lang/ASIE/pull/171) was merged into `main` at [`25a82786d874aea6c37afa2f982210299d9edd10`](https://github.com/alphasigma13579-lang/ASIE/commit/25a82786d874aea6c37afa2f982210299d9edd10) as the documentation predecessor. That merge does not approve the routing ACR, grant build eligibility, or authorize frozen-runtime changes, providers, deployment, or invitations.
 
+## F-01 trusted-context ingress — proposed defensive enabling scope
+
+- [خطة حماية مدخل سياق المشروع — 2026-10-01](../FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ تحدد رفض الحالة/البصمة الخام وDraft خادميًا، وأثر توقف Pre-Run الخام قبل استعادة بناء موثوق بعقد منفصل.
+- لا تصريح كود أو دمج أو تفعيل، ولا تغيير للسجل أو أهلية routing_repair أو إغلاق FC20-08/09/11. نقطة القرار هي نطاق F-01A وأثره؛ نجاح الحماية لاحقًا ليس اكتمال F-01 أو الضوابط التسعة.
+
 ## Routing entry approval pack — proposed only
 
 - [حزمة اعتماد دخول إصلاح التوجيه](../FC20-12-ROUTING-ENTRY-APPROVAL-PACK-2026-09-28.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ تجمع متطلبات القرارات والأدلة التسع وترتيب FC20-05 والاختبارات، وليست مصدر حالة أو تصريح بناء.
