@@ -51,3 +51,9 @@ This is navigation to the machine record, not an alternative current-state ledge
 
 - [تدقيق ضوابط دخول التوجيه التسعة — 2026-09-30](../FC20-12-ROUTING-ENTRY-EXACT-HEAD-AUDIT-2026-09-30.md): قراءة ساكنة على `main@9a1d2698fde7f104c5bb74feacb28087bbf2b3a3`، تفصل المكونات الموجودة عن دليل الدخول غير المتحقق. لا تغيّر السجل أو تمنح أهلية أو تنفيذًا.
 
+## F-01A defensive enabling registration — proposal only
+
+- [مقترح تسجيل التمكين الدفاعي — 2026-10-01](../FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ شريحة محدودة داخل البرنامج نفسه مع عد التنفيذ الواحد وحفظ routing_repair محجوبًا.
+- [اعتماد نطاق F-01A وأثر التوافق](https://github.com/alphasigma13579-lang/ASIE/pull/179#issuecomment-5920890935) محفوظ؛ موضوع القرار التالي شكل التسجيل والحارس، لا إعادة قبول النطاق. لم يتغير JSON أو الحارس أو التطبيق بهذا المقترح.
+- التسجيل والبدء والتسليم انتقالات منفصلة بأدلتها؛ لا PASS لضوابط التوجيه أو إغلاق حزم أو تفعيل/نشر/ترحيل/دعوات من وثيقة أو CI. هذا مدخل قراءة، وليس مصدر حالة موازٍ.
+
