@@ -850,7 +850,9 @@ def test_defensive_registration_rejects_forged_claims(path: list, value: object)
 def test_defensive_registration_requires_every_field(field: str) -> None:
     manifest = load_manifest()
     defensive_record(manifest).pop(field)
-    with pytest.raises(AssertionError, match="defensive_fields"):
+    # A missing identifier is rejected by dispatch before field validation.
+    expected_error = "unknown_or_duplicate_slice" if field == "id" else "defensive_fields"
+    with pytest.raises(AssertionError, match=expected_error):
         validate_routing_registration(manifest)
 
 
