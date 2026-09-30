@@ -46,3 +46,8 @@ This is navigation to the machine record, not an alternative current-state ledge
 
 - [مقترح انتقال أهلية التوجيه — 2026-09-29](../FC20-12-ROUTING-ELIGIBILITY-PROPOSAL-2026-09-29.md): **PROPOSED / REVIEW_REQUIRED / NOT_BUILD_READY**؛ بعد #175، يحدد دليل الدخول وقرار البدء ودليل التسليم المقترحة، وقائمة ملفات/فحوص تطبيق حاكم مستقل.
 - لا يغير schema/status/control/slot الحالية ولا يوافق على ACR أو كود مجمد؛ شروط الدخول التسعة و08/09/11 لإغلاق الأب وFC20-16 وخطة المالك وcheckpoint محفوظة. يقرأ بعد حزمة الدخول ودليل المطابقة؛ قبول التصميم ليس تشغيلًا أو نشرًا.
+
+## Exact-head entry audit after #177 — derived snapshot only
+
+- [تدقيق ضوابط دخول التوجيه التسعة — 2026-09-30](../FC20-12-ROUTING-ENTRY-EXACT-HEAD-AUDIT-2026-09-30.md): قراءة ساكنة على `main@9a1d2698fde7f104c5bb74feacb28087bbf2b3a3`، تفصل المكونات الموجودة عن دليل الدخول غير المتحقق. لا تغيّر السجل أو تمنح أهلية أو تنفيذًا.
+
