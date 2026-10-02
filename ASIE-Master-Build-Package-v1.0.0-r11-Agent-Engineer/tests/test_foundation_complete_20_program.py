@@ -389,14 +389,20 @@ def active_execution_targets(packages: list[dict], held_ids: set[str]) -> list[s
     return active
 
 
-def validate_execution_sequence(manifest: dict) -> None:
-    """Count only the pinned defensive start while preserving the routing hold."""
+def execution_sequence_record(manifest: dict) -> dict:
+    """Require complete sequence structure before inspecting any execution claim."""
     sequence = manifest.get("execution_sequence")
     assert isinstance(sequence, dict), "missing_execution_sequence"
     assert set(sequence) == {
         "schema", "record_effect", "ordering_decision", "priority_target",
         "max_active_executions", "active_target", "held_packages",
     }, "unknown_or_missing_sequence_field"
+    return sequence
+
+
+def validate_execution_sequence(manifest: dict) -> None:
+    """Count only the pinned defensive start while preserving the routing hold."""
+    sequence = execution_sequence_record(manifest)
     assert sequence["schema"] == "asie.foundation.execution-sequence.v2", "sequence_schema"
     assert sequence["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY", "sequence_effect"
     assert sequence["ordering_decision"] == ORDERING_DECISION, "ordering_decision_mismatch"
@@ -440,9 +446,8 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
     assert [item.get("id") for item in slices] == [
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
-    validate_defensive_start(
-        slices[1], manifest.get("execution_sequence", {}).get("active_target"),
-    )
+    sequence = execution_sequence_record(manifest)
+    validate_defensive_start(slices[1], sequence["active_target"])
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
