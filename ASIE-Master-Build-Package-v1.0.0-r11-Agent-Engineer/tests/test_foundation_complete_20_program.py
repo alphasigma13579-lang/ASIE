@@ -823,10 +823,12 @@ DEFENSIVE_MUTATIONS = json.loads(r'''[[["schema"],"unknown.v2"],[["id"],"routing
 
 
 def defensive_record(manifest: dict) -> dict:
+    """Return the F-01A record from the canonical slice position for these tests."""
     return next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1]
 
 
 def test_defensive_registration_is_blocked_and_retains_routing() -> None:
+    """Verify the canonical record remains blocked with no active execution slot."""
     manifest = load_manifest()
     validate_routing_registration(manifest)
     assert defensive_record(manifest) == DEFENSIVE_REGISTRATION
@@ -837,6 +839,7 @@ def test_defensive_registration_is_blocked_and_retains_routing() -> None:
 
 @pytest.mark.parametrize("path,value", DEFENSIVE_MUTATIONS)
 def test_defensive_registration_rejects_forged_claims(path: list, value: object) -> None:
+    """Reject each unauthorized mutation of the pinned defensive registration."""
     manifest = load_manifest()
     target = defensive_record(manifest)
     for key in path[:-1]:
@@ -848,6 +851,7 @@ def test_defensive_registration_rejects_forged_claims(path: list, value: object)
 
 @pytest.mark.parametrize("field", list(DEFENSIVE_REGISTRATION))
 def test_defensive_registration_requires_every_field(field: str) -> None:
+    """Reject missing registration fields, including early identifier dispatch failures."""
     manifest = load_manifest()
     defensive_record(manifest).pop(field)
     # A missing identifier is rejected by dispatch before field validation.
@@ -858,6 +862,7 @@ def test_defensive_registration_requires_every_field(field: str) -> None:
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "unknown", "wrong_order", "non_dict"])
 def test_registration_rejects_missing_duplicate_and_unknown_slices(mutation: str) -> None:
+    """Reject invalid slice membership, ordering, and non-dictionary records."""
     manifest = load_manifest()
     slices = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"]
     if mutation == "missing":
@@ -875,6 +880,7 @@ def test_registration_rejects_missing_duplicate_and_unknown_slices(mutation: str
 
 
 def test_defensive_slot_cannot_be_opened_by_a_record_claim() -> None:
+    """Ensure a claimed active slot cannot authorize the blocked defensive slice."""
     manifest = load_manifest()
     manifest["execution_sequence"]["active_target"] = {
         "kind": "slice", "package_id": "FC20-12", "slice_id": "f01a_defensive_ingress",
@@ -886,6 +892,7 @@ def test_defensive_slot_cannot_be_opened_by_a_record_claim() -> None:
 
 
 def test_defensive_activity_is_counted_even_under_a_held_parent() -> None:
+    """Count held-parent slice activity and reject unrecorded or concurrent execution."""
     manifest = load_manifest()
     defensive_record(manifest)["state"] = "IN_PROGRESS"
     assert active_execution_targets(manifest["packages"], {"FC20-05", "FC20-12"}) == [
@@ -899,6 +906,7 @@ def test_defensive_activity_is_counted_even_under_a_held_parent() -> None:
 
 
 def test_registration_preserves_all_package_states_and_parent_scope() -> None:
+    """Preserve package progress, parent scope, dependencies, holds, and release block."""
     manifest = load_manifest()
     assert {p["id"]: p["state"] for p in manifest["packages"]} == json.loads(r'''{"FC20-01":"COMPLETE","FC20-02":"COMPLETE","FC20-03":"COMPLETE","FC20-04":"COMPLETE","FC20-05":"IN_PROGRESS","FC20-06":"BLOCKED_BY_PREDECESSOR","FC20-07":"BLOCKED_BY_PREDECESSOR","FC20-08":"BLOCKED_BY_PREDECESSOR","FC20-09":"BLOCKED_BY_PREDECESSOR","FC20-10":"BLOCKED_BY_PREDECESSOR","FC20-11":"OPEN","FC20-12":"ACR_REQUIRED","FC20-13":"BLOCKED_BY_PREDECESSOR","FC20-14":"BLOCKED_BY_PREDECESSOR","FC20-15":"BLOCKED_BY_PREDECESSOR","FC20-16":"BLOCKED_BY_PREDECESSOR"}''')
     parent = next(p for p in manifest["packages"] if p["id"] == "FC20-12")
@@ -915,6 +923,7 @@ def test_registration_preserves_all_package_states_and_parent_scope() -> None:
 
 
 def test_defensive_pinned_source_bytes_and_governing_links() -> None:
+    """Verify pinned source bytes and references without treating Git hashes as approval."""
     package_root = Path(__file__).resolve().parents[1]
     scope = DEFENSIVE_REGISTRATION["scope_document"]
     scope_bytes = (package_root / DEFENSIVE_REGISTRATION["allowed_paths"][-1]).read_bytes().replace(b"\r\n", b"\n")
@@ -935,6 +944,7 @@ def test_defensive_pinned_source_bytes_and_governing_links() -> None:
 
 
 def lifecycle_fixture() -> tuple[dict, dict, dict]:
+    """Build isolated synthetic start data; it is not a real owner authorization."""
     record = deepcopy(DEFENSIVE_REGISTRATION)
     decision = {
         "id": "ISOLATED_TEST_START_NOT_OWNER_APPROVAL",
@@ -949,6 +959,7 @@ def lifecycle_fixture() -> tuple[dict, dict, dict]:
 
 
 def test_future_start_fixture_matches_one_slot_but_never_current_admission() -> None:
+    """Accept the synthetic start model while proving current admission still rejects it."""
     record, slot, decision = lifecycle_fixture()
     validate_defensive_transition_fixture(record, slot, reviewed_decision=decision)
     with pytest.raises(AssertionError):
@@ -963,6 +974,7 @@ def test_future_start_fixture_matches_one_slot_but_never_current_admission() -> 
 @pytest.mark.parametrize("mutation", ["missing_decision", "forged_decision", "subject",
                                       "scope", "frozen_path", "slot", "flag", "history", "release"])
 def test_future_lifecycle_model_rejects_mismatch(mutation: str) -> None:
+    """Reject synthetic lifecycle mutations that break decision, scope, or slot checks."""
     record, slot, decision = lifecycle_fixture()
     if mutation == "missing_decision":
         record["start_decision"] = None
@@ -989,6 +1001,7 @@ def test_future_lifecycle_model_rejects_mismatch(mutation: str) -> None:
 
 
 def test_stop_checkpoint_keeps_counted_slot_until_reviewed_delivery() -> None:
+    """Keep the synthetic slot counted at a checkpoint until validated fixture delivery."""
     record, slot, decision = lifecycle_fixture()
     record["events"].append({"type": "STOP_CHECKPOINT", "reason": "scope_changed"})
     validate_defensive_transition_fixture(record, slot, reviewed_decision=decision)
@@ -1014,6 +1027,7 @@ def test_stop_checkpoint_keeps_counted_slot_until_reviewed_delivery() -> None:
 
 
 def test_current_sequence_rejects_silent_v1_downgrade() -> None:
+    """Reject downgrading the current sequence to its historical v1 schema."""
     manifest = load_manifest()
     manifest["execution_sequence"]["schema"] = "asie.foundation.execution-sequence.v1"
     manifest["execution_sequence"]["record_effect"] = "PRIORITY_AND_HOLD_ONLY"
