@@ -10,8 +10,8 @@
   "external_network_authorized": false,
   "provider_activation_authorized": false,
   "execution_sequence": {
-    "schema": "asie.foundation.execution-sequence.v1",
-    "record_effect": "PRIORITY_AND_HOLD_ONLY",
+    "schema": "asie.foundation.execution-sequence.v2",
+    "record_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
     "ordering_decision": {
       "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
       "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
@@ -752,6 +752,63 @@
             "delivery_evidence": null,
             "invalidation_events": []
           }
+        },
+        {
+          "schema": "asie.foundation.defensive-enabling.v1",
+          "id": "f01a_defensive_ingress",
+          "state": "REGISTERED_BLOCKED",
+          "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
+          "execution_authorized": false,
+          "prerequisite_for": {
+            "package_id": "FC20-12",
+            "slice_id": "routing_repair"
+          },
+          "scope_document": {
+            "url": "https://github.com/alphasigma13579-lang/ASIE/blob/08a825ae046ba3595981590ca03ea5ef03f04ace/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+            "commit_sha": "08a825ae046ba3595981590ca03ea5ef03f04ace",
+            "blob_sha": "c80cb6adaa442f43c98da7b9eb34c7cc9dcd9521"
+          },
+          "owner_scope_decision": {
+            "id": "DECISION-FC20-12-F01A-SCOPE-2026-10-01",
+            "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/179#issuecomment-5920890935",
+            "recorded_at": "2026-09-30T22:34:10Z",
+            "effect": "SCOPE_AND_COMPATIBILITY_ACCEPTED"
+          },
+          "registration_decision": {
+            "id": "DECISION-FC20-12-F01A-REGISTRATION-DESIGN-2026-10-01",
+            "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/180#issuecomment-5921569549",
+            "recorded_at": "2026-09-30T23:30:43Z",
+            "effect": "DESIGN_AND_GOVERNANCE_PR_ONLY",
+            "proposal_commit_sha": "c000c11f5d9952090c4bfb6622456fb550106bdb",
+            "proposal_blob_sha": "e41b6e612b29e22079fbf231b299ad4aab5a9b4b"
+          },
+          "start_decision": null,
+          "subject": {
+            "baseline_commit_sha": "8fb47f3668133093197844816eb2a644793e5f20"
+          },
+          "allowed_paths": [
+            "backend/asie_local_api.py",
+            "backend/repository.py",
+            "backend/intelligence_prerun_service.py",
+            "tests/test_repository_intelligence.py",
+            "tests/test_intelligence_prerun_service.py",
+            "tests/test_intelligence_context_ingress_api.py",
+            "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md"
+          ],
+          "environment": "DARK_OFFLINE",
+          "entry_requirements": [
+            "owner_accepted_compatibility",
+            "server_owned_defensive_scope",
+            "permission_tenant_data_integrity_tests_T01_T09",
+            "single_counted_execution",
+            "separate_exact_head_start_decision"
+          ],
+          "delivery_evidence": null,
+          "events": [],
+          "closure_effect": "NONE",
+          "network_authorized": false,
+          "provider_activation_authorized": false,
+          "deployment_authorized": false
         }
       ]
     },

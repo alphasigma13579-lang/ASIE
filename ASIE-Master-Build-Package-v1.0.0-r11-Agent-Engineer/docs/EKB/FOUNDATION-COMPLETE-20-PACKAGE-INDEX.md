@@ -57,3 +57,10 @@ This is navigation to the machine record, not an alternative current-state ledge
 - [اعتماد نطاق F-01A وأثر التوافق](https://github.com/alphasigma13579-lang/ASIE/pull/179#issuecomment-5920890935) محفوظ؛ موضوع القرار التالي شكل التسجيل والحارس، لا إعادة قبول النطاق. لم يتغير JSON أو الحارس أو التطبيق بهذا المقترح.
 - التسجيل والبدء والتسليم انتقالات منفصلة بأدلتها؛ لا PASS لضوابط التوجيه أو إغلاق حزم أو تفعيل/نشر/ترحيل/دعوات من وثيقة أو CI. هذا مدخل قراءة، وليس مصدر حالة موازٍ.
 
+
+## F-01A blocked registration candidate — 2026-10-01
+
+- [التصميم المعتمد](../FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md) و[قرار المالك](https://github.com/alphasigma13579-lang/ASIE/pull/180#issuecomment-5921569549): إعداد طلب السجل والحارس، لا دمج أو بدء.
+- موقع المرشح: /FOUNDATION-COMPLETE-20.json → packages[FC20-12].execution_slices[f01a_defensive_ingress]؛ **REGISTERED_BLOCKED** وstart_decision=null والتنفيذ false.
+- execution_sequence v2 أثرها **BOUNDED_DEFENSIVE_ENABLING_ONLY**؛ active_target = null. يبقى routing_repair محجوبًا وسجل ضوابطه دون تغيير. هذه قراءة مشتقة لمرشح، وليست حالة برنامج موازية أو صلاحية تشغيل.
+- fixture انتقال البدء/التسليم معزول ولا يقبل داخل السجل الحالي؛ أي انتقال حقيقي يتطلب قرارًا مثبتًا وفرق حارس مراجع. FC20-05 held وcheckpoint 166/167 والبرنامج والإصدار BLOCK محفوظة. لا تطبيق أو شبكة أو مزود أو نشر أو ترحيل أو دعوات.

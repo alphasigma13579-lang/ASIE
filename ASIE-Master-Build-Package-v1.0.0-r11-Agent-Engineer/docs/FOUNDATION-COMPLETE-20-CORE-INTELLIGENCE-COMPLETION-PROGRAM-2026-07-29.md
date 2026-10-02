@@ -157,3 +157,11 @@ This program changes the readiness verdict to `BLOCK` while foundational complet
 ## 8. Anti-fragmentation rule
 
 No additional top-level remediation program is created while FOUNDATION-COMPLETE-20 is active. Work is tracked by package IDs inside the machine manifest. Package PRs update the manifest atomically with code and evidence. Historical package documents remain evidence and do not become parallel current-state authorities.
+
+### تسجيل F-01A الدفاعي المحجوب — مرشح 2026-10-01
+
+[مقترح التسجيل المعتمد تصميميًا](FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md) دُمج في #180 عند 8fb47f3668133093197844816eb2a644793e5f20؛ [قرار المالك](https://github.com/alphasigma13579-lang/ASIE/pull/180#issuecomment-5921569549) يجيز إعداد طلب السجل والحارس فقط، ولا يجيز دمجه أو بدء التطبيق. هذه الفقرة تصف مرشح التسجيل؛ لا تصبح الحالة نافذة قبل مراجعة ودمج طلبه.
+
+يسجل المرشح f01a_defensive_ingress داخل FC20-12 بحالة **REGISTERED_BLOCKED**، execution_authorized=false، وstart_decision=null. execution_sequence v2 أثرها **BOUNDED_DEFENSIVE_ENABLING_ONLY**؛ active_target = null. لا تغيّر هذه التسمية سلطة runtime أو التشغيل. يبقى routing_repair محجوبًا بكامل سجل v2 والضوابط التسعة PENDING، واعتماديات إغلاق FC20-12 وحالات وأدلة جميع الحزم محفوظة؛ FC20-05 held وcheckpoint #166/#167 محفوظان.
+
+الحارس الحالي يرفض البدء والتسليم الفعليين من ادعاء JSON. اختبارات lifecycle المعزولة تميز القرار/النطاق/الموضع/التاريخ وتثبت منع نسخ fixture إلى السجل الحقيقي؛ لا تختبر صلاحية قرار مالك لم يصدر ولا تقدم T-01–T-09 كدليل إصلاح. الانتقال التشغيلي التالي يحتاج قرار بدء محدد وتثبيته بفرق حاكم مراجع قبل كود التطبيق؛ لا إعادة قبول نطاق F-01A من الصفر. لا PASS للتوجيه أو إغلاق F-01/08/09/11 أو تفعيل/نشر/ترحيل/دعوات من التسجيل أو CI.

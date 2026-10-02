@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+from copy import deepcopy
 import re
 
 import pytest
@@ -191,7 +193,7 @@ ELIGIBILITY_DESIGN_DECISION = {
 
 
 # Program ordering is repository governance, never a runtime permission or lock.
-# v1 intentionally admits no active target while routing entry controls are pending.
+# Current v2 registers defensive enabling only; no start decision is admitted.
 ORDERING_DECISION = json.loads(r'''{
     "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
     "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
@@ -207,6 +209,130 @@ HELD_PACKAGES = json.loads(r'''[
         "resume_requirement": "OWNER_DECISION_AND_EXACT_HEAD_RECHECK"
     }
 ]''')
+
+
+
+# A pinned owner design decision permits this registration PR only, not start.
+# The expected record is reviewed code, never copied from the supplied manifest.
+DEFENSIVE_REGISTRATION = json.loads(r'''{
+    "schema": "asie.foundation.defensive-enabling.v1",
+    "id": "f01a_defensive_ingress",
+    "state": "REGISTERED_BLOCKED",
+    "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
+    "execution_authorized": false,
+    "prerequisite_for": {
+        "package_id": "FC20-12",
+        "slice_id": "routing_repair"
+    },
+    "scope_document": {
+        "url": "https://github.com/alphasigma13579-lang/ASIE/blob/08a825ae046ba3595981590ca03ea5ef03f04ace/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+        "commit_sha": "08a825ae046ba3595981590ca03ea5ef03f04ace",
+        "blob_sha": "c80cb6adaa442f43c98da7b9eb34c7cc9dcd9521"
+    },
+    "owner_scope_decision": {
+        "id": "DECISION-FC20-12-F01A-SCOPE-2026-10-01",
+        "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/179#issuecomment-5920890935",
+        "recorded_at": "2026-09-30T22:34:10Z",
+        "effect": "SCOPE_AND_COMPATIBILITY_ACCEPTED"
+    },
+    "registration_decision": {
+        "id": "DECISION-FC20-12-F01A-REGISTRATION-DESIGN-2026-10-01",
+        "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/180#issuecomment-5921569549",
+        "recorded_at": "2026-09-30T23:30:43Z",
+        "effect": "DESIGN_AND_GOVERNANCE_PR_ONLY",
+        "proposal_commit_sha": "c000c11f5d9952090c4bfb6622456fb550106bdb",
+        "proposal_blob_sha": "e41b6e612b29e22079fbf231b299ad4aab5a9b4b"
+    },
+    "start_decision": null,
+    "subject": {
+        "baseline_commit_sha": "8fb47f3668133093197844816eb2a644793e5f20"
+    },
+    "allowed_paths": [
+        "backend/asie_local_api.py",
+        "backend/repository.py",
+        "backend/intelligence_prerun_service.py",
+        "tests/test_repository_intelligence.py",
+        "tests/test_intelligence_prerun_service.py",
+        "tests/test_intelligence_context_ingress_api.py",
+        "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md"
+    ],
+    "environment": "DARK_OFFLINE",
+    "entry_requirements": [
+        "owner_accepted_compatibility",
+        "server_owned_defensive_scope",
+        "permission_tenant_data_integrity_tests_T01_T09",
+        "single_counted_execution",
+        "separate_exact_head_start_decision"
+    ],
+    "delivery_evidence": null,
+    "events": [],
+    "closure_effect": "NONE",
+    "network_authorized": false,
+    "provider_activation_authorized": false,
+    "deployment_authorized": false
+}''')
+
+
+def validate_defensive_registration(record: dict, active_target: object) -> None:
+    """Accept only the reviewed blocked record; metadata cannot authorize start."""
+    assert isinstance(record, dict), "invalid_defensive_record"
+    assert set(record) == set(DEFENSIVE_REGISTRATION), "defensive_fields"
+    assert record == DEFENSIVE_REGISTRATION, "defensive_record_mismatch"
+    assert record["execution_authorized"] is False, "defensive_not_authorized"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "defensive_external_effect"
+    assert active_target is None, "defensive_start_not_authorized"
+
+
+def validate_defensive_transition_fixture(
+    record: dict, slot: object, *, reviewed_decision: dict,
+    reviewed_delivery: dict | None = None,
+) -> None:
+    """Test-only lifecycle model, NOT used to admit the current manifest.
+
+    A future guard transition must pin its real owner decision/evidence separately.
+    Test inputs are isolated oracles, not a manifest-supplied authority override.
+    """
+    target = {"kind": "slice", "package_id": "FC20-12",
+              "slice_id": "f01a_defensive_ingress"}
+    assert reviewed_decision and record["start_decision"] == reviewed_decision, "fixture_decision"
+    assert reviewed_decision["subject"] == record["subject"], "fixture_subject"
+    assert reviewed_decision["effect"] == "F01A_DEFENSIVE_START_ONLY", "fixture_effect"
+    fixed = deepcopy(record)
+    for key in ("state", "execution_authorized", "start_decision", "delivery_evidence", "events"):
+        fixed[key] = deepcopy(DEFENSIVE_REGISTRATION[key])
+    assert fixed == DEFENSIVE_REGISTRATION, "fixture_scope"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "fixture_external_effect"
+    assert isinstance(record["events"], list) and record["events"], "fixture_history"
+    assert record["events"][0] == {
+        "type": "START", "decision_id": reviewed_decision["id"],
+    }, "fixture_start_history"
+    if record["state"] == "IN_PROGRESS":
+        assert record["execution_authorized"] is True, "fixture_active_flag"
+        assert slot == target, "fixture_active_slot"
+        assert record["delivery_evidence"] is None, "fixture_premature_delivery"
+        assert all(
+            isinstance(event, dict) and event.get("type") == "STOP_CHECKPOINT"
+            for index, event in enumerate(record["events"]) if index > 0
+        ), "fixture_active_history"
+    else:
+        assert record["state"] == "DELIVERED", "fixture_state"
+        assert record["execution_authorized"] is False and slot is None, "fixture_release_slot"
+        assert reviewed_delivery and record["delivery_evidence"] == reviewed_delivery, "fixture_delivery"
+        assert re.fullmatch(r"[0-9a-f]{40}", reviewed_delivery["commit_sha"]), "fixture_delivery_sha"
+        assert reviewed_delivery["test_ids"] == [f"T-{n:02d}" for n in range(1, 10)], "fixture_tests"
+        assert reviewed_delivery["review_url"] and reviewed_delivery["owner_decision_url"], "fixture_review"
+        assert all(
+            isinstance(event, dict) and event.get("type") == "STOP_CHECKPOINT"
+            for index, event in enumerate(record["events"])
+            if 0 < index < len(record["events"]) - 1
+        ), "fixture_delivery_history"
+        assert record["events"][-1] == {
+            "type": "DELIVERED", "commit_sha": reviewed_delivery["commit_sha"],
+        }, "fixture_delivery_history"
 
 
 def active_execution_targets(packages: list[dict], held_ids: set[str]) -> list[str]:
@@ -232,8 +358,8 @@ def validate_execution_sequence(manifest: dict) -> None:
         "schema", "record_effect", "ordering_decision", "priority_target",
         "max_active_executions", "active_target", "held_packages",
     }, "unknown_or_missing_sequence_field"
-    assert sequence["schema"] == "asie.foundation.execution-sequence.v1", "sequence_schema"
-    assert sequence["record_effect"] == "PRIORITY_AND_HOLD_ONLY", "sequence_effect"
+    assert sequence["schema"] == "asie.foundation.execution-sequence.v2", "sequence_schema"
+    assert sequence["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY", "sequence_effect"
     assert sequence["ordering_decision"] == ORDERING_DECISION, "ordering_decision_mismatch"
     assert sequence["priority_target"] == {
         "kind": "slice", "package_id": "FC20-12", "slice_id": "routing_repair",
@@ -270,7 +396,14 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
     assert parent["state"] == "ACR_REQUIRED", "parent_state_not_preserved"
     assert parent["depends_on"] == ["FC20-08", "FC20-09", "FC20-11"], "parent_dependencies_not_preserved"
     slices = parent.get("execution_slices")
-    assert isinstance(slices, list) and len(slices) == 1, "missing_or_duplicate_slice"
+    assert isinstance(slices, list) and len(slices) == 2, "missing_or_duplicate_slice"
+    assert all(isinstance(item, dict) for item in slices), "invalid_execution_slice"
+    assert [item.get("id") for item in slices] == [
+        "routing_repair", "f01a_defensive_ingress",
+    ], "unknown_or_duplicate_slice"
+    validate_defensive_registration(
+        slices[1], manifest.get("execution_sequence", {}).get("active_target"),
+    )
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
@@ -692,3 +825,252 @@ def test_routing_v2_requires_design_decision() -> None:
     record.pop("design_decision")
     with pytest.raises(AssertionError, match="unknown_or_missing_slice_field"):
         validate_routing_registration(manifest)
+
+# Registration acceptance and mutations: no fixture authority is used by CI.
+DEFENSIVE_MUTATIONS = json.loads(r'''[[["schema"],"unknown.v2"],[["id"],"routing_repair"],[["registry_effect"],"BUILD_AUTHORIZED"],[["state"],"IN_PROGRESS"],[["execution_authorized"],true],[["execution_authorized"],0],[["scope_document","blob_sha"],"0000000000000000000000000000000000000000"],[["scope_document","commit_sha"],"main"],[["scope_document","url"],"https://example.invalid/scope"],[["subject","baseline_commit_sha"],"0000000000000000000000000000000000000000"],[["registration_decision","effect"],"START"],[["registration_decision","record_url"],"https://example.invalid/approval"],[["registration_decision","proposal_blob_sha"],"0000000000000000000000000000000000000000"],[["owner_scope_decision","recorded_at"],"2026-01-01T00:00:00Z"],[["start_decision"],{"effect":"START"}],[["allowed_paths"],["backend/aas_kernel.py"]],[["allowed_paths"],["backend/*"]],[["environment"],"LIVE"],[["prerequisite_for","slice_id"],"another_slice"],[["entry_requirements"],[]],[["closure_effect"],"COMPLETE"],[["delivery_evidence"],{"status":"PASS"}],[["events"],[{"type":"START"}]],[["network_authorized"],true],[["network_authorized"],0],[["provider_activation_authorized"],true],[["deployment_authorized"],true],[["unknown_authority_override"],true]]''')
+
+
+def defensive_record(manifest: dict) -> dict:
+    """Return the F-01A record from the canonical slice position for these tests."""
+    return next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1]
+
+
+def test_defensive_registration_is_blocked_and_retains_routing() -> None:
+    """Verify the canonical record remains blocked with no active execution slot."""
+    manifest = load_manifest()
+    validate_routing_registration(manifest)
+    assert defensive_record(manifest) == DEFENSIVE_REGISTRATION
+    assert manifest["execution_sequence"]["active_target"] is None
+    assert manifest["execution_sequence"]["schema"] == "asie.foundation.execution-sequence.v2"
+    assert manifest["execution_sequence"]["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY"
+
+
+@pytest.mark.parametrize("path,value", DEFENSIVE_MUTATIONS)
+def test_defensive_registration_rejects_forged_claims(path: list, value: object) -> None:
+    """Reject each unauthorized mutation of the pinned defensive registration."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field", list(DEFENSIVE_REGISTRATION))
+def test_defensive_registration_requires_every_field(field: str) -> None:
+    """Reject missing registration fields, including early identifier dispatch failures."""
+    manifest = load_manifest()
+    defensive_record(manifest).pop(field)
+    # A missing identifier is rejected by dispatch before field validation.
+    expected_error = "unknown_or_duplicate_slice" if field == "id" else "defensive_fields"
+    with pytest.raises(AssertionError, match=expected_error):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "unknown", "wrong_order", "non_dict"])
+def test_registration_rejects_missing_duplicate_and_unknown_slices(mutation: str) -> None:
+    """Reject invalid slice membership, ordering, and non-dictionary records."""
+    manifest = load_manifest()
+    slices = next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"]
+    if mutation == "missing":
+        slices.pop()
+    elif mutation == "duplicate":
+        slices.append(deepcopy(slices[1]))
+    elif mutation == "unknown":
+        slices[1]["id"] = "parallel_runtime"
+    elif mutation == "wrong_order":
+        slices.reverse()
+    else:
+        slices[1] = "untrusted"
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_defensive_slot_cannot_be_opened_by_a_record_claim() -> None:
+    """Ensure a claimed active slot cannot authorize the blocked defensive slice."""
+    manifest = load_manifest()
+    manifest["execution_sequence"]["active_target"] = {
+        "kind": "slice", "package_id": "FC20-12", "slice_id": "f01a_defensive_ingress",
+    }
+    with pytest.raises(AssertionError, match="execution_entry_not_authorized"):
+        validate_execution_sequence(manifest)
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_defensive_activity_is_counted_even_under_a_held_parent() -> None:
+    """Count held-parent slice activity and reject unrecorded or concurrent execution."""
+    manifest = load_manifest()
+    defensive_record(manifest)["state"] = "IN_PROGRESS"
+    assert active_execution_targets(manifest["packages"], {"FC20-05", "FC20-12"}) == [
+        "FC20-12/f01a_defensive_ingress",
+    ]
+    with pytest.raises(AssertionError, match="unrecorded_active_execution"):
+        validate_execution_sequence(manifest)
+    next(p for p in manifest["packages"] if p["id"] == "FC20-11")["state"] = "IN_PROGRESS"
+    with pytest.raises(AssertionError, match="multiple_active_executions"):
+        validate_execution_sequence(manifest)
+
+
+def test_registration_preserves_all_package_states_and_parent_scope() -> None:
+    """Preserve package progress, parent scope, dependencies, holds, and release block."""
+    manifest = load_manifest()
+    assert {p["id"]: p["state"] for p in manifest["packages"]} == json.loads(r'''{"FC20-01":"COMPLETE","FC20-02":"COMPLETE","FC20-03":"COMPLETE","FC20-04":"COMPLETE","FC20-05":"IN_PROGRESS","FC20-06":"BLOCKED_BY_PREDECESSOR","FC20-07":"BLOCKED_BY_PREDECESSOR","FC20-08":"BLOCKED_BY_PREDECESSOR","FC20-09":"BLOCKED_BY_PREDECESSOR","FC20-10":"BLOCKED_BY_PREDECESSOR","FC20-11":"OPEN","FC20-12":"ACR_REQUIRED","FC20-13":"BLOCKED_BY_PREDECESSOR","FC20-14":"BLOCKED_BY_PREDECESSOR","FC20-15":"BLOCKED_BY_PREDECESSOR","FC20-16":"BLOCKED_BY_PREDECESSOR"}''')
+    parent = next(p for p in manifest["packages"] if p["id"] == "FC20-12")
+    assert parent["scope"] == [
+        "Implement v2 contracts and one-version-per-run dispatch",
+        "Admit approved synthesis pack and pre-decision envelope without changing Decision Council v1 semantics",
+        "Update Snapshot input manifest under a separately approved frozen-boundary ACR",
+        "Prove v1 parity, rollback, and no parallel runtime",
+    ]
+    assert parent["depends_on"] == ["FC20-08", "FC20-09", "FC20-11"]
+    assert manifest["execution_sequence"]["held_packages"] == HELD_PACKAGES
+    assert set(manifest["frozen_files"]) == EXPECTED_FROZEN_FILES
+    assert manifest["current_release_verdict"] == "BLOCK"
+
+
+def test_defensive_pinned_source_bytes_and_governing_links() -> None:
+    """Verify pinned source bytes and references without treating Git hashes as approval."""
+    package_root = Path(__file__).resolve().parents[1]
+    scope = DEFENSIVE_REGISTRATION["scope_document"]
+    scope_bytes = (package_root / DEFENSIVE_REGISTRATION["allowed_paths"][-1]).read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha1(b"blob " + str(len(scope_bytes)).encode() + b"\0" + scope_bytes).hexdigest() == scope["blob_sha"]
+    proposal_name = "FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md"
+    proposal = (package_root / "docs" / proposal_name).read_bytes().replace(b"\r\n", b"\n")
+    original_proposal = proposal.split(b"\n<!-- F01A-REGISTRATION-DELIVERY -->\n", 1)[0]
+    assert hashlib.sha1(b"blob " + str(len(original_proposal)).encode() + b"\0" + original_proposal).hexdigest() == DEFENSIVE_REGISTRATION["registration_decision"]["proposal_blob_sha"]
+    for name in (
+        "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
+        "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md",
+        "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md",
+    ):
+        content = (package_root / name).read_text(encoding="utf-8")
+        for required in (proposal_name, "f01a_defensive_ingress", "REGISTERED_BLOCKED",
+                         "active_target = null", "5921569549", "BOUNDED_DEFENSIVE_ENABLING_ONLY"):
+            assert required in content
+
+
+def lifecycle_fixture() -> tuple[dict, dict, dict]:
+    """Build isolated synthetic start data; it is not a real owner authorization."""
+    record = deepcopy(DEFENSIVE_REGISTRATION)
+    decision = {
+        "id": "ISOLATED_TEST_START_NOT_OWNER_APPROVAL",
+        "effect": "F01A_DEFENSIVE_START_ONLY",
+        "subject": deepcopy(record["subject"]),
+    }
+    record.update(state="IN_PROGRESS", execution_authorized=True,
+                  start_decision=deepcopy(decision),
+                  events=[{"type": "START", "decision_id": decision["id"]}])
+    slot = {"kind": "slice", "package_id": "FC20-12", "slice_id": "f01a_defensive_ingress"}
+    return record, slot, decision
+
+
+def test_future_start_fixture_matches_one_slot_but_never_current_admission() -> None:
+    """Accept the synthetic start model while proving current admission still rejects it."""
+    record, slot, decision = lifecycle_fixture()
+    validate_defensive_transition_fixture(record, slot, reviewed_decision=decision)
+    with pytest.raises(AssertionError):
+        validate_defensive_registration(record, slot)
+    manifest = load_manifest()
+    next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = record
+    manifest["execution_sequence"]["active_target"] = slot
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ["missing_decision", "forged_decision", "subject",
+                                      "scope", "frozen_path", "slot", "flag", "history", "release"])
+def test_future_lifecycle_model_rejects_mismatch(mutation: str) -> None:
+    """Reject synthetic lifecycle mutations that break decision, scope, or slot checks."""
+    record, slot, decision = lifecycle_fixture()
+    if mutation == "missing_decision":
+        record["start_decision"] = None
+    elif mutation == "forged_decision":
+        record["start_decision"]["id"] = "forged"
+    elif mutation == "subject":
+        record["subject"]["baseline_commit_sha"] = "0" * 40
+    elif mutation == "scope":
+        record["network_authorized"] = True
+    elif mutation == "frozen_path":
+        record["allowed_paths"].append("backend/aas_kernel.py")
+    elif mutation == "slot":
+        slot = None
+    elif mutation == "flag":
+        record["execution_authorized"] = 1
+    elif mutation == "history":
+        record["events"] = []
+    else:
+        record["state"] = "DELIVERED"
+        record["execution_authorized"] = False
+        slot = None
+    with pytest.raises(AssertionError):
+        validate_defensive_transition_fixture(record, slot, reviewed_decision=decision)
+
+
+def test_stop_checkpoint_keeps_counted_slot_until_reviewed_delivery() -> None:
+    """Keep the synthetic slot counted at a checkpoint until validated fixture delivery."""
+    record, slot, decision = lifecycle_fixture()
+    record["events"].append({"type": "STOP_CHECKPOINT", "reason": "scope_changed"})
+    validate_defensive_transition_fixture(record, slot, reviewed_decision=decision)
+    with pytest.raises(AssertionError, match="fixture_active_slot"):
+        validate_defensive_transition_fixture(record, None, reviewed_decision=decision)
+    delivery = {
+        "commit_sha": "1" * 40, "test_ids": [f"T-{n:02d}" for n in range(1, 10)],
+        "review_url": "https://example.invalid/isolated-test-review",
+        "owner_decision_url": "https://example.invalid/isolated-test-delivery",
+    }
+    record.update(state="DELIVERED", execution_authorized=False, delivery_evidence=deepcopy(delivery))
+    record["events"].append({"type": "DELIVERED", "commit_sha": delivery["commit_sha"]})
+    validate_defensive_transition_fixture(record, None, reviewed_decision=decision,
+                                         reviewed_delivery=delivery)
+    for field in ("commit_sha", "test_ids", "review_url", "owner_decision_url"):
+        invalid = deepcopy(record)
+        invalid["delivery_evidence"].pop(field)
+        with pytest.raises(AssertionError):
+            validate_defensive_transition_fixture(invalid, None, reviewed_decision=decision,
+                                                 reviewed_delivery=delivery)
+    with pytest.raises(AssertionError):
+        validate_defensive_registration(record, None)
+
+
+
+@pytest.mark.parametrize("state,event_types", [
+    ("IN_PROGRESS", ["DELIVERED", "STOP_CHECKPOINT"]),
+    ("IN_PROGRESS", ["START", "STOP_CHECKPOINT"]),
+    ("DELIVERED", ["DELIVERED", "STOP_CHECKPOINT", "DELIVERED"]),
+    ("DELIVERED", ["DELIVERED", "DELIVERED"]),
+])
+def test_lifecycle_history_rejects_activity_after_delivery_and_repeated_start(
+    state: str, event_types: list[str],
+) -> None:
+    """Reject resumed activity or repeated terminal events under the original decision."""
+    record, slot, decision = lifecycle_fixture()
+    delivery = {
+        "commit_sha": "1" * 40, "test_ids": [f"T-{n:02d}" for n in range(1, 10)],
+        "review_url": "https://example.invalid/isolated-test-review",
+        "owner_decision_url": "https://example.invalid/isolated-test-delivery",
+    }
+    for event_type in event_types:
+        if event_type == "START":
+            record["events"].append(deepcopy(record["events"][0]))
+        elif event_type == "DELIVERED":
+            record["events"].append({"type": event_type, "commit_sha": delivery["commit_sha"]})
+        else:
+            record["events"].append({"type": event_type, "reason": "isolated-test-checkpoint"})
+    if state == "DELIVERED":
+        record.update(state=state, execution_authorized=False, delivery_evidence=deepcopy(delivery))
+        slot = None
+    with pytest.raises(AssertionError, match="fixture_(active|delivery)_history"):
+        validate_defensive_transition_fixture(
+            record, slot, reviewed_decision=decision, reviewed_delivery=delivery,
+        )
+
+
+def test_current_sequence_rejects_silent_v1_downgrade() -> None:
+    """Reject downgrading the current sequence to its historical v1 schema."""
+    manifest = load_manifest()
+    manifest["execution_sequence"]["schema"] = "asie.foundation.execution-sequence.v1"
+    manifest["execution_sequence"]["record_effect"] = "PRIORITY_AND_HOLD_ONLY"
+    with pytest.raises(AssertionError, match="sequence_schema"):
+        validate_execution_sequence(manifest)
