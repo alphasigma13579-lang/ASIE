@@ -273,6 +273,45 @@ DEFENSIVE_REGISTRATION = json.loads(r'''{
 }''')
 
 
+# Conditional owner instruction is pinned by reviewed code, never by the manifest.
+# This candidate becomes operative only after a separately approved governance merge.
+DEFENSIVE_START_DECISION = json.loads(r'''{
+    "id": "DECISION-FC20-12-F01A-CONDITIONAL-START-2026-10-03",
+    "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/181#issuecomment-5963212063",
+    "recorded_at": "2026-10-02T23:43:38Z",
+    "effect": "F01A_DEFENSIVE_START_ONLY",
+    "subject": {
+        "baseline_commit_sha": "de88be7710164c2fe9f176759745b986b0400112"
+    },
+    "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL"
+}''')
+DEFENSIVE_START_TARGET = {
+    "kind": "slice", "package_id": "FC20-12", "slice_id": "f01a_defensive_ingress",
+}
+DEFENSIVE_START_RECORD = deepcopy(DEFENSIVE_REGISTRATION)
+DEFENSIVE_START_RECORD.update(
+    state="IN_PROGRESS", execution_authorized=True,
+    subject=deepcopy(DEFENSIVE_START_DECISION["subject"]),
+    start_decision=deepcopy(DEFENSIVE_START_DECISION),
+    events=[{"type": "START", "decision_id": DEFENSIVE_START_DECISION["id"]}],
+)
+
+
+def validate_defensive_start(record: dict, active_target: object) -> None:
+    """Accept only this pinned conditional start; no fixture or metadata grants authority."""
+    assert isinstance(record, dict), "invalid_defensive_record"
+    assert set(record) == set(DEFENSIVE_START_RECORD), "defensive_fields"
+    assert record == DEFENSIVE_START_RECORD, "defensive_record_mismatch"
+    assert record["execution_authorized"] is True, "defensive_start_flag"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "defensive_external_effect"
+    assert active_target == DEFENSIVE_START_TARGET, "defensive_start_slot"
+    # Equality to the pinned record rejects missing/repeated start, delivery,
+    # checkpoint deletion/replay, unreviewed resume, and forged terminal evidence.
+    # A real checkpoint/delivery requires its own reviewed guard transition.
+
+
 def validate_defensive_registration(record: dict, active_target: object) -> None:
     """Accept only the reviewed blocked record; metadata cannot authorize start."""
     assert isinstance(record, dict), "invalid_defensive_record"
@@ -351,7 +390,7 @@ def active_execution_targets(packages: list[dict], held_ids: set[str]) -> list[s
 
 
 def validate_execution_sequence(manifest: dict) -> None:
-    """Validate the owner's ordering/hold record without enabling execution."""
+    """Count only the pinned defensive start while preserving the routing hold."""
     sequence = manifest.get("execution_sequence")
     assert isinstance(sequence, dict), "missing_execution_sequence"
     assert set(sequence) == {
@@ -366,7 +405,7 @@ def validate_execution_sequence(manifest: dict) -> None:
     }, "priority_target_mismatch"
     assert type(sequence["max_active_executions"]) is int
     assert sequence["max_active_executions"] == 1, "execution_limit"
-    assert sequence["active_target"] is None, "execution_entry_not_authorized"
+    assert sequence["active_target"] == DEFENSIVE_START_TARGET, "execution_target_mismatch"
     assert sequence["held_packages"] == HELD_PACKAGES, "checkpoint_hold_mismatch"
 
     packages = manifest["packages"]
@@ -380,12 +419,12 @@ def validate_execution_sequence(manifest: dict) -> None:
     held_ids = {entry["package_id"] for entry in sequence["held_packages"]}
     active = active_execution_targets(packages, held_ids)
     assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
-    # Empty slot is a deliberate stop, not an exemption for one unrecorded execution.
-    assert not active, "unrecorded_active_execution"
+    assert active == ["FC20-12/f01a_defensive_ingress"], "unrecorded_active_execution"
+    validate_defensive_start(defensive_record(manifest), sequence["active_target"])
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Fail closed: a later approved schema/checker change is required to execute."""
+    """Keep routing blocked; admit only the separately pinned defensive start."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -401,7 +440,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
     assert [item.get("id") for item in slices] == [
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
-    validate_defensive_registration(
+    validate_defensive_start(
         slices[1], manifest.get("execution_sequence", {}).get("active_target"),
     )
     record = slices[0]
@@ -591,11 +630,13 @@ def test_routing_registration_is_visible_in_governing_views() -> None:
 
 
 def test_ordering_preserves_progress_but_holds_execution() -> None:
-    """Preserve unfinished package progress while no active execution target is recorded."""
+    """Preserve held progress and count only the pinned F-01A defensive slice."""
     manifest = load_manifest()
     validate_execution_sequence(manifest)
     validate_routing_registration(manifest)
-    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == []
+    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == [
+        "FC20-12/f01a_defensive_ingress",
+    ]
     packages = {package["id"]: package for package in manifest["packages"]}
     assert packages["FC20-05"]["state"] == "IN_PROGRESS"
     assert packages["FC20-12"]["execution_slices"][0]["state"] == "REGISTERED_BLOCKED"
@@ -660,15 +701,15 @@ def test_sequence_counts_package_and_slice_execution_together() -> None:
     packages["FC20-11"]["state"] = "IN_PROGRESS"
     packages["FC20-12"]["execution_slices"][0]["state"] = "IN_PROGRESS"
     assert active_execution_targets(manifest["packages"], {"FC20-05"}) == [
-        "FC20-11", "FC20-12/routing_repair",
+        "FC20-11", "FC20-12/routing_repair", "FC20-12/f01a_defensive_ingress",
     ]
     with pytest.raises(AssertionError, match="multiple_active_executions"):
         validate_execution_sequence(manifest)
 
 
 @pytest.mark.parametrize("claim", ["package", "routing_slice", "held_package_slice"])
-def test_empty_slot_denies_even_one_unrecorded_execution(claim: str) -> None:
-    """Reject unrecorded execution, including slices inside a held package."""
+def test_pinned_slot_denies_any_additional_execution(claim: str) -> None:
+    """Reject additional execution, including slices inside a held package."""
     manifest = load_manifest()
     packages = {package["id"]: package for package in manifest["packages"]}
     if claim == "package":
@@ -679,7 +720,7 @@ def test_empty_slot_denies_even_one_unrecorded_execution(claim: str) -> None:
         packages["FC20-05"]["execution_slices"] = [
             {"id": "hidden_work", "state": "IN_PROGRESS"},
         ]
-    with pytest.raises(AssertionError, match="unrecorded_active_execution"):
+    with pytest.raises(AssertionError, match="multiple_active_executions"):
         validate_execution_sequence(manifest)
     # Full registration also rejects the unauthorized state/owner.
     with pytest.raises(AssertionError):
@@ -835,12 +876,12 @@ def defensive_record(manifest: dict) -> dict:
     return next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1]
 
 
-def test_defensive_registration_is_blocked_and_retains_routing() -> None:
-    """Verify the canonical record remains blocked with no active execution slot."""
+def test_defensive_start_is_pinned_and_retains_blocked_routing() -> None:
+    """Admit the conditional F-01A start while routing and release remain blocked."""
     manifest = load_manifest()
     validate_routing_registration(manifest)
-    assert defensive_record(manifest) == DEFENSIVE_REGISTRATION
-    assert manifest["execution_sequence"]["active_target"] is None
+    assert defensive_record(manifest) == DEFENSIVE_START_RECORD
+    assert manifest["execution_sequence"]["active_target"] == DEFENSIVE_START_TARGET
     assert manifest["execution_sequence"]["schema"] == "asie.foundation.execution-sequence.v2"
     assert manifest["execution_sequence"]["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY"
 
@@ -848,13 +889,13 @@ def test_defensive_registration_is_blocked_and_retains_routing() -> None:
 @pytest.mark.parametrize("path,value", DEFENSIVE_MUTATIONS)
 def test_defensive_registration_rejects_forged_claims(path: list, value: object) -> None:
     """Reject each unauthorized mutation of the pinned defensive registration."""
-    manifest = load_manifest()
-    target = defensive_record(manifest)
+    record = deepcopy(DEFENSIVE_REGISTRATION)
+    target = record
     for key in path[:-1]:
         target = target[key]
     target[path[-1]] = value
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_defensive_registration(record, None)
 
 
 @pytest.mark.parametrize("field", list(DEFENSIVE_REGISTRATION))
@@ -888,12 +929,10 @@ def test_registration_rejects_missing_duplicate_and_unknown_slices(mutation: str
 
 
 def test_defensive_slot_cannot_be_opened_by_a_record_claim() -> None:
-    """Ensure a claimed active slot cannot authorize the blocked defensive slice."""
+    """Reject filling the slot while replaying the old blocked registration."""
     manifest = load_manifest()
-    manifest["execution_sequence"]["active_target"] = {
-        "kind": "slice", "package_id": "FC20-12", "slice_id": "f01a_defensive_ingress",
-    }
-    with pytest.raises(AssertionError, match="execution_entry_not_authorized"):
+    next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(DEFENSIVE_REGISTRATION)
+    with pytest.raises(AssertionError, match="unrecorded_active_execution"):
         validate_execution_sequence(manifest)
     with pytest.raises(AssertionError):
         validate_routing_registration(manifest)
@@ -902,12 +941,13 @@ def test_defensive_slot_cannot_be_opened_by_a_record_claim() -> None:
 def test_defensive_activity_is_counted_even_under_a_held_parent() -> None:
     """Count held-parent slice activity and reject unrecorded or concurrent execution."""
     manifest = load_manifest()
-    defensive_record(manifest)["state"] = "IN_PROGRESS"
+    manifest["execution_sequence"]["active_target"] = None
     assert active_execution_targets(manifest["packages"], {"FC20-05", "FC20-12"}) == [
         "FC20-12/f01a_defensive_ingress",
     ]
-    with pytest.raises(AssertionError, match="unrecorded_active_execution"):
+    with pytest.raises(AssertionError, match="execution_target_mismatch"):
         validate_execution_sequence(manifest)
+    manifest["execution_sequence"]["active_target"] = deepcopy(DEFENSIVE_START_TARGET)
     next(p for p in manifest["packages"] if p["id"] == "FC20-11")["state"] = "IN_PROGRESS"
     with pytest.raises(AssertionError, match="multiple_active_executions"):
         validate_execution_sequence(manifest)
@@ -1074,3 +1114,97 @@ def test_current_sequence_rejects_silent_v1_downgrade() -> None:
     manifest["execution_sequence"]["record_effect"] = "PRIORITY_AND_HOLD_ONLY"
     with pytest.raises(AssertionError, match="sequence_schema"):
         validate_execution_sequence(manifest)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("state",), "REGISTERED_BLOCKED"),
+    (("state",), "DELIVERED"),
+    (("execution_authorized",), False),
+    (("execution_authorized",), 1),
+    (("start_decision",), None),
+    (("start_decision", "id"), "ISOLATED_TEST_START_NOT_OWNER_APPROVAL"),
+    (("start_decision", "record_url"), "https://example.invalid/forged"),
+    (("start_decision", "recorded_at"), "2026-01-01T00:00:00Z"),
+    (("start_decision", "effect"), "ROUTING_START"),
+    (("start_decision", "subject", "baseline_commit_sha"), "0" * 40),
+    (("start_decision", "condition"), "AUTOMATIC_ON_PUSH"),
+    (("subject", "baseline_commit_sha"), DEFENSIVE_REGISTRATION["subject"]["baseline_commit_sha"]),
+    (("scope_document", "blob_sha"), "0" * 40),
+    (("allowed_paths",), ["backend/*"]),
+    (("allowed_paths",), ["backend/snapshot_assembly.py"]),
+    (("entry_requirements",), []),
+    (("environment",), "LIVE"),
+    (("events",), []),
+    (("events",), [{"type": "START", "decision_id": "forged"}]),
+    (("delivery_evidence",), {"status": "PASS"}),
+    (("closure_effect",), "COMPLETE"),
+    (("network_authorized",), True),
+    (("network_authorized",), 0),
+    (("provider_activation_authorized",), True),
+    (("deployment_authorized",), True),
+    (("unknown_override",), True),
+])
+def test_pinned_start_rejects_unreviewed_authority(path: tuple, value: object) -> None:
+    """Reject tampered decisions, scope, history, types, and external authority."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("slot", [
+    None, False, {},
+    {"kind": "slice", "package_id": "FC20-12", "slice_id": "routing_repair"},
+    {"kind": "package", "package_id": "FC20-05"},
+])
+def test_pinned_start_requires_its_exact_counted_slot(slot: object) -> None:
+    """An active slice cannot hide or redirect its counted execution slot."""
+    manifest = load_manifest()
+    manifest["execution_sequence"]["active_target"] = slot
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("event", [
+    {"type": "START", "decision_id": DEFENSIVE_START_DECISION["id"]},
+    {"type": "DELIVERED", "commit_sha": "1" * 40},
+    {"type": "STOP_CHECKPOINT", "reason": "unreviewed"},
+])
+def test_pinned_start_does_not_accept_unreviewed_lifecycle_events(event: dict) -> None:
+    """A separate reviewed transition must preserve a real checkpoint or delivery."""
+    manifest = load_manifest()
+    defensive_record(manifest)["events"].append(event)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+def test_historical_blocked_registration_cannot_replace_current_start() -> None:
+    """Keep the historical oracle testable but reject erasing the current start."""
+    validate_defensive_registration(deepcopy(DEFENSIVE_REGISTRATION), None)
+    manifest = load_manifest()
+    next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(DEFENSIVE_REGISTRATION)
+    manifest["execution_sequence"]["active_target"] = None
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_conditional_start_is_visible_in_governing_views() -> None:
+    """Bind human projections to the pinned decision, subject, and merge condition."""
+    package_root = Path(__file__).resolve().parents[1]
+    for relative_path in (
+        "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
+        "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md",
+        "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md",
+        "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md",
+    ):
+        content = (package_root / relative_path).read_text(encoding="utf-8")
+        for required in (
+            DEFENSIVE_START_DECISION["record_url"],
+            DEFENSIVE_START_DECISION["subject"]["baseline_commit_sha"],
+            "F01A_DEFENSIVE_START_ONLY", "IN_PROGRESS",
+            "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+        ):
+            assert required in content

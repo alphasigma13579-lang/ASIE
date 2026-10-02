@@ -165,3 +165,19 @@ No additional top-level remediation program is created while FOUNDATION-COMPLETE
 يسجل المرشح f01a_defensive_ingress داخل FC20-12 بحالة **REGISTERED_BLOCKED**، execution_authorized=false، وstart_decision=null. execution_sequence v2 أثرها **BOUNDED_DEFENSIVE_ENABLING_ONLY**؛ active_target = null. لا تغيّر هذه التسمية سلطة runtime أو التشغيل. يبقى routing_repair محجوبًا بكامل سجل v2 والضوابط التسعة PENDING، واعتماديات إغلاق FC20-12 وحالات وأدلة جميع الحزم محفوظة؛ FC20-05 held وcheckpoint #166/#167 محفوظان.
 
 الحارس الحالي يرفض البدء والتسليم الفعليين من ادعاء JSON. اختبارات lifecycle المعزولة تميز القرار/النطاق/الموضع/التاريخ وتثبت منع نسخ fixture إلى السجل الحقيقي؛ لا تختبر صلاحية قرار مالك لم يصدر ولا تقدم T-01–T-09 كدليل إصلاح. الانتقال التشغيلي التالي يحتاج قرار بدء محدد وتثبيته بفرق حاكم مراجع قبل كود التطبيق؛ لا إعادة قبول نطاق F-01A من الصفر. لا PASS للتوجيه أو إغلاق F-01/08/09/11 أو تفعيل/نشر/ترحيل/دعوات من التسجيل أو CI.
+
+<!-- F01A-CONDITIONAL-START-2026-10-03 -->
+
+### انتقال بدء F-01A الدفاعي المشروط — مرشح 2026-10-03
+
+دُمج التسجيل #181 عند `de88be7710164c2fe9f176759745b986b0400112`. فقرات التسجيل/البدء المحجوب أعلاه تصف مراحلها التاريخية؛ مصدر الحالة الحالي هو /FOUNDATION-COMPLETE-20.json، لا هذه القراءة المشتقة.
+
+[توجيه المالك](https://github.com/alphasigma13579-lang/ASIE/pull/181#issuecomment-5963212063) بعد [المقترح](https://github.com/alphasigma13579-lang/ASIE/pull/181#issuecomment-5963144564) يجيز إعداد هذا الانتقال فقط. أثره المرشح **F01A_DEFENSIVE_START_ONLY**؛ شرط النفاذ **REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL**. لا يبدأ إصلاح التطبيق قبل مراجعات وفحوص الرأس النهائي وقرار دمج مستقل ودمج الانتقال؛ لا يكفي إنشاء الفرع أو CI أو هذا التعليق.
+
+يسجل المرشح f01a_defensive_ingress وحده IN_PROGRESS/true، بقرار مثبت وحدث START، وactive_target={kind: slice, package_id: FC20-12, slice_id: f01a_defensive_ingress}. موضوع البدء هو المرجع الموجود `de88be7710164c2fe9f176759745b986b0400112`؛ baseline التسجيل السابق 8fb47f3668133093197844816eb2a644793e5f20 محفوظ في مرجعه التاريخي. لا self-hash ولا قبول قرار من manifest؛ oracle الحارس يثبت هذا القرار والنطاق نفسه. عد التنفيذ الفعلي واحد؛ FC20-05 held بلا تغيير تقدمه أو checkpoint #166/#167.
+
+routing_repair يظل REGISTERED_BLOCKED/false، وضوابطه التسعة PENDING وسجله دون تغيير. الحزم الست عشرة واعتمادياتها وأدلتها والملفات المجمدة محفوظة. DARK_OFFLINE؛ release BLOCK؛ network/provider/deployment=false؛ لا Runtime أو Finance أو Snapshot أو Decision Council أو ترحيل أو دعوات من هذا الانتقال.
+
+نموذج lifecycle يبقى اختبارًا معزولًا ولا يجيز قرارًا أو تسليمًا. الحارس يقبل START المثبت فقط؛ checkpoint/سحب القرار/التسليم الحقيقي يحتاج فرقًا حاكمًا مراجعًا يحفظ التاريخ والموضع إلى الإغلاق، ولا يغيره هذا الطلب. لا استئناف تلقائي أو إفراغ موضع لإخفاء العمل. أدلة T-01–T-09 غير منفذة هنا؛ الشريحة التالية إصلاح التطبيق المحصور بعد نفاذ الانتقال، لا F-01B أو فتح التوجيه أو Hostinger. خطة بيتا المالك والإدارة المستقلة محفوظة.
+
+التوقف الآمن: PR السجل والحارس للمراجعة دون دمج، وقبل كود التطبيق. نصوص المراحل السابقة محفوظة كتاريخ، لا تستخدم لنقل اعتماد رأس قديم أو إسقاط بوابة.

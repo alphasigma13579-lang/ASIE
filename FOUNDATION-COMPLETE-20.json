@@ -24,7 +24,11 @@
       "slice_id": "routing_repair"
     },
     "max_active_executions": 1,
-    "active_target": null,
+    "active_target": {
+      "kind": "slice",
+      "package_id": "FC20-12",
+      "slice_id": "f01a_defensive_ingress"
+    },
     "held_packages": [
       {
         "package_id": "FC20-05",
@@ -756,9 +760,9 @@
         {
           "schema": "asie.foundation.defensive-enabling.v1",
           "id": "f01a_defensive_ingress",
-          "state": "REGISTERED_BLOCKED",
+          "state": "IN_PROGRESS",
           "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
-          "execution_authorized": false,
+          "execution_authorized": true,
           "prerequisite_for": {
             "package_id": "FC20-12",
             "slice_id": "routing_repair"
@@ -782,9 +786,18 @@
             "proposal_commit_sha": "c000c11f5d9952090c4bfb6622456fb550106bdb",
             "proposal_blob_sha": "e41b6e612b29e22079fbf231b299ad4aab5a9b4b"
           },
-          "start_decision": null,
+          "start_decision": {
+            "id": "DECISION-FC20-12-F01A-CONDITIONAL-START-2026-10-03",
+            "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/181#issuecomment-5963212063",
+            "recorded_at": "2026-10-02T23:43:38Z",
+            "effect": "F01A_DEFENSIVE_START_ONLY",
+            "subject": {
+              "baseline_commit_sha": "de88be7710164c2fe9f176759745b986b0400112"
+            },
+            "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL"
+          },
           "subject": {
-            "baseline_commit_sha": "8fb47f3668133093197844816eb2a644793e5f20"
+            "baseline_commit_sha": "de88be7710164c2fe9f176759745b986b0400112"
           },
           "allowed_paths": [
             "backend/asie_local_api.py",
@@ -804,7 +817,12 @@
             "separate_exact_head_start_decision"
           ],
           "delivery_evidence": null,
-          "events": [],
+          "events": [
+            {
+              "type": "START",
+              "decision_id": "DECISION-FC20-12-F01A-CONDITIONAL-START-2026-10-03"
+            }
+          ],
           "closure_effect": "NONE",
           "network_authorized": false,
           "provider_activation_authorized": false,
