@@ -314,7 +314,10 @@ def validate_defensive_transition_fixture(
         assert record["execution_authorized"] is True, "fixture_active_flag"
         assert slot == target, "fixture_active_slot"
         assert record["delivery_evidence"] is None, "fixture_premature_delivery"
-        assert record["events"][-1]["type"] in {"START", "STOP_CHECKPOINT"}, "fixture_active_history"
+        assert all(
+            isinstance(event, dict) and event.get("type") == "STOP_CHECKPOINT"
+            for index, event in enumerate(record["events"]) if index > 0
+        ), "fixture_active_history"
     else:
         assert record["state"] == "DELIVERED", "fixture_state"
         assert record["execution_authorized"] is False and slot is None, "fixture_release_slot"
@@ -322,6 +325,11 @@ def validate_defensive_transition_fixture(
         assert re.fullmatch(r"[0-9a-f]{40}", reviewed_delivery["commit_sha"]), "fixture_delivery_sha"
         assert reviewed_delivery["test_ids"] == [f"T-{n:02d}" for n in range(1, 10)], "fixture_tests"
         assert reviewed_delivery["review_url"] and reviewed_delivery["owner_decision_url"], "fixture_review"
+        assert all(
+            isinstance(event, dict) and event.get("type") == "STOP_CHECKPOINT"
+            for index, event in enumerate(record["events"])
+            if 0 < index < len(record["events"]) - 1
+        ), "fixture_delivery_history"
         assert record["events"][-1] == {
             "type": "DELIVERED", "commit_sha": reviewed_delivery["commit_sha"],
         }, "fixture_delivery_history"
@@ -1024,6 +1032,39 @@ def test_stop_checkpoint_keeps_counted_slot_until_reviewed_delivery() -> None:
                                                  reviewed_delivery=delivery)
     with pytest.raises(AssertionError):
         validate_defensive_registration(record, None)
+
+
+
+@pytest.mark.parametrize("state,event_types", [
+    ("IN_PROGRESS", ["DELIVERED", "STOP_CHECKPOINT"]),
+    ("IN_PROGRESS", ["START", "STOP_CHECKPOINT"]),
+    ("DELIVERED", ["DELIVERED", "STOP_CHECKPOINT", "DELIVERED"]),
+    ("DELIVERED", ["DELIVERED", "DELIVERED"]),
+])
+def test_lifecycle_history_rejects_activity_after_delivery_and_repeated_start(
+    state: str, event_types: list[str],
+) -> None:
+    """Reject resumed activity or repeated terminal events under the original decision."""
+    record, slot, decision = lifecycle_fixture()
+    delivery = {
+        "commit_sha": "1" * 40, "test_ids": [f"T-{n:02d}" for n in range(1, 10)],
+        "review_url": "https://example.invalid/isolated-test-review",
+        "owner_decision_url": "https://example.invalid/isolated-test-delivery",
+    }
+    for event_type in event_types:
+        if event_type == "START":
+            record["events"].append(deepcopy(record["events"][0]))
+        elif event_type == "DELIVERED":
+            record["events"].append({"type": event_type, "commit_sha": delivery["commit_sha"]})
+        else:
+            record["events"].append({"type": event_type, "reason": "isolated-test-checkpoint"})
+    if state == "DELIVERED":
+        record.update(state=state, execution_authorized=False, delivery_evidence=deepcopy(delivery))
+        slot = None
+    with pytest.raises(AssertionError, match="fixture_(active|delivery)_history"):
+        validate_defensive_transition_fixture(
+            record, slot, reviewed_decision=decision, reviewed_delivery=delivery,
+        )
 
 
 def test_current_sequence_rejects_silent_v1_downgrade() -> None:
