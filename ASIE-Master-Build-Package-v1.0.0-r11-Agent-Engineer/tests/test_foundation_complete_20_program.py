@@ -193,7 +193,7 @@ ELIGIBILITY_DESIGN_DECISION = {
 
 
 # Program ordering is repository governance, never a runtime permission or lock.
-# Current v2 registers defensive enabling only; no start decision is admitted.
+# Current v2 admits only the pinned conditional F-01A start; all other starts remain blocked.
 ORDERING_DECISION = json.loads(r'''{
     "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
     "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
