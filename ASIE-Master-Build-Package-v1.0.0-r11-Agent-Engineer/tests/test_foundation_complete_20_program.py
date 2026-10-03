@@ -1196,20 +1196,61 @@ def test_historical_blocked_registration_cannot_replace_current_start() -> None:
         validate_routing_registration(manifest)
 
 
+CONDITIONAL_START_MARKER = "<!-- F01A-CONDITIONAL-START-2026-10-03 -->"
+CONDITIONAL_START_HEADING = "### انتقال بدء F-01A الدفاعي المشروط — مرشح 2026-10-03"
+CONDITIONAL_START_STATE = "f01a_defensive_ingress وحده IN_PROGRESS/true"
+GOVERNING_VIEW_PATHS = (
+    "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
+    "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md",
+    "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md",
+    "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md",
+)
+
+
+def validate_conditional_start_governing_view(content: str) -> None:
+    """Require the pinned state and decision inside the unique F-01A section."""
+    assert content.count(CONDITIONAL_START_MARKER) == 1, "conditional_start_section_marker"
+    section = content.split(CONDITIONAL_START_MARKER, 1)[1].lstrip("\n")
+    heading, _, body = section.partition("\n")
+    assert heading == CONDITIONAL_START_HEADING, "conditional_start_section_heading"
+    section = re.split(r"(?m)^(?:#{1,3}\s|<!-- )", body, maxsplit=1)[0]
+    for required in (
+        DEFENSIVE_START_DECISION["record_url"],
+        DEFENSIVE_START_DECISION["subject"]["baseline_commit_sha"],
+        "F01A_DEFENSIVE_START_ONLY",
+        CONDITIONAL_START_STATE,
+        "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+    ):
+        assert required in section, "conditional_start_section_missing:" + required
+
+
 def test_conditional_start_is_visible_in_governing_views() -> None:
     """Bind human projections to the pinned decision, subject, and merge condition."""
     package_root = Path(__file__).resolve().parents[1]
-    for relative_path in (
-        "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md",
-        "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md",
-        "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md",
-        "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md",
-    ):
+    for relative_path in GOVERNING_VIEW_PATHS:
         content = (package_root / relative_path).read_text(encoding="utf-8")
-        for required in (
-            DEFENSIVE_START_DECISION["record_url"],
-            DEFENSIVE_START_DECISION["subject"]["baseline_commit_sha"],
-            "F01A_DEFENSIVE_START_ONLY", "IN_PROGRESS",
-            "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
-        ):
-            assert required in content
+        validate_conditional_start_governing_view(content)
+
+
+@pytest.mark.parametrize("relative_path", GOVERNING_VIEW_PATHS)
+@pytest.mark.parametrize("mutation", (
+    "missing_marker", "duplicate_marker", "missing_f01a_state",
+    "state_before_section", "state_in_next_section",
+))
+def test_conditional_start_view_rejects_unscoped_state(relative_path: str, mutation: str) -> None:
+    """Reject missing or misplaced F-01A state despite unrelated IN_PROGRESS text."""
+    package_root = Path(__file__).resolve().parents[1]
+    content = (package_root / relative_path).read_text(encoding="utf-8")
+    if mutation == "missing_marker":
+        content = content.replace(CONDITIONAL_START_MARKER, "")
+    elif mutation == "duplicate_marker":
+        content += "\n" + CONDITIONAL_START_MARKER + "\n"
+    else:
+        content = content.replace(CONDITIONAL_START_STATE, "f01a_defensive_ingress وحده REGISTERED_BLOCKED/false")
+        if mutation == "state_before_section":
+            content = CONDITIONAL_START_STATE + "\n" + content
+        elif mutation == "state_in_next_section":
+            content += "\n### Unrelated section\n" + CONDITIONAL_START_STATE + "\n"
+    assert "IN_PROGRESS" in content, "fixture_must_retain_unrelated_progress"
+    with pytest.raises(AssertionError, match="conditional_start_section"):
+        validate_conditional_start_governing_view(content)
