@@ -463,7 +463,7 @@ def validate_execution_sequence(manifest: dict) -> None:
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Keep routing blocked; admit only the separately pinned defensive start."""
+    """Keep routing blocked; admit only STOP, never replay the historical START."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -1339,6 +1339,7 @@ def test_checkpoint_rejects_replay_resume_and_scope_expansion(mutation: str) -> 
 
 
 def test_checkpoint_keeps_single_slot_and_original_start_scope() -> None:
+    """Prove STOP retains the sole slot, original scope, and complete START history."""
     manifest = load_manifest()
     record = defensive_record(manifest)
     assert record["execution_authorized"] is False
@@ -1366,6 +1367,7 @@ STOP_CHECKPOINT_VIEW_TOKENS = (
 
 
 def validate_stop_checkpoint_governing_view(content: str) -> None:
+    """Require checkpoint evidence inside one uniquely bounded projection section."""
     assert content.count(STOP_CHECKPOINT_MARKER) == 1, "stop_checkpoint_section_marker"
     section = content.split(STOP_CHECKPOINT_MARKER, 1)[1].lstrip("\n")
     heading, _, body = section.partition("\n")
@@ -1377,6 +1379,7 @@ def validate_stop_checkpoint_governing_view(content: str) -> None:
 
 @pytest.mark.parametrize("relative_path", GOVERNING_VIEW_PATHS)
 def test_stop_checkpoint_is_visible_in_governing_views(relative_path: str) -> None:
+    """Bind each derived view to the pinned stopped state and resume restriction."""
     content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
     validate_stop_checkpoint_governing_view(content)
 
@@ -1384,6 +1387,7 @@ def test_stop_checkpoint_is_visible_in_governing_views(relative_path: str) -> No
 @pytest.mark.parametrize("relative_path", GOVERNING_VIEW_PATHS)
 @pytest.mark.parametrize("token", STOP_CHECKPOINT_VIEW_TOKENS)
 def test_stop_checkpoint_view_rejects_missing_or_unscoped_evidence(relative_path: str, token: str) -> None:
+    """Reject moving required evidence outside the checkpoint's bounded section."""
     content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
     before, section = content.split(STOP_CHECKPOINT_MARKER, 1)
     # The removed evidence appears outside the bounded section and still cannot pass.
@@ -1394,6 +1398,7 @@ def test_stop_checkpoint_view_rejects_missing_or_unscoped_evidence(relative_path
 
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "wrong_heading"))
 def test_stop_checkpoint_view_rejects_ambiguous_section(mutation: str) -> None:
+    """Reject absent, duplicate, or incorrectly headed checkpoint sections."""
     content = (Path(__file__).resolve().parents[1] / GOVERNING_VIEW_PATHS[0]).read_text(encoding="utf-8")
     if mutation == "missing_marker":
         content = content.replace(STOP_CHECKPOINT_MARKER, "")
@@ -1445,6 +1450,7 @@ def test_pinned_checkpoint_rejects_unreviewed_authority(path: tuple, value: obje
 
 
 def test_checkpoint_evidence_bytes_match_pinned_git_blob() -> None:
+    """Bind the checkpoint evidence file to its reviewed Git blob."""
     package_root = Path(__file__).resolve().parents[1]
     evidence_bytes = (package_root / "docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md").read_bytes().replace(b"\r\n", b"\n")
     blob = hashlib.sha1(b"blob " + str(len(evidence_bytes)).encode() + b"\0" + evidence_bytes).hexdigest()
