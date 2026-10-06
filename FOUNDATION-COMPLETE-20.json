@@ -806,7 +806,8 @@
             "tests/test_repository_intelligence.py",
             "tests/test_intelligence_prerun_service.py",
             "tests/test_intelligence_context_ingress_api.py",
-            "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md"
+            "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+            "tests/test_live_location_api.py"
           ],
           "environment": "DARK_OFFLINE",
           "entry_requirements": [
@@ -834,6 +835,31 @@
                 "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
               },
               "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+            },
+            {
+              "type": "SCOPE_EXTENSION",
+              "recorded_at": "2026-10-06T19:41:02Z",
+              "baseline_commit_sha": "5daa0b15b8b120575ea627429b754bd655ffd346",
+              "added_paths": [
+                "tests/test_live_location_api.py"
+              ],
+              "scope_addendum": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+                "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+              },
+              "owner_scope_decision": {
+                "id": "DECISION-FC20-12-F01A-TEST-FIXTURE-SCOPE-DESIGN-2026-10-06",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/185#issuecomment-6023988634",
+                "recorded_at": "2026-10-06T19:34:56Z",
+                "subject": {
+                  "baseline_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a"
+                },
+                "effect": "SCOPE_DESIGN_APPROVED_NO_MERGE_NO_RESUME",
+                "proposal_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a",
+                "proposal_blob_sha": "eeaf6354a9fc8b790812cb876cb95d4574bb562b"
+              },
+              "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
             }
           ],
           "closure_effect": "NONE",

@@ -193,7 +193,7 @@ ELIGIBILITY_DESIGN_DECISION = {
 
 
 # Program ordering is repository governance, never a runtime permission or lock.
-# Current v2 admits only the pinned F-01A STOP_CHECKPOINT and retains its counted slot.
+# Current v2 admits the pinned stopped scope extension and retains its counted slot.
 # The conditional START is historical; replay and all other starts remain blocked.
 ORDERING_DECISION = json.loads(r'''{
     "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
@@ -317,11 +317,47 @@ DEFENSIVE_STOP_RECORD.update(execution_authorized=False)
 DEFENSIVE_STOP_RECORD["events"].append(deepcopy(DEFENSIVE_STOP_EVENT))
 
 
+# Reviewed scope delta is pinned separately from the input manifest.
+# STOP, original scope/decisions, and the isolated lifecycle fixture stay unchanged.
+DEFENSIVE_SCOPE_EXTENSION_EVENT = json.loads(r'''{
+  "type": "SCOPE_EXTENSION",
+  "recorded_at": "2026-10-06T19:41:02Z",
+  "baseline_commit_sha": "5daa0b15b8b120575ea627429b754bd655ffd346",
+  "added_paths": [
+    "tests/test_live_location_api.py"
+  ],
+  "scope_addendum": {
+    "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+    "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+    "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+  },
+  "owner_scope_decision": {
+    "id": "DECISION-FC20-12-F01A-TEST-FIXTURE-SCOPE-DESIGN-2026-10-06",
+    "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/185#issuecomment-6023988634",
+    "recorded_at": "2026-10-06T19:34:56Z",
+    "subject": {
+      "baseline_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a"
+    },
+    "effect": "SCOPE_DESIGN_APPROVED_NO_MERGE_NO_RESUME",
+    "proposal_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a",
+    "proposal_blob_sha": "eeaf6354a9fc8b790812cb876cb95d4574bb562b"
+  },
+  "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+}''')
+DEFENSIVE_SCOPE_EXTENSION_RECORD = deepcopy(DEFENSIVE_STOP_RECORD)
+DEFENSIVE_SCOPE_EXTENSION_RECORD["allowed_paths"].extend(
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["added_paths"],
+)
+DEFENSIVE_SCOPE_EXTENSION_RECORD["events"].append(
+    deepcopy(DEFENSIVE_SCOPE_EXTENSION_EVENT),
+)
+
+
 def validate_defensive_checkpoint(record: dict, active_target: object) -> None:
-    """Admit only the pinned stop; retain its counted slot without resume authority."""
+    """Admit only the pinned stopped scope delta; never resume from metadata."""
     assert isinstance(record, dict), "invalid_defensive_record"
-    assert set(record) == set(DEFENSIVE_STOP_RECORD), "defensive_fields"
-    assert record == DEFENSIVE_STOP_RECORD, "defensive_record_mismatch"
+    assert set(record) == set(DEFENSIVE_SCOPE_EXTENSION_RECORD), "defensive_fields"
+    assert record == DEFENSIVE_SCOPE_EXTENSION_RECORD, "defensive_record_mismatch"
     assert record["execution_authorized"] is False, "defensive_stop_flag"
     assert all(record[key] is False for key in (
         "network_authorized", "provider_activation_authorized", "deployment_authorized",
@@ -464,7 +500,7 @@ def validate_execution_sequence(manifest: dict) -> None:
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Keep routing blocked; admit only STOP, never replay the historical START."""
+    """Keep routing blocked; scope registration never replays START or resumes."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -919,7 +955,7 @@ def test_defensive_checkpoint_is_pinned_and_retains_blocked_routing() -> None:
     """Admit the pinned stop while retaining history, scope, and the counted slot."""
     manifest = load_manifest()
     validate_routing_registration(manifest)
-    assert defensive_record(manifest) == DEFENSIVE_STOP_RECORD
+    assert defensive_record(manifest) == DEFENSIVE_SCOPE_EXTENSION_RECORD
     assert manifest["execution_sequence"]["active_target"] == DEFENSIVE_START_TARGET
     assert manifest["execution_sequence"]["schema"] == "asie.foundation.execution-sequence.v2"
     assert manifest["execution_sequence"]["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY"
@@ -1313,23 +1349,23 @@ def test_checkpoint_rejects_replay_resume_and_scope_expansion(mutation: str) -> 
     elif mutation == "integer_flag":
         record["execution_authorized"] = 0
     elif mutation == "erase_stop":
-        record["events"].pop()
+        record["events"].pop(1)
     elif mutation == "erase_start":
         record["events"].pop(0)
     elif mutation == "reverse_history":
         record["events"].reverse()
     elif mutation == "duplicate_stop":
-        record["events"].append(deepcopy(record["events"][-1]))
+        record["events"].append(deepcopy(record["events"][1]))
     elif mutation == "wrong_head":
-        record["events"][-1]["baseline_commit_sha"] = "0" * 40
+        record["events"][1]["baseline_commit_sha"] = "0" * 40
     elif mutation == "wrong_evidence_blob":
-        record["events"][-1]["evidence"]["blob_sha"] = "0" * 40
+        record["events"][1]["evidence"]["blob_sha"] = "0" * 40
     elif mutation == "wrong_path":
-        record["events"][-1]["requested_path"] = "backend/*"
+        record["events"][1]["requested_path"] = "backend/*"
     elif mutation == "wrong_time":
-        record["events"][-1]["recorded_at"] = "2026-01-01T00:00:00Z"
+        record["events"][1]["recorded_at"] = "2026-01-01T00:00:00Z"
     elif mutation == "missing_resume_requirement":
-        record["events"][-1].pop("resume_requirement")
+        record["events"][1].pop("resume_requirement")
     elif mutation == "scope_expansion":
         record["allowed_paths"].append(DEFENSIVE_STOP_EVENT["requested_path"])
     elif mutation == "terminal":
@@ -1345,10 +1381,14 @@ def test_checkpoint_keeps_single_slot_and_original_start_scope() -> None:
     record = defensive_record(manifest)
     assert record["execution_authorized"] is False
     assert record["state"] == "IN_PROGRESS"
-    assert record["events"] == [*DEFENSIVE_START_RECORD["events"], DEFENSIVE_STOP_EVENT]
-    assert record["allowed_paths"] == DEFENSIVE_START_RECORD["allowed_paths"]
-    assert DEFENSIVE_STOP_EVENT["requested_path"] not in record["allowed_paths"]
+    assert record["events"][:2] == [*DEFENSIVE_START_RECORD["events"], DEFENSIVE_STOP_EVENT]
+    assert record["events"][2:] == [DEFENSIVE_SCOPE_EXTENSION_EVENT]
+    assert record["allowed_paths"][:-1] == DEFENSIVE_START_RECORD["allowed_paths"]
+    assert record["allowed_paths"][-1:] == DEFENSIVE_SCOPE_EXTENSION_EVENT["added_paths"]
     restored = deepcopy(record)
+    restored["events"].pop()
+    restored["allowed_paths"].pop()
+    assert restored == DEFENSIVE_STOP_RECORD
     restored["execution_authorized"] = True
     restored["events"].pop()
     assert restored == DEFENSIVE_START_RECORD
@@ -1456,3 +1496,263 @@ def test_checkpoint_evidence_bytes_match_pinned_git_blob() -> None:
     evidence_bytes = (package_root / "docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md").read_bytes().replace(b"\r\n", b"\n")
     blob = hashlib.sha1(b"blob " + str(len(evidence_bytes)).encode() + b"\0" + evidence_bytes).hexdigest()
     assert blob == DEFENSIVE_STOP_EVENT["evidence"]["blob_sha"]
+
+
+# SG-01..SG-07: reviewed registration only; these do not admit application execution.
+SCOPE_EXTENSION_MARKER = "<!-- F01A-SCOPE-EXTENSION-2026-10-06 -->"
+SCOPE_EXTENSION_HEADING = "### تسجيل توسعة F-01A دون استئناف — مرشح 2026-10-06"
+SCOPE_EXTENSION_VIEW_PATHS = (
+    *GOVERNING_VIEW_PATHS,
+    "docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-REGISTRATION-PROPOSAL-2026-10-06.md",
+)
+SCOPE_EXTENSION_VIEW_TOKENS = (
+    "REGISTRATION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL",
+    "IN_PROGRESS/false", "execution_authorized=false",
+    "active_target محفوظ ومحسوب", "ثمانية مسارات",
+    "SCOPE_EXTENSION", "SCOPE_EXTENSION_ONLY_NO_RESUME",
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["recorded_at"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["baseline_commit_sha"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["added_paths"][0],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["scope_addendum"]["url"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["scope_addendum"]["blob_sha"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["id"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["record_url"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["recorded_at"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["subject"]["baseline_commit_sha"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["effect"],
+    DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["proposal_blob_sha"],
+    DEFENSIVE_STOP_EVENT["resume_requirement"],
+    "delivery_evidence=null", "closure_effect=NONE", "DARK_OFFLINE",
+    "network/provider/deployment=false", "REGISTERED_BLOCKED/false", "PENDING",
+)
+
+
+def validate_scope_extension_governing_view(content: str) -> None:
+    """Require scope and non-resumption evidence inside one bounded current section."""
+    assert content.count(SCOPE_EXTENSION_MARKER) == 1, "scope_extension_section_marker"
+    section = content.split(SCOPE_EXTENSION_MARKER, 1)[1].lstrip("\n")
+    heading, _, body = section.partition("\n")
+    assert heading == SCOPE_EXTENSION_HEADING, "scope_extension_section_heading"
+    section = re.split(r"(?m)^(?:#{1,3}\s|<!-- )", body, maxsplit=1)[0]
+    for token in SCOPE_EXTENSION_VIEW_TOKENS:
+        assert token in section, "scope_extension_section_missing:" + token
+    assert not re.search(
+        r"execution_authorized\s*=\s*(?:true|1)\b|IN_PROGRESS/true",
+        section, re.IGNORECASE,
+    ), "scope_extension_view_resume_claim"
+
+
+def validate_scope_extension_baseline(manifest: dict) -> None:
+    """SG-05: reversing ONLY the two approved additions restores the entire baseline."""
+    restored = deepcopy(manifest)
+    record = defensive_record(restored)
+    assert record["events"].pop() == DEFENSIVE_SCOPE_EXTENSION_EVENT
+    assert record["allowed_paths"].pop() == "tests/test_live_location_api.py"
+    assert record == DEFENSIVE_STOP_RECORD
+    baseline_bytes = (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    blob = hashlib.sha1(b"blob " + str(len(baseline_bytes)).encode() + b"\0" + baseline_bytes).hexdigest()
+    assert blob == "12673dfcd4a3345f1d359b13c3fc3d210a5caca6", "scope_extension_baseline_mismatch"
+
+
+def test_scope_extension_is_exact_and_does_not_resume() -> None:
+    """SG-01/02/04: one appended path/event, preserved history, slot and false flags."""
+    manifest = load_manifest()
+    validate_routing_registration(manifest)
+    record = defensive_record(manifest)
+    assert record == DEFENSIVE_SCOPE_EXTENSION_RECORD
+    assert record["allowed_paths"] == [
+        *DEFENSIVE_STOP_RECORD["allowed_paths"], "tests/test_live_location_api.py",
+    ]
+    assert len(record["allowed_paths"]) == len(set(record["allowed_paths"])) == 8
+    assert record["events"] == [*DEFENSIVE_STOP_RECORD["events"], DEFENSIVE_SCOPE_EXTENSION_EVENT]
+    assert set(record["events"][-1]) == {
+        "type", "recorded_at", "baseline_commit_sha", "added_paths",
+        "scope_addendum", "owner_scope_decision", "effect",
+    }
+    for key in ("execution_authorized", "network_authorized",
+                "provider_activation_authorized", "deployment_authorized"):
+        assert record[key] is False
+
+
+@pytest.mark.parametrize("mutation", (
+    "extra", "delete", "duplicate", "reorder", "wildcard", "frozen",
+))
+def test_scope_extension_rejects_other_paths(mutation: str) -> None:
+    """SG-01: neither the new decision nor the existing START widens other paths."""
+    manifest = load_manifest()
+    paths = defensive_record(manifest)["allowed_paths"]
+    if mutation == "extra":
+        paths.append("src/App.tsx")
+    elif mutation == "delete":
+        paths.pop()
+    elif mutation == "duplicate":
+        paths.append(paths[-1])
+    elif mutation == "reorder":
+        paths.reverse()
+    elif mutation == "wildcard":
+        paths[-1] = "tests/*"
+    else:
+        paths[-1] = "backend/aas_kernel.py"
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", (
+    "missing_extension", "duplicate_extension", "extension_before_stop",
+    "remove_start", "remove_stop", "alter_start", "alter_stop", "old_start_replay",
+))
+def test_scope_extension_rejects_history_changes(mutation: str) -> None:
+    """SG-02: scope extension does not erase or re-authorize the historical START/STOP."""
+    manifest = load_manifest()
+    record = defensive_record(manifest)
+    history = record["events"]
+    if mutation == "missing_extension":
+        history.pop()
+    elif mutation == "duplicate_extension":
+        history.append(deepcopy(history[-1]))
+    elif mutation == "extension_before_stop":
+        history[1], history[2] = history[2], history[1]
+    elif mutation == "remove_start":
+        history.pop(0)
+    elif mutation == "remove_stop":
+        history.pop(1)
+    elif mutation == "alter_start":
+        history[0]["decision_id"] = "forged"
+    elif mutation == "alter_stop":
+        history[1]["resume_requirement"] = "AUTOMATIC"
+    else:
+        record["execution_authorized"] = True
+        history.append(deepcopy(history[0]))
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("type",), "START"),
+    (("recorded_at",), "2026-01-01T00:00:00Z"),
+    (("baseline_commit_sha",), "main"),
+    (("baseline_commit_sha",), "0" * 40),
+    (("added_paths",), []),
+    (("added_paths",), ["src/App.tsx"]),
+    (("added_paths",), ["tests/test_live_location_api.py", "src/App.tsx"]),
+    (("effect",), "RESUME"),
+    (("scope_addendum", "url"), "https://example.invalid/addendum"),
+    (("scope_addendum", "commit_sha"), "main"),
+    (("scope_addendum", "blob_sha"), "0" * 40),
+    (("owner_scope_decision",), None),
+    (("owner_scope_decision",), {}),
+    (("owner_scope_decision", "id"), "ISOLATED_TEST_START_NOT_OWNER_APPROVAL"),
+    (("owner_scope_decision", "record_url"), "https://example.invalid/decision"),
+    (("owner_scope_decision", "recorded_at"), "2026-01-01T00:00:00Z"),
+    (("owner_scope_decision", "effect"), "F01A_DEFENSIVE_START_ONLY"),
+    (("owner_scope_decision", "subject", "baseline_commit_sha"), "0" * 40),
+    (("owner_scope_decision", "proposal_commit_sha"), "main"),
+    (("owner_scope_decision", "proposal_blob_sha"), "0" * 40),
+    (("unknown_authority_override",), True),
+])
+def test_scope_extension_rejects_unpinned_authority(path: tuple, value: object) -> None:
+    """SG-03: reviewed code, not the supplied event, pins the real decision and evidence."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)["events"][2]
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field", list(DEFENSIVE_SCOPE_EXTENSION_EVENT))
+def test_scope_extension_requires_all_event_fields(field: str) -> None:
+    """SG-03: no missing field can downgrade the closed event to a broad permission."""
+    manifest = load_manifest()
+    defensive_record(manifest)["events"][2].pop(field)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+def test_scope_extension_proposal_bytes_match_reviewed_git_blob() -> None:
+    """SG-03: hash the reviewed original, not a modified historical approval."""
+    package_root = Path(__file__).resolve().parents[1]
+    content = (package_root / "docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-REGISTRATION-PROPOSAL-2026-10-06.md").read_bytes().replace(b"\r\n", b"\n")
+    original = content.split(("\n" + SCOPE_EXTENSION_MARKER + "\n").encode(), 1)[0]
+    blob = hashlib.sha1(b"blob " + str(len(original)).encode() + b"\0" + original).hexdigest()
+    assert blob == DEFENSIVE_SCOPE_EXTENSION_EVENT["owner_scope_decision"]["proposal_blob_sha"]
+
+
+def test_scope_extension_reverses_only_approved_manifest_delta() -> None:
+    """SG-05: pin all program rules, states, controls, evidence and frozen surfaces too."""
+    validate_scope_extension_baseline(load_manifest())
+
+
+@pytest.mark.parametrize("mutation", (
+    "package_title", "package_state", "dependency", "control", "release", "rule", "hold",
+))
+def test_scope_extension_baseline_rejects_unrelated_changes(mutation: str) -> None:
+    """SG-05: even a non-permission edit outside the two deltas is not silently accepted."""
+    manifest = load_manifest()
+    by_id = {package["id"]: package for package in manifest["packages"]}
+    if mutation == "package_title":
+        by_id["FC20-05"]["title"] = "changed"
+    elif mutation == "package_state":
+        by_id["FC20-11"]["state"] = "COMPLETE"
+    elif mutation == "dependency":
+        by_id["FC20-12"]["depends_on"].pop()
+    elif mutation == "control":
+        by_id["FC20-12"]["execution_slices"][0]["required_entry_controls"]["single_active_execution"]["status"] = "PASS"
+    elif mutation == "release":
+        manifest["public_release_authorized"] = True
+    elif mutation == "rule":
+        manifest["rules"]["single_source_of_truth"] = False
+    else:
+        manifest["execution_sequence"]["held_packages"] = []
+    with pytest.raises(AssertionError, match="scope_extension_baseline_mismatch"):
+        validate_scope_extension_baseline(manifest)
+
+
+def test_scope_extension_cannot_admit_fixture_or_previous_checkpoint() -> None:
+    """SG-06: synthetic lifecycle, bare old STOP and old START are not current admission."""
+    fixture, slot, decision = lifecycle_fixture()
+    validate_defensive_transition_fixture(fixture, slot, reviewed_decision=decision)
+    for record in (fixture, DEFENSIVE_STOP_RECORD, DEFENSIVE_START_RECORD):
+        manifest = load_manifest()
+        next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(record)
+        with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+            validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("relative_path", SCOPE_EXTENSION_VIEW_PATHS)
+def test_scope_extension_is_visible_without_resume_in_governing_views(relative_path: str) -> None:
+    """SG-07: each current projection contains the specific decision and non-resumption."""
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
+    validate_scope_extension_governing_view(content)
+
+
+@pytest.mark.parametrize("relative_path", SCOPE_EXTENSION_VIEW_PATHS)
+@pytest.mark.parametrize("token", SCOPE_EXTENSION_VIEW_TOKENS)
+def test_scope_extension_view_rejects_unscoped_evidence(relative_path: str, token: str) -> None:
+    """SG-07: a token elsewhere, including historical text, cannot complete the current view."""
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
+    before, section = content.split(SCOPE_EXTENSION_MARKER, 1)
+    tampered = before + token + "\n" + SCOPE_EXTENSION_MARKER + section.replace(token, "[removed]")
+    with pytest.raises(AssertionError, match="scope_extension_section_missing"):
+        validate_scope_extension_governing_view(tampered)
+
+
+@pytest.mark.parametrize("mutation", (
+    "missing_marker", "duplicate_marker", "wrong_heading", "resume_flag", "resume_state",
+))
+def test_scope_extension_view_rejects_ambiguity_and_resume_claim(mutation: str) -> None:
+    """SG-07: do not accept a misleading active claim merely because false appears too."""
+    content = (Path(__file__).resolve().parents[1] / SCOPE_EXTENSION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    if mutation == "missing_marker":
+        content = content.replace(SCOPE_EXTENSION_MARKER, "")
+    elif mutation == "duplicate_marker":
+        content += "\n" + SCOPE_EXTENSION_MARKER
+    elif mutation == "wrong_heading":
+        content = content.replace(SCOPE_EXTENSION_HEADING, "### غير معتمد")
+    elif mutation == "resume_flag":
+        content += "\nexecution_authorized=true\n"
+    else:
+        content += "\nIN_PROGRESS/true\n"
+    with pytest.raises(AssertionError, match="scope_extension_"):
+        validate_scope_extension_governing_view(content)
