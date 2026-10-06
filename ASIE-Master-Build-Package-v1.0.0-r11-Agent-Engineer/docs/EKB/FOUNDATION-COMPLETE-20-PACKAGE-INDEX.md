@@ -102,3 +102,20 @@ FC20-05 held و#166 `2dccc2c` ثم #167 `4357770` وخطة بيتا المالك
 - [مقترح تسجيل توسعة ملف الاختبار](../FC20-12-F01A-TEST-FIXTURE-SCOPE-REGISTRATION-PROPOSAL-2026-10-06.md): **PROPOSED / REVIEW_REQUIRED / NOT_EFFECTIVE**؛ يقرأ بعد ملحق #183 وتسجيل التوقف #184. يحدد إضافة tests/test_live_location_api.py وحده وتصميم سجل التوسعة واختبارات حارسها، دون تغيير المصدر الحالي.
 - main المحقق عند الإعداد 6c3806aa6cba7870253866497d4b31df194f20f9؛ السجل الحالي يحفظ F01A بحالة IN_PROGRESS/false وموضعه محسوبًا. القرار المحدد للنطاق والتصميم لم يسجل هنا؛ «التالي» إعداد مقترح لا قرار نفاذ أو استئناف.
 - PR التسجيل والحارس لاحق بعد القرار والمراجعة؛ يبقى الاستئناف قرارًا وانتقالًا مستقلين. لا تعديل التطبيق أو السجل أو الحارس في هذا المقترح، ولا تخفيض T-01–T-09 أو T-08، ولا تفعيل أو نشر أو دعوات. خطة المالك و#166/#167 محفوظة؛ هذا مدخل قراءة وليس مصدر حالة موازٍ.
+
+<!-- F01A-SCOPE-EXTENSION-2026-10-06 -->
+### تسجيل توسعة F-01A دون استئناف — مرشح 2026-10-06
+
+هذه قراءة مشتقة من /FOUNDATION-COMPLETE-20.json؛ **REGISTRATION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL**. التاريخ السابق محفوظ، ولا تُقرأ حالة المقترح عند إنشائه بوصفها الحالة الأحدث. [تصميم التسجيل المراجع #185](https://github.com/alphasigma13579-lang/ASIE/blob/1213fe78da66072a246c8592e69b5f4ebb91b22a/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-REGISTRATION-PROPOSAL-2026-10-06.md)، blob `eeaf6354a9fc8b790812cb876cb95d4574bb562b`، مدموج عند `5daa0b15b8b120575ea627429b754bd655ffd346`.
+
+قرار النطاق والتصميم `DECISION-FC20-12-F01A-TEST-FIXTURE-SCOPE-DESIGN-2026-10-06` محفوظ في https://github.com/alphasigma13579-lang/ASIE/pull/185#issuecomment-6023988634، وقت تسجيل الإيصال `2026-10-06T19:34:56Z`؛ موضوعه الرأس `1213fe78da66072a246c8592e69b5f4ebb91b22a` وأثره **SCOPE_DESIGN_APPROVED_NO_MERGE_NO_RESUME**. الإيصال ينقل موافقة المالك في المحادثة؛ ليس توقيع هوية مشفرًا ولا موافقة دمج هذا التسجيل.
+
+الزيادة الوحيدة `tests/test_live_location_api.py`، لتجهيز الاختبارات التابعة فقط حسب [ملحق النطاق #183](https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md)، blob `0fe787204f5808b9aae843e0d5d4d94fd31b2609`. تصبح allowed_paths **ثمانية مسارات** بعد السبعة الأصلية بنفس ترتيبها. حدث **SCOPE_EXTENSION** بتاريخ `2026-10-06T19:41:02Z` على baseline `5daa0b15b8b120575ea627429b754bd655ffd346`، أثره **SCOPE_EXTENSION_ONLY_NO_RESUME**، يأتي بعد START ثم STOP_CHECKPOINT دون تغيير أي منهما أو القرارات ومراجع النطاق الأصلية.
+
+f01a_defensive_ingress **IN_PROGRESS/false**، execution_authorized=false، **active_target محفوظ ومحسوب** في FC20-12/f01a_defensive_ingress. delivery_evidence=null وclosure_effect=NONE وDARK_OFFLINE؛ network/provider/deployment=false. التسجيل لا يسمح بتعديل الملف الثامن الآن، ولا يعيد START التاريخي. يبقى الاستئناف **NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION** بعد نفاذ التسجيل المراجع بدمج مصرح منفصل.
+
+الحارس يثبت oracle مستقلًا: STOP السابق + هذه الزيادة المعتمدة وحدها؛ metadata أو fixture أو CI لا تمنح سلطة. SG-01–SG-07 تغطي النطاق والتاريخ والقرار والبصمات والموضع وعكس الفرق والمقاطع المشتقة. هذه متطلبات واختبارات هذا الطلب؛ لا ندّعي نجاحها قبل نتيجة رأسه، ولا ننقلها إلى T-01–T-09 أو T-08 أو إصلاح التطبيق.
+
+خطة بيتا المالك والإدارة المستقلة محفوظة، FC20-05 held و#166 `2dccc2c` ثم #167 `4357770`؛ routing_repair REGISTERED_BLOCKED/false وتسع ضوابط PENDING. لا تعديل حالات الحزم أو اعتمادياتها أو release BLOCK، ولا Finance أو Snapshot أو AAS أو Decision Council أو ملفات مجمدة أو تطبيق أو ترحيل أو خدمات أو أسرار أو مصادر أو Hostinger أو دعوات أو نشر.
+
+**التوقف الآمن:** PR التسجيل والحارس والقراءات المشتقة للمراجعة، دون دمج أو استئناف. بعد نجاح الفحوص والمراجعات يطلب دمج منفصل؛ وبعده قرار/انتقال استئناف مستقل، لا يبدأ تلقائيًا. المصدر الوحيد للحالة النافذة هو السجل المدموج، وليس هذا المقطع.
