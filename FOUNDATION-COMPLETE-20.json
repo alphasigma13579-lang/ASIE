@@ -762,7 +762,7 @@
           "id": "f01a_defensive_ingress",
           "state": "IN_PROGRESS",
           "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
-          "execution_authorized": true,
+          "execution_authorized": false,
           "prerequisite_for": {
             "package_id": "FC20-12",
             "slice_id": "routing_repair"
@@ -821,6 +821,19 @@
             {
               "type": "START",
               "decision_id": "DECISION-FC20-12-F01A-CONDITIONAL-START-2026-10-03"
+            },
+            {
+              "type": "STOP_CHECKPOINT",
+              "recorded_at": "2026-10-05T10:21:21Z",
+              "baseline_commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+              "reason": "OUT_OF_SCOPE_TEST_FIXTURE",
+              "requested_path": "tests/test_live_location_api.py",
+              "evidence": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+                "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+              },
+              "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
             }
           ],
           "closure_effect": "NONE",

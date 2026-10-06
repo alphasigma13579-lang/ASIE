@@ -193,7 +193,8 @@ ELIGIBILITY_DESIGN_DECISION = {
 
 
 # Program ordering is repository governance, never a runtime permission or lock.
-# Current v2 admits only the pinned conditional F-01A start; all other starts remain blocked.
+# Current v2 admits only the pinned F-01A STOP_CHECKPOINT and retains its counted slot.
+# The conditional START is historical; replay and all other starts remain blocked.
 ORDERING_DECISION = json.loads(r'''{
     "id": "DECISION-FC20-ROUTING-PRIORITY-2026-09-28",
     "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/173#issuecomment-5865171335",
@@ -295,6 +296,39 @@ DEFENSIVE_START_RECORD.update(
     start_decision=deepcopy(DEFENSIVE_START_DECISION),
     events=[{"type": "START", "decision_id": DEFENSIVE_START_DECISION["id"]}],
 )
+
+
+# Reviewed checkpoint oracle is independent of the manifest and isolated lifecycle fixture.
+DEFENSIVE_STOP_EVENT = json.loads(r'''{
+  "type": "STOP_CHECKPOINT",
+  "recorded_at": "2026-10-05T10:21:21Z",
+  "baseline_commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+  "reason": "OUT_OF_SCOPE_TEST_FIXTURE",
+  "requested_path": "tests/test_live_location_api.py",
+  "evidence": {
+    "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+    "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+    "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+  },
+  "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+}''')
+DEFENSIVE_STOP_RECORD = deepcopy(DEFENSIVE_START_RECORD)
+DEFENSIVE_STOP_RECORD.update(execution_authorized=False)
+DEFENSIVE_STOP_RECORD["events"].append(deepcopy(DEFENSIVE_STOP_EVENT))
+
+
+def validate_defensive_checkpoint(record: dict, active_target: object) -> None:
+    """Admit only the pinned stop; retain its counted slot without resume authority."""
+    assert isinstance(record, dict), "invalid_defensive_record"
+    assert set(record) == set(DEFENSIVE_STOP_RECORD), "defensive_fields"
+    assert record == DEFENSIVE_STOP_RECORD, "defensive_record_mismatch"
+    assert record["execution_authorized"] is False, "defensive_stop_flag"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "defensive_external_effect"
+    assert active_target == DEFENSIVE_START_TARGET, "defensive_stop_slot"
+    # IN_PROGRESS records outstanding work, not permission to continue. The slot
+    # remains counted; scope expansion and resume need separate reviewed transitions.
 
 
 def validate_defensive_start(record: dict, active_target: object) -> None:
@@ -401,7 +435,7 @@ def execution_sequence_record(manifest: dict) -> dict:
 
 
 def validate_execution_sequence(manifest: dict) -> None:
-    """Count only the pinned defensive start while preserving the routing hold."""
+    """Count the pinned stopped slice while preserving the routing hold."""
     sequence = execution_sequence_record(manifest)
     assert sequence["schema"] == "asie.foundation.execution-sequence.v2", "sequence_schema"
     assert sequence["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY", "sequence_effect"
@@ -426,11 +460,11 @@ def validate_execution_sequence(manifest: dict) -> None:
     active = active_execution_targets(packages, held_ids)
     assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
     assert active == ["FC20-12/f01a_defensive_ingress"], "unrecorded_active_execution"
-    validate_defensive_start(defensive_record(manifest), sequence["active_target"])
+    validate_defensive_checkpoint(defensive_record(manifest), sequence["active_target"])
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Keep routing blocked; admit only the separately pinned defensive start."""
+    """Keep routing blocked; admit only STOP, never replay the historical START."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -447,7 +481,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
     sequence = execution_sequence_record(manifest)
-    validate_defensive_start(slices[1], sequence["active_target"])
+    validate_defensive_checkpoint(slices[1], sequence["active_target"])
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
@@ -881,11 +915,11 @@ def defensive_record(manifest: dict) -> dict:
     return next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1]
 
 
-def test_defensive_start_is_pinned_and_retains_blocked_routing() -> None:
-    """Admit the conditional F-01A start while routing and release remain blocked."""
+def test_defensive_checkpoint_is_pinned_and_retains_blocked_routing() -> None:
+    """Admit the pinned stop while retaining history, scope, and the counted slot."""
     manifest = load_manifest()
     validate_routing_registration(manifest)
-    assert defensive_record(manifest) == DEFENSIVE_START_RECORD
+    assert defensive_record(manifest) == DEFENSIVE_STOP_RECORD
     assert manifest["execution_sequence"]["active_target"] == DEFENSIVE_START_TARGET
     assert manifest["execution_sequence"]["schema"] == "asie.foundation.execution-sequence.v2"
     assert manifest["execution_sequence"]["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY"
@@ -1150,14 +1184,14 @@ def test_current_sequence_rejects_silent_v1_downgrade() -> None:
     (("unknown_override",), True),
 ])
 def test_pinned_start_rejects_unreviewed_authority(path: tuple, value: object) -> None:
-    """Reject tampered decisions, scope, history, types, and external authority."""
-    manifest = load_manifest()
-    target = defensive_record(manifest)
+    """Preserve the historical start oracle's negative coverage, not current admission."""
+    record = deepcopy(DEFENSIVE_START_RECORD)
+    target = record
     for key in path[:-1]:
         target = target[key]
     target[path[-1]] = value
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_defensive_start(record, DEFENSIVE_START_TARGET)
 
 
 @pytest.mark.parametrize("slot", [
@@ -1254,3 +1288,171 @@ def test_conditional_start_view_rejects_unscoped_state(relative_path: str, mutat
     assert "IN_PROGRESS" in content, "fixture_must_retain_unrelated_progress"
     with pytest.raises(AssertionError, match="conditional_start_section"):
         validate_conditional_start_governing_view(content)
+
+
+def test_historical_start_cannot_replay_over_current_checkpoint() -> None:
+    """Keep historical START testable, but never erase STOP from current admission."""
+    validate_defensive_start(deepcopy(DEFENSIVE_START_RECORD), DEFENSIVE_START_TARGET)
+    manifest = load_manifest()
+    next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(DEFENSIVE_START_RECORD)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", (
+    "resume", "integer_flag", "erase_stop", "erase_start", "reverse_history",
+    "duplicate_stop", "wrong_head", "wrong_evidence_blob", "wrong_path",
+    "wrong_time", "missing_resume_requirement", "scope_expansion", "terminal",
+))
+def test_checkpoint_rejects_replay_resume_and_scope_expansion(mutation: str) -> None:
+    """A stopped slot cannot acquire authority from history or scope metadata."""
+    manifest = load_manifest()
+    record = defensive_record(manifest)
+    if mutation == "resume":
+        record["execution_authorized"] = True
+    elif mutation == "integer_flag":
+        record["execution_authorized"] = 0
+    elif mutation == "erase_stop":
+        record["events"].pop()
+    elif mutation == "erase_start":
+        record["events"].pop(0)
+    elif mutation == "reverse_history":
+        record["events"].reverse()
+    elif mutation == "duplicate_stop":
+        record["events"].append(deepcopy(record["events"][-1]))
+    elif mutation == "wrong_head":
+        record["events"][-1]["baseline_commit_sha"] = "0" * 40
+    elif mutation == "wrong_evidence_blob":
+        record["events"][-1]["evidence"]["blob_sha"] = "0" * 40
+    elif mutation == "wrong_path":
+        record["events"][-1]["requested_path"] = "backend/*"
+    elif mutation == "wrong_time":
+        record["events"][-1]["recorded_at"] = "2026-01-01T00:00:00Z"
+    elif mutation == "missing_resume_requirement":
+        record["events"][-1].pop("resume_requirement")
+    elif mutation == "scope_expansion":
+        record["allowed_paths"].append(DEFENSIVE_STOP_EVENT["requested_path"])
+    elif mutation == "terminal":
+        record["state"] = "DELIVERED"
+        record["delivery_evidence"] = {"status": "PASS"}
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_checkpoint_keeps_single_slot_and_original_start_scope() -> None:
+    """Prove STOP retains the sole slot, original scope, and complete START history."""
+    manifest = load_manifest()
+    record = defensive_record(manifest)
+    assert record["execution_authorized"] is False
+    assert record["state"] == "IN_PROGRESS"
+    assert record["events"] == [*DEFENSIVE_START_RECORD["events"], DEFENSIVE_STOP_EVENT]
+    assert record["allowed_paths"] == DEFENSIVE_START_RECORD["allowed_paths"]
+    assert DEFENSIVE_STOP_EVENT["requested_path"] not in record["allowed_paths"]
+    restored = deepcopy(record)
+    restored["execution_authorized"] = True
+    restored["events"].pop()
+    assert restored == DEFENSIVE_START_RECORD
+    sequence = manifest["execution_sequence"]
+    assert active_execution_targets(manifest["packages"], {p["package_id"] for p in sequence["held_packages"]}) == ["FC20-12/f01a_defensive_ingress"]
+
+
+STOP_CHECKPOINT_MARKER = "<!-- F01A-STOP-CHECKPOINT-2026-10-05 -->"
+STOP_CHECKPOINT_HEADING = "### توقف F-01A الدفاعي — مرشح 2026-10-05"
+STOP_CHECKPOINT_VIEW_TOKENS = (
+    "IN_PROGRESS/false", "active_target محفوظ ومحسوب", "STOP_CHECKPOINT",
+    DEFENSIVE_STOP_EVENT["baseline_commit_sha"],
+    DEFENSIVE_STOP_EVENT["requested_path"],
+    DEFENSIVE_STOP_EVENT["evidence"]["url"],
+    DEFENSIVE_STOP_EVENT["resume_requirement"],
+)
+
+
+def validate_stop_checkpoint_governing_view(content: str) -> None:
+    """Require checkpoint evidence inside one uniquely bounded projection section."""
+    assert content.count(STOP_CHECKPOINT_MARKER) == 1, "stop_checkpoint_section_marker"
+    section = content.split(STOP_CHECKPOINT_MARKER, 1)[1].lstrip("\n")
+    heading, _, body = section.partition("\n")
+    assert heading == STOP_CHECKPOINT_HEADING, "stop_checkpoint_section_heading"
+    section = re.split(r"(?m)^(?:#{1,3}\s|<!-- )", body, maxsplit=1)[0]
+    for required in STOP_CHECKPOINT_VIEW_TOKENS:
+        assert required in section, "stop_checkpoint_section_missing:" + required
+
+
+@pytest.mark.parametrize("relative_path", GOVERNING_VIEW_PATHS)
+def test_stop_checkpoint_is_visible_in_governing_views(relative_path: str) -> None:
+    """Bind each derived view to the pinned stopped state and resume restriction."""
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
+    validate_stop_checkpoint_governing_view(content)
+
+
+@pytest.mark.parametrize("relative_path", GOVERNING_VIEW_PATHS)
+@pytest.mark.parametrize("token", STOP_CHECKPOINT_VIEW_TOKENS)
+def test_stop_checkpoint_view_rejects_missing_or_unscoped_evidence(relative_path: str, token: str) -> None:
+    """Reject moving required evidence outside the checkpoint's bounded section."""
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
+    before, section = content.split(STOP_CHECKPOINT_MARKER, 1)
+    # The removed evidence appears outside the bounded section and still cannot pass.
+    tampered = before + token + "\n" + STOP_CHECKPOINT_MARKER + section.replace(token, "[removed]")
+    with pytest.raises(AssertionError, match="stop_checkpoint_section_missing"):
+        validate_stop_checkpoint_governing_view(tampered)
+
+
+@pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "wrong_heading"))
+def test_stop_checkpoint_view_rejects_ambiguous_section(mutation: str) -> None:
+    """Reject absent, duplicate, or incorrectly headed checkpoint sections."""
+    content = (Path(__file__).resolve().parents[1] / GOVERNING_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    if mutation == "missing_marker":
+        content = content.replace(STOP_CHECKPOINT_MARKER, "")
+    elif mutation == "duplicate_marker":
+        content += "\n" + STOP_CHECKPOINT_MARKER
+    else:
+        content = content.replace(STOP_CHECKPOINT_HEADING, "### توقف غير مثبت")
+    with pytest.raises(AssertionError):
+        validate_stop_checkpoint_governing_view(content)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("state",), "REGISTERED_BLOCKED"),
+    (("state",), "DELIVERED"),
+    (("execution_authorized",), True),
+    (("execution_authorized",), 0),
+    (("start_decision",), None),
+    (("start_decision", "id"), "ISOLATED_TEST_START_NOT_OWNER_APPROVAL"),
+    (("start_decision", "record_url"), "https://example.invalid/forged"),
+    (("start_decision", "recorded_at"), "2026-01-01T00:00:00Z"),
+    (("start_decision", "effect"), "ROUTING_START"),
+    (("start_decision", "subject", "baseline_commit_sha"), "0" * 40),
+    (("start_decision", "condition"), "AUTOMATIC_ON_PUSH"),
+    (("subject", "baseline_commit_sha"), DEFENSIVE_REGISTRATION["subject"]["baseline_commit_sha"]),
+    (("scope_document", "blob_sha"), "0" * 40),
+    (("allowed_paths",), ["backend/*"]),
+    (("allowed_paths",), ["backend/snapshot_assembly.py"]),
+    (("entry_requirements",), []),
+    (("environment",), "LIVE"),
+    (("events",), []),
+    (("events",), [{"type": "START", "decision_id": "forged"}]),
+    (("delivery_evidence",), {"status": "PASS"}),
+    (("closure_effect",), "COMPLETE"),
+    (("network_authorized",), True),
+    (("network_authorized",), 0),
+    (("provider_activation_authorized",), True),
+    (("deployment_authorized",), True),
+    (("unknown_override",), True),
+])
+def test_pinned_checkpoint_rejects_unreviewed_authority(path: tuple, value: object) -> None:
+    """Preserve full authority/scope coverage on the current stopped record too."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+def test_checkpoint_evidence_bytes_match_pinned_git_blob() -> None:
+    """Bind the checkpoint evidence file to its reviewed Git blob."""
+    package_root = Path(__file__).resolve().parents[1]
+    evidence_bytes = (package_root / "docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md").read_bytes().replace(b"\r\n", b"\n")
+    blob = hashlib.sha1(b"blob " + str(len(evidence_bytes)).encode() + b"\0" + evidence_bytes).hexdigest()
+    assert blob == DEFENSIVE_STOP_EVENT["evidence"]["blob_sha"]
