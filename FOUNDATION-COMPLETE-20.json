@@ -762,7 +762,7 @@
           "id": "f01a_defensive_ingress",
           "state": "IN_PROGRESS",
           "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
-          "execution_authorized": false,
+          "execution_authorized": true,
           "prerequisite_for": {
             "package_id": "FC20-12",
             "slice_id": "routing_repair"
@@ -860,6 +860,87 @@
                 "proposal_blob_sha": "eeaf6354a9fc8b790812cb876cb95d4574bb562b"
               },
               "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+            },
+            {
+              "type": "RESUME",
+              "recorded_at": "2026-10-06T22:03:09Z",
+              "baseline_commit_sha": "65efaba85e7a5ca2c944486f88c15ab95a7bd5e5",
+              "baseline_manifest_blob_sha": "7b32044eabe0fe450bf2d5ba0d2aa4dee67ad545",
+              "checkpoint": {
+                "type": "STOP_CHECKPOINT",
+                "recorded_at": "2026-10-05T10:21:21Z",
+                "baseline_commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                "reason": "OUT_OF_SCOPE_TEST_FIXTURE",
+                "requested_path": "tests/test_live_location_api.py",
+                "evidence": {
+                  "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+                  "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                  "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+                },
+                "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+              },
+              "scope_extension": {
+                "type": "SCOPE_EXTENSION",
+                "recorded_at": "2026-10-06T19:41:02Z",
+                "baseline_commit_sha": "5daa0b15b8b120575ea627429b754bd655ffd346",
+                "added_paths": [
+                  "tests/test_live_location_api.py"
+                ],
+                "scope_addendum": {
+                  "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+                  "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                  "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+                },
+                "owner_scope_decision": {
+                  "id": "DECISION-FC20-12-F01A-TEST-FIXTURE-SCOPE-DESIGN-2026-10-06",
+                  "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/185#issuecomment-6023988634",
+                  "recorded_at": "2026-10-06T19:34:56Z",
+                  "subject": {
+                    "baseline_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a"
+                  },
+                  "effect": "SCOPE_DESIGN_APPROVED_NO_MERGE_NO_RESUME",
+                  "proposal_commit_sha": "1213fe78da66072a246c8592e69b5f4ebb91b22a",
+                  "proposal_blob_sha": "eeaf6354a9fc8b790812cb876cb95d4574bb562b"
+                },
+                "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+              },
+              "owner_resume_decision": {
+                "id": "DECISION-FC20-12-F01A-CONDITIONAL-RESUME-2026-10-07",
+                "recorded_at": "2026-10-06T21:53:52Z",
+                "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+                "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+                "subject": {
+                  "baseline_commit_sha": "65efaba85e7a5ca2c944486f88c15ab95a7bd5e5",
+                  "baseline_manifest_blob_sha": "7b32044eabe0fe450bf2d5ba0d2aa4dee67ad545",
+                  "checkpoint": {
+                    "type": "STOP_CHECKPOINT",
+                    "recorded_at": "2026-10-05T10:21:21Z",
+                    "baseline_commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                    "reason": "OUT_OF_SCOPE_TEST_FIXTURE",
+                    "requested_path": "tests/test_live_location_api.py",
+                    "evidence": {
+                      "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23659956064e6750edbf7ef0ffb7f812ae05b985/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-TEST-FIXTURE-SCOPE-ADDENDUM-2026-10-04.md",
+                      "commit_sha": "23659956064e6750edbf7ef0ffb7f812ae05b985",
+                      "blob_sha": "0fe787204f5808b9aae843e0d5d4d94fd31b2609"
+                    },
+                    "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+                  },
+                  "allowed_paths": [
+                    "backend/asie_local_api.py",
+                    "backend/repository.py",
+                    "backend/intelligence_prerun_service.py",
+                    "tests/test_repository_intelligence.py",
+                    "tests/test_intelligence_prerun_service.py",
+                    "tests/test_intelligence_context_ingress_api.py",
+                    "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+                    "tests/test_live_location_api.py"
+                  ]
+                },
+                "proposal_commit_sha": "8398d9fa9f09bf04779420e50d40c1ed684051ec",
+                "proposal_blob_sha": "bfa9d315ae66a804f9a12dcd532d05e61d841b8b",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/187#issuecomment-6026149350"
+              },
+              "effect": "F01A_DEFENSIVE_RESUME_ONLY"
             }
           ],
           "closure_effect": "NONE",
