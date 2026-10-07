@@ -2040,6 +2040,13 @@ class Handler(BaseHTTPRequestHandler):
         write_error(self, "not_found", 404)
 
     def _intelligence_ingress_error(self, kind: str, status: int, principal: Principal | None = None) -> None:
+        # Error presentation may use a valid session identity without granting
+        # tenant scope. The ingress authorization helper remains fail-closed.
+        if kind == "denied" and principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+            if principal is None:
+                kind, status = "authentication", 401
         locale = "ar"
         if principal is not None:
             try:
@@ -2048,6 +2055,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         messages = {
+            "authentication": ("انتهت جلسة الدخول أو لم تبدأ بعد. لم يُنفذ الطلب؛ سجّل الدخول ثم عد إلى مشروعك.", "Your sign-in session has expired or has not started. Nothing was processed; sign in and return to your project."),
+            "too_large": ("الطلب أكبر من الحجم المسموح. لم تُعتمد معلومات جديدة؛ قلّل حجم البيانات المرسلة ثم أعد المحاولة.", "The request exceeds the allowed size. No new information was approved; reduce the submitted data and try again."),
             "denied": ("لا يمكنك الوصول إلى بيانات هذا المشروع. لم يُنفذ الطلب؛ ارجع إلى مشروع تملك صلاحية استخدامه.", "You cannot access this project's data. Nothing was processed; return to a project you are authorized to use."),
             "invalid": ("تعذر حفظ الطلب لأن بياناته غير مقبولة. لم تُعتمد أي معلومات؛ راجع بيانات المشروع ثم أعد المحاولة.", "The request could not be saved because its data is invalid. No information was approved; review your project details and try again."),
             "blocked": ("تجهيز سياق الأدلة بهذه الطريقة غير متاح الآن، لذلك لم يبدأ التحليل ولم تتغير النتائج المحفوظة. يمكنك مراجعة بيانات المشروع وأدلته ثم العودة؛ إضافة دليل لا تفعّل هذه القدرة المحجوبة.", "Preparing evidence context this way is currently unavailable, so analysis did not start and saved results are unchanged. You can review your project details and evidence, then return; adding evidence does not enable this blocked capability."),
@@ -2130,7 +2139,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
         except PermissionError:
             self._intelligence_ingress_error("denied", 422, principal)
-        except (RequestError, ValueError, TypeError):
+        except RequestError as exc:
+            kind = "too_large" if exc.status == 413 else "invalid"
+            self._intelligence_ingress_error(kind, exc.status, principal)
+        except (ValueError, TypeError):
             self._intelligence_ingress_error("invalid", 400, principal)
         except Exception:
             self._intelligence_ingress_error("unavailable", 503, principal)
