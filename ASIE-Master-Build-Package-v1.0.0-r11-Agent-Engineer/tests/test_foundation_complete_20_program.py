@@ -2163,5 +2163,5 @@ def test_resume_proposal_rejects_separator_mutation(
         # Former split kept identical reviewed bytes despite a duplicate boundary.
         assert tampered.split(separator, 1)[0] == original
     monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
-    with pytest.raises(AssertionError, match="^resume_proposal_marker$"):
+    with pytest.raises(AssertionError, match=r"^resume_proposal_marker(?:\n|$)"):
         test_resume_proposal_original_bytes_match_reviewed_blob()
