@@ -214,7 +214,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                         self.assertEqual(401, status)
                         self.assertEqual(401, body["status"])
                         # Invalid sessions cannot select the account's saved English locale.
-                        self.assertTrue(any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                        self.assertTrue(any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
                         self.assertNotIn(self.project.project_id, json.dumps(body))
             read_body.assert_not_called()
             for spy in spies:
@@ -233,7 +233,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                             status, body = self.request(route, {"project_id": self.project.project_id, "locale": "en" if locale == "ar" else "ar"}, token=self.token, org=organization, method=method)
                             self.assertEqual(403 if method == "GET" else 422, status)
                             self.assertEqual(status, body["status"])
-                            self.assertEqual(locale == "ar", any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                            self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
                             self.assertNotIn(self.foreign_org, json.dumps(body))
                             self.assertNotIn(self.foreign.project_id, json.dumps(body))
                             self.assertNotIn(self.project.project_id, json.dumps(body))
@@ -256,7 +256,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                         status, body = self.request(route, token=self.token, raw=marker, content_length=api.MAX_JSON_BODY_BYTES + 1)
                         self.assertEqual(413, status)
                         self.assertEqual(413, body["status"])
-                        self.assertEqual(locale == "ar", any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                        self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
                         self.assertNotIn(marker, json.dumps(body))
                         self.assertNotIn("request_body_too_large", json.dumps(body))
             for spy in spies:
