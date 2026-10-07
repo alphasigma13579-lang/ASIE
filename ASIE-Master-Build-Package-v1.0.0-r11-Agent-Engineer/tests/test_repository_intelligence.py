@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -27,8 +28,10 @@ class RepositoryIntelligenceTests(unittest.TestCase):
     def draft(self, key="draft", project=None):
         return self.repo.create_intelligence_context(payload={"project_id": (project or self.project).project_id, "idempotency_key": key}, principal=self.principal)
 
-    def model(self, key="model", *, lineage=None):
+    def model(self, key="model", *, lineage=None, component_fields=None):
         context = IntelligenceContext("ctx-" + key, "org-a", self.project.project_id, "SA", "retail", key, components=[ContextComponent("component", "reference", {"text": "Reviewed example"}, "official-reference", "today", "SA", "retail", "medium", ["evidence-reference"] if lineage is None else lineage, "PENDING")])
+        if component_fields:
+            context.components = [replace(context.components[0], **component_fields)]
         return context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
 
     def review(self, context, **overrides):
@@ -228,6 +231,73 @@ class RepositoryIntelligenceTests(unittest.TestCase):
             self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_review_overlays").fetchone()[0])
             self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
 
+
+
+    def test_ownership_denials_never_record_allowed_authorization(self):
+        cases = ((self.principal, self.foreign.project_id), (self.principal, "missing-project"), (None, self.project.project_id), (Principal("viewer", "s", "org-a", "viewer"), self.project.project_id))
+        for index, (principal, project_id) in enumerate(cases):
+            correlation = "ownership-denial-" + str(index)
+            with self.subTest(index=index), self.assertRaises(PermissionError):
+                self.repo._authorize_intelligence(principal=principal, organization_id="org-a", project_id=project_id, permission="project.edit", action="aia.context.request", target_id="attempt-context", correlation_id=correlation)
+            events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation]
+            self.assertEqual(1, len(events))
+            self.assertEqual("denied", events[0]["result"])
+            self.assertEqual("attempt-context", events[0]["target_id"])
+        self.repo._authorize_intelligence(principal=self.principal, organization_id="org-a", project_id=self.project.project_id, permission="project.edit", action="aia.context.request", target_id="attempt-context", correlation_id="owned-allowed")
+        events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == "owned-allowed"]
+        self.assertEqual(1, len(events))
+        self.assertEqual(("u", "org-a", "allowed"), tuple(events[0][key] for key in ("actor_user_id", "organization_id", "result")))
+
+    def test_context_creation_audit_links_actual_insert_and_replay_ids(self):
+        records = []
+        for correlation in ("draft-insert", "draft-replay"):
+            records.append(self.repo.create_intelligence_context(payload={"project_id": self.project.project_id, "idempotency_key": "audit-draft"}, principal=self.principal, correlation_id=correlation))
+        context = self.model("audit-native")
+        for correlation in ("native-insert", "native-replay"):
+            records.append(self.repo.persist_validated_intelligence_context(context=context, principal=self.principal, correlation_id=correlation))
+        self.assertEqual(records[0], records[1])
+        self.assertEqual(records[2], records[3])
+        events = self.repo.security_audit_events()
+        for record, correlation in zip(records, ("draft-insert", "draft-replay", "native-insert", "native-replay")):
+            with self.subTest(correlation=correlation):
+                matching = [event for event in events if event["action"] == "aia.context.create" and event["correlation_id"] == correlation]
+                self.assertEqual(1, len(matching))
+                self.assertEqual(("u", "org-a", "allowed", record["context_build_id"]), tuple(matching[0][key] for key in ("actor_user_id", "organization_id", "result", "target_id")))
+        with self.repo.connect() as conn:
+            self.assertEqual(2, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+
+    def test_update_authorization_audit_targets_context_before_transaction(self):
+        draft = self.draft("audit-update")
+        seen = []
+        def audit(**event):
+            if event["action"] == "aia.context.update":
+                seen.append(event)
+                # Authorization must precede the mutation.
+                with self.repo.connect() as conn:
+                    self.assertEqual(1, conn.execute("SELECT version FROM intelligence_contexts WHERE context_build_id = ?", (draft["context_build_id"],)).fetchone()[0])
+            return original_audit(**event)
+        original_audit = self.repo.audit
+        with patch.object(self.repo, "audit", side_effect=audit):
+            updated = self.repo.update_intelligence_context(context_build_id=draft["context_build_id"], organization_id="org-a", project_id=self.project.project_id, payload={}, expected_version=1, principal=self.principal, correlation_id="update-attempt")
+        self.assertEqual(2, updated["version"])
+        self.assertEqual(1, len(seen))
+        self.assertEqual(("u", "org-a", "allowed", draft["context_build_id"], "update-attempt"), tuple(seen[0][key] for key in ("actor_user_id", "organization_id", "result", "target_id", "correlation_id")))
+
+    def test_native_component_string_metadata_rejects_original_wrong_types(self):
+        fields = ("component_id", "kind", "source", "freshness", "geography", "sector", "confidence", "review")
+        for field in fields:
+            for index, value in enumerate((123, True, ["wrong"], {"wrong": 1})):
+                context = self.model("typed-" + field + "-" + str(index), component_fields={field: value})
+                with self.subTest(field=field, value=value), patch.object(self.repo, "_insert_intelligence_context") as insert, self.assertRaisesRegex(ValueError, "^context_component_invalid$"):
+                    self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+                insert.assert_not_called()
+        valid = self.model("valid-metadata")
+        saved = self.repo.persist_validated_intelligence_context(context=valid, principal=self.principal)
+        self.assertEqual("official-reference", saved["component_manifest"][0]["source"])
+        with self.repo.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+            for table in ("intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"):
+                self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0])
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
 
-    def request(self, path, payload=None, *, token=None, org=None, method="POST", raw=None, content_length=None):
+    def request(self, path, payload=None, *, token=None, org=None, method="POST", raw=None, content_length=None, with_request_id=False):
         headers = {"Content-Type": "application/json"}
         # An empty selection omits the tenant header; None keeps the fixture default.
         if org != "":
@@ -55,7 +55,8 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
         try:
             conn.request(method, path, body=None if method == "GET" else body, headers=headers)
             response = conn.getresponse()
-            return response.status, json.loads(response.read())
+            result = (response.status, json.loads(response.read()))
+            return (*result, response.getheader("X-Request-Id")) if with_request_id else result
         finally:
             conn.close()
 
@@ -263,6 +264,39 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                 spy.assert_not_called()
         self.assertEqual((0, 0, 0, 0, 0), self.counts())
 
+
+
+    def test_early_role_and_tenant_denials_have_one_metadata_only_audit(self):
+        marker = "SECRET_DENIED_BODY_MARKER"
+        with ExitStack() as stack:
+            spies = [stack.enter_context(patch.object(self.repo, name, side_effect=AssertionError("tenant data access must not start"))) for name in ("get_intelligence_context", "create_intelligence_context", "save_intelligence_review", "save_intelligence_approval")]
+            read_body = stack.enter_context(patch.object(api, "read_json", side_effect=AssertionError("body must not be read")))
+            for token, organization, actor in ((self.token, "", self.owner["user_id"]), (self.token, self.foreign_org, self.owner["user_id"]), (self.other_token, self.org, self.other["user_id"])):
+                for index, (method, route) in enumerate(self.ingress_routes()):
+                    if token == self.other_token and method == "GET":
+                        continue
+                    with self.subTest(method=method, organization=organization, actor=actor):
+                        status, body, correlation = self.request(route, token=token, org=organization, method=method, raw=marker, with_request_id=True)
+                        self.assertTrue(correlation)
+                        self.assertEqual(403 if method == "GET" else 422, status)
+                        events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation]
+                        self.assertEqual(1, len(events))
+                        self.assertEqual(("denied", actor), (events[0]["result"], events[0]["actor_user_id"]))
+                        self.assertNotIn(marker, json.dumps(events))
+                        self.assertNotIn(marker, json.dumps(body))
+            read_body.assert_not_called()
+            for spy in spies:
+                spy.assert_not_called()
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
+
+    def test_repository_ownership_denial_is_not_audited_twice_by_http(self):
+        status, _, correlation = self.request("/api/intelligence/contexts", {"project_id": self.foreign.project_id, "idempotency_key": "denied"}, token=self.token, with_request_id=True)
+        self.assertTrue(correlation)
+        self.assertEqual(422, status)
+        events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation]
+        self.assertEqual(1, len(events))
+        self.assertEqual(("denied", self.owner["user_id"]), (events[0]["result"], events[0]["actor_user_id"]))
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
 
 if __name__ == "__main__":
     unittest.main()
