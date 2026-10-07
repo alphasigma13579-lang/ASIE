@@ -1532,6 +1532,9 @@ class Repository:
         # Detach mutable component values; replay the existing model's lifecycle.
         if any(type(component) is not ContextComponent for component in context.components):
             raise ValueError("context_component_invalid")
+        # Validate original lineage before as_dict() can coerce an iterable.
+        if any(not isinstance(component.lineage, list) or not component.lineage or any(not isinstance(reference, str) or not reference.strip() for reference in component.lineage) for component in context.components):
+            raise ValueError("context_component_invalid")
         components = [ContextComponent(**json_loads(json_dumps(component.as_dict()), {})) for component in context.components]
         if any(component.geography != context.geography or component.sector != context.sector for component in components):
             raise ValueError("context_component_scope_mismatch")
@@ -1614,7 +1617,8 @@ class Repository:
         return material
 
     def save_intelligence_review(self, *, organization_id: str, project_id: str, overlay: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.review.save", target_id="", correlation_id=correlation_id)
+        review_id = new_id("review")
+        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.review.save", target_id=review_id, correlation_id=correlation_id)
         material = self._intelligence_model_payload(overlay, ReviewOverlay, derived_hash="review_overlay_hash")
         role = principal.role or principal.platform_role
         if any(key in material and material[key] != value for key, value in (("reviewer_id", principal.user_id), ("reviewer_role", role))):
@@ -1622,7 +1626,7 @@ class Repository:
         material |= {"reviewer_id": principal.user_id, "reviewer_role": role}
         if "review_overlay_id" in material:
             raise ValueError("invalid_intelligence_review")
-        material["review_overlay_id"] = new_id("review")
+        material["review_overlay_id"] = review_id
         try:
             model = ReviewOverlay(**material)
         except TypeError as exc:
@@ -1638,7 +1642,8 @@ class Repository:
         return record
 
     def save_intelligence_approval(self, *, organization_id: str, project_id: str, receipt: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.approval.save", target_id="", correlation_id=correlation_id)
+        receipt_id = new_id("receipt")
+        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.approval.save", target_id=receipt_id, correlation_id=correlation_id)
         material = self._intelligence_model_payload(receipt, ApprovalReceipt, derived_hash="approval_receipt_hash")
         for key, expected in (("organization_id", organization_id), ("project_id", project_id)):
             if key in material and material[key] != expected:
@@ -1646,7 +1651,7 @@ class Repository:
         material |= {"organization_id": organization_id, "project_id": project_id}
         if "approval_receipt_id" in material:
             raise ValueError("invalid_intelligence_approval")
-        material["approval_receipt_id"] = new_id("receipt")
+        material["approval_receipt_id"] = receipt_id
         try:
             model = ApprovalReceipt(**material)
         except TypeError as exc:
@@ -1660,7 +1665,7 @@ class Repository:
             overlay_record = json_loads(row["payload_json"], {})
             overlay_model = ReviewOverlay(**{field.name: overlay_record[field.name] for field in fields(ReviewOverlay)})
             overlay_model.validate_for(context)
-            if row["overlay_hash"] != overlay_model.review_overlay_hash or model.conditions != overlay_model.conditions or model.approval_scope != overlay_model.review_scope:
+            if row["overlay_hash"] != overlay_model.review_overlay_hash or model.conditions != overlay_model.conditions:
                 raise ValueError("approval_reference_mismatch")
             model.validate_for(context, overlay_model)
             try:
