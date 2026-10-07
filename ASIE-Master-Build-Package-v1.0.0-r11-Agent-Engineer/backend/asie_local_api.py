@@ -2067,6 +2067,15 @@ class Handler(BaseHTTPRequestHandler):
         # request/exception content as customer-facing text.
         write_json(self, {"error": messages[kind][locale == "en"], "status": status, "request_id": None}, status)
 
+    def _intelligence_ingress_denial(self, status: int, principal: Principal | None = None) -> None:
+        """Audit only early authorization exits; never read request payloads."""
+        if principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+        # A session-only identity supplies the actor, never selected tenant scope.
+        REPO.audit(actor_user_id=principal.user_id if principal else None, organization_id=principal.organization_id if principal else None, action="aia.context.read" if self.command == "GET" else "aia.context.request", target_type="intelligence_context", target_id="intelligence_ingress", result="denied", reason="tenant_membership_or_permission_failed", correlation_id=self.request_id)
+        self._intelligence_ingress_error("denied" if principal else "authentication", status if principal else 401, principal)
+
     def _intelligence_ingress_principal(self) -> Principal | None:
         organization_id = self.headers.get("X-ASIE-Organization-Id", "")
         token = self._bearer_token()
@@ -2080,7 +2089,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             principal = self._intelligence_ingress_principal()
             if principal is None:
-                self._intelligence_ingress_error("denied", 403)
+                self._intelligence_ingress_denial(403)
                 return
             parts = urlparse(self.path).path.split("/")
             if len(parts) != 5 or not parts[4]:
@@ -2104,7 +2113,7 @@ class Handler(BaseHTTPRequestHandler):
             permission = "project.edit" if path in {"/api/intelligence/contexts", "/api/intelligence/pre-runs"} else "review.write"
             if principal is None or not principal.can(permission):
                 # Preserve the existing POST denial status without raw details.
-                self._intelligence_ingress_error("denied", 422, principal)
+                self._intelligence_ingress_denial(422, principal)
                 return
             payload = read_json(self)
             if not isinstance(payload, dict):

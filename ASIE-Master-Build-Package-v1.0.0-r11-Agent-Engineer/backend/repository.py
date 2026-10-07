@@ -1468,12 +1468,25 @@ class Repository:
 
     def _authorize_intelligence(self, *, principal: Principal | None, organization_id: str, project_id: str, permission: str, action: str, target_id: str, correlation_id: str | None = None) -> None:
         # Validate the trusted principal before looking up tenant-owned data.
-        authorize_intelligence_action(principal, organization_id=organization_id, project_id=project_id, permission=permission, action=action, target_id=target_id, audit_sink=self, correlation_id=correlation_id)
+        # Reuse the permission checker, but publish allow only after ownership.
+        pending_allow: list[dict[str, Any]] = []
+        repository = self
+
+        class OwnershipAudit:
+            def audit(self, **event: Any) -> None:
+                if event["result"] == "denied":
+                    repository.audit(**event)
+                else:
+                    pending_allow.append(event)
+
+        authorize_intelligence_action(principal, organization_id=organization_id, project_id=project_id, permission=permission, action=action, target_id=target_id, audit_sink=OwnershipAudit(), correlation_id=correlation_id)
         with closing(self.connect()) as conn:
             row = conn.execute("SELECT organization_id FROM projects WHERE project_id = ?", (project_id,)).fetchone()
         if row is None or row["organization_id"] != organization_id:
             self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action=action, target_type="intelligence_context", target_id=target_id, result="denied", reason="project_tenant_mismatch", correlation_id=correlation_id)
             raise PermissionError("intelligence_access_denied")
+        for event in pending_allow:
+            self.audit(**event)
 
     def intelligence_project_scope(self, *, organization_id: str, project_id: str, principal: Principal | None, correlation_id: str | None = None) -> dict[str, str]:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.scope", target_id=project_id, correlation_id=correlation_id)
@@ -1523,7 +1536,9 @@ class Repository:
         scope = self.intelligence_project_scope(organization_id=organization_id or "", project_id=project_id, principal=principal, correlation_id=correlation_id)
         self._intelligence_draft_payload(payload, complete=True)
         timestamp = now_iso()
-        return self._insert_intelligence_context({"context_build_id": new_id("ctx"), "organization_id": organization_id, "project_id": project_id, "idempotency_key": payload["idempotency_key"], **scope, "component_manifest": [], "state": "DRAFT", "context_hash": "", "version": 1, "created_at": timestamp, "updated_at": timestamp})
+        record = self._insert_intelligence_context({"context_build_id": new_id("ctx"), "organization_id": organization_id, "project_id": project_id, "idempotency_key": payload["idempotency_key"], **scope, "component_manifest": [], "state": "DRAFT", "context_hash": "", "version": 1, "created_at": timestamp, "updated_at": timestamp})
+        self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.context.create", target_type="intelligence_context", target_id=record["context_build_id"], result="allowed", correlation_id=correlation_id)
+        return record
 
     @staticmethod
     def _validated_intelligence_model(context: IntelligenceContext) -> IntelligenceContext:
@@ -1531,6 +1546,9 @@ class Repository:
             raise ValueError("context_lifecycle_invalid")
         # Detach mutable component values; replay the existing model's lifecycle.
         if any(type(component) is not ContextComponent for component in context.components):
+            raise ValueError("context_component_invalid")
+        string_fields = ("component_id", "kind", "source", "freshness", "geography", "sector", "confidence", "review")
+        if any(any(not isinstance(getattr(component, field), str) or not getattr(component, field).strip() for field in string_fields) for component in context.components):
             raise ValueError("context_component_invalid")
         # Validate original lineage before as_dict() can coerce an iterable.
         if any(not isinstance(component.lineage, list) or not component.lineage or any(not isinstance(reference, str) or not reference.strip() for reference in component.lineage) for component in context.components):
@@ -1561,7 +1579,9 @@ class Repository:
         record = asdict(candidate)
         record["component_manifest"] = record.pop("components")
         record.pop("stale_reason")
-        return self._insert_intelligence_context(record)
+        saved = self._insert_intelligence_context(record)
+        self.audit(actor_user_id=principal.user_id, organization_id=candidate.organization_id, action="aia.context.create", target_type="intelligence_context", target_id=saved["context_build_id"], result="allowed", correlation_id=correlation_id)
+        return saved
 
     def get_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, principal: Principal | None) -> dict[str, Any] | None:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="snapshot.read", action="aia.context.read", target_id=context_build_id)
@@ -1572,6 +1592,7 @@ class Repository:
         return json_loads(row["payload_json"], {}) | {"version": row["version"], "context_hash": row["context_hash"], "state": row["state"]}
 
     def update_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, payload: dict[str, Any], expected_version: int, principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
+        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.update", target_id=context_build_id, correlation_id=correlation_id)
         scope = self.intelligence_project_scope(organization_id=organization_id, project_id=project_id, principal=principal, correlation_id=correlation_id)
         self._intelligence_draft_payload(payload, complete=False)
         if type(expected_version) is not int or expected_version < 1:
