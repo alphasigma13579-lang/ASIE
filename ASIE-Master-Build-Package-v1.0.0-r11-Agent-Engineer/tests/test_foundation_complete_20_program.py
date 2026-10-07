@@ -2116,7 +2116,9 @@ def test_resume_proposal_original_bytes_match_reviewed_blob() -> None:
     """RG-03/07: adding projection text cannot rewrite the owner-approved original."""
     package_root = Path(__file__).resolve().parents[1]
     content = (package_root / RESUME_VIEW_PATHS[-1]).read_bytes().replace(b"\r\n", b"\n")
-    original = content.split(("\n" + RESUME_TRANSITION_MARKER + "\n").encode(), 1)[0]
+    separator = ("\n" + RESUME_TRANSITION_MARKER + "\n").encode()
+    assert content.count(separator) == 1, "resume_proposal_marker"
+    original = content.split(separator, 1)[0]
     blob = hashlib.sha1(b"blob " + str(len(original)).encode() + b"\0" + original).hexdigest()
     assert blob == DEFENSIVE_RESUME_DECISION["proposal_blob_sha"]
 
@@ -2140,3 +2142,26 @@ def test_resume_rejects_changed_application_path_list(mutation: str) -> None:
         paths[-1] = "backend/aas_kernel.py"
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
         validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ("missing", "duplicate"))
+def test_resume_proposal_rejects_separator_mutation(
+    monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    """Reject both boundary mutations; characterize the former first-split behavior."""
+    package_root = Path(__file__).resolve().parents[1]
+    content = (package_root / RESUME_VIEW_PATHS[-1]).read_bytes().replace(b"\r\n", b"\n")
+    separator = ("\n" + RESUME_TRANSITION_MARKER + "\n").encode()
+    assert content.count(separator) == 1, "resume_proposal_marker"
+    original = content.split(separator, 1)[0]
+    if mutation == "missing":
+        tampered = content.replace(separator, b"\n", 1)
+        # Former split returned the entire file, obscuring the missing boundary.
+        assert tampered.split(separator, 1)[0] == tampered
+    else:
+        tampered = content + separator + b"duplicate projection\n"
+        # Former split kept identical reviewed bytes despite a duplicate boundary.
+        assert tampered.split(separator, 1)[0] == original
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
+    with pytest.raises(AssertionError, match="^resume_proposal_marker$"):
+        test_resume_proposal_original_bytes_match_reviewed_blob()
