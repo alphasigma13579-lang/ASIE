@@ -41,8 +41,13 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
 
-    def request(self, path, payload=None, *, token=None, org=None, method="POST", raw=None):
-        headers = {"Content-Type": "application/json", "X-ASIE-Organization-Id": org or self.org}
+    def request(self, path, payload=None, *, token=None, org=None, method="POST", raw=None, content_length=None):
+        headers = {"Content-Type": "application/json"}
+        # An empty selection omits the tenant header; None keeps the fixture default.
+        if org != "":
+            headers["X-ASIE-Organization-Id"] = self.org if org is None else org
+        if content_length is not None:
+            headers["Content-Length"] = str(content_length)
         if token:
             headers["Authorization"] = "Bearer " + token
         body = raw if raw is not None else json.dumps(payload or {})
@@ -84,7 +89,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
             with self.subTest(token=bool(token), org=org):
                 with patch.object(self.repo, "create_intelligence_context", side_effect=AssertionError("write must not start")) as write:
                     status, body = self.request("/api/intelligence/contexts", {"project_id": project.project_id, "idempotency_key": "denied"}, token=token, org=org)
-                self.assertEqual(422, status)
+                self.assertEqual(401 if token is None else 422, status)
                 write.assert_not_called()
                 self.assertNotIn(self.foreign.project_id, json.dumps(body))
         self.assertEqual((0, 0, 0, 0, 0), self.counts())
@@ -179,6 +184,84 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                     self.assertNotIn(marker, json.dumps(body))
                     self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
         self.assertEqual((1, 1, 0, 0, 0), self.counts())
+
+    def ingress_routes(self):
+        project_query = "?project_id=" + self.project.project_id
+        return (
+            ("GET", "/api/intelligence/contexts/unknown" + project_query),
+            ("POST", "/api/intelligence/contexts"),
+            ("POST", "/api/intelligence/pre-runs"),
+            ("POST", "/api/intelligence/contexts/unknown/reviews"),
+            ("POST", "/api/intelligence/contexts/unknown/approval"),
+        )
+
+    def test_missing_invalid_expired_and_revoked_sessions_preserve_401(self):
+        self.repo.save_customer_locale(self.owner["user_id"], "en")
+        expired_token, _ = self.repo.create_session(email=self.owner["email"], password="ingress-password")
+        expired_principal = self.repo.principal_for_token(expired_token)
+        with self.repo.connect() as conn:
+            conn.execute("UPDATE sessions SET expires_at = ? WHERE session_id = ?", ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), expired_principal.session_id))
+            conn.commit()
+        revoked_token, _ = self.repo.create_session(email=self.owner["email"], password="ingress-password")
+        self.assertTrue(self.repo.revoke_session(revoked_token))
+        with ExitStack() as stack:
+            spies = [stack.enter_context(patch.object(self.repo, name, side_effect=AssertionError("data access must not start"))) for name in ("get_intelligence_context", "create_intelligence_context", "save_intelligence_review", "save_intelligence_approval")]
+            read_body = stack.enter_context(patch.object(api, "read_json", side_effect=AssertionError("body must not be read")))
+            for token in (None, "invalid-test-session", expired_token, revoked_token):
+                for method, route in self.ingress_routes():
+                    with self.subTest(session=token is not None, method=method, route=route):
+                        status, body = self.request(route, {"project_id": self.project.project_id, "locale": "en"}, token=token, method=method)
+                        self.assertEqual(401, status)
+                        self.assertEqual(401, body["status"])
+                        # Invalid sessions cannot select the account's saved English locale.
+                        self.assertTrue(any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                        self.assertNotIn(self.project.project_id, json.dumps(body))
+            read_body.assert_not_called()
+            for spy in spies:
+                spy.assert_not_called()
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
+
+    def test_tenant_denial_preserves_authenticated_account_locale_without_access(self):
+        with ExitStack() as stack:
+            spies = [stack.enter_context(patch.object(self.repo, name, side_effect=AssertionError("tenant data access must not start"))) for name in ("get_intelligence_context", "create_intelligence_context", "save_intelligence_review", "save_intelligence_approval")]
+            read_body = stack.enter_context(patch.object(api, "read_json", side_effect=AssertionError("body must not be read")))
+            for locale in ("ar", "en"):
+                self.repo.save_customer_locale(self.owner["user_id"], locale)
+                for organization in ("", self.foreign_org):
+                    for method, route in self.ingress_routes():
+                        with self.subTest(locale=locale, organization=organization, method=method, route=route):
+                            status, body = self.request(route, {"project_id": self.project.project_id, "locale": "en" if locale == "ar" else "ar"}, token=self.token, org=organization, method=method)
+                            self.assertEqual(403 if method == "GET" else 422, status)
+                            self.assertEqual(status, body["status"])
+                            self.assertEqual(locale == "ar", any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                            self.assertNotIn(self.foreign_org, json.dumps(body))
+                            self.assertNotIn(self.foreign.project_id, json.dumps(body))
+                            self.assertNotIn(self.project.project_id, json.dumps(body))
+            read_body.assert_not_called()
+            for spy in spies:
+                spy.assert_not_called()
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
+
+    def test_oversized_request_preserves_413_and_safe_account_language(self):
+        marker = "SECRET_OVERSIZED_BODY_MARKER"
+        with ExitStack() as stack:
+            spies = [stack.enter_context(patch.object(self.repo, name, side_effect=AssertionError("write must not start"))) for name in ("create_intelligence_context", "save_intelligence_review", "save_intelligence_approval")]
+            for locale in ("ar", "en"):
+                self.repo.save_customer_locale(self.owner["user_id"], locale)
+                for method, route in self.ingress_routes():
+                    if method == "GET":
+                        continue
+                    with self.subTest(locale=locale, route=route):
+                        # Exercise the real length guard without sending a large body.
+                        status, body = self.request(route, token=self.token, raw=marker, content_length=api.MAX_JSON_BODY_BYTES + 1)
+                        self.assertEqual(413, status)
+                        self.assertEqual(413, body["status"])
+                        self.assertEqual(locale == "ar", any("\\u0600" <= ch <= "\\u06ff" for ch in body["error"]))
+                        self.assertNotIn(marker, json.dumps(body))
+                        self.assertNotIn("request_body_too_large", json.dumps(body))
+            for spy in spies:
+                spy.assert_not_called()
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
 
 
 if __name__ == "__main__":
