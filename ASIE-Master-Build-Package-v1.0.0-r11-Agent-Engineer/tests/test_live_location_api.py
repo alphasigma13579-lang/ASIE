@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import backend.asie_local_api as api
+from backend.intelligence_context import ContextComponent, IntelligenceContext
 from backend.repository import Repository
 
 
@@ -175,51 +176,56 @@ class LiveLocationApiTests(unittest.TestCase):
         self.addCleanup(self.server.shutdown)
 
     def create_approved_narrative_context(self) -> tuple[str, str]:
-        """Persist a reviewed context and receipt; browser payload never supplies either body."""
+        """Use the native model and approval guards, never browser state/hash claims."""
         context_id = "ctx-narrative-a"
         receipt_id = "receipt-narrative-a"
-        context_hash = "b" * 64
         principal = self.repo.principal_for_token(self.token_a, self.org_a_id)
         assert principal is not None
-        self.repo.create_intelligence_context(
-            payload={
-                "organization_id": self.org_a_id,
-                "project_id": self.project_a.project_id,
-                "context_build_id": context_id,
-                "idempotency_key": "narrative-context-a",
-                "context_hash": context_hash,
-                "state": "REVIEW_PENDING",
-                "component_manifest": [
-                    {
-                        "source": "GASTAT",
-                        "freshness": "2026-09-01",
-                        "geography": "Saudi Arabia",
-                        "sector": "food_service",
-                        "confidence": "high",
-                        "lineage": ["https://www.stats.gov.sa/market-data"],
-                    }
-                ],
+        scope = self.repo.intelligence_project_scope(
+            organization_id=self.org_a_id,
+            project_id=self.project_a.project_id,
+            principal=principal,
+        )
+        context = IntelligenceContext(
+            context_id, self.org_a_id, self.project_a.project_id,
+            scope["geography"], scope["sector"], "narrative-context-a",
+            components=[ContextComponent(
+                component_id="narrative-evidence-a", kind="reference",
+                value={"summary": "Isolated narrative fixture"},
+                source="GASTAT", freshness="2026-09-01",
+                geography=scope["geography"], sector=scope["sector"],
+                confidence="high",
+                lineage=["https://www.stats.gov.sa/market-data"],
+            )],
+        )
+        context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
+        self.repo.persist_validated_intelligence_context(context=context, principal=principal)
+        overlay = self.repo.save_intelligence_review(
+            organization_id=self.org_a_id, project_id=self.project_a.project_id,
+            overlay={
+                "review_overlay_id": "review-narrative-a",
+                "intelligence_context_id": context_id,
+                "intelligence_context_hash": context.context_hash,
+                "review_scope": "narrative",
+                "reviewed_output_hash": context.context_hash,
+                "decision": "APPROVE",
             },
             principal=principal,
         )
-        receipt = {
-            "approval_receipt_id": receipt_id,
-            "organization_id": self.org_a_id,
-            "project_id": self.project_a.project_id,
-            "intelligence_context_id": context_id,
-            "intelligence_context_hash": context_hash,
-            "approved_for_contract_version": "live.intelligence.narrative.v1",
-            "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-        }
-        db = self.repo.connect()
-        try:
-            db.execute(
-                "INSERT INTO intelligence_approval_receipts (approval_receipt_id, organization_id, project_id, context_build_id, receipt_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)",
-                (receipt_id, self.org_a_id, self.project_a.project_id, context_id, "receipt-hash", json.dumps(receipt), "now"),
-            )
-            db.commit()
-        finally:
-            db.close()
+        self.repo.save_intelligence_approval(
+            organization_id=self.org_a_id, project_id=self.project_a.project_id,
+            receipt={
+                "approval_receipt_id": receipt_id,
+                "intelligence_context_id": context_id,
+                "intelligence_context_hash": context.context_hash,
+                "review_overlay_id": overlay["review_overlay_id"],
+                "review_overlay_hash": overlay["review_overlay_hash"],
+                "approval_scope": "narrative",
+                "approved_for_contract_version": "live.intelligence.narrative.v1",
+                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            },
+            principal=principal,
+        )
         return context_id, receipt_id
 
     def request(
