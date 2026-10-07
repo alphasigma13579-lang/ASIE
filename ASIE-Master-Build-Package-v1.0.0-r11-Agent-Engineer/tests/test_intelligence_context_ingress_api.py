@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -81,7 +82,7 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
             with self.subTest(token=bool(token), org=org):
                 with patch.object(self.repo, "create_intelligence_context", side_effect=AssertionError("write must not start")) as write:
                     status, body = self.request("/api/intelligence/contexts", {"project_id": project.project_id, "idempotency_key": "denied"}, token=token, org=org)
-                self.assertEqual(403, status)
+                self.assertEqual(422, status)
                 write.assert_not_called()
                 self.assertNotIn(self.foreign.project_id, json.dumps(body))
         self.assertEqual((0, 0, 0, 0, 0), self.counts())
@@ -131,8 +132,16 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
             self.assertEqual(503, status)
             self.assertNotIn(marker, json.dumps(body))
             self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
-        with self.repo.connect() as conn:
+        # The schema already rejects invalid stored languages; do not weaken it
+        # or write an impossible fixture to exercise the runtime fallback.
+        with self.assertRaises(sqlite3.IntegrityError), self.repo.connect() as conn:
             conn.execute("UPDATE customer_preferences SET locale = 'invalid' WHERE user_id = ?", (self.owner["user_id"],))
+        with patch.object(self.repo, "customer_locale", return_value="invalid"):
+            status, body = self.request("/api/intelligence/pre-runs", {"project_id": self.project.project_id}, token=self.token)
+        self.assertEqual(409, status)
+        self.assertTrue(any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
+        with self.repo.connect() as conn:
+            conn.execute("DELETE FROM customer_preferences WHERE user_id = ?", (self.owner["user_id"],))
             conn.commit()
         status, body = self.request("/api/intelligence/pre-runs", {"project_id": self.project.project_id}, token=self.token)
         self.assertEqual(409, status)

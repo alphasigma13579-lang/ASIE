@@ -2094,7 +2094,8 @@ class Handler(BaseHTTPRequestHandler):
             principal = self._intelligence_ingress_principal()
             permission = "project.edit" if path in {"/api/intelligence/contexts", "/api/intelligence/pre-runs"} else "review.write"
             if principal is None or not principal.can(permission):
-                self._intelligence_ingress_error("denied", 403, principal)
+                # Preserve the existing POST denial status without raw details.
+                self._intelligence_ingress_error("denied", 422, principal)
                 return
             payload = read_json(self)
             if not isinstance(payload, dict):
@@ -2128,7 +2129,7 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
                 return
         except PermissionError:
-            self._intelligence_ingress_error("denied", 403, principal)
+            self._intelligence_ingress_error("denied", 422, principal)
         except (RequestError, ValueError, TypeError):
             self._intelligence_ingress_error("invalid", 400, principal)
         except Exception:
@@ -2142,7 +2143,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/architecture/runtime-status":
             reject_architecture_status_mutation(self)
             return
-        if path in {"/api/intelligence/contexts", "/api/intelligence/pre-runs"} or (path.startswith("/api/intelligence/contexts/") and (path.endswith("/reviews") or path.endswith("/approval"))):
+        if path == "/api/intelligence/contexts":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path == "/api/intelligence/pre-runs":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path.startswith("/api/intelligence/contexts/") and (path.endswith("/reviews") or path.endswith("/approval")):
             self._dispatch_intelligence_context_post(path)
             return
         try:
