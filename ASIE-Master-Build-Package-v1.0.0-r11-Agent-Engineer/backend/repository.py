@@ -1605,6 +1605,8 @@ class Repository:
         names = {field.name for field in fields(model_type)}
         if not isinstance(payload, dict) or set(payload) - names - {derived_hash}:
             raise ValueError("invalid_intelligence_approval_request")
+        if any(key != "conditions" and not isinstance(value, str) for key, value in payload.items()):
+            raise ValueError("invalid_intelligence_approval_request")
         material = {key: value for key, value in payload.items() if key in names}
         conditions = material.get("conditions", [])
         if not isinstance(conditions, list) or any(not isinstance(value, str) or not value.strip() for value in conditions):
@@ -1618,7 +1620,9 @@ class Repository:
         if any(key in material and material[key] != value for key, value in (("reviewer_id", principal.user_id), ("reviewer_role", role))):
             raise PermissionError("intelligence_access_denied")
         material |= {"reviewer_id": principal.user_id, "reviewer_role": role}
-        material.setdefault("review_overlay_id", new_id("review"))
+        if "review_overlay_id" in material:
+            raise ValueError("invalid_intelligence_review")
+        material["review_overlay_id"] = new_id("review")
         try:
             model = ReviewOverlay(**material)
         except TypeError as exc:
@@ -1640,7 +1644,9 @@ class Repository:
             if key in material and material[key] != expected:
                 raise PermissionError("intelligence_access_denied")
         material |= {"organization_id": organization_id, "project_id": project_id}
-        material.setdefault("approval_receipt_id", new_id("receipt"))
+        if "approval_receipt_id" in material:
+            raise ValueError("invalid_intelligence_approval")
+        material["approval_receipt_id"] = new_id("receipt")
         try:
             model = ApprovalReceipt(**material)
         except TypeError as exc:
@@ -1659,10 +1665,12 @@ class Repository:
             model.validate_for(context, overlay_model)
             try:
                 expiry = datetime.fromisoformat(model.valid_until)
-                if expiry.tzinfo is None or expiry <= datetime.fromisoformat(now_iso()):
-                    raise ValueError("approval_expired")
             except (TypeError, ValueError) as exc:
                 raise ValueError("approval_expiry_invalid") from exc
+            if expiry.tzinfo is None:
+                raise ValueError("approval_expiry_invalid")
+            if expiry <= datetime.fromisoformat(now_iso()):
+                raise ValueError("approval_expired")
             if "approval_receipt_hash" in receipt and receipt["approval_receipt_hash"] != model.approval_receipt_hash:
                 raise ValueError("approval_integrity_invalid")
             record = model.material() | {"approval_receipt_hash": model.approval_receipt_hash, "created_at": now_iso()}

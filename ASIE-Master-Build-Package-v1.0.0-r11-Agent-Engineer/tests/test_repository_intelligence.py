@@ -122,6 +122,55 @@ class RepositoryIntelligenceTests(unittest.TestCase):
         self.assertEqual(("", ""), (record["geography"], record["sector"]))
         self.assertEqual([], record["component_manifest"])
 
+    def approval_request(self):
+        """Create a native reviewed context and an unsigned receipt request."""
+        context = self.model()
+        self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context), principal=self.principal)
+        receipt = {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        return context, review, receipt
+
+    def test_review_and_approval_reject_non_string_fields_before_storage(self):
+        """Malformed model fields fail validation without inserting records."""
+        context, _, receipt = self.approval_request()
+        overlay = self.review(context) | {"reason": "", "review_overlay_hash": ""}
+        for payload, method, argument in ((overlay, self.repo.save_intelligence_review, "overlay"), (receipt | {"approval_receipt_hash": ""}, self.repo.save_intelligence_approval, "receipt")):
+            for field in payload:
+                for value in ([], {}, None, True, 123):
+                    with self.subTest(argument=argument, field=field, value=value), self.assertRaisesRegex(ValueError, "^invalid_intelligence_approval_request$"):
+                        method(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **{argument: payload | {field: value}})
+        with self.repo.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_review_overlays").fetchone()[0])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
+
+    def test_record_ids_are_server_owned_even_for_cross_tenant_guesses(self):
+        """Guessed or replayed client IDs cannot reach the lookup or insert."""
+        context, review, receipt = self.approval_request()
+        saved = self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt, principal=self.principal)
+        scopes = (("org-a", self.project.project_id, self.principal), ("org-b", self.foreign.project_id, Principal("foreign", "s", "org-b", "organization_owner")))
+        for org, project, principal in scopes:
+            for payload, method, argument, field, known_id, error in (
+                (self.review(context), self.repo.save_intelligence_review, "overlay", "review_overlay_id", review["review_overlay_id"], "invalid_intelligence_review"),
+                (receipt, self.repo.save_intelligence_approval, "receipt", "approval_receipt_id", saved["approval_receipt_id"], "invalid_intelligence_approval"),
+            ):
+                for value in (known_id, "unused-client-id", ""):
+                    with self.subTest(org=org, field=field, value=value), patch.object(self.repo, "_intelligence_review_context", side_effect=AssertionError("client ID must not trigger lookup")) as lookup, self.assertRaisesRegex(ValueError, "^" + error + "$"):
+                        method(organization_id=org, project_id=project, principal=principal, **{argument: payload | {field: value}})
+                    lookup.assert_not_called()
+        second_review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context), principal=self.principal)
+        second_receipt = self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt, principal=self.principal)
+        self.assertNotEqual(review["review_overlay_id"], second_review["review_overlay_id"])
+        self.assertNotEqual(saved["approval_receipt_id"], second_receipt["approval_receipt_id"])
+
+    def test_approval_expiry_distinguishes_invalid_from_expired(self):
+        """Invalid and naive dates differ from equal or past aware expiries."""
+        _, _, receipt = self.approval_request()
+        for value, error in (("not-a-date", "approval_expiry_invalid"), ("2026-10-07T00:00:00", "approval_expiry_invalid"), ("2026-10-06T00:00:00+00:00", "approval_expired"), ("2026-10-07T00:00:00+00:00", "approval_expired")):
+            with self.subTest(value=value), patch("backend.repository.now_iso", return_value="2026-10-07T00:00:00+00:00"), self.assertRaisesRegex(ValueError, "^" + error + "$"):
+                self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt | {"valid_until": value}, principal=self.principal)
+        with self.repo.connect() as conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
+
 
 if __name__ == "__main__":
     unittest.main()

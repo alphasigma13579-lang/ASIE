@@ -178,7 +178,6 @@ class LiveLocationApiTests(unittest.TestCase):
     def create_approved_narrative_context(self) -> tuple[str, str]:
         """Use the native model and approval guards, never browser state/hash claims."""
         context_id = "ctx-narrative-a"
-        receipt_id = "receipt-narrative-a"
         principal = self.repo.principal_for_token(self.token_a, self.org_a_id)
         assert principal is not None
         scope = self.repo.intelligence_project_scope(
@@ -203,7 +202,6 @@ class LiveLocationApiTests(unittest.TestCase):
         overlay = self.repo.save_intelligence_review(
             organization_id=self.org_a_id, project_id=self.project_a.project_id,
             overlay={
-                "review_overlay_id": "review-narrative-a",
                 "intelligence_context_id": context_id,
                 "intelligence_context_hash": context.context_hash,
                 "review_scope": "narrative",
@@ -212,10 +210,9 @@ class LiveLocationApiTests(unittest.TestCase):
             },
             principal=principal,
         )
-        self.repo.save_intelligence_approval(
+        receipt = self.repo.save_intelligence_approval(
             organization_id=self.org_a_id, project_id=self.project_a.project_id,
             receipt={
-                "approval_receipt_id": receipt_id,
                 "intelligence_context_id": context_id,
                 "intelligence_context_hash": context.context_hash,
                 "review_overlay_id": overlay["review_overlay_id"],
@@ -226,7 +223,7 @@ class LiveLocationApiTests(unittest.TestCase):
             },
             principal=principal,
         )
-        return context_id, receipt_id
+        return context_id, receipt["approval_receipt_id"]
 
     def request(
         self,

@@ -7,12 +7,14 @@ import tempfile
 import threading
 import unittest
 from contextlib import ExitStack
+from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
 from pathlib import Path
 from unittest.mock import patch
 
 import backend.asie_local_api as api
 from backend.intelligence_workflow import IntelligenceContextWorkflow
+from backend.intelligence_context import ContextComponent, IntelligenceContext
 from backend.repository import Repository
 
 
@@ -147,6 +149,36 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
         self.assertEqual(409, status)
         self.assertTrue(any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
         self.assertNotIn(marker, json.dumps(self.repo.security_audit_events(), ensure_ascii=False))
+
+    def test_malformed_review_and_approval_fields_are_safe_validation_errors(self):
+        """Valid-context HTTP input errors return 400, never database 503."""
+        principal = self.repo.principal_for_token(self.token, self.org)
+        context = IntelligenceContext("ctx-http-reviewed", self.org, self.project.project_id, "SA", "Custom activity", "http-reviewed", components=[ContextComponent("evidence", "reference", {"summary": "Isolated ingress fixture"}, "official-reference", "today", "SA", "Custom activity", "medium", ["evidence-reference"])])
+        context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
+        self.repo.persist_validated_intelligence_context(context=context, principal=principal)
+        route = "/api/intelligence/contexts/" + context.context_build_id
+        overlay = {"project_id": self.project.project_id, "intelligence_context_hash": context.context_hash, "review_scope": "offline-example", "reviewed_output_hash": context.context_hash, "decision": "APPROVE"}
+        status, body = self.request(route + "/reviews", overlay, token=self.token)
+        self.assertEqual(201, status)
+        review = body["review"]
+        receipt = {"project_id": self.project.project_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        marker = "SECRET_INVALID_APPROVAL_MARKER"
+        cases = (
+            ("reviews", overlay | {"reason": [marker]}),
+            ("reviews", overlay | {"review_overlay_id": review["review_overlay_id"]}),
+            ("reviews", overlay | {"review_overlay_id": "unknown-client-id"}),
+            ("approval", receipt | {"review_overlay_id": [marker]}),
+            ("approval", receipt | {"approval_receipt_id": "client-receipt-id"}),
+        )
+        for locale in ("ar", "en"):
+            self.repo.save_customer_locale(self.owner["user_id"], locale)
+            for suffix, payload in cases:
+                with self.subTest(locale=locale, suffix=suffix, payload=payload):
+                    status, body = self.request(route + "/" + suffix, payload, token=self.token)
+                    self.assertEqual(400, status)
+                    self.assertNotIn(marker, json.dumps(body))
+                    self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
+        self.assertEqual((1, 1, 0, 0, 0), self.counts())
 
 
 if __name__ == "__main__":
