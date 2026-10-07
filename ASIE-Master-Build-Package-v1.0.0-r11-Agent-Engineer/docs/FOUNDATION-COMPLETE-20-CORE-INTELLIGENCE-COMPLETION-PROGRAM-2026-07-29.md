@@ -214,3 +214,25 @@ f01a_defensive_ingress **IN_PROGRESS/false**، execution_authorized=false، **ac
 خطة بيتا المالك والإدارة المستقلة محفوظة، FC20-05 held و#166 `2dccc2c` ثم #167 `4357770`؛ routing_repair REGISTERED_BLOCKED/false وتسع ضوابط PENDING. لا تعديل حالات الحزم أو اعتمادياتها أو release BLOCK، ولا Finance أو Snapshot أو AAS أو Decision Council أو ملفات مجمدة أو تطبيق أو ترحيل أو خدمات أو أسرار أو مصادر أو Hostinger أو دعوات أو نشر.
 
 **التوقف الآمن:** PR التسجيل والحارس والقراءات المشتقة للمراجعة، دون دمج أو استئناف. بعد نجاح الفحوص والمراجعات يطلب دمج منفصل؛ وبعده قرار/انتقال استئناف مستقل، لا يبدأ تلقائيًا. المصدر الوحيد للحالة النافذة هو السجل المدموج، وليس هذا المقطع.
+
+<!-- F01A-CONDITIONAL-RESUME-TRANSITION-2026-10-07 -->
+### انتقال استئناف F-01A الدفاعي المشروط — مرشح 2026-10-07
+
+- الحالة: **GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL**. هذا المقطع إسقاط مرشح لانتقال السجل؛ لا يصبح نافذًا من فتح PR أو نجاح فحص، بل بعد مراجعات الرأس وموافقة دمج منفصلة ونفاذه بالدمج. المقاطع السابقة محفوظة كتاريخ غير معاد الكتابة؛ مصدر الحالة هو السجل المدموج لا هذا النص.
+- قرار المالك الحقيقي: [DECISION-FC20-12-F01A-CONDITIONAL-RESUME-2026-10-07](https://github.com/alphasigma13579-lang/ASIE/pull/187#issuecomment-6026149350)؛ وقت تسجيله `2026-10-06T21:53:52Z`، أثره `F01A_DEFENSIVE_RESUME_ONLY`، وشرطه `REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL`. لا يعاد استخدام قرار START أو قرار تصميم النطاق أو دمج #186 كإذن استئناف.
+- موضوع القرار: baseline `65efaba85e7a5ca2c944486f88c15ab95a7bd5e5`، manifest blob `7b32044eabe0fe450bf2d5ba0d2aa4dee67ad545`؛ المقترح المراجع commit `8398d9fa9f09bf04779420e50d40c1ed684051ec` وblob `bfa9d315ae66a804f9a12dcd532d05e61d841b8b`. خط إنشاء الفرع `a1f96a0e688f33cb54a80e4ca9c6eef5a97e5211` بعد دمج #187: تغير ملفا التصميم فقط، وبقي manifest مطابقًا؛ لا نقل سلطة من ancestry وحدها.
+- وقت تسجيل RESUME المرشح: `2026-10-06T22:03:09Z`. الفرق الآلي الوحيد: `execution_authorized=false → execution_authorized=true`، ثم إلحاق حدث واحد؛ **f01a_defensive_ingress IN_PROGRESS/true**. يحفظ التاريخ **START → STOP_CHECKPOINT → SCOPE_EXTENSION → RESUME**؛ موضوع START وقراره الأصليان محفوظان. checkpoint وscope_extension نسختان كاملتان مثبتتان في الحدث الجديد، لا استبدال لهما.
+- `active_target محفوظ ومحسوب`؛ الموضع الوحيد `FC20-12/f01a_defensive_ingress`، max_active_executions=1؛ **FC20-05 held**. يبقى شرط التوقف التاريخي `NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION` مستوفى بالانتقال المراجع فقط، لا بالعلم منفردًا.
+- النطاق المسجل **ثمانية مسارات** فقط، نسبية لجذر الحزمة، لا توسعة من هذا الانتقال:
+  - `backend/asie_local_api.py`
+  - `backend/repository.py`
+  - `backend/intelligence_prerun_service.py`
+  - `tests/test_repository_intelligence.py`
+  - `tests/test_intelligence_prerun_service.py`
+  - `tests/test_intelligence_context_ingress_api.py`
+  - `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+  - `tests/test_live_location_api.py`
+- الحدود: `delivery_evidence=null`، `closure_effect=NONE`، `DARK_OFFLINE`، `network/provider/deployment=false`؛ routing_repair **REGISTERED_BLOCKED/false** وتسعة ضوابط **PENDING**؛ FC20-12 ACR_REQUIRED واعتمادياته محفوظة، release BLOCK. لا F-01B أو توجيه أو إغلاق حزمة أو ترحيل أو شبكة أو مزود أو نشر أو دعوات.
+- خطة التحقق: **RG-01–RG-08** على الرأس النهائي؛ oracle مستقل من الإيصال وليس مدخل manifest؛ عكس RESUME والعلم يعيد كامل blob #186، ثم تحقق **SG-05** التاريخي يعيد baseline السابق. تبقى اختبارات START/STOP/SCOPE_EXTENSION والـlifecycle المعزولة واختبارات الرفض؛ التاريخ ليس fallback لقبول الحالة الحالية.
+- تسليم هذه الشريحة: السجل والحارس وهذه القراءات الست فقط. لا تعديل تطبيق أو ملف مجمد، ولا إدعاء نجاح T-01–T-09 من فحوص الحوكمة. نتائج الفحوص والمراجعات الفعلية تسجل في PR؛ هذه خطة قبول وليست إعلان نجاحها.
+- نقطة التوقف: عرض نتيجة الانتقال المراجع وطلب موافقة الدمج المنفصلة. بعد نفاذه فقط تُعرض خطة وهدف مستقلان لإصلاح التطبيق داخل القائمة؛ T-08 كاملة وحدود توسعتها كما في المقترح الأصلي. خطة بيتا المالك والإدارة المستقلة و#166 `2dccc2c45c2b1967e277edf6db6a681a04b2654a` ثم #167 `435777008e01bafc73ab3bca86cc8945e311b610` محفوظة.
