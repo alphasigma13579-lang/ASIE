@@ -27,8 +27,8 @@ class RepositoryIntelligenceTests(unittest.TestCase):
     def draft(self, key="draft", project=None):
         return self.repo.create_intelligence_context(payload={"project_id": (project or self.project).project_id, "idempotency_key": key}, principal=self.principal)
 
-    def model(self, key="model"):
-        context = IntelligenceContext("ctx-" + key, "org-a", self.project.project_id, "SA", "retail", key, components=[ContextComponent("component", "reference", {"text": "Reviewed example"}, "official-reference", "today", "SA", "retail", "medium", ["evidence-reference"], "PENDING")])
+    def model(self, key="model", *, lineage=None):
+        context = IntelligenceContext("ctx-" + key, "org-a", self.project.project_id, "SA", "retail", key, components=[ContextComponent("component", "reference", {"text": "Reviewed example"}, "official-reference", "today", "SA", "retail", "medium", ["evidence-reference"] if lineage is None else lineage, "PENDING")])
         return context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
 
     def review(self, context, **overrides):
@@ -169,6 +169,63 @@ class RepositoryIntelligenceTests(unittest.TestCase):
             with self.subTest(value=value), patch("backend.repository.now_iso", return_value="2026-10-07T00:00:00+00:00"), self.assertRaisesRegex(ValueError, "^" + error + "$"):
                 self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt | {"valid_until": value}, principal=self.principal)
         with self.repo.connect() as conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
+
+
+    def test_native_lineage_is_validated_before_serialization(self):
+        """Lock the original malformed model; coercion must not make it valid."""
+        for index, lineage in enumerate(("evidence-reference", ("evidence-reference",), {"evidence-reference": True}, [123], [True], [{}], [""], ["   "])):
+            context = self.model("bad-lineage-" + str(index), lineage=lineage)
+            with self.subTest(lineage=lineage), patch.object(self.repo, "_insert_intelligence_context") as insert, self.assertRaisesRegex(ValueError, "^context_component_invalid$"):
+                self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+            insert.assert_not_called()
+        with self.repo.connect() as conn:
+            for table in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"):
+                self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0])
+        valid = self.model("valid-lineage", lineage=["evidence-reference", "manual:brief"])
+        saved = self.repo.persist_validated_intelligence_context(context=valid, principal=self.principal)
+        self.assertEqual(["evidence-reference", "manual:brief"], saved["component_manifest"][0]["lineage"])
+
+    def test_review_and_receipt_audit_targets_match_server_owned_ids(self):
+        context = self.model("audit")
+        self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context), principal=self.principal, correlation_id="review-attempt")
+        receipt = {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        saved = self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt, principal=self.principal, correlation_id="receipt-attempt")
+        events = self.repo.security_audit_events(organization_id="org-a")
+        for action, target, correlation in (("aia.review.save", review["review_overlay_id"], "review-attempt"), ("aia.approval.save", saved["approval_receipt_id"], "receipt-attempt")):
+            with self.subTest(action=action):
+                matching = [event for event in events if event["action"] == action and event["correlation_id"] == correlation]
+                self.assertEqual(1, len(matching))
+                self.assertEqual(("u", "org-a", "allowed", target), tuple(matching[0][key] for key in ("actor_user_id", "organization_id", "result", "target_id")))
+
+    def test_context_review_can_authorize_run_without_mutating_context(self):
+        """Review and approval scopes have distinct native contract meanings."""
+        context = self.model("scope")
+        original = self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context, review_scope="context"), principal=self.principal)
+        receipt = {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "run", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        for invalid in ({"intelligence_context_hash": "wrong"}, {"review_overlay_hash": "wrong"}, {"review_overlay_id": "missing"}, {"conditions": ["forged"]}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt | invalid, principal=self.principal)
+        saved = self.repo.save_intelligence_approval(organization_id="org-a", project_id=self.project.project_id, receipt=receipt, principal=self.principal)
+        self.assertEqual(("context", "run"), (review["review_scope"], saved["approval_scope"]))
+        self.assertEqual(saved, self.repo.get_intelligence_approval_receipt(receipt_id=saved["approval_receipt_id"], organization_id="org-a", project_id=self.project.project_id, principal=self.principal))
+        self.assertEqual(original, self.repo.get_intelligence_context(context_build_id=context.context_build_id, organization_id="org-a", project_id=self.project.project_id, principal=self.principal))
+        with self.repo.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
+            for table in ("runs", "snapshots"):
+                self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0])
+
+    def test_review_and_approval_denials_precede_context_lookup(self):
+        context, _, receipt = self.approval_request()
+        for principal in (None, Principal("foreign", "s", "org-b", "organization_owner"), Principal("viewer", "s", "org-a", "viewer")):
+            for method, argument, payload in ((self.repo.save_intelligence_review, "overlay", self.review(context)), (self.repo.save_intelligence_approval, "receipt", receipt)):
+                with self.subTest(principal=principal, argument=argument), patch.object(self.repo, "_intelligence_review_context") as lookup, self.assertRaises(PermissionError):
+                    method(organization_id="org-a", project_id=self.project.project_id, principal=principal, **{argument: payload})
+                lookup.assert_not_called()
+        with self.repo.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_review_overlays").fetchone()[0])
             self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_approval_receipts").fetchone()[0])
 
 
