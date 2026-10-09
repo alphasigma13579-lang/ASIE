@@ -1533,6 +1533,7 @@ class Repository:
         project_id = payload.get("project_id", "") if isinstance(payload, dict) else ""
         if not isinstance(project_id, str):
             project_id = ""
+        project_id = project_id.strip()
         scope = self.intelligence_project_scope(organization_id=organization_id or "", project_id=project_id, principal=principal, correlation_id=correlation_id)
         self._intelligence_draft_payload(payload, complete=True)
         timestamp = now_iso()
@@ -1643,6 +1644,7 @@ class Repository:
         material = self._intelligence_model_payload(overlay, ReviewOverlay, derived_hash="review_overlay_hash")
         role = principal.role or principal.platform_role
         if any(key in material and material[key] != value for key, value in (("reviewer_id", principal.user_id), ("reviewer_role", role))):
+            self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.review.save", target_type="intelligence_context", target_id=review_id, result="denied", reason="reviewer_identity_mismatch", correlation_id=correlation_id)
             raise PermissionError("intelligence_access_denied")
         material |= {"reviewer_id": principal.user_id, "reviewer_role": role}
         if "review_overlay_id" in material:
@@ -1668,6 +1670,8 @@ class Repository:
         material = self._intelligence_model_payload(receipt, ApprovalReceipt, derived_hash="approval_receipt_hash")
         for key, expected in (("organization_id", organization_id), ("project_id", project_id)):
             if key in material and material[key] != expected:
+                reason = "receipt_organization_mismatch" if key == "organization_id" else "receipt_project_mismatch"
+                self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.approval.save", target_type="intelligence_context", target_id=receipt_id, result="denied", reason=reason, correlation_id=correlation_id)
                 raise PermissionError("intelligence_access_denied")
         material |= {"organization_id": organization_id, "project_id": project_id}
         if "approval_receipt_id" in material:
