@@ -1739,18 +1739,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/api/intelligence/contexts/"):
-            context_id = path.split("/")[4]
-            organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-            project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
-            principal = self._principal(organization_id)
-            if not organization_id or not project_id or principal is None:
-                write_error(self, "permission_denied", 403)
-                return
-            context = REPO.get_intelligence_context(context_build_id=context_id, organization_id=organization_id, project_id=project_id, principal=principal)
-            if context is None:
-                write_error(self, "intelligence_context_not_found", 404)
-                return
-            write_json(self, {"context": context, "snapshot_mutation": False, "external_fetch_enabled": False})
+            self._dispatch_intelligence_context_get()
             return
         if self._principal() is None:
             return
@@ -2050,6 +2039,123 @@ class Handler(BaseHTTPRequestHandler):
             return
         write_error(self, "not_found", 404)
 
+    def _intelligence_ingress_error(self, kind: str, status: int, principal: Principal | None = None) -> None:
+        # Error presentation may use a valid session identity without granting
+        # tenant scope. The ingress authorization helper remains fail-closed.
+        if kind == "denied" and principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+            if principal is None:
+                kind, status = "authentication", 401
+        locale = "ar"
+        if principal is not None:
+            try:
+                saved = REPO.customer_locale(principal.user_id)
+                locale = saved if saved in {"ar", "en"} else "ar"
+            except Exception:
+                pass
+        messages = {
+            "authentication": ("انتهت جلسة الدخول أو لم تبدأ بعد. لم يُنفذ الطلب؛ سجّل الدخول ثم عد إلى مشروعك.", "Your sign-in session has expired or has not started. Nothing was processed; sign in and return to your project."),
+            "too_large": ("الطلب أكبر من الحجم المسموح. لم تُعتمد معلومات جديدة؛ قلّل حجم البيانات المرسلة ثم أعد المحاولة.", "The request exceeds the allowed size. No new information was approved; reduce the submitted data and try again."),
+            "denied": ("لا يمكنك الوصول إلى بيانات هذا المشروع. لم يُنفذ الطلب؛ ارجع إلى مشروع تملك صلاحية استخدامه.", "You cannot access this project's data. Nothing was processed; return to a project you are authorized to use."),
+            "invalid": ("تعذر حفظ الطلب لأن بياناته غير مقبولة. لم تُعتمد أي معلومات؛ راجع بيانات المشروع ثم أعد المحاولة.", "The request could not be saved because its data is invalid. No information was approved; review your project details and try again."),
+            "blocked": ("تجهيز سياق الأدلة بهذه الطريقة غير متاح الآن، لذلك لم يبدأ التحليل ولم تتغير النتائج المحفوظة. يمكنك مراجعة بيانات المشروع وأدلته ثم العودة؛ إضافة دليل لا تفعّل هذه القدرة المحجوبة.", "Preparing evidence context this way is currently unavailable, so analysis did not start and saved results are unchanged. You can review your project details and evidence, then return; adding evidence does not enable this blocked capability."),
+            "unavailable": ("تعذر إكمال الطلب مؤقتًا ولم تُعتمد معلومات جديدة. عد إلى مشروعك وأعد المحاولة لاحقًا.", "The request is temporarily unavailable and no new information was approved. Return to your project and try again later."),
+            "missing": ("تعذر العثور على بيانات السياق المطلوبة لهذا المشروع. ارجع إلى المشروع وراجع بياناته وأدلته.", "The requested context data could not be found for this project. Return to the project and review its details and evidence."),
+        }
+        # Keep the existing error envelope, without exposing correlation IDs or
+        # request/exception content as customer-facing text.
+        write_json(self, {"error": messages[kind][locale == "en"], "status": status, "request_id": None}, status)
+
+    def _intelligence_ingress_denial(self, status: int, principal: Principal | None = None) -> None:
+        """Audit only early authorization exits; never read request payloads."""
+        if principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+        # A session-only identity supplies the actor, never selected tenant scope.
+        REPO.audit(actor_user_id=principal.user_id if principal else None, organization_id=principal.organization_id if principal else None, action="aia.context.read" if self.command == "GET" else "aia.context.request", target_type="intelligence_context", target_id="intelligence_ingress", result="denied", reason="tenant_membership_or_permission_failed", correlation_id=self.request_id)
+        self._intelligence_ingress_error("denied" if principal else "authentication", status if principal else 401, principal)
+
+    def _intelligence_ingress_principal(self) -> Principal | None:
+        organization_id = self.headers.get("X-ASIE-Organization-Id", "")
+        token = self._bearer_token()
+        principal = REPO.principal_for_token(token, organization_id) if token else None
+        if not organization_id or principal is None or principal.organization_id != organization_id:
+            return None
+        return principal
+
+    def _dispatch_intelligence_context_get(self) -> None:
+        principal = None
+        try:
+            principal = self._intelligence_ingress_principal()
+            if principal is None:
+                self._intelligence_ingress_denial(403)
+                return
+            parts = urlparse(self.path).path.split("/")
+            if len(parts) != 5 or not parts[4]:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
+            context = REPO.get_intelligence_context(context_build_id=parts[4], organization_id=principal.organization_id, project_id=project_id, principal=principal)
+            if context is None:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            write_json(self, {"context": context, "snapshot_mutation": False, "external_fetch_enabled": False})
+        except PermissionError:
+            self._intelligence_ingress_error("denied", 403, principal)
+        except Exception:
+            self._intelligence_ingress_error("unavailable", 503, principal)
+
+    def _dispatch_intelligence_context_post(self, path: str) -> None:
+        principal = None
+        try:
+            principal = self._intelligence_ingress_principal()
+            permission = "project.edit" if path in {"/api/intelligence/contexts", "/api/intelligence/pre-runs"} else "review.write"
+            if principal is None or not principal.can(permission):
+                # Preserve the existing POST denial status without raw details.
+                self._intelligence_ingress_denial(422, principal)
+                return
+            payload = read_json(self)
+            if not isinstance(payload, dict):
+                self._intelligence_ingress_error("invalid", 400, principal)
+                return
+            project_id = _request_text(payload, "project_id", maximum=256)
+            REPO._authorize_intelligence(principal=principal, organization_id=principal.organization_id, project_id=project_id, permission=permission, action="aia.context.request", target_id="", correlation_id=self.request_id)
+            if path == "/api/intelligence/contexts":
+                record = REPO.create_intelligence_context(payload=payload, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}, 201)
+                return
+            if path == "/api/intelligence/pre-runs":
+                # No service construction, builder, cache or legacy fallback.
+                self._intelligence_ingress_error("blocked", 409, principal)
+                return
+            parts = path.split("/")
+            if len(parts) != 6 or not parts[4]:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            material = {key: value for key, value in payload.items() if key != "project_id"}
+            if "intelligence_context_id" in material and material["intelligence_context_id"] != parts[4]:
+                self._intelligence_ingress_error("invalid", 400, principal)
+                return
+            material["intelligence_context_id"] = parts[4]
+            if path.startswith("/api/intelligence/contexts/") and path.endswith("/reviews"):
+                record = REPO.save_intelligence_review(organization_id=principal.organization_id, project_id=project_id, overlay=material, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"review": record, "snapshot_mutation": False}, 201)
+                return
+            if path.startswith("/api/intelligence/contexts/") and path.endswith("/approval"):
+                record = REPO.save_intelligence_approval(organization_id=principal.organization_id, project_id=project_id, receipt=material, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
+                return
+        except PermissionError:
+            self._intelligence_ingress_error("denied", 422, principal)
+        except RequestError as exc:
+            kind = "too_large" if exc.status == 413 else "invalid"
+            self._intelligence_ingress_error(kind, exc.status, principal)
+        except (ValueError, TypeError):
+            self._intelligence_ingress_error("invalid", 400, principal)
+        except Exception:
+            self._intelligence_ingress_error("unavailable", 503, principal)
+
     def do_POST(self) -> None:
         """Authorize and dispatch one state-changing API request."""
         if not self._allow_request():
@@ -2057,6 +2163,15 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/architecture/runtime-status":
             reject_architecture_status_mutation(self)
+            return
+        if path == "/api/intelligence/contexts":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path == "/api/intelligence/pre-runs":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path.startswith("/api/intelligence/contexts/") and (path.endswith("/reviews") or path.endswith("/approval")):
+            self._dispatch_intelligence_context_post(path)
             return
         try:
             payload = read_json(self)
@@ -2530,50 +2645,6 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     self._write_provider_unavailable("google_maps_platform")
                     return
-            if path == "/api/intelligence/contexts":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                record = REPO.create_intelligence_context(payload=payload | {"organization_id": organization_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}, 201)
-                return
-            if path == "/api/intelligence/pre-runs":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                required = ("project_id", "context_build_id", "idempotency_key", "geography", "sector")
-                if any(not payload.get(key) for key in required) or not isinstance(payload.get("components"), list):
-                    write_error(self, "pre_run_payload_incomplete", 400)
-                    return
-                result = IntelligencePreRunService(REPO).build_local_context(organization_id=organization_id, project_id=str(payload["project_id"]), context_build_id=str(payload["context_build_id"]), idempotency_key=str(payload["idempotency_key"]), geography=str(payload["geography"]), sector=str(payload["sector"]), components=payload["components"], principal=principal, correlation_id=self.request_id)
-                write_json(self, result, 201 if result.get("context") else 422)
-                return
-            if path.startswith("/api/intelligence/contexts/") and path.endswith("/reviews"):
-                context_id = path.split("/")[4]
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                project_id = str(payload.get("project_id") or "")
-                record = REPO.save_intelligence_review(organization_id=organization_id, project_id=project_id, overlay=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"review": record, "snapshot_mutation": False}, 201)
-                return
-            if path.startswith("/api/intelligence/contexts/") and path.endswith("/approval"):
-                context_id = path.split("/")[4]
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                project_id = str(payload.get("project_id") or "")
-                record = REPO.save_intelligence_approval(organization_id=organization_id, project_id=project_id, receipt=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
-                return
             if self._principal() is None:
                 return
             if path in {"/api/datasets/manual-import", "/api/datasets/file-import"}:
