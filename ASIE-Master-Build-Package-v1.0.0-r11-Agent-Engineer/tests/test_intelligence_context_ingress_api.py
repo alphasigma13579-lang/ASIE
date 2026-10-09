@@ -298,5 +298,55 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
         self.assertEqual(("denied", self.owner["user_id"]), (events[0]["result"], events[0]["actor_user_id"]))
         self.assertEqual((0, 0, 0, 0, 0), self.counts())
 
+
+    def test_padded_project_id_creates_and_replays_canonical_draft(self):
+        payload = {"project_id": " \t" + self.project.project_id + "\n ", "idempotency_key": "padded-http"}
+        status, body = self.request("/api/intelligence/contexts", payload, token=self.token)
+        self.assertEqual(201, status)
+        self.assertEqual(self.project.project_id, body["context"]["project_id"])
+        status, replay = self.request("/api/intelligence/contexts", payload | {"project_id": self.project.project_id}, token=self.token)
+        self.assertEqual(201, status)
+        self.assertEqual(body["context"], replay["context"])
+        for invalid in (self.foreign.project_id, "missing-project"):
+            with self.subTest(invalid=invalid):
+                status, _, correlation = self.request("/api/intelligence/contexts", payload | {"project_id": " \t" + invalid + "\n "}, token=self.token, with_request_id=True)
+                self.assertEqual(422, status)
+                events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation]
+                self.assertEqual(1, len(events))
+                self.assertEqual("denied", events[0]["result"])
+        self.assertEqual((1, 0, 0, 0, 0), self.counts())
+
+    def test_forged_identity_http_denials_have_one_safe_correlated_event(self):
+        marker = "SECRET_HTTP_FORGED_IDENTITY_MARKER"
+        route = "/api/intelligence/contexts/ctx-unread-identity"
+        overlay = {"project_id": self.project.project_id, "intelligence_context_hash": "hash", "review_scope": "context", "reviewed_output_hash": "hash", "decision": "APPROVE"}
+        receipt = {"project_id": self.project.project_id, "intelligence_context_hash": "hash", "review_overlay_id": "review-unread", "review_overlay_hash": "hash", "approval_scope": "run", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        # HTTP project selection is preflight-checked and removed from material;
+        # receipt project-claim mismatch is exercised directly in repository tests.
+        cases = (
+            ("reviews", overlay | {"reviewer_id": marker}, "aia.review.save", "reviewer_identity_mismatch"),
+            ("reviews", overlay | {"reviewer_role": marker}, "aia.review.save", "reviewer_identity_mismatch"),
+            ("approval", receipt | {"organization_id": marker}, "aia.approval.save", "receipt_organization_mismatch"),
+        )
+        with patch.object(self.repo, "_intelligence_review_context") as lookup:
+            for suffix, payload, action, reason in cases:
+                with self.subTest(suffix=suffix, action=action, reason=reason):
+                    status, body, correlation = self.request(route + "/" + suffix, payload, token=self.token, with_request_id=True)
+                    self.assertEqual(422, status)
+                    self.assertTrue(correlation)
+                    events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation]
+                    denied = [event for event in events if event["result"] == "denied"]
+                    allowed = [event for event in events if event["result"] == "allowed" and event["action"] == action]
+                    self.assertEqual(1, len(denied))
+                    self.assertEqual(1, len(allowed))
+                    self.assertEqual((self.owner["user_id"], self.org, action, reason), tuple(denied[0][key] for key in ("actor_user_id", "organization_id", "action", "reason")))
+                    self.assertTrue(denied[0]["target_id"])
+                    self.assertEqual(allowed[0]["target_id"], denied[0]["target_id"])
+                    self.assertNotEqual("ctx-unread-identity", denied[0]["target_id"])
+                    self.assertNotIn(marker, json.dumps(events))
+                    self.assertNotIn(marker, json.dumps(body))
+            lookup.assert_not_called()
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
+
 if __name__ == "__main__":
     unittest.main()

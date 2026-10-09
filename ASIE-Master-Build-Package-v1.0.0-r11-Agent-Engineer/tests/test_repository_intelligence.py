@@ -299,5 +299,53 @@ class RepositoryIntelligenceTests(unittest.TestCase):
             for table in ("intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"):
                 self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0])
 
+
+    def test_project_id_normalization_precedes_ownership_storage_and_replay(self):
+        """The public repository and HTTP boundary use the same saved ID."""
+        project_id = self.project.project_id
+        created = self.repo.create_intelligence_context(payload={"project_id": " \t" + project_id + "\n ", "idempotency_key": "normalized"}, principal=self.principal)
+        replay = self.repo.create_intelligence_context(payload={"project_id": project_id, "idempotency_key": "normalized"}, principal=self.principal)
+        self.assertEqual(project_id, created["project_id"])
+        self.assertEqual(created, replay)
+        for invalid in (self.foreign.project_id, "missing-project", ""):
+            with self.subTest(invalid=invalid), patch.object(self.repo, "_insert_intelligence_context") as insert, self.assertRaises(PermissionError):
+                self.repo.create_intelligence_context(payload={"project_id": " \t" + invalid + "\n ", "idempotency_key": "normalized"}, principal=self.principal)
+            insert.assert_not_called()
+        # Normalize the lookup, not the original payload validation or key.
+        for payload in ({"project_id": " " * 257 + project_id, "idempotency_key": "oversized"}, {"project_id": project_id, "idempotency_key": "extra", "trusted": True}):
+            with self.subTest(payload=payload), patch.object(self.repo, "_insert_intelligence_context") as insert, self.assertRaisesRegex(ValueError, "^invalid_context_request$"):
+                self.repo.create_intelligence_context(payload=payload, principal=self.principal)
+            insert.assert_not_called()
+        with self.repo.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+
+    def test_identity_claim_denials_are_audited_before_lookup_without_raw_claims(self):
+        context, _, receipt = self.approval_request()
+        marker = "SECRET_FORGED_IDENTITY_MARKER"
+        cases = (
+            (self.repo.save_intelligence_review, "overlay", self.review(context), "reviewer_id", "aia.review.save", "reviewer_identity_mismatch"),
+            (self.repo.save_intelligence_review, "overlay", self.review(context), "reviewer_role", "aia.review.save", "reviewer_identity_mismatch"),
+            (self.repo.save_intelligence_approval, "receipt", receipt, "organization_id", "aia.approval.save", "receipt_organization_mismatch"),
+            (self.repo.save_intelligence_approval, "receipt", receipt, "project_id", "aia.approval.save", "receipt_project_mismatch"),
+        )
+        for method, argument, payload, field, action, reason in cases:
+            correlation = "identity-denial-" + field
+            with self.subTest(field=field), patch.object(self.repo, "_intelligence_review_context") as lookup, self.assertRaisesRegex(PermissionError, "^intelligence_access_denied$"):
+                method(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, correlation_id=correlation, **{argument: payload | {field: marker}})
+            lookup.assert_not_called()
+            events = [event for event in self.repo.security_audit_events() if event["correlation_id"] == correlation and event["action"] == action]
+            denied = [event for event in events if event["result"] == "denied"]
+            allowed = [event for event in events if event["result"] == "allowed"]
+            self.assertEqual(1, len(denied))
+            self.assertEqual(1, len(allowed))
+            self.assertEqual(("u", "org-a", "intelligence_context", reason), tuple(denied[0][key] for key in ("actor_user_id", "organization_id", "target_type", "reason")))
+            self.assertTrue(denied[0]["target_id"])
+            self.assertEqual(allowed[0]["target_id"], denied[0]["target_id"])
+            self.assertNotEqual(context.context_build_id, denied[0]["target_id"])
+            self.assertNotIn(marker, str(events))
+        with self.repo.connect() as conn:
+            counts = tuple(conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0] for table in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"))
+        self.assertEqual((1, 1, 0, 0, 0), counts)
+
 if __name__ == "__main__":
     unittest.main()
