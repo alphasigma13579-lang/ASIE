@@ -26,7 +26,13 @@ REQUIRED_PACKAGE_IDS = {f"FC20-{number:02d}" for number in range(1, 17)}
 
 
 def load_manifest() -> dict:
-    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    """CS-05: reject source-byte changes hidden by JSON parsing or text decoding."""
+    source_bytes = MANIFEST_PATH.read_bytes()
+    manifest = json.loads(source_bytes.decode("utf-8"))
+    canonical_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    # .gitattributes requires LF on every supported platform; do not normalize here.
+    assert source_bytes == canonical_bytes, "manifest_noncanonical_source"
+    return manifest
 
 
 def test_program_is_fail_closed_and_does_not_authorize_launch() -> None:
@@ -2477,3 +2483,41 @@ def test_consumption_projection_rejects_boundary_or_prefix_edits(
     monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
     with pytest.raises(AssertionError, match="consumption_prefix_"):
         test_consumption_projection_preserves_original_document_bytes(relative_path, blob)
+
+
+def test_consumption_manifest_loader_preserves_canonical_source() -> None:
+    """CS-05: admit the exact LF source bytes without dropping or changing fields."""
+    source_bytes = MANIFEST_PATH.read_bytes()
+    manifest = load_manifest()
+    assert source_bytes == (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    validate_consumption_scope_baseline(manifest)
+
+
+@pytest.mark.parametrize("mutation", (
+    "leading_space", "trailing_blank_line", "missing_final_newline",
+    "compact", "indentation", "crlf",
+))
+def test_consumption_manifest_loader_rejects_byte_only_changes(
+    monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    """CS-05: unchanged parsed values cannot conceal changes to manifest bytes."""
+    source_bytes = MANIFEST_PATH.read_bytes()
+    manifest = json.loads(source_bytes.decode("utf-8"))
+    if mutation == "leading_space":
+        tampered = b" " + source_bytes
+    elif mutation == "trailing_blank_line":
+        tampered = source_bytes + b"\n"
+    elif mutation == "missing_final_newline":
+        tampered = source_bytes.removesuffix(b"\n")
+    elif mutation == "compact":
+        tampered = (json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    elif mutation == "indentation":
+        tampered = (json.dumps(manifest, ensure_ascii=False, indent=4) + "\n").encode("utf-8")
+    else:
+        tampered = source_bytes.replace(b"\n", b"\r\n")
+    assert tampered != source_bytes
+    # The former parse-only loader accepted all six identical-content variants.
+    assert json.loads(tampered.decode("utf-8")) == manifest
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
+    with pytest.raises(AssertionError, match=r"^manifest_noncanonical_source$"):
+        validate_consumption_scope_baseline(load_manifest())
