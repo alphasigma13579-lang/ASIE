@@ -2353,6 +2353,7 @@ def test_consumption_scope_rejects_unapproved_paths(mutation: str) -> None:
 
 @pytest.mark.parametrize("index", (4, 5))
 def test_consumption_scope_rejects_unknown_authority_fields(index: int) -> None:
+    """CS-02: reject extra authority fields in either new event."""
     manifest = load_manifest()
     defensive_record(manifest)["events"][index]["supplied_approval"] = True
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
@@ -2390,12 +2391,14 @@ def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> 
 
 @pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
 def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_path: str) -> None:
+    """CS-07: require the same bounded candidate evidence in every governing view."""
     content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
     validate_consumption_governing_view(content)
 
 
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
 def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: str) -> None:
+    """CS-07: evidence outside the candidate section cannot satisfy its guard."""
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
@@ -2405,6 +2408,7 @@ def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: st
 
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "heading", "resume", "network"))
 def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str) -> None:
+    """CS-07: reject ambiguous section boundaries and implicit execution authority."""
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
     if mutation == "missing_marker":
         content = content.replace(CONSUMPTION_VIEW_MARKER, "")
@@ -2420,11 +2424,13 @@ def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str)
 
 
 def git_blob_sha(content: bytes) -> str:
+    """Return the Git blob object ID for the exact supplied bytes."""
     return hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
 
 
 @pytest.mark.parametrize("relative_path,blob", CONSUMPTION_VIEW_PREFIX_BLOBS.items())
 def test_consumption_projection_preserves_original_document_bytes(relative_path: str, blob: str) -> None:
+    """CS-07: preserve each original document prefix against its pinned blob."""
     content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes().replace(b"\r\n", b"\n")
     separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode()
     assert content.count(separator) == 1, "consumption_prefix_separator"
@@ -2439,6 +2445,7 @@ def test_consumption_addendum_remains_exactly_the_reviewed_blob() -> None:
 
 @pytest.mark.parametrize("mutation", ("reverse", "swap", "old_decision", "nested_override"))
 def test_consumption_scope_rejects_reordered_or_reused_authority(mutation: str) -> None:
+    """CS-03: reject reordered events, reused decisions and nested overrides."""
     manifest = load_manifest()
     events = defensive_record(manifest)["events"]
     if mutation == "reverse":
@@ -2457,6 +2464,7 @@ def test_consumption_scope_rejects_reordered_or_reused_authority(mutation: str) 
 def test_consumption_projection_rejects_boundary_or_prefix_edits(
     monkeypatch: pytest.MonkeyPatch, mutation: str,
 ) -> None:
+    """CS-07: reject removed or repeated boundaries and changed historical prefixes."""
     relative_path, blob = next(iter(CONSUMPTION_VIEW_PREFIX_BLOBS.items()))
     content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes().replace(b"\r\n", b"\n")
     separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode()
