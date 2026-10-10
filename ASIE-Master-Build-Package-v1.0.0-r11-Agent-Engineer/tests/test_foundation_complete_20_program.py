@@ -2226,8 +2226,17 @@ CONSUMPTION_VIEW_PATHS = (
 )
 
 
-def validate_consumption_governing_view(content: str) -> None:
-    """CS-07: require evidence in one bounded section, not in historical material."""
+# Independent fixed expectations from reviewed GitHub blobs at 864bbfe80692cb340d839f9c8a291c1d31c74006.
+# Each candidate projection is terminal: its exact byte boundary is marker -> EOF.
+# Never derive expected digests from mutable documents at test runtime.
+CONSUMPTION_VIEW_PROJECTION_SHA256 = json.loads(r'''{"docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md":"c71aca5fcd26ad8af4f8a18a42587875aaa36c9635ddab34807c29a7db1cdb1b","docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md":"f4abe5689c37805804ec7d7dceb6d67543b3f5aef0d1f6443088dd8d454bdc40","docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md":"c71aca5fcd26ad8af4f8a18a42587875aaa36c9635ddab34807c29a7db1cdb1b","docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md":"c71aca5fcd26ad8af4f8a18a42587875aaa36c9635ddab34807c29a7db1cdb1b","docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md":"7285730377b5c230fb0269ebd5bf9642a6bd2ce4083fc10503623f398317bea9"}''')
+
+
+def validate_consumption_governing_view(source_bytes: bytes, relative_path: str) -> None:
+    """CS-07: readable diagnostics plus a per-path, exact-byte candidate seal."""
+    assert isinstance(source_bytes, bytes), "consumption_view_source_bytes"
+    assert relative_path in CONSUMPTION_VIEW_PROJECTION_SHA256, "consumption_view_path"
+    content = source_bytes.decode("utf-8")
     assert content.count(CONSUMPTION_VIEW_MARKER) == 1, "consumption_view_marker"
     section = content.split(CONSUMPTION_VIEW_MARKER, 1)[1].lstrip("\n")
     heading, _, body = section.partition("\n")
@@ -2241,7 +2250,7 @@ def validate_consumption_governing_view(content: str) -> None:
     assert scope_items == [
         f"`{path}`" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]
     ], "consumption_view_scope_list"
-    # Compare rendered authority text too; formatting cannot grant permission.
+    # Readable diagnostics for common formats; the raw-byte seal below closes all other edits.
     authority_text = section.replace("`", "").replace('"', "").replace("'", "")
     authority_text = authority_text.replace("*", "").replace("~", "")
     # Strip emphasis boundaries only; identifier-internal underscores remain intact.
@@ -2253,6 +2262,10 @@ def validate_consumption_governing_view(content: str) -> None:
         r"\s+(?:IN_PROGRESS|DELIVERED)\s*/\s*true",
         authority_text, re.IGNORECASE,
     ), "consumption_view_authority_claim"
+    separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode("utf-8")
+    assert source_bytes.count(separator) == 1, "consumption_view_boundary"
+    projection = source_bytes[source_bytes.index(CONSUMPTION_VIEW_MARKER.encode("utf-8")):]
+    assert hashlib.sha256(projection).hexdigest() == CONSUMPTION_VIEW_PROJECTION_SHA256[relative_path], "consumption_view_projection_changed"
 
 
 def test_consumption_scope_is_stopped_with_exact_history_and_one_slot() -> None:
@@ -2406,8 +2419,8 @@ def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> 
 @pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
 def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_path: str) -> None:
     """CS-07: require the same bounded candidate evidence in every governing view."""
-    content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
-    validate_consumption_governing_view(content)
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    validate_consumption_governing_view(content, relative_path)
 
 
 @pytest.mark.parametrize("mutation", (
@@ -2416,7 +2429,7 @@ def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_p
 ))
 def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> None:
     """CS-07: reject any added, removed, repeated, reordered or malformed scope item."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     scope_lines = [f"- `{path}`\n" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]]
     scope_block = "".join(scope_lines)
@@ -2443,17 +2456,17 @@ def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> No
     assert changed != scope_block
     tampered = before + CONSUMPTION_VIEW_MARKER + section.replace(scope_block, changed, 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_scope_list(?:\n|$)"):
-        validate_consumption_governing_view(tampered)
+        validate_consumption_governing_view(tampered.encode("utf-8"), CONSUMPTION_VIEW_PATHS[0])
 
 
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
 def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: str) -> None:
     """CS-07: evidence outside the candidate section cannot satisfy its guard."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
     with pytest.raises(AssertionError, match="consumption_view_missing"):
-        validate_consumption_governing_view(tampered)
+        validate_consumption_governing_view(tampered.encode("utf-8"), CONSUMPTION_VIEW_PATHS[0])
 
 
 @pytest.mark.parametrize("flag", (
@@ -2471,7 +2484,7 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
     """CS-07: plain or formatted colon/equals grants cannot hide behind false evidence."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     gap = ""
@@ -2486,7 +2499,7 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     # Retain the false evidence and exact path list while adding a conflicting grant.
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
-        validate_consumption_governing_view(tampered)
+        validate_consumption_governing_view(tampered.encode("utf-8"), CONSUMPTION_VIEW_PATHS[0])
 
 
 @pytest.mark.parametrize("target", ("routing_repair", "f01a_defensive_ingress"))
@@ -2500,7 +2513,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
     target: str, state: str, formatting: str, slash_gap: str,
 ) -> None:
     """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     delimiter = {
@@ -2511,13 +2524,13 @@ def test_consumption_view_rejects_formatted_authorized_state(
     claim = f"{delimiter}{target}{delimiter} {delimiter}{state}{slash_gap}/{slash_gap}true{delimiter}"
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
-        validate_consumption_governing_view(tampered)
+        validate_consumption_governing_view(tampered.encode("utf-8"), CONSUMPTION_VIEW_PATHS[0])
 
 
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "heading", "resume", "network"))
 def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str) -> None:
     """CS-07: reject ambiguous section boundaries and implicit execution authority."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     if mutation == "missing_marker":
         content = content.replace(CONSUMPTION_VIEW_MARKER, "")
     elif mutation == "duplicate_marker":
@@ -2528,7 +2541,7 @@ def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str)
         claim = "execution_authorized=true" if mutation == "resume" else "network_authorized=true"
         content = content.replace(CONSUMPTION_VIEW_HEADING + "\n", CONSUMPTION_VIEW_HEADING + "\n" + claim + "\n", 1)
     with pytest.raises(AssertionError, match="consumption_view_"):
-        validate_consumption_governing_view(content)
+        validate_consumption_governing_view(content.encode("utf-8"), CONSUMPTION_VIEW_PATHS[0])
 
 
 def git_blob_sha(content: bytes) -> str:
@@ -2667,3 +2680,90 @@ def test_consumption_addendum_rejects_source_byte_edits(
     monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
     with pytest.raises(AssertionError, match=r"^consumption_addendum_changed(?:\n|$)"):
         test_consumption_addendum_remains_exactly_the_reviewed_blob()
+
+
+@pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
+@pytest.mark.parametrize("mutation", (
+    "blockquoted_extra", "nested_blockquoted_extra", "escaped_flag",
+    "decimal_entity_flag", "hex_entity_flag", "escaped_state", "entity_state",
+    "encoded_extra_path", "suffix_heading", "suffix_comment", "suffix_h4",
+    "prose_crlf", "boundary_blank_line", "trailing_blank_line", "missing_final_newline",
+))
+def test_consumption_view_byte_seal_rejects_markdown_and_boundary_edits(
+    relative_path: str, mutation: str,
+) -> None:
+    """CS-07: partial Markdown parsing cannot admit any unreviewed terminal bytes."""
+    source_bytes = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    content = source_bytes.decode("utf-8")
+    heading_line = CONSUMPTION_VIEW_HEADING + "\n"
+    assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
+    injected = {
+        "blockquoted_extra": "> - backend/unapproved.py\n",
+        "nested_blockquoted_extra": "> > - backend/unapproved.py\n",
+        "escaped_flag": r"execution\_authorized=true" + "\n",
+        "decimal_entity_flag": "execution&#95;authorized=true\n",
+        "hex_entity_flag": "execution&#x5f;authorized=true\n",
+        "escaped_state": r"f01a\_defensive\_ingress IN_PROGRESS/true" + "\n",
+        "entity_state": "routing&#95;repair DELIVERED/true\n",
+        "encoded_extra_path": "> - backend&#47;unapproved.py\n",
+    }
+    if mutation in injected:
+        tampered = content.replace(heading_line, heading_line + injected[mutation], 1).encode("utf-8")
+    elif mutation.startswith("suffix_"):
+        suffix = {
+            "suffix_heading": "\n### Override\nexecution_authorized=true\n",
+            "suffix_comment": "\n<!-- Override -->\n> - backend/unapproved.py\n",
+            "suffix_h4": "\n#### Override\nexecution&#95;authorized=true\n",
+        }[mutation]
+        tampered = source_bytes + suffix.encode("utf-8")
+    elif mutation == "prose_crlf":
+        # Change one non-token prose line only: old semantic checks still pass.
+        line = "هذا إسقاط مرشح لا يعيد كتابة السجلات التاريخية."
+        before, projection = content.split(CONSUMPTION_VIEW_MARKER, 1)
+        lines = projection.splitlines(keepends=True)
+        matches = [index for index, item in enumerate(lines) if item.startswith(line)]
+        assert len(matches) == 1, "consumption_view_test_prose_fixture"
+        index = matches[0]
+        assert lines[index].endswith("\n")
+        lines[index] = lines[index].removesuffix("\n") + "\r\n"
+        tampered = (before + CONSUMPTION_VIEW_MARKER + "".join(lines)).encode("utf-8")
+    elif mutation == "boundary_blank_line":
+        marker_line = (CONSUMPTION_VIEW_MARKER + "\n").encode("utf-8")
+        tampered = source_bytes.replace(marker_line, marker_line + b"\n", 1)
+    elif mutation == "missing_final_newline":
+        assert source_bytes.endswith(b"\n")
+        tampered = source_bytes.removesuffix(b"\n")
+    else:
+        tampered = source_bytes + b"\n"
+    assert tampered != source_bytes
+    with pytest.raises(AssertionError, match=r"^consumption_view_projection_changed(?:\n|$)"):
+        validate_consumption_governing_view(tampered, relative_path)
+
+
+@pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
+def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str) -> None:
+    """CS-07: legitimate link/self-link variants cannot be borrowed across paths."""
+    other_path = (
+        CONSUMPTION_VIEW_PATHS[1]
+        if relative_path != CONSUMPTION_VIEW_PATHS[1]
+        else CONSUMPTION_VIEW_PATHS[0]
+    )
+    assert CONSUMPTION_VIEW_PROJECTION_SHA256[relative_path] != CONSUMPTION_VIEW_PROJECTION_SHA256[other_path]
+    content = (Path(__file__).resolve().parents[1] / other_path).read_bytes()
+    with pytest.raises(AssertionError, match=r"^consumption_view_projection_changed(?:\n|$)"):
+        validate_consumption_governing_view(content, relative_path)
+
+
+@pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
+def test_consumption_view_seal_rejects_unregistered_document_path(relative_path: str) -> None:
+    """CS-07: no generic/default digest for an unregistered governing view."""
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes()
+    with pytest.raises(AssertionError, match=r"^consumption_view_path(?:\n|$)"):
+        validate_consumption_governing_view(content, relative_path)
+
+
+def test_consumption_view_seal_requires_original_source_bytes() -> None:
+    """CS-07: text-mode newline normalization is not an admissible input."""
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    with pytest.raises(AssertionError, match=r"^consumption_view_source_bytes(?:\n|$)"):
+        validate_consumption_governing_view(content, CONSUMPTION_VIEW_PATHS[0])
