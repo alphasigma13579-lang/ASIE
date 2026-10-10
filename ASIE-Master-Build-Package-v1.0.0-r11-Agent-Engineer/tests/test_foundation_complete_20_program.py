@@ -2243,6 +2243,9 @@ def validate_consumption_governing_view(content: str) -> None:
     ], "consumption_view_scope_list"
     # Compare rendered authority text too; formatting cannot grant permission.
     authority_text = section.replace("`", "").replace('"', "").replace("'", "")
+    authority_text = authority_text.replace("*", "").replace("~", "")
+    # Strip emphasis boundaries only; identifier-internal underscores remain intact.
+    authority_text = re.sub(r"(?<!\w)_+|_+(?!\w)", "", authority_text)
     assert not re.search(
         r"(?:execution_authorized|network_authorized|provider_activation_authorized"
         r"|deployment_authorized|external_network_authorized|public_release_authorized)"
@@ -2460,7 +2463,10 @@ def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: st
 @pytest.mark.parametrize("separator", ("=", ":"))
 @pytest.mark.parametrize("value", ("true", "1"))
 @pytest.mark.parametrize("style", ("compact", "spaced_upper"))
-@pytest.mark.parametrize("formatting", ("plain", "inline_code", "double_quote", "single_quote"))
+@pytest.mark.parametrize("formatting", (
+    "plain", "inline_code", "double_quote", "single_quote",
+    "strong_star", "emphasis_star", "strong_underscore", "emphasis_underscore", "strike",
+))
 def test_consumption_view_rejects_contradictory_authority_assignments(
     flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
@@ -2471,7 +2477,11 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     gap = ""
     if style == "spaced_upper":
         flag, value, gap = flag.upper(), value.upper(), "\t"
-    delimiter = {"plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'"}[formatting]
+    delimiter = {
+        "plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'",
+        "strong_star": "**", "emphasis_star": "*", "strong_underscore": "__",
+        "emphasis_underscore": "_", "strike": "~~",
+    }[formatting]
     claim = f"{delimiter}{flag}{delimiter}{gap}{separator}{gap}{delimiter}{value}{delimiter}"
     # Retain the false evidence and exact path list while adding a conflicting grant.
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
@@ -2481,7 +2491,10 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
 
 @pytest.mark.parametrize("target", ("routing_repair", "f01a_defensive_ingress"))
 @pytest.mark.parametrize("state", ("IN_PROGRESS", "DELIVERED"))
-@pytest.mark.parametrize("formatting", ("plain", "inline_code", "double_quote", "single_quote"))
+@pytest.mark.parametrize("formatting", (
+    "plain", "inline_code", "double_quote", "single_quote",
+    "strong_star", "emphasis_star", "strong_underscore", "emphasis_underscore", "strike",
+))
 def test_consumption_view_rejects_formatted_authorized_state(
     target: str, state: str, formatting: str,
 ) -> None:
@@ -2489,7 +2502,11 @@ def test_consumption_view_rejects_formatted_authorized_state(
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
-    delimiter = {"plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'"}[formatting]
+    delimiter = {
+        "plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'",
+        "strong_star": "**", "emphasis_star": "*", "strong_underscore": "__",
+        "emphasis_underscore": "_", "strike": "~~",
+    }[formatting]
     claim = f"{delimiter}{target}{delimiter} {delimiter}{state}/true{delimiter}"
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
