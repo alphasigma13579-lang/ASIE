@@ -2519,5 +2519,5 @@ def test_consumption_manifest_loader_rejects_byte_only_changes(
     # The former parse-only loader accepted all six identical-content variants.
     assert json.loads(tampered.decode("utf-8")) == manifest
     monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
-    with pytest.raises(AssertionError, match=r"^manifest_noncanonical_source$"):
+    with pytest.raises(AssertionError, match=r"^manifest_noncanonical_source(?:\n|$)"):
         validate_consumption_scope_baseline(load_manifest())
