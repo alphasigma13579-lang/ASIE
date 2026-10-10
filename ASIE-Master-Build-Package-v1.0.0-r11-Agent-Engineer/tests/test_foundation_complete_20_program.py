@@ -1285,7 +1285,6 @@ def test_stop_checkpoint_keeps_counted_slot_until_reviewed_delivery() -> None:
         validate_defensive_registration(record, None)
 
 
-
 @pytest.mark.parametrize("state,event_types", [
     ("IN_PROGRESS", ["DELIVERED", "STOP_CHECKPOINT"]),
     ("IN_PROGRESS", ["START", "STOP_CHECKPOINT"]),
@@ -2236,8 +2235,12 @@ def validate_consumption_governing_view(content: str) -> None:
     section = re.split(r"(?m)^(?:#{1,3}\s|<!-- )", body, maxsplit=1)[0]
     for token in CONSUMPTION_VIEW_TOKENS:
         assert token in section, "consumption_view_missing:" + token
-    for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]:
-        assert path in section, "consumption_view_scope:" + path
+    scope_items = re.findall(
+        r"(?m)^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(.*)$", section,
+    )
+    assert scope_items == [
+        f"`{path}`" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]
+    ], "consumption_view_scope_list"
     assert not re.search(
         r"(?:execution_authorized|network_authorized|provider_activation_authorized"
         r"|deployment_authorized|external_network_authorized|public_release_authorized)"
@@ -2400,6 +2403,42 @@ def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_p
     """CS-07: require the same bounded candidate evidence in every governing view."""
     content = (Path(__file__).resolve().parents[1] / relative_path).read_text(encoding="utf-8")
     validate_consumption_governing_view(content)
+
+
+@pytest.mark.parametrize("mutation", (
+    "extra", "missing", "duplicate", "reorder", "unquoted_extra",
+    "indented_extra", "numbered_extra", "alternate_marker_extra", "wildcard",
+))
+def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> None:
+    """CS-07: reject any added, removed, repeated, reordered or malformed scope item."""
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
+    scope_lines = [f"- `{path}`\n" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]]
+    scope_block = "".join(scope_lines)
+    assert section.count(scope_block) == 1, "consumption_view_test_scope_fixture"
+    extra = "- `backend/unapproved.py`\n"
+    if mutation == "extra":
+        changed = scope_block + extra
+    elif mutation == "missing":
+        changed = "".join(scope_lines[:-1])
+    elif mutation == "duplicate":
+        changed = scope_block + scope_lines[0]
+    elif mutation == "reorder":
+        changed = "".join([scope_lines[1], scope_lines[0], *scope_lines[2:]])
+    elif mutation == "unquoted_extra":
+        changed = scope_block + "- backend/unapproved.py\n"
+    elif mutation == "indented_extra":
+        changed = scope_block + "    " + extra
+    elif mutation == "numbered_extra":
+        changed = scope_block + "10. `backend/unapproved.py`\n"
+    elif mutation == "alternate_marker_extra":
+        changed = scope_block + "* `backend/unapproved.py`\n"
+    else:
+        changed = scope_block.replace(scope_lines[0], "- `backend/*`\n", 1)
+    assert changed != scope_block
+    tampered = before + CONSUMPTION_VIEW_MARKER + section.replace(scope_block, changed, 1)
+    with pytest.raises(AssertionError, match=r"^consumption_view_scope_list(?:\n|$)"):
+        validate_consumption_governing_view(tampered)
 
 
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
