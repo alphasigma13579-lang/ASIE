@@ -2250,7 +2250,7 @@ def validate_consumption_governing_view(content: str) -> None:
         r"(?:execution_authorized|network_authorized|provider_activation_authorized"
         r"|deployment_authorized|external_network_authorized|public_release_authorized)"
         r"\s*[=:]\s*(?:true|1)\b|(?:routing_repair|f01a_defensive_ingress)"
-        r"\s+(?:IN_PROGRESS|DELIVERED)/true",
+        r"\s+(?:IN_PROGRESS|DELIVERED)\s*/\s*true",
         authority_text, re.IGNORECASE,
     ), "consumption_view_authority_claim"
 
@@ -2490,13 +2490,14 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
 
 
 @pytest.mark.parametrize("target", ("routing_repair", "f01a_defensive_ingress"))
+@pytest.mark.parametrize("slash_gap", ("", " ", "\t", "\n", " \t"))
 @pytest.mark.parametrize("state", ("IN_PROGRESS", "DELIVERED"))
 @pytest.mark.parametrize("formatting", (
     "plain", "inline_code", "double_quote", "single_quote",
     "strong_star", "emphasis_star", "strong_underscore", "emphasis_underscore", "strike",
 ))
 def test_consumption_view_rejects_formatted_authorized_state(
-    target: str, state: str, formatting: str,
+    target: str, state: str, formatting: str, slash_gap: str,
 ) -> None:
     """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
@@ -2507,7 +2508,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
         "strong_star": "**", "emphasis_star": "*", "strong_underscore": "__",
         "emphasis_underscore": "_", "strike": "~~",
     }[formatting]
-    claim = f"{delimiter}{target}{delimiter} {delimiter}{state}/true{delimiter}"
+    claim = f"{delimiter}{target}{delimiter} {delimiter}{state}{slash_gap}/{slash_gap}true{delimiter}"
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
         validate_consumption_governing_view(tampered)
@@ -2538,7 +2539,7 @@ def git_blob_sha(content: bytes) -> str:
 @pytest.mark.parametrize("relative_path,blob", CONSUMPTION_VIEW_PREFIX_BLOBS.items())
 def test_consumption_projection_preserves_original_document_bytes(relative_path: str, blob: str) -> None:
     """CS-07: preserve each original document prefix against its pinned blob."""
-    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes().replace(b"\r\n", b"\n")
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
     separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode()
     assert content.count(separator) == 1, "consumption_prefix_separator"
     assert git_blob_sha(content.split(separator, 1)[0]) == blob, "consumption_prefix_changed"
@@ -2547,7 +2548,7 @@ def test_consumption_projection_preserves_original_document_bytes(relative_path:
 def test_consumption_addendum_remains_exactly_the_reviewed_blob() -> None:
     """CS-08: do not amend approved C02 policy or inherit approval onto changed content."""
     path = Path(__file__).resolve().parents[1] / "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-ADDENDUM-2026-10-09.md"
-    assert git_blob_sha(path.read_bytes().replace(b"\r\n", b"\n")) == "042f89fce3adf1509ec0e6ee3e377c921820fde6"
+    assert git_blob_sha(path.read_bytes()) == "042f89fce3adf1509ec0e6ee3e377c921820fde6", "consumption_addendum_changed"
 
 
 @pytest.mark.parametrize("mutation", ("reverse", "swap", "old_decision", "nested_override"))
@@ -2573,7 +2574,7 @@ def test_consumption_projection_rejects_boundary_or_prefix_edits(
 ) -> None:
     """CS-07: reject removed or repeated boundaries and changed historical prefixes."""
     relative_path, blob = next(iter(CONSUMPTION_VIEW_PREFIX_BLOBS.items()))
-    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes().replace(b"\r\n", b"\n")
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
     separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode()
     if mutation == "missing":
         tampered = content.replace(separator, b"\n", 1)
@@ -2622,3 +2623,47 @@ def test_consumption_manifest_loader_rejects_byte_only_changes(
     monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
     with pytest.raises(AssertionError, match=r"^manifest_noncanonical_source(?:\n|$)"):
         validate_consumption_scope_baseline(load_manifest())
+
+@pytest.mark.parametrize("relative_path,blob", CONSUMPTION_VIEW_PREFIX_BLOBS.items())
+@pytest.mark.parametrize("mutation", ("prefix_crlf", "whole_crlf"))
+def test_consumption_projection_rejects_line_ending_only_edits(
+    monkeypatch: pytest.MonkeyPatch, relative_path: str, blob: str, mutation: str,
+) -> None:
+    """CS-07: reject byte-only prefix edits even when normalized content is identical."""
+    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    separator = ("\n" + CONSUMPTION_VIEW_MARKER + "\n").encode()
+    assert content.count(separator) == 1, "consumption_prefix_separator"
+    prefix, projection = content.split(separator, 1)
+    if mutation == "prefix_crlf":
+        tampered = prefix.replace(b"\n", b"\r\n") + separator + projection
+        failure = r"^consumption_prefix_changed(?:\n|$)"
+    else:
+        tampered = content.replace(b"\n", b"\r\n")
+        failure = r"^consumption_prefix_separator(?:\n|$)"
+    assert tampered != content
+    # Characterize the former normalization bypass, not the corrected guard.
+    assert tampered.replace(b"\r\n", b"\n") == content
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
+    with pytest.raises(AssertionError, match=failure):
+        test_consumption_projection_preserves_original_document_bytes(relative_path, blob)
+
+
+@pytest.mark.parametrize("mutation", ("crlf", "trailing_blank_line", "missing_final_newline"))
+def test_consumption_addendum_rejects_source_byte_edits(
+    monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    """CS-08: the reviewed addendum hash admits its original bytes only."""
+    path = Path(__file__).resolve().parents[1] / "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-ADDENDUM-2026-10-09.md"
+    content = path.read_bytes()
+    if mutation == "crlf":
+        tampered = content.replace(b"\n", b"\r\n")
+        assert tampered.replace(b"\r\n", b"\n") == content
+    elif mutation == "trailing_blank_line":
+        tampered = content + b"\n"
+    else:
+        assert content.endswith(b"\n"), "consumption_addendum_test_final_newline"
+        tampered = content.removesuffix(b"\n")
+    assert tampered != content
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
+    with pytest.raises(AssertionError, match=r"^consumption_addendum_changed(?:\n|$)"):
+        test_consumption_addendum_remains_exactly_the_reviewed_blob()
