@@ -2244,7 +2244,7 @@ def validate_consumption_governing_view(content: str) -> None:
     assert not re.search(
         r"(?:execution_authorized|network_authorized|provider_activation_authorized"
         r"|deployment_authorized|external_network_authorized|public_release_authorized)"
-        r"\s*=\s*(?:true|1)\b|(?:routing_repair|f01a_defensive_ingress)"
+        r"\s*[=:]\s*(?:true|1)\b|(?:routing_repair|f01a_defensive_ingress)"
         r"\s+(?:IN_PROGRESS|DELIVERED)/true",
         section, re.IGNORECASE,
     ), "consumption_view_authority_claim"
@@ -2448,6 +2448,29 @@ def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: st
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
     with pytest.raises(AssertionError, match="consumption_view_missing"):
+        validate_consumption_governing_view(tampered)
+
+
+@pytest.mark.parametrize("flag", (
+    "execution_authorized", "network_authorized", "provider_activation_authorized",
+    "deployment_authorized", "external_network_authorized", "public_release_authorized",
+))
+@pytest.mark.parametrize("separator", ("=", ":"))
+@pytest.mark.parametrize("value", ("true", "1"))
+@pytest.mark.parametrize("style", ("compact", "spaced_upper"))
+def test_consumption_view_rejects_contradictory_authority_assignments(
+    flag: str, separator: str, value: str, style: str,
+) -> None:
+    """CS-07: false tokens cannot conceal colon or equals grants for any protected flag."""
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    heading_line = CONSUMPTION_VIEW_HEADING + "\n"
+    assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
+    claim = f"{flag}{separator}{value}"
+    if style == "spaced_upper":
+        claim = f"{flag.upper()}\t{separator}\t{value.upper()}"
+    # Retain the false evidence and exact path list while adding a conflicting grant.
+    tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
+    with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
         validate_consumption_governing_view(tampered)
 
 
