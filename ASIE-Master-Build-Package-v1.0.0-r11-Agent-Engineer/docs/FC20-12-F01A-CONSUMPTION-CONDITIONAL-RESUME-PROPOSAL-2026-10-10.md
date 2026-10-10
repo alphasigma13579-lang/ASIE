@@ -52,7 +52,7 @@
 
 1. تغيير `f01a_defensive_ingress.execution_authorized` من false إلى **true حرفيًا**، وإلحاق **RESUME واحد** كحدث سابع. لا تغيير لأي حقل آخر في manifest كله.
 2. الحدث ذو مفاتيح مغلقة: `type` و`recorded_at` و`baseline_commit_sha` و`baseline_manifest_blob_sha` و`checkpoint` و`scope_extension` و`owner_resume_decision` و`effect`.
-3. baseline وblob يثبتان على الحالة المتوقفة أعلاه. checkpoint وscope_extension نسختان كاملتان مطابقـتان للحدثين الخامس والسادس، لا اختزال أو إعادة كتابة للتاريخ.
+3. حقلا حدث RESUME الجديد حصريًا: `baseline_commit_sha=cf45bd9ecfda815c4c2e848f69832ebf02935fb9` و`baseline_manifest_blob_sha=e8d700eed195244ed6e2236ca53df655b5ac561f`، أي حالة ما بعد #194 المتوقفة. الزوج التاريخي `23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3`/`ac40d84cb7bfca4ea025cf754483a0561037e994` يبقى داخل checkpoint المنسوخ ولا يستعمل baseline لحدث الاستئناف الجديد. checkpoint وscope_extension نسختان كاملتان مطابقتان للحدثين الخامس والسادس؛ كل قيمهما التاريخية محفوظة دون اختزال أو إعادة كتابة.
 4. `owner_resume_decision` يربط ID ورابط الإيصال ووقت التسجيل الحقيقي وموضوع القرار وcommit/blob موجودين لهذا المقترح المراجع. الموضوع يثبت baseline/blob وcheckpoint ورأس #189 والمسارات التسعة. الأثر **F01A_DEFENSIVE_RESUME_ONLY**، وشرط النفاذ **REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL**.
 5. لا قرار مصطنع أو self-hash أو مرجع main متحرك؛ موافقة الإعداد الحالية أو دمج #194 أو RESUME القديم لا تعوض القرار الجديد. إذا تغير الرأس تفحص الفروق؛ لا تنقل الموافقة من ancestry وحدها. تغير مادي يعرض قبل الانتقال.
 6. state وموضع التنفيذ والقائمة والأب والتوجيه والحزم والاعتماديات والتجميد والإطلاق تبقى كما هي؛ لا DELIVERED أو START جديد أو إخلاء للموضع أو تشغيل ثانٍ.
@@ -85,7 +85,7 @@
 |---|---|
 | CRG-01 | فرق العلم/الحدث فقط، تسعة مسارات بالترتيب، لا wildcard أو زيادة حقول أو توسيع تطبيق |
 | CRG-02 | حفظ الأحداث الستة ونسخ checkpoint/scope كاملة، رفض حذف أو تكرار أو ترتيب مختلف |
-| CRG-03 | قرار المالك الجديد وموضوعه وcommit/blob مطابقون؛ رفض موافقات الإعداد/النطاق/الدمج/الاستئناف القديم |
+| CRG-03 | قرار المالك الجديد وموضوعه وcommit/blob مطابقون؛ رفض الزوج التاريخي كـbaseline للـRESUME الجديد، ورفض موافقات الإعداد/النطاق/الدمج/الاستئناف القديم |
 | CRG-04 | true حرفي لا 1؛ موضع واحد محفوظ ومحسوب، FC20-05 held، رفض موضع ثانٍ أو null |
 | CRG-05 | عكس manifest الكامل ثم السلسلة التاريخية؛ لا تغيير حزمة أو ضابط أو freeze أو release |
 | CRG-06 | إسقاطات byte-exact قديمة وجديدة وحدود فريدة؛ رفض suffix/duplicate-marker/CRLF/تزوير السلطة/نقل قسم بين الملفات |
