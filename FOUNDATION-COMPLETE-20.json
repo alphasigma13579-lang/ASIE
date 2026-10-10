@@ -762,7 +762,7 @@
           "id": "f01a_defensive_ingress",
           "state": "IN_PROGRESS",
           "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
-          "execution_authorized": true,
+          "execution_authorized": false,
           "prerequisite_for": {
             "package_id": "FC20-12",
             "slice_id": "routing_repair"
@@ -807,7 +807,8 @@
             "tests/test_intelligence_prerun_service.py",
             "tests/test_intelligence_context_ingress_api.py",
             "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
-            "tests/test_live_location_api.py"
+            "tests/test_live_location_api.py",
+            "tests/test_intelligence_consumption.py"
           ],
           "environment": "DARK_OFFLINE",
           "entry_requirements": [
@@ -941,6 +942,48 @@
                 "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/187#issuecomment-6026149350"
               },
               "effect": "F01A_DEFENSIVE_RESUME_ONLY"
+            },
+            {
+              "type": "STOP_CHECKPOINT",
+              "recorded_at": "2026-10-09T12:31:30Z",
+              "baseline_commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+              "baseline_manifest_blob_sha": "ac40d84cb7bfca4ea025cf754483a0561037e994",
+              "application_head_sha": "6211418ca295e710be7f686bd1592bb30649f1d6",
+              "reason": "CONSUMPTION_REVIEW_AND_TEST_SCOPE_GAP",
+              "requested_path": "tests/test_intelligence_consumption.py",
+              "evidence": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-ADDENDUM-2026-10-09.md",
+                "commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+                "blob_sha": "042f89fce3adf1509ec0e6ee3e377c921820fde6"
+              },
+              "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+            },
+            {
+              "type": "SCOPE_EXTENSION",
+              "recorded_at": "2026-10-09T12:31:30Z",
+              "baseline_commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+              "added_paths": [
+                "tests/test_intelligence_consumption.py"
+              ],
+              "scope_addendum": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-ADDENDUM-2026-10-09.md",
+                "commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+                "blob_sha": "042f89fce3adf1509ec0e6ee3e377c921820fde6"
+              },
+              "owner_scope_decision": {
+                "id": "DECISION-FC20-12-F01A-CONSUMPTION-REGISTRATION-PREPARATION-2026-10-09",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/193#issuecomment-6080941469",
+                "recorded_at": "2026-10-09T12:31:30Z",
+                "effect": "PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME",
+                "subject": {
+                  "baseline_commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+                  "baseline_manifest_blob_sha": "ac40d84cb7bfca4ea025cf754483a0561037e994",
+                  "application_head_sha": "6211418ca295e710be7f686bd1592bb30649f1d6"
+                },
+                "proposal_commit_sha": "fa806ce545a3432739167fbe042a731930b15f9e",
+                "proposal_blob_sha": "042f89fce3adf1509ec0e6ee3e377c921820fde6"
+              },
+              "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
             }
           ],
           "closure_effect": "NONE",
