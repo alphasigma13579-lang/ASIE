@@ -2241,12 +2241,14 @@ def validate_consumption_governing_view(content: str) -> None:
     assert scope_items == [
         f"`{path}`" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]
     ], "consumption_view_scope_list"
+    # Compare rendered authority text too; formatting cannot grant permission.
+    authority_text = section.replace("`", "").replace('"', "").replace("'", "")
     assert not re.search(
         r"(?:execution_authorized|network_authorized|provider_activation_authorized"
         r"|deployment_authorized|external_network_authorized|public_release_authorized)"
         r"\s*[=:]\s*(?:true|1)\b|(?:routing_repair|f01a_defensive_ingress)"
         r"\s+(?:IN_PROGRESS|DELIVERED)/true",
-        section, re.IGNORECASE,
+        authority_text, re.IGNORECASE,
     ), "consumption_view_authority_claim"
 
 
@@ -2458,17 +2460,37 @@ def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: st
 @pytest.mark.parametrize("separator", ("=", ":"))
 @pytest.mark.parametrize("value", ("true", "1"))
 @pytest.mark.parametrize("style", ("compact", "spaced_upper"))
+@pytest.mark.parametrize("formatting", ("plain", "inline_code", "double_quote", "single_quote"))
 def test_consumption_view_rejects_contradictory_authority_assignments(
-    flag: str, separator: str, value: str, style: str,
+    flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
-    """CS-07: false tokens cannot conceal colon or equals grants for any protected flag."""
+    """CS-07: plain or formatted colon/equals grants cannot hide behind false evidence."""
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
-    claim = f"{flag}{separator}{value}"
+    gap = ""
     if style == "spaced_upper":
-        claim = f"{flag.upper()}\t{separator}\t{value.upper()}"
+        flag, value, gap = flag.upper(), value.upper(), "\t"
+    delimiter = {"plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'"}[formatting]
+    claim = f"{delimiter}{flag}{delimiter}{gap}{separator}{gap}{delimiter}{value}{delimiter}"
     # Retain the false evidence and exact path list while adding a conflicting grant.
+    tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
+    with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
+        validate_consumption_governing_view(tampered)
+
+
+@pytest.mark.parametrize("target", ("routing_repair", "f01a_defensive_ingress"))
+@pytest.mark.parametrize("state", ("IN_PROGRESS", "DELIVERED"))
+@pytest.mark.parametrize("formatting", ("plain", "inline_code", "double_quote", "single_quote"))
+def test_consumption_view_rejects_formatted_authorized_state(
+    target: str, state: str, formatting: str,
+) -> None:
+    """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_text(encoding="utf-8")
+    heading_line = CONSUMPTION_VIEW_HEADING + "\n"
+    assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
+    delimiter = {"plain": "", "inline_code": "`", "double_quote": '"', "single_quote": "'"}[formatting]
+    claim = f"{delimiter}{target}{delimiter} {delimiter}{state}/true{delimiter}"
     tampered = content.replace(heading_line, heading_line + claim + "\n", 1)
     with pytest.raises(AssertionError, match=r"^consumption_view_authority_claim(?:\n|$)"):
         validate_consumption_governing_view(tampered)
