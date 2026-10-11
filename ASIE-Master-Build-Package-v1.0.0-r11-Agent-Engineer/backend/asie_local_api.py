@@ -2479,15 +2479,19 @@ class Handler(BaseHTTPRequestHandler):
                     self._write_provider_unavailable("live_narrative")
                     return
                 try:
-                    REPO.consume_intelligence_approval(
-                        receipt_id=approval_receipt_id,
-                        organization_id=scope.organization_id,
-                        project_id=project_id,
-                        context_hash=context_hash,
-                        contract_version="live.intelligence.narrative.v1",
-                        expected_scope="narrative",
-                        principal=tenant_principal,
-                    )
+                    try:
+                        REPO.consume_intelligence_approval(
+                            receipt_id=approval_receipt_id,
+                            organization_id=scope.organization_id,
+                            project_id=project_id,
+                            context_hash=context_hash,
+                            contract_version="live.intelligence.narrative.v1",
+                            expected_scope="narrative",
+                            principal=tenant_principal,
+                        )
+                    except ValueError:
+                        write_error(self, "approved_evidence_context_required", 409)
+                        return
                     narrative = _live_narrative_service().create_reviewed_narrative(
                         scope=scope,
                         request_id=self.request_id,

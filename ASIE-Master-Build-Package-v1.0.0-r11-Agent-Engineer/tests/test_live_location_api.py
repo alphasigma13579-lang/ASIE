@@ -706,6 +706,19 @@ class LiveLocationApiTests(unittest.TestCase):
                 self.assertNotIn("malformed context", json.dumps(body))
                 provider.assert_not_called()
 
+    def test_live_narrative_preserves_safe_internal_consumption_failures(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(self.repo, "consume_intelligence_approval", side_effect=TypeError("private internal detail")),
+            patch.object(api, "_live_narrative_service") as provider,
+        ):
+            status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        self.assertNotIn("private internal detail", json.dumps(body))
+        provider.assert_not_called()
+
     def test_live_narrative_rejects_receipt_field_and_row_mismatches_before_provider(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
         with closing(self.repo.connect()) as db:
@@ -731,9 +744,12 @@ class LiveLocationApiTests(unittest.TestCase):
                     patch.object(api, "_live_narrative_service", side_effect=AssertionError("invalid receipt must not construct provider")) as provider,
                 ):
                     status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
-                self.assertIn(status, (409, 503))
+                self.assertEqual(409, status)
+                self.assertEqual("approved_evidence_context_required", body["error"])
                 self.assertNotIn("mismatch", json.dumps(body))
                 provider.assert_not_called()
+                events = self.repo.security_audit_events(organization_id=self.org_a_id)
+                self.assertFalse(any(event["action"] == "live_narrative" and event["reason"] == "provider_unavailable" for event in events))
 
     def test_live_narrative_rejects_corrupt_persisted_receipts_before_provider(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
