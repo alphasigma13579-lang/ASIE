@@ -1,5 +1,8 @@
 import json
 import sqlite3
+import subprocess
+import sys
+import time
 from contextlib import closing
 import tempfile
 import unittest
@@ -134,22 +137,22 @@ class RepositoryIntelligenceTests(unittest.TestCase):
         for index, changeset in enumerate(changes):
             key = "proof-" + str(index)
             draft = self.draft(key)
-            proof = self.origin_events()[-1]
+            proof = next(row for row in self.origin_events() if row["target_id"] == draft["context_build_id"])
             with closing(self.repo.connect()) as conn, conn:
                 conn.execute("UPDATE security_audit_events SET " + ", ".join(field + " = ?" for field in changeset) + " WHERE event_id = ?", (*changeset.values(), proof["event_id"]))
             with self.subTest(changeset=changeset), self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
                 self.draft(key)
         for field, value in (("policy", "unsupported"), ("creation_path", "validated_model"), ("project_id", self.second.project_id), ("creation_fingerprint", "different")):
             key = "material-" + field
-            self.draft(key)
-            proof = self.origin_events()[-1]
+            draft = self.draft(key)
+            proof = next(row for row in self.origin_events() if row["target_id"] == draft["context_build_id"])
             reason = json.loads(proof["reason"]) | {field: value}
             with closing(self.repo.connect()) as conn, conn:
                 conn.execute("UPDATE security_audit_events SET reason = ? WHERE event_id = ?", (json.dumps(reason, ensure_ascii=False, separators=(",", ":")), proof["event_id"]))
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
                 self.draft(key)
-        self.draft("duplicate")
-        proof = self.origin_events()[-1]
+        draft = self.draft("duplicate")
+        proof = next(row for row in self.origin_events() if row["target_id"] == draft["context_build_id"])
         with closing(self.repo.connect()) as conn, conn:
             conn.execute("INSERT INTO security_audit_events (event_id, actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at) SELECT 'duplicate-proof', actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at FROM security_audit_events WHERE event_id = ?", (proof["event_id"],))
         with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
@@ -547,6 +550,273 @@ class RepositoryIntelligenceTests(unittest.TestCase):
             counts = tuple(conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0] for table in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"))
         self.assertEqual((1, 1, 0, 0, 0), counts)
 
+
+
+
+class OriginIndexTests(unittest.TestCase):
+    """Disposable synthetic evidence; these tests do not approve live startup."""
+
+    index_name = "idx_security_audit_origin_proof"
+    proof_sql = ("SELECT * FROM security_audit_events WHERE organization_id = ? "
+                 "AND target_type = 'intelligence_context' AND target_id = ? "
+                 "AND action = 'aia.context.origin.v1'")
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "index-test.db"
+
+    def legacy_database(self, count=1000):
+        # Model the prior init_schema: all existing initialization, no new index.
+        with patch.object(Repository, "_ensure_intelligence_origin_index"):
+            repo = Repository(self.path)
+        with closing(repo.connect()) as conn, conn:
+            conn.executemany(
+                "INSERT INTO security_audit_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ((f"event-{i}", "synthetic-user", f"org-{i % 13}", "synthetic.action",
+                  "synthetic_target", f"target-{i}", "created", "synthetic", None, "now")
+                 for i in range(count)),
+            )
+        return repo
+
+    def rows(self):
+        with closing(sqlite3.connect(self.path)) as conn:
+            return conn.execute("SELECT * FROM security_audit_events ORDER BY event_id").fetchall()
+
+    def assert_healthy(self, expected):
+        self.assertEqual(expected, self.rows())
+        with closing(sqlite3.connect(self.path)) as conn:
+            self.assertEqual([("ok",)], conn.execute("PRAGMA integrity_check").fetchall())
+
+    def assert_index(self):
+        with closing(sqlite3.connect(self.path)) as conn:
+            indexes = [row for row in conn.execute("PRAGMA index_list(security_audit_events)")
+                       if row[1] == self.index_name]
+            self.assertEqual(1, len(indexes))
+            self.assertEqual((0, "c", 0), indexes[0][2:])
+            columns = ("action", "target_type", "target_id", "organization_id")
+            self.assertEqual(columns, tuple(row[2] for row in conn.execute(f"PRAGMA index_info({self.index_name})")))
+            keys = [row for row in conn.execute(f"PRAGMA index_xinfo({self.index_name})") if row[5] == 1]
+            self.assertEqual(columns, tuple(row[2] for row in keys))
+            self.assertTrue(all(row[1] >= 0 and row[3:6] == (0, "BINARY", 1) for row in keys))
+
+    def test_fresh_existing_and_repeated_initialization(self):
+        self.legacy_database()
+        before = self.rows()
+        with closing(sqlite3.connect(self.path)) as conn:
+            schema_before = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name").fetchall()
+        for _ in range(3):
+            Repository(self.path)
+            self.assert_index()
+            self.assert_healthy(before)
+        with closing(sqlite3.connect(self.path)) as conn:
+            schema_after = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name != ? ORDER BY name", (self.index_name,)).fetchall()
+        self.assertEqual(schema_before, schema_after)
+        fresh = self.path.parent / "fresh.db"
+        Repository(fresh)
+        with closing(sqlite3.connect(fresh)) as conn:
+            self.assertEqual(1, conn.execute("SELECT count(*) FROM sqlite_master WHERE name = ?", (self.index_name,)).fetchone()[0])
+
+    def test_equivalent_definition_is_accepted_without_recreation(self):
+        self.legacy_database()
+        sql = ('CREATE INDEX "idx_security_audit_origin_proof" ON "security_audit_events" '
+               '("action" COLLATE BINARY ASC, "target_type" ASC, "target_id", "organization_id")')
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute(sql)
+            original = conn.execute("SELECT sql, rootpage FROM sqlite_master WHERE name = ?", (self.index_name,)).fetchone()
+        Repository(self.path)
+        self.assert_index()
+        with closing(sqlite3.connect(self.path)) as conn:
+            self.assertEqual(original, conn.execute("SELECT sql, rootpage FROM sqlite_master WHERE name = ?", (self.index_name,)).fetchone())
+
+    def test_incompatible_name_collisions_fail_without_drop_or_data_change(self):
+        definitions = [
+            "CREATE INDEX {name} ON security_audit_events(target_type, action, target_id, organization_id)",
+            "CREATE INDEX {name} ON security_audit_events(action, target_type, target_id)",
+            "CREATE INDEX {name} ON security_audit_events(action, target_type, target_id, organization_id, result)",
+            "CREATE UNIQUE INDEX {name} ON security_audit_events(action, target_type, target_id, organization_id)",
+            "CREATE INDEX {name} ON security_audit_events(action, target_type, target_id, organization_id) WHERE result = 'created'",
+            "CREATE INDEX {name} ON security_audit_events(lower(action), target_type, target_id, organization_id)",
+            "CREATE INDEX {name} ON security_audit_events(action DESC, target_type, target_id, organization_id)",
+            "CREATE INDEX {name} ON security_audit_events(action COLLATE NOCASE, target_type, target_id, organization_id)",
+            "CREATE INDEX {name} ON projects(name, sector, jurisdiction, organization_id)",
+            "CREATE TABLE {name}(sentinel TEXT)",
+            "CREATE INDEX IDX_SECURITY_AUDIT_ORIGIN_PROOF ON security_audit_events(target_id)",
+        ]
+        for number, definition in enumerate(definitions):
+            with self.subTest(definition=definition):
+                self.path = self.path.parent / f"collision-{number}.db"
+                self.legacy_database(10)
+                before = self.rows()
+                with closing(sqlite3.connect(self.path)) as conn, conn:
+                    conn.execute(definition.format(name=self.index_name))
+                    schema_before = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name").fetchall()
+                with self.assertRaises((ValueError, sqlite3.OperationalError)):
+                    Repository(self.path)
+                self.assert_healthy(before)
+                with closing(sqlite3.connect(self.path)) as conn:
+                    self.assertEqual(schema_before, conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name").fetchall())
+
+    def test_query_results_plan_and_disposable_index_rollback(self):
+        self.legacy_database()
+        fixtures = [
+            ("one", "org-a", "intelligence_context", "ctx", "aia.context.origin.v1", "{malformed"),
+            ("duplicate", "org-a", "intelligence_context", "ctx", "aia.context.origin.v1", "{}"),
+            ("foreign", "org-b", "intelligence_context", "ctx", "aia.context.origin.v1", "{}"),
+            ("other-action", "org-a", "intelligence_context", "ctx", "other", "{}"),
+            ("other-type", "org-a", "other", "ctx", "aia.context.origin.v1", "{}"),
+            ("single", "org-a", "intelligence_context", "single", "aia.context.origin.v1", "{}"),
+        ]
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.executemany("INSERT INTO security_audit_events VALUES (?, 'user', ?, ?, ?, ?, 'created', ?, NULL, 'now')",
+                             [(event, org, action, kind, target, reason) for event, org, kind, target, action, reason in fixtures])
+        args = [("org-a", "missing"), ("org-a", "single"), ("org-a", "ctx"), ("org-b", "ctx")]
+        def results():
+            with closing(sqlite3.connect(self.path)) as conn:
+                return [sorted(conn.execute(self.proof_sql, pair).fetchall()) for pair in args]
+        before = results()
+        self.assertEqual([0, 1, 2, 1], list(map(len, before)))
+        all_rows = self.rows()
+        Repository(self.path)
+        self.assertEqual(before, results())
+        with closing(sqlite3.connect(self.path)) as conn:
+            plan = " ".join(row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + self.proof_sql, args[2]))
+            self.assertIn("SEARCH security_audit_events USING INDEX " + self.index_name, plan)
+        # A code rollback does not remove or disable the persisted index.
+        with patch.object(Repository, "_ensure_intelligence_origin_index"):
+            Repository(self.path)
+        self.assert_index()
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("DROP INDEX idx_security_audit_origin_proof")
+        self.assertEqual(before, results())
+        self.assert_healthy(all_rows)
+        Repository(self.path)
+        self.assert_index()
+        self.assertEqual(before, results())
+        self.assert_healthy(all_rows)
+
+    def test_interrupted_actual_index_build_preserves_rows_and_reopens(self):
+        self.legacy_database(50000)
+        before = self.rows()
+        original_connect = Repository.connect
+        progress = {"building": False, "calls": 0}
+        def connect(repo):
+            conn = original_connect(repo)
+            def trace(sql):
+                progress["building"] = sql.startswith("CREATE INDEX IF NOT EXISTS idx_security_audit_origin_proof")
+            def interrupt():
+                if progress["building"]:
+                    progress["calls"] += 1
+                    return int(progress["calls"] >= 100)
+                return 0
+            conn.set_trace_callback(trace)
+            conn.set_progress_handler(interrupt, 100)
+            return conn
+        with patch.object(Repository, "connect", connect), self.assertRaisesRegex(sqlite3.OperationalError, "interrupted"):
+            Repository(self.path)
+        self.assertEqual(100, progress["calls"])
+        self.assert_healthy(before)
+        with closing(sqlite3.connect(self.path)) as conn:
+            self.assertEqual(0, conn.execute("SELECT count(*) FROM sqlite_master WHERE name = ?", (self.index_name,)).fetchone()[0])
+        Repository(self.path)
+        self.assert_index()
+        self.assert_healthy(before)
+
+    def test_failure_after_index_creation_preserves_valid_index(self):
+        self.legacy_database()
+        before = self.rows()
+        with patch.object(Repository, "_seed_legacy_organization", side_effect=RuntimeError("injected startup failure")), self.assertRaisesRegex(RuntimeError, "injected startup failure"):
+            Repository(self.path)
+        self.assert_index()
+        self.assert_healthy(before)
+        Repository(self.path)
+        self.assert_index()
+        self.assert_healthy(before)
+
+    def startup_process(self):
+        script = '''
+import json, sys, time
+from pathlib import Path
+from backend.repository import Repository
+print("ready", flush=True)
+input()
+print("starting", flush=True)
+started = time.monotonic()
+try:
+    Repository(Path(sys.argv[1]))
+    result = {"ok": True}
+except Exception as exc:
+    result = {"ok": False, "type": type(exc).__name__, "error": str(exc)}
+result["elapsed_seconds"] = time.monotonic() - started
+print(json.dumps(result), flush=True)
+'''
+        child = subprocess.Popen([sys.executable, "-c", script, str(self.path)],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        def cleanup():
+            if child.poll() is None:
+                child.kill()
+            child.communicate()
+        self.addCleanup(cleanup)
+        self.assertEqual("ready", child.stdout.readline().strip())
+        return child
+
+    def start_child(self, child):
+        child.stdin.write("start\n")
+        child.stdin.flush()
+        self.assertEqual("starting", child.stdout.readline().strip())
+
+    def finish_child(self, child):
+        output, error = child.communicate(timeout=45)
+        self.assertEqual(0, child.returncode, error)
+        return json.loads(output)
+
+    def test_two_process_startup_preserves_existing_rows(self):
+        self.legacy_database(50000)
+        before = self.rows()
+        children = [self.startup_process(), self.startup_process()]
+        for child in children:
+            child.stdin.write("start\n")
+            child.stdin.flush()
+        for child in children:
+            self.assertEqual("starting", child.stdout.readline().strip())
+        for child in children:
+            self.assertTrue(self.finish_child(child)["ok"])
+        self.assert_index()
+        self.assert_healthy(before)
+
+    def test_writer_released_below_actual_timeout_allows_startup(self):
+        self.legacy_database()
+        before = self.rows()
+        child = self.startup_process()
+        with closing(sqlite3.connect(self.path)) as writer:
+            writer.execute("BEGIN IMMEDIATE")
+            self.start_child(child)
+            time.sleep(0.2)
+            writer.rollback()
+        self.assertTrue(self.finish_child(child)["ok"])
+        self.assert_index()
+        self.assert_healthy(before)
+
+    def test_writer_beyond_actual_timeout_fails_and_reopens_without_data_loss(self):
+        self.legacy_database()
+        before = self.rows()
+        child = self.startup_process()
+        with closing(sqlite3.connect(self.path)) as writer:
+            writer.execute("BEGIN IMMEDIATE")
+            self.start_child(child)
+            result = self.finish_child(child)
+            writer.rollback()
+        self.assertFalse(result["ok"])
+        self.assertEqual("OperationalError", result["type"])
+        self.assertIn("locked", result["error"])
+        # Use the real connection's 30-second timeout, without a timing SLO assertion.
+        print("synthetic_writer_timeout_evidence=" + json.dumps(result, sort_keys=True))
+        self.assert_healthy(before)
+        Repository(self.path)
+        self.assert_index()
+        self.assert_healthy(before)
+
+
 if __name__ == "__main__":
     unittest.main()
-

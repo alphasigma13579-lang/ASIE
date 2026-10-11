@@ -542,9 +542,30 @@ class Repository:
                 """
             )
             self._migrate_columns(conn)
+            self._ensure_intelligence_origin_index(conn)
             self._seed_legacy_organization(conn)
             self._seed_sources(conn)
             conn.commit()
+
+    @staticmethod
+    def _ensure_intelligence_origin_index(conn: sqlite3.Connection) -> None:
+        """Create the registered lookup index and reject incompatible name reuse."""
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_security_audit_origin_proof "
+            "ON security_audit_events(action, target_type, target_id, organization_id)"
+        )
+        indexes = [row for row in conn.execute("PRAGMA index_list(security_audit_events)")
+                   if row["name"] == "idx_security_audit_origin_proof"]
+        columns = ("action", "target_type", "target_id", "organization_id")
+        info = conn.execute("PRAGMA index_info(idx_security_audit_origin_proof)").fetchall()
+        keys = [row for row in conn.execute("PRAGMA index_xinfo(idx_security_audit_origin_proof)")
+                if row["key"] == 1]
+        if (len(indexes) != 1 or indexes[0]["unique"] != 0
+                or indexes[0]["partial"] != 0 or indexes[0]["origin"] != "c"
+                or tuple(row["name"] for row in info) != columns
+                or tuple(row["name"] for row in keys) != columns
+                or any(row["cid"] < 0 or row["desc"] != 0 or row["coll"] != "BINARY" for row in keys)):
+            raise ValueError("intelligence_origin_index_conflict")
 
     def update_project(self, project_id: str, payload: dict[str, Any]) -> ProjectRecord | None:
         project = self.get_project(project_id)
