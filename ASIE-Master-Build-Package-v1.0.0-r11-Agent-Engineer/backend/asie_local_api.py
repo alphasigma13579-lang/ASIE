@@ -2446,7 +2446,7 @@ class Handler(BaseHTTPRequestHandler):
                     project_id=project_id,
                     principal=tenant_principal,
                 )
-                if context is None or receipt is None:
+                if context is None or not isinstance(receipt, dict):
                     write_error(self, "approved_evidence_context_required", 409)
                     return
                 context_hash = str(context.get("context_hash") or "")

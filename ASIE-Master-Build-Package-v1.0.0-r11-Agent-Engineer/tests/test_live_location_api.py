@@ -11,6 +11,7 @@ import os
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
 from pathlib import Path
@@ -645,6 +646,33 @@ class LiveLocationApiTests(unittest.TestCase):
         ]
         self.assertEqual("failed", events[-1]["result"])
         self.assertEqual("provider_unavailable", events[-1]["reason"])
+
+    def test_live_narrative_rejects_corrupt_persisted_receipts_before_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        cases = [(json.dumps(receipt), 409, "approved_evidence_context_required")
+                 for receipt in ([], ["corrupt receipt"], "corrupt receipt", 42, True, None, {}, {"valid_until": []})]
+        cases += [("{malformed receipt", 400, "invalid_request"), ("", 409, "approved_evidence_context_required")]
+        for raw_receipt, expected_status, expected_error in cases:
+            with self.subTest(raw_receipt=raw_receipt):
+                with closing(self.repo.connect()) as db, db:
+                    db.execute(
+                        "UPDATE intelligence_approval_receipts SET payload_json = ? WHERE approval_receipt_id = ?",
+                        (raw_receipt, receipt_id),
+                    )
+                with (
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+                    patch.object(api, "_live_narrative_service", side_effect=AssertionError("corrupt receipt must not construct provider")) as provider,
+                ):
+                    status, body = self.request(
+                        "POST", "/api/v1/intelligence/narrative", token=self.token_a,
+                        organization_id=self.org_a_id,
+                        payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id},
+                    )
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_error, body["error"])
+                self.assertNotIn("corrupt receipt", json.dumps(body))
+                self.assertNotIn("malformed receipt", json.dumps(body))
+                provider.assert_not_called()
 
     def test_live_narrative_rejects_other_scope_and_unresolved_conditions_before_provider(self) -> None:
         for approval_scope, conditions in (("other-operation", []), ("narrative", ["manual prerequisite not satisfied"])):
