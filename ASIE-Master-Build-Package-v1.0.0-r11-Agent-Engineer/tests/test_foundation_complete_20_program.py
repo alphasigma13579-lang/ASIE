@@ -453,7 +453,7 @@ def validate_consumption_scope_baseline(manifest: dict) -> dict:
 
 def historical_resume_manifest() -> dict:
     """Verified inverse projection for historical tests only, not current admission."""
-    return validate_consumption_scope_baseline(load_manifest())
+    return validate_consumption_scope_baseline(historical_consumption_manifest())
 
 
 def validate_defensive_resume(record: dict, active_target: object) -> None:
@@ -605,7 +605,7 @@ def execution_sequence_record(manifest: dict) -> dict:
 
 
 def validate_execution_sequence(manifest: dict) -> None:
-    """Count the reserved stopped defensive slice while preserving the routing hold."""
+    """Count the pinned defensive resume while preserving the routing hold."""
     sequence = execution_sequence_record(manifest)
     assert sequence["schema"] == "asie.foundation.execution-sequence.v2", "sequence_schema"
     assert sequence["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY", "sequence_effect"
@@ -630,11 +630,11 @@ def validate_execution_sequence(manifest: dict) -> None:
     active = active_execution_targets(packages, held_ids)
     assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
     assert active == ["FC20-12/f01a_defensive_ingress"], "unrecorded_active_execution"
-    validate_consumption_scope(defensive_record(manifest), sequence["active_target"])
+    validate_consumption_resume(defensive_record(manifest), sequence["active_target"])
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Keep routing blocked; current admission pins STOP/scope, never execution authority."""
+    """Keep routing blocked; admit only the independently pinned defensive resume."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -651,7 +651,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
     sequence = execution_sequence_record(manifest)
-    validate_consumption_scope(slices[1], sequence["active_target"])
+    validate_consumption_resume(slices[1], sequence["active_target"])
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
@@ -735,7 +735,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         assert manifest[key] is False, "unauthorized_program_effect"
     validate_execution_sequence(manifest)
     if not allow_historical_v1:
-        validate_consumption_scope_baseline(manifest)
+        validate_consumption_resume_baseline(manifest)
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
@@ -2270,8 +2270,8 @@ def validate_consumption_governing_view(source_bytes: bytes, relative_path: str)
 
 def test_consumption_scope_is_stopped_with_exact_history_and_one_slot() -> None:
     """CS-01/05/06: entire inverse chain, not subset assertions or delivery claims."""
-    manifest = load_manifest()
-    validate_routing_registration(manifest)
+    manifest = historical_consumption_manifest()
+    validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
     record = defensive_record(manifest)
     assert record == CONSUMPTION_SCOPE_RECORD
     assert record["execution_authorized"] is False
@@ -2293,23 +2293,23 @@ def test_consumption_scope_is_stopped_with_exact_history_and_one_slot() -> None:
 def test_consumption_scope_requires_all_event_fields(event_index: int, event: dict) -> None:
     """CS-02: every evidence field is mandatory."""
     for field in event:
-        manifest = load_manifest()
+        manifest = historical_consumption_manifest()
         defensive_record(manifest)["events"][event_index].pop(field)
         with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-            validate_routing_registration(manifest)
+            validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("event_index,event", ((4, CONSUMPTION_STOP_EVENT), (5, CONSUMPTION_SCOPE_EVENT)))
 def test_consumption_scope_pins_every_evidence_leaf(event_index: int, event: dict) -> None:
     """CS-02: independent fixed oracle, not recomputed authority from the input."""
     for path in resume_leaf_paths(event):
-        manifest = load_manifest()
+        manifest = historical_consumption_manifest()
         target = defensive_record(manifest)["events"][event_index]
         for key in path[:-1]:
             target = target[key]
         target[path[-1]] = "[unreviewed]"
         with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-            validate_routing_registration(manifest)
+            validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("record", (
@@ -2318,17 +2318,17 @@ def test_consumption_scope_pins_every_evidence_leaf(event_index: int, event: dic
 ))
 def test_consumption_scope_does_not_admit_any_historical_state(record: dict) -> None:
     """CS-03: preserved historical positives never become current fallbacks."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(record)
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("index", range(6))
 @pytest.mark.parametrize("mutation", ("delete", "duplicate", "change"))
 def test_consumption_scope_preserves_each_history_event(index: int, mutation: str) -> None:
     """CS-03: no erasure, repeated transition or retroactive amendment."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     events = defensive_record(manifest)["events"]
     if mutation == "delete":
         events.pop(index)
@@ -2337,7 +2337,7 @@ def test_consumption_scope_preserves_each_history_event(index: int, mutation: st
     else:
         events[index]["type"] = "RESUME_OVERRIDE"
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("field,value", (
@@ -2350,16 +2350,16 @@ def test_consumption_scope_preserves_each_history_event(index: int, mutation: st
 ))
 def test_consumption_scope_rejects_implicit_resume_or_delivery(field: str, value: object) -> None:
     """CS-04: equality alone must not admit non-boolean flags."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     defensive_record(manifest)[field] = value
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("mutation", ("extra", "delete", "duplicate", "reorder", "wildcard", "frozen", "pr192"))
 def test_consumption_scope_rejects_unapproved_paths(mutation: str) -> None:
     """CS-04: one exact new path, never an independent unmerged proposal."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     paths = defensive_record(manifest)["allowed_paths"]
     if mutation == "extra":
         paths.append("src/App.tsx")
@@ -2375,16 +2375,16 @@ def test_consumption_scope_rejects_unapproved_paths(mutation: str) -> None:
             "pr192": "tests/test_tenant_isolation_matrix.py",
         }[mutation]
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("index", (4, 5))
 def test_consumption_scope_rejects_unknown_authority_fields(index: int) -> None:
     """CS-02: reject extra authority fields in either new event."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     defensive_record(manifest)["events"][index]["supplied_approval"] = True
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("mutation", (
@@ -2392,7 +2392,7 @@ def test_consumption_scope_rejects_unknown_authority_fields(index: int) -> None:
 ))
 def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> None:
     """CS-05: entire baseline, including fields not individually selected by guards."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     packages = {p["id"]: p for p in manifest["packages"]}
     if mutation == "root":
         manifest["override"] = True
@@ -2419,7 +2419,7 @@ def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> 
 @pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
 def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_path: str) -> None:
     """CS-07: require the same bounded candidate evidence in every governing view."""
-    content = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
     validate_consumption_governing_view(content, relative_path)
 
 
@@ -2429,7 +2429,7 @@ def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_p
 ))
 def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> None:
     """CS-07: reject any added, removed, repeated, reordered or malformed scope item."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     scope_lines = [f"- `{path}`\n" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]]
     scope_block = "".join(scope_lines)
@@ -2462,7 +2462,7 @@ def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> No
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
 def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: str) -> None:
     """CS-07: evidence outside the candidate section cannot satisfy its guard."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
     with pytest.raises(AssertionError, match="consumption_view_missing"):
@@ -2484,7 +2484,7 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
     """CS-07: plain or formatted colon/equals grants cannot hide behind false evidence."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     gap = ""
@@ -2513,7 +2513,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
     target: str, state: str, formatting: str, slash_gap: str,
 ) -> None:
     """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     delimiter = {
@@ -2530,7 +2530,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "heading", "resume", "network"))
 def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str) -> None:
     """CS-07: reject ambiguous section boundaries and implicit execution authority."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     if mutation == "missing_marker":
         content = content.replace(CONSUMPTION_VIEW_MARKER, "")
     elif mutation == "duplicate_marker":
@@ -2567,7 +2567,7 @@ def test_consumption_addendum_remains_exactly_the_reviewed_blob() -> None:
 @pytest.mark.parametrize("mutation", ("reverse", "swap", "old_decision", "nested_override"))
 def test_consumption_scope_rejects_reordered_or_reused_authority(mutation: str) -> None:
     """CS-03: reject reordered events, reused decisions and nested overrides."""
-    manifest = load_manifest()
+    manifest = historical_consumption_manifest()
     events = defensive_record(manifest)["events"]
     if mutation == "reverse":
         events.reverse()
@@ -2578,7 +2578,7 @@ def test_consumption_scope_rejects_reordered_or_reused_authority(mutation: str) 
     else:
         events[5]["owner_scope_decision"]["subject"]["trusted_override"] = True
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_consumption_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("mutation", ("missing", "duplicate", "prefix"))
@@ -2605,7 +2605,7 @@ def test_consumption_manifest_loader_preserves_canonical_source() -> None:
     source_bytes = MANIFEST_PATH.read_bytes()
     manifest = load_manifest()
     assert source_bytes == (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    validate_consumption_scope_baseline(manifest)
+    validate_consumption_resume_baseline(manifest)
 
 
 @pytest.mark.parametrize("mutation", (
@@ -2693,7 +2693,7 @@ def test_consumption_view_byte_seal_rejects_markdown_and_boundary_edits(
     relative_path: str, mutation: str,
 ) -> None:
     """CS-07: partial Markdown parsing cannot admit any unreviewed terminal bytes."""
-    source_bytes = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    source_bytes = historical_consumption_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
     content = source_bytes.decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
@@ -2749,7 +2749,7 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
         else CONSUMPTION_VIEW_PATHS[0]
     )
     assert CONSUMPTION_VIEW_PROJECTION_SHA256[relative_path] != CONSUMPTION_VIEW_PROJECTION_SHA256[other_path]
-    content = (Path(__file__).resolve().parents[1] / other_path).read_bytes()
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / other_path).read_bytes(), other_path)
     with pytest.raises(AssertionError, match=r"^consumption_view_projection_changed(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
@@ -2757,7 +2757,7 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
 @pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
 def test_consumption_view_seal_rejects_unregistered_document_path(relative_path: str) -> None:
     """CS-07: no generic/default digest for an unregistered governing view."""
-    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes()
+    content = historical_consumption_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match=r"^consumption_view_path(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
@@ -2767,3 +2767,360 @@ def test_consumption_view_seal_requires_original_source_bytes() -> None:
     content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes().decode("utf-8")
     with pytest.raises(AssertionError, match=r"^consumption_view_source_bytes(?:\n|$)"):
         validate_consumption_governing_view(content, CONSUMPTION_VIEW_PATHS[0])
+
+
+# CRG: independent constants transcribed from the real owner receipt and reviewed
+# #195 proposal. Never derive admission authority from the input manifest or docs.
+CONSUMPTION_RESUME_DECISION = json.loads(r'''{
+  "id": "DECISION-FC20-12-F01A-CONSUMPTION-CONDITIONAL-RESUME-2026-10-10",
+  "recorded_at": "2026-10-10T19:21:30Z",
+  "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+  "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+  "subject": {
+    "baseline_commit_sha": "cf45bd9ecfda815c4c2e848f69832ebf02935fb9",
+    "baseline_manifest_blob_sha": "e8d700eed195244ed6e2236ca53df655b5ac561f",
+    "checkpoint": {
+      "type": "STOP_CHECKPOINT",
+      "recorded_at": "2026-10-09T12:31:30Z",
+      "baseline_commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+      "baseline_manifest_blob_sha": "ac40d84cb7bfca4ea025cf754483a0561037e994",
+      "application_head_sha": "6211418ca295e710be7f686bd1592bb30649f1d6",
+      "reason": "CONSUMPTION_REVIEW_AND_TEST_SCOPE_GAP",
+      "requested_path": "tests/test_intelligence_consumption.py",
+      "evidence": {
+        "url": "https://github.com/alphasigma13579-lang/ASIE/blob/23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-ADDENDUM-2026-10-09.md",
+        "commit_sha": "23ea4b48e4c2f4c94e4f54c33bb0310bd6e0adc3",
+        "blob_sha": "042f89fce3adf1509ec0e6ee3e377c921820fde6"
+      },
+      "resume_requirement": "NEW_OWNER_DECISION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+    },
+    "application_head_sha": "6211418ca295e710be7f686bd1592bb30649f1d6",
+    "allowed_paths": [
+      "backend/asie_local_api.py",
+      "backend/repository.py",
+      "backend/intelligence_prerun_service.py",
+      "tests/test_repository_intelligence.py",
+      "tests/test_intelligence_prerun_service.py",
+      "tests/test_intelligence_context_ingress_api.py",
+      "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+      "tests/test_live_location_api.py",
+      "tests/test_intelligence_consumption.py"
+    ]
+  },
+  "proposal_commit_sha": "0bc55b0b069fe8f1c0efb19c252a53251391c23e",
+  "proposal_blob_sha": "7b73c89d3b217beb038ad16db8d1d126cba2b060",
+  "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/195#issuecomment-6101266369"
+}''')
+CONSUMPTION_RESUME_EVENT = {
+    "type": "RESUME",
+    "recorded_at": "2026-10-10T19:25:17Z",
+    "baseline_commit_sha": "cf45bd9ecfda815c4c2e848f69832ebf02935fb9",
+    "baseline_manifest_blob_sha": "e8d700eed195244ed6e2236ca53df655b5ac561f",
+    "checkpoint": deepcopy(CONSUMPTION_STOP_EVENT),
+    "scope_extension": deepcopy(CONSUMPTION_SCOPE_EVENT),
+    "owner_resume_decision": deepcopy(CONSUMPTION_RESUME_DECISION),
+    "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+}
+CONSUMPTION_RESUME_RECORD = deepcopy(CONSUMPTION_SCOPE_RECORD)
+CONSUMPTION_RESUME_RECORD["execution_authorized"] = True
+CONSUMPTION_RESUME_RECORD["events"].append(deepcopy(CONSUMPTION_RESUME_EVENT))
+
+
+def validate_consumption_resume(record: dict, active_target: object) -> None:
+    """CRG-01/03/04: one closed, receipt-pinned current state; no historical fallback."""
+    assert isinstance(record, dict), "invalid_defensive_record"
+    assert set(record) == set(CONSUMPTION_RESUME_RECORD), "defensive_fields"
+    assert record == CONSUMPTION_RESUME_RECORD, "defensive_record_mismatch"
+    assert record["execution_authorized"] is True, "consumption_resume_literal_flag"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "defensive_external_effect"
+    assert active_target == DEFENSIVE_START_TARGET, "consumption_resume_slot"
+
+
+def validate_consumption_resume_baseline(manifest: dict) -> dict:
+    """CRG-05: undo only the seventh event and flag; pin the entire stopped manifest."""
+    restored = deepcopy(manifest)
+    record = defensive_record(restored)
+    validate_consumption_resume(record, restored["execution_sequence"]["active_target"])
+    assert record["events"].pop() == CONSUMPTION_RESUME_EVENT
+    record["execution_authorized"] = False
+    validate_consumption_scope(record, restored["execution_sequence"]["active_target"])
+    source_bytes = (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert git_blob_sha(source_bytes) == "e8d700eed195244ed6e2236ca53df655b5ac561f", "consumption_resume_baseline_mismatch"
+    return restored
+
+
+def historical_consumption_manifest() -> dict:
+    """Verified stopped projection for CS historical tests only; never current admission."""
+    return validate_consumption_resume_baseline(load_manifest())
+
+
+CONSUMPTION_RESUME_VIEW_MARKER = "<!-- F01A-CONSUMPTION-CONDITIONAL-RESUME-2026-10-10 -->"
+# Five independent #194 blobs, still unchanged through #195. These seal the entire
+# historical documents, including the old marker-to-EOF CS-07 seals kept above.
+CONSUMPTION_RESUME_VIEW_PREFIX_BLOBS = json.loads(r'''{"docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md":"e1182cc0b19da6edc221c814e534bb8264be783b","docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md":"6b7702a846e6028965cedf8028f4c29ea1a64192","docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md":"3b27ed9a3320738b26c1e341f446235868151b39","docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md":"8ada62ac7aaab62dbe244be4639a05bad684a241","docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md":"b6e992d4ddfcea63661a7aa2feb66f4f255b91a5"}''')
+# Independent, path-bound fixed candidate seals; exact-head review is still required.
+CONSUMPTION_RESUME_VIEW_SHA256 = json.loads(r'''{"docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md":"1173b954c6713ff6f34a9150d9a2eb6fe7110dd071211635693cb33edbfd44d5","docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md":"47fe27bdb9d5c6306d03d0392783edd7d7cb6b1985a0895d1aa3a9f74ed31f5a","docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md":"1b34e9d916c450cde27520375d8a45e1e3e09f76064d7f429e622a95f5987a70","docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md":"383cfc79395fcce28081611fbbc319b8e6e260c742d191f2ba4e0d389b45a450","docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md":"51e691c636ebd954114920dab53c3ea718e673a64cb60faa815c1091507f6b88"}''')
+
+
+def historical_consumption_view(source_bytes: bytes, relative_path: str) -> bytes:
+    """CRG-06: extract history only after sealing the complete old and new boundaries."""
+    assert isinstance(source_bytes, bytes), "consumption_resume_view_source_bytes"
+    assert relative_path in CONSUMPTION_RESUME_VIEW_SHA256, "consumption_resume_view_path"
+    marker = CONSUMPTION_RESUME_VIEW_MARKER.encode("utf-8")
+    separator = b"\n" + marker + b"\n"
+    assert source_bytes.count(marker) == 1, "consumption_resume_view_marker"
+    assert source_bytes.count(separator) == 1, "consumption_resume_view_boundary"
+    prefix, section = source_bytes.split(separator, 1)
+    assert git_blob_sha(prefix) == CONSUMPTION_RESUME_VIEW_PREFIX_BLOBS[relative_path], "consumption_resume_view_prefix_changed"
+    projection = marker + b"\n" + section
+    assert hashlib.sha256(projection).hexdigest() == CONSUMPTION_RESUME_VIEW_SHA256[relative_path], "consumption_resume_view_projection_changed"
+    # The original CS-07 validator and per-path hashes remain authoritative for
+    # their exact historical marker-to-EOF bytes; no relaxed terminal splitting.
+    validate_consumption_governing_view(prefix, relative_path)
+    return prefix
+
+
+def test_consumption_resume_has_one_delta_and_full_inverse_chain() -> None:
+    """CRG-01/02/04/05/08: exact scope/history and full old CS/RG/SG inverse chain."""
+    manifest = load_manifest()
+    validate_routing_registration(manifest)
+    record = defensive_record(manifest)
+    assert record == CONSUMPTION_RESUME_RECORD
+    assert record["events"][:-1] == CONSUMPTION_SCOPE_RECORD["events"]
+    assert len(record["events"]) == 7
+    assert record["events"][-1]["checkpoint"] == record["events"][4]
+    assert record["events"][-1]["scope_extension"] == record["events"][5]
+    assert record["allowed_paths"] == CONSUMPTION_SCOPE_RECORD["allowed_paths"]
+    assert len(record["allowed_paths"]) == len(set(record["allowed_paths"])) == 9
+    assert manifest["execution_sequence"]["held_packages"] == HELD_PACKAGES
+    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == ["FC20-12/f01a_defensive_ingress"]
+    stopped = validate_consumption_resume_baseline(manifest)
+    historical = validate_consumption_scope_baseline(stopped)
+    validate_scope_extension_baseline(validate_resume_baseline(historical))
+
+
+@pytest.mark.parametrize("field", tuple(CONSUMPTION_RESUME_EVENT))
+def test_consumption_resume_requires_each_closed_event_field(field: str) -> None:
+    """CRG-03: incomplete evidence/decision does not become resume authority."""
+    manifest = load_manifest()
+    defensive_record(manifest)["events"][-1].pop(field)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("path", resume_leaf_paths(CONSUMPTION_RESUME_EVENT))
+def test_consumption_resume_pins_every_evidence_leaf(path: list) -> None:
+    """CRG-03: receipt/subject/clock/baseline/proposal and full copies are independently pinned."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)["events"][-1]
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = "[unreviewed]"
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ("historical_baseline", "old_resume", "scope_receipt",
+                                     "design_receipt", "merge_receipt", "nested_override", "extra_field"))
+def test_consumption_resume_rejects_reused_or_ambiguous_authority(mutation: str) -> None:
+    """CRG-03: neither historical baseline nor design/scope/merge evidence is a new decision."""
+    manifest = load_manifest()
+    event = defensive_record(manifest)["events"][-1]
+    if mutation == "historical_baseline":
+        event["baseline_commit_sha"] = CONSUMPTION_STOP_EVENT["baseline_commit_sha"]
+        event["baseline_manifest_blob_sha"] = CONSUMPTION_STOP_EVENT["baseline_manifest_blob_sha"]
+    elif mutation == "old_resume":
+        event["owner_resume_decision"] = deepcopy(DEFENSIVE_RESUME_DECISION)
+    elif mutation == "scope_receipt":
+        event["owner_resume_decision"] = deepcopy(CONSUMPTION_SCOPE_EVENT["owner_scope_decision"])
+    elif mutation in ("design_receipt", "merge_receipt"):
+        event["owner_resume_decision"]["record_url"] = (
+            "https://github.com/alphasigma13579-lang/ASIE/pull/195#issuecomment-" +
+            ("6101124478" if mutation == "design_receipt" else "6101174377")
+        )
+    elif mutation == "nested_override":
+        event["owner_resume_decision"]["subject"]["trusted_override"] = True
+    else:
+        event["supplied_approval"] = True
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("index", range(7))
+@pytest.mark.parametrize("mutation", ("delete", "duplicate", "change", "reorder"))
+def test_consumption_resume_preserves_each_event(index: int, mutation: str) -> None:
+    """CRG-02: no overwritten checkpoint, reordered authority or eighth event."""
+    manifest = load_manifest()
+    events = defensive_record(manifest)["events"]
+    if mutation == "delete":
+        events.pop(index)
+    elif mutation == "duplicate":
+        events.insert(index, deepcopy(events[index]))
+    elif mutation == "reorder":
+        events[index], events[(index + 1) % len(events)] = events[(index + 1) % len(events)], events[index]
+    else:
+        events[index]["type"] = "RESUME_OVERRIDE"
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field,value", (
+    ("execution_authorized", 1), ("execution_authorized", False),
+    ("execution_authorized", "true"), ("state", "DELIVERED"),
+    ("delivery_evidence", {"status": "PASS"}), ("closure_effect", "COMPLETE"),
+    ("environment", "LIVE"), ("network_authorized", 0), ("network_authorized", True),
+    ("provider_activation_authorized", True), ("deployment_authorized", True),
+))
+def test_consumption_resume_requires_literal_flags_and_blocks_terminal_effects(
+    field: str, value: object,
+) -> None:
+    """CRG-04/08: Python equality with 1/0 does not confer Boolean or terminal authority."""
+    manifest = load_manifest()
+    defensive_record(manifest)[field] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("record", (
+    DEFENSIVE_REGISTRATION, DEFENSIVE_START_RECORD, DEFENSIVE_STOP_RECORD,
+    DEFENSIVE_SCOPE_EXTENSION_RECORD, DEFENSIVE_RESUME_RECORD, CONSUMPTION_SCOPE_RECORD,
+))
+def test_consumption_resume_never_admits_historical_states(record: dict) -> None:
+    """CRG-07: historical inverse fixtures are test evidence, not current fallback."""
+    manifest = load_manifest()
+    next(p for p in manifest["packages"] if p["id"] == "FC20-12")["execution_slices"][1] = deepcopy(record)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", (
+    "root", "rule", "package", "dependency", "hold", "slot", "frozen", "routing", "release",
+))
+def test_consumption_resume_inverse_rejects_every_unrelated_manifest_delta(mutation: str) -> None:
+    """CRG-05: entire manifest is pinned, not a selected subset of convenient fields."""
+    manifest = load_manifest()
+    packages = {p["id"]: p for p in manifest["packages"]}
+    if mutation == "root":
+        manifest["override"] = True
+    elif mutation == "rule":
+        manifest["rules"]["single_source_of_truth"] = False
+    elif mutation == "package":
+        packages["FC20-05"]["title"] = "changed"
+    elif mutation == "dependency":
+        packages["FC20-12"]["depends_on"].pop()
+    elif mutation == "hold":
+        manifest["execution_sequence"]["held_packages"] = []
+    elif mutation == "slot":
+        manifest["execution_sequence"]["max_active_executions"] = 2
+    elif mutation == "frozen":
+        manifest["frozen_files"].append("backend/unknown.py")
+    elif mutation == "routing":
+        packages["FC20-12"]["execution_slices"][0]["required_entry_controls"]["single_active_execution"]["status"] = "PASS"
+    else:
+        manifest["public_release_authorized"] = True
+    with pytest.raises(AssertionError, match="consumption_resume_baseline_mismatch"):
+        validate_consumption_resume_baseline(manifest)
+
+
+def test_consumption_resume_cannot_be_self_authorized_by_flag_or_fixture() -> None:
+    """CRG-07: setting true without the real seventh event or using lifecycle is rejected."""
+    for record in (deepcopy(CONSUMPTION_SCOPE_RECORD), lifecycle_fixture()[0]):
+        record["execution_authorized"] = True
+        with pytest.raises(AssertionError):
+            validate_consumption_resume(record, DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
+def test_consumption_resume_preserves_old_seals_and_exact_new_projection(relative_path: str) -> None:
+    """CRG-06: byte-exact full history plus a unique path-bound terminal projection."""
+    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    historical_consumption_view(source, relative_path)
+    assert set(CONSUMPTION_RESUME_VIEW_SHA256) == set(CONSUMPTION_VIEW_PATHS)
+    assert set(CONSUMPTION_RESUME_VIEW_PREFIX_BLOBS) == set(CONSUMPTION_VIEW_PATHS)
+
+
+@pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
+@pytest.mark.parametrize("mutation", (
+    "missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf",
+    "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line",
+    "missing_final_newline", "forged_authority", "reorder_scope", "old_section",
+))
+def test_consumption_resume_view_rejects_all_unreviewed_bytes(relative_path: str, mutation: str) -> None:
+    """CRG-06: no suffix/comment, normalized line ending, erased history or hidden grant."""
+    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    marker = CONSUMPTION_RESUME_VIEW_MARKER.encode()
+    separator = b"\n" + marker + b"\n"
+    prefix, section = source.split(separator, 1)
+    if mutation == "missing_marker":
+        tampered = source.replace(marker, b"", 1)
+    elif mutation == "duplicate_marker":
+        tampered = source + separator
+    elif mutation == "separator":
+        tampered = source.replace(separator, b"\n\n" + marker + b"\n", 1)
+    elif mutation == "prefix":
+        tampered = b"edited history\n" + source
+    elif mutation == "prefix_crlf":
+        tampered = prefix.replace(b"\n", b"\r\n") + separator + section
+    elif mutation == "whole_crlf":
+        tampered = source.replace(b"\n", b"\r\n")
+    elif mutation == "section_crlf":
+        tampered = prefix + separator + section.replace(b"\n", b"\r\n")
+    elif mutation in ("suffix", "comment", "trailing_blank_line"):
+        suffix = {"suffix": b"\n### Override\n", "comment": b"\n<!-- override -->\n",
+                  "trailing_blank_line": b"\n"}[mutation]
+        tampered = source + suffix
+    elif mutation == "missing_final_newline":
+        tampered = source.removesuffix(b"\n")
+    elif mutation == "forged_authority":
+        tampered = prefix + separator + section + b"\nnetwork_authorized=true\n"
+    elif mutation == "reorder_scope":
+        first, second = (f"- `{path}`\n".encode() for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"][:2])
+        tampered = prefix + separator + section.replace(first + second, second + first, 1)
+    else:
+        tampered = prefix.replace(CONSUMPTION_VIEW_MARKER.encode(), b"<!-- forged history -->", 1) + separator + section
+    assert tampered != source, "consumption_resume_view_test_mutation"
+    with pytest.raises(AssertionError, match="consumption_resume_view_"):
+        historical_consumption_view(tampered, relative_path)
+
+
+@pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
+def test_consumption_resume_view_seal_cannot_be_reused_on_another_path(relative_path: str) -> None:
+    """CRG-06: a valid projection from a different document is still unauthorized."""
+    other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
+    content = (Path(__file__).resolve().parents[1] / other).read_bytes()
+    with pytest.raises(AssertionError, match="consumption_resume_view_prefix_changed"):
+        historical_consumption_view(content, relative_path)
+
+
+@pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
+def test_consumption_resume_view_has_no_default_authority(relative_path: str) -> None:
+    content = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes()
+    with pytest.raises(AssertionError, match="consumption_resume_view_path"):
+        historical_consumption_view(content, relative_path)
+
+
+def test_consumption_resume_keeps_reviewed_design_immutable() -> None:
+    """CRG-03/07: the approved #195 proposal is a pinned reference, never rewritten here."""
+    path = Path(__file__).resolve().parents[1] / "docs/FC20-12-F01A-CONSUMPTION-CONDITIONAL-RESUME-PROPOSAL-2026-10-10.md"
+    assert git_blob_sha(path.read_bytes()) == "7b73c89d3b217beb038ad16db8d1d126cba2b060", "consumption_resume_design_changed"
+
+
+@pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
+def test_consumption_resume_rejects_section_transplants_even_with_original_prefix(relative_path: str) -> None:
+    """CRG-06: an authentic old prefix cannot legalize another document's new section."""
+    other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
+    root = Path(__file__).resolve().parents[1]
+    separator = ("\n" + CONSUMPTION_RESUME_VIEW_MARKER + "\n").encode()
+    prefix = (root / relative_path).read_bytes().split(separator, 1)[0]
+    transplanted = (root / other).read_bytes().split(separator, 1)[1]
+    with pytest.raises(AssertionError, match="consumption_resume_view_projection_changed"):
+        historical_consumption_view(prefix + separator + transplanted, relative_path)
+
+
+def test_consumption_resume_views_require_raw_bytes() -> None:
+    path = CONSUMPTION_VIEW_PATHS[0]
+    content = (Path(__file__).resolve().parents[1] / path).read_bytes().decode("utf-8")
+    with pytest.raises(AssertionError, match="consumption_resume_view_source_bytes"):
+        historical_consumption_view(content, path)
