@@ -605,7 +605,7 @@ def execution_sequence_record(manifest: dict) -> dict:
 
 
 def validate_execution_sequence(manifest: dict) -> None:
-    """Count the pinned stopped index scope while preserving the routing hold."""
+    """Count the conditional index-only resume while preserving all routing holds."""
     sequence = execution_sequence_record(manifest)
     assert sequence["schema"] == "asie.foundation.execution-sequence.v2", "sequence_schema"
     assert sequence["record_effect"] == "BOUNDED_DEFENSIVE_ENABLING_ONLY", "sequence_effect"
@@ -630,11 +630,11 @@ def validate_execution_sequence(manifest: dict) -> None:
     active = active_execution_targets(packages, held_ids)
     assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
     assert active == ["FC20-12/f01a_defensive_ingress"], "unrecorded_active_execution"
-    validate_index_scope(defensive_record(manifest), sequence["active_target"])
+    validate_index_resume(defensive_record(manifest), sequence["active_target"])
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
-    """Keep routing blocked; admit only the independently pinned stopped index scope."""
+    """Keep routing blocked; admit only the independently pinned conditional index resume."""
     packages = {package["id"]: package for package in manifest["packages"]}
     assert set(packages) == REQUIRED_PACKAGE_IDS
     assert len(packages) == len(manifest["packages"])
@@ -651,7 +651,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
     sequence = execution_sequence_record(manifest)
-    validate_index_scope(slices[1], sequence["active_target"])
+    validate_index_resume(slices[1], sequence["active_target"])
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
@@ -735,7 +735,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         assert manifest[key] is False, "unauthorized_program_effect"
     validate_execution_sequence(manifest)
     if not allow_historical_v1:
-        validate_index_scope_baseline(manifest)
+        validate_index_resume_baseline(manifest)
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
@@ -2419,7 +2419,7 @@ def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> 
 @pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
 def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_path: str) -> None:
     """CS-07: require the same bounded candidate evidence in every governing view."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path)
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path)
     validate_consumption_governing_view(content, relative_path)
 
 
@@ -2429,7 +2429,7 @@ def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_p
 ))
 def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> None:
     """CS-07: reject any added, removed, repeated, reordered or malformed scope item."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     scope_lines = [f"- `{path}`\n" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]]
     scope_block = "".join(scope_lines)
@@ -2462,7 +2462,7 @@ def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> No
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
 def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: str) -> None:
     """CS-07: evidence outside the candidate section cannot satisfy its guard."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
     with pytest.raises(AssertionError, match="consumption_view_missing"):
@@ -2484,7 +2484,7 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
     """CS-07: plain or formatted colon/equals grants cannot hide behind false evidence."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     gap = ""
@@ -2513,7 +2513,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
     target: str, state: str, formatting: str, slash_gap: str,
 ) -> None:
     """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     delimiter = {
@@ -2530,7 +2530,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "heading", "resume", "network"))
 def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str) -> None:
     """CS-07: reject ambiguous section boundaries and implicit execution authority."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     if mutation == "missing_marker":
         content = content.replace(CONSUMPTION_VIEW_MARKER, "")
     elif mutation == "duplicate_marker":
@@ -2605,7 +2605,7 @@ def test_consumption_manifest_loader_preserves_canonical_source() -> None:
     source_bytes = MANIFEST_PATH.read_bytes()
     manifest = load_manifest()
     assert source_bytes == (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    validate_index_scope_baseline(manifest)
+    validate_index_resume_baseline(manifest)
 
 
 @pytest.mark.parametrize("mutation", (
@@ -2693,7 +2693,7 @@ def test_consumption_view_byte_seal_rejects_markdown_and_boundary_edits(
     relative_path: str, mutation: str,
 ) -> None:
     """CS-07: partial Markdown parsing cannot admit any unreviewed terminal bytes."""
-    source_bytes = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path)
+    source_bytes = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path)
     content = source_bytes.decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
@@ -2749,7 +2749,7 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
         else CONSUMPTION_VIEW_PATHS[0]
     )
     assert CONSUMPTION_VIEW_PROJECTION_SHA256[relative_path] != CONSUMPTION_VIEW_PROJECTION_SHA256[other_path]
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / other_path).read_bytes(), other_path), other_path)
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / other_path).read_bytes(), other_path), other_path), other_path)
     with pytest.raises(AssertionError, match=r"^consumption_view_projection_changed(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
@@ -2757,7 +2757,7 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
 @pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
 def test_consumption_view_seal_rejects_unregistered_document_path(relative_path: str) -> None:
     """CS-07: no generic/default digest for an unregistered governing view."""
-    content = historical_consumption_view(index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match=r"^consumption_view_path(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
@@ -3036,7 +3036,7 @@ def test_consumption_resume_cannot_be_self_authorized_by_flag_or_fixture() -> No
 @pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
 def test_consumption_resume_preserves_old_seals_and_exact_new_projection(relative_path: str) -> None:
     """CRG-06: byte-exact full history plus a unique path-bound terminal projection."""
-    source = index_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
+    source = index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path)
     historical_consumption_view(source, relative_path)
     assert set(CONSUMPTION_RESUME_VIEW_SHA256) == set(CONSUMPTION_VIEW_PATHS)
     assert set(CONSUMPTION_RESUME_VIEW_PREFIX_BLOBS) == set(CONSUMPTION_VIEW_PATHS)
@@ -3050,7 +3050,7 @@ def test_consumption_resume_preserves_old_seals_and_exact_new_projection(relativ
 ))
 def test_consumption_resume_view_rejects_all_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """CRG-06: no suffix/comment, normalized line ending, erased history or hidden grant."""
-    source = index_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
+    source = index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path)
     marker = CONSUMPTION_RESUME_VIEW_MARKER.encode()
     separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
@@ -3090,14 +3090,14 @@ def test_consumption_resume_view_rejects_all_unreviewed_bytes(relative_path: str
 def test_consumption_resume_view_seal_cannot_be_reused_on_another_path(relative_path: str) -> None:
     """CRG-06: a valid projection from a different document is still unauthorized."""
     other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
-    content = index_scope_historical_view((Path(__file__).resolve().parents[1] / other).read_bytes(), other)
+    content = index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / other).read_bytes(), other), other)
     with pytest.raises(AssertionError, match="consumption_resume_view_prefix_changed"):
         historical_consumption_view(content, relative_path)
 
 
 @pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
 def test_consumption_resume_view_has_no_default_authority(relative_path: str) -> None:
-    content = index_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0])
+    content = index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="consumption_resume_view_path"):
         historical_consumption_view(content, relative_path)
 
@@ -3114,15 +3114,15 @@ def test_consumption_resume_rejects_section_transplants_even_with_original_prefi
     other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
     root = Path(__file__).resolve().parents[1]
     separator = ("\n" + CONSUMPTION_RESUME_VIEW_MARKER + "\n").encode()
-    prefix = index_scope_historical_view((root / relative_path).read_bytes(), relative_path).split(separator, 1)[0]
-    transplanted = index_scope_historical_view((root / other).read_bytes(), other).split(separator, 1)[1]
+    prefix = index_scope_historical_view(index_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path).split(separator, 1)[0]
+    transplanted = index_scope_historical_view(index_resume_historical_view((root / other).read_bytes(), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="consumption_resume_view_projection_changed"):
         historical_consumption_view(prefix + separator + transplanted, relative_path)
 
 
 def test_consumption_resume_views_require_raw_bytes() -> None:
     path = CONSUMPTION_VIEW_PATHS[0]
-    content = index_scope_historical_view((Path(__file__).resolve().parents[1] / path).read_bytes(), path).decode("utf-8")
+    content = index_scope_historical_view(index_resume_historical_view((Path(__file__).resolve().parents[1] / path).read_bytes(), path), path).decode("utf-8")
     with pytest.raises(AssertionError, match="consumption_resume_view_source_bytes"):
         historical_consumption_view(content, path)
 
@@ -3330,7 +3330,7 @@ def validate_index_scope_baseline(manifest: dict) -> dict:
 
 def historical_consumption_resume_manifest() -> dict:
     """Verified seven-event historical fixture; never current-state admission."""
-    return validate_index_scope_baseline(load_manifest())
+    return validate_index_scope_baseline(historical_index_scope_manifest())
 
 
 def index_scope_historical_view(source_bytes: bytes, relative_path: str) -> bytes:
@@ -3351,8 +3351,9 @@ def index_scope_historical_view(source_bytes: bytes, relative_path: str) -> byte
 
 def test_index_scope_has_exact_operation_history_and_full_inverse_chain() -> None:
     """ISG-01/02/05/08: one held slot, nine paths, no execution, all old oracles."""
-    manifest = load_manifest()
-    validate_routing_registration(manifest)
+    validate_routing_registration(load_manifest())
+    manifest = historical_index_scope_manifest()
+    validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
     record = defensive_record(manifest)
     assert record == INDEX_SCOPE_RECORD
     assert record["events"][:7] == CONSUMPTION_RESUME_RECORD["events"]
@@ -3373,23 +3374,23 @@ def test_index_scope_has_exact_operation_history_and_full_inverse_chain() -> Non
 def test_index_scope_requires_each_new_event_field(index: int, event: dict) -> None:
     """ISG-03: no omitted evidence, effect or decision field."""
     for key in event:
-        manifest = load_manifest()
+        manifest = historical_index_scope_manifest()
         defensive_record(manifest)["events"][index].pop(key)
         with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-            validate_routing_registration(manifest)
+            validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("index,event", ((7, INDEX_STOP_EVENT), (8, INDEX_SCOPE_EVENT)))
 def test_index_scope_pins_each_new_evidence_leaf(index: int, event: dict) -> None:
     """ISG-03: source, owner subject, design and clock cannot be replaced."""
     for path in resume_leaf_paths(event):
-        manifest = load_manifest()
+        manifest = historical_index_scope_manifest()
         target = defensive_record(manifest)["events"][index]
         for key in path[:-1]:
             target = target[key]
         target[path[-1]] = "[unreviewed]"
         with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-            validate_routing_registration(manifest)
+            validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("copy", ("record", "event", "decision"))
@@ -3400,7 +3401,7 @@ def test_index_scope_pins_each_new_evidence_leaf(index: int, event: dict) -> Non
 ))
 def test_index_scope_rejects_any_operation_expansion_or_type(copy: str, mutation: str) -> None:
     """ISG-01/03: exact seven-key operation in each independently checked copy."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     record = defensive_record(manifest)
     target, key = (record, "allowed_schema_operations")
     if copy == "event":
@@ -3429,14 +3430,14 @@ def test_index_scope_rejects_any_operation_expansion_or_type(copy: str, mutation
         field, value = fields[mutation]
         op[field] = value
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("index", range(9))
 @pytest.mark.parametrize("mutation", ("delete", "duplicate", "change", "reorder"))
 def test_index_scope_preserves_all_nine_events(index: int, mutation: str) -> None:
     """ISG-02: history cannot be rewritten, duplicated or reordered."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     events = defensive_record(manifest)["events"]
     if mutation == "delete":
         events.pop(index)
@@ -3448,7 +3449,7 @@ def test_index_scope_preserves_all_nine_events(index: int, mutation: str) -> Non
         other = (index + 1) % len(events)
         events[index], events[other] = events[other], events[index]
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
-        validate_routing_registration(manifest)
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("mutation", (
@@ -3457,7 +3458,7 @@ def test_index_scope_preserves_all_nine_events(index: int, mutation: str) -> Non
 ))
 def test_index_scope_rejects_reused_or_implicit_authority(mutation: str) -> None:
     """ISG-03/07: accepted design and old resume cannot grant index execution."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     record = defensive_record(manifest)
     if mutation == "old_decision":
         record["events"][8]["owner_scope_decision"] = deepcopy(CONSUMPTION_SCOPE_EVENT["owner_scope_decision"])
@@ -3479,7 +3480,7 @@ def test_index_scope_rejects_reused_or_implicit_authority(mutation: str) -> None
     else:
         record["trusted_override"] = True
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("field,value", (
@@ -3491,10 +3492,10 @@ def test_index_scope_rejects_reused_or_implicit_authority(mutation: str) -> None
 ))
 def test_index_scope_requires_literal_flags_and_no_terminal_effects(field: str, value: object) -> None:
     """ISG-04/08: fail closed even for Boolean-equivalent integers."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     defensive_record(manifest)[field] = value
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("record", (
@@ -3511,7 +3512,7 @@ def test_index_scope_never_admits_historical_or_fixture_states(record: dict) -> 
 @pytest.mark.parametrize("mutation", ("root", "rule", "package", "dependency", "hold", "slot", "frozen", "routing", "release"))
 def test_index_scope_full_inverse_rejects_unrelated_manifest_delta(mutation: str) -> None:
     """ISG-05: protect the entire baseline, not just the modified slice."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     packages = {p["id"]: p for p in manifest["packages"]}
     if mutation == "root":
         manifest["override"] = True
@@ -3538,16 +3539,16 @@ def test_index_scope_full_inverse_rejects_unrelated_manifest_delta(mutation: str
 @pytest.mark.parametrize("slot", (None, {}, {"kind": "package", "package_id": "FC20-05"}))
 def test_index_scope_retains_counted_slot(slot: object) -> None:
     """ISG-04: stopped work still owns its registered slot."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     manifest["execution_sequence"]["active_target"] = slot
     with pytest.raises(AssertionError):
-        validate_routing_registration(manifest)
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
 
 
 @pytest.mark.parametrize("relative_path", tuple(INDEX_VIEW_SHA256))
 def test_index_scope_projections_preserve_all_old_seals(relative_path: str) -> None:
     """ISG-06: every complete pre-transition document remains byte-exact."""
-    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    source = index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
     prefix = index_scope_historical_view(source, relative_path)
     historical_consumption_view(prefix, relative_path)
     assert set(INDEX_VIEW_SHA256) == set(INDEX_VIEW_PREFIX_BLOBS) == set(CONSUMPTION_VIEW_PATHS)
@@ -3561,7 +3562,7 @@ def test_index_scope_projections_preserve_all_old_seals(relative_path: str) -> N
 ))
 def test_index_scope_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """ISG-06/08: neither formatting nor hidden text can relax the gated scope."""
-    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    source = index_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path)
     marker = INDEX_VIEW_MARKER.encode()
     separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
@@ -3602,7 +3603,7 @@ def test_index_scope_projection_cannot_borrow_other_path_bytes(relative_path: st
     """ISG-06: both full-document and suffix transplants are rejected."""
     root = Path(__file__).resolve().parents[1]
     other = next(path for path in INDEX_VIEW_SHA256 if path != relative_path)
-    source, other_source = (root / relative_path).read_bytes(), (root / other).read_bytes()
+    source, other_source = index_resume_historical_view((root / relative_path).read_bytes(), relative_path), index_resume_historical_view((root / other).read_bytes(), other)
     separator = ("\n" + INDEX_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="index_view_prefix_changed"):
         index_scope_historical_view(other_source, relative_path)
@@ -3614,7 +3615,7 @@ def test_index_scope_projection_cannot_borrow_other_path_bytes(relative_path: st
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "tests/test_repository_intelligence.py"))
 def test_index_scope_view_has_no_unregistered_path(path: str) -> None:
     """ISG-06: no default seal or authority for an unknown path."""
-    source = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes()
+    source = index_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="index_view_path"):
         index_scope_historical_view(source, path)
 
@@ -3633,7 +3634,7 @@ def test_index_scope_view_requires_raw_bytes_and_design_is_immutable() -> None:
 @pytest.mark.parametrize("field", tuple(INDEX_OPERATION))
 def test_index_scope_requires_each_operation_field(copy: str, field: str) -> None:
     """ISG-01: every operation identity field is mandatory in every copy."""
-    manifest = load_manifest()
+    manifest = historical_index_scope_manifest()
     record = defensive_record(manifest)
     operations = record["allowed_schema_operations"]
     if copy == "event":
@@ -3642,4 +3643,805 @@ def test_index_scope_requires_each_operation_field(copy: str, field: str) -> Non
         operations = record["events"][8]["owner_scope_decision"]["subject"]["allowed_schema_operations"]
     operations[0].pop(field)
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_index_scope(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
+
+
+# IRG: receipt-pinned conditional development/testing; no live or production grant.
+INDEX_RESUME_EXECUTION_SCOPE = json.loads(r'''{
+  "activities": [
+    "DEVELOP_REGISTERED_INDEX",
+    "TEST_REGISTERED_INDEX"
+  ],
+  "implementation_paths": [
+    "backend/repository.py",
+    "tests/test_repository_intelligence.py"
+  ],
+  "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+  "data_scope": "SYNTHETIC_DATA_ONLY",
+  "live_database_authorized": false,
+  "owner_database_authorized": false,
+  "production_placement_accepted": false,
+  "deployment_authorized": false,
+  "application_pr_merge_authorized": false,
+  "startup_criteria_status": "UNKNOWN_NOT_APPROVED",
+  "maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+  "query_and_proof_semantics": "UNCHANGED"
+}''')
+INDEX_RESUME_DECISION = json.loads(r'''{
+  "id": "DECISION-FC20-12-F01A-INDEX-CONDITIONAL-RESUME-2026-10-11",
+  "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/199#issuecomment-6111816253",
+  "recorded_at": "2026-10-11T17:37:41Z",
+  "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+  "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+  "subject": {
+    "baseline_commit_sha": "37b96ec504d60f62bcdb5f4e69e0e5a0d8082f34",
+    "baseline_manifest_blob_sha": "386687c230db26e46ad831bbaeaeddddecfae795",
+    "checkpoint": {
+      "type": "STOP_CHECKPOINT",
+      "recorded_at": "2026-10-11T14:50:33Z",
+      "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+      "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+      "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+      "reason": "AUDIT_ORIGIN_INDEX_SCHEMA_OPERATION_OUTSIDE_REGISTERED_SCOPE",
+      "evidence": {
+        "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+        "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+        "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+      },
+      "resume_requirement": "NEW_OWNER_DECISION_BOUND_TO_INDEX_OPERATION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+    },
+    "scope_extension": {
+      "type": "SCOPE_EXTENSION",
+      "recorded_at": "2026-10-11T14:50:33Z",
+      "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+      "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+      "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+      "added_paths": [],
+      "added_schema_operations": [
+        {
+          "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+          "index_name": "idx_security_audit_origin_proof",
+          "table": "security_audit_events",
+          "columns": [
+            "action",
+            "target_type",
+            "target_id",
+            "organization_id"
+          ],
+          "unique": false,
+          "implementation_path": "backend/repository.py",
+          "test_path": "tests/test_repository_intelligence.py"
+        }
+      ],
+      "scope_addendum": {
+        "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+        "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+        "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+      },
+      "owner_scope_decision": {
+        "id": "DECISION-FC20-12-F01A-INDEX-SCOPE-REGISTRATION-PREPARATION-2026-10-11",
+        "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/197#issuecomment-6110969163",
+        "recorded_at": "2026-10-11T14:44:04Z",
+        "effect": "PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME",
+        "subject": {
+          "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+          "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+          "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+          "allowed_paths": [
+            "backend/asie_local_api.py",
+            "backend/repository.py",
+            "backend/intelligence_prerun_service.py",
+            "tests/test_repository_intelligence.py",
+            "tests/test_intelligence_prerun_service.py",
+            "tests/test_intelligence_context_ingress_api.py",
+            "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+            "tests/test_live_location_api.py",
+            "tests/test_intelligence_consumption.py"
+          ],
+          "allowed_schema_operations": [
+            {
+              "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+              "index_name": "idx_security_audit_origin_proof",
+              "table": "security_audit_events",
+              "columns": [
+                "action",
+                "target_type",
+                "target_id",
+                "organization_id"
+              ],
+              "unique": false,
+              "implementation_path": "backend/repository.py",
+              "test_path": "tests/test_repository_intelligence.py"
+            }
+          ]
+        },
+        "proposal_commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+        "proposal_blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+      },
+      "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+    },
+    "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+    "allowed_paths": [
+      "backend/asie_local_api.py",
+      "backend/repository.py",
+      "backend/intelligence_prerun_service.py",
+      "tests/test_repository_intelligence.py",
+      "tests/test_intelligence_prerun_service.py",
+      "tests/test_intelligence_context_ingress_api.py",
+      "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+      "tests/test_live_location_api.py",
+      "tests/test_intelligence_consumption.py"
+    ],
+    "allowed_schema_operations": [
+      {
+        "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+        "index_name": "idx_security_audit_origin_proof",
+        "table": "security_audit_events",
+        "columns": [
+          "action",
+          "target_type",
+          "target_id",
+          "organization_id"
+        ],
+        "unique": false,
+        "implementation_path": "backend/repository.py",
+        "test_path": "tests/test_repository_intelligence.py"
+      }
+    ],
+    "execution_scope": {
+      "activities": [
+        "DEVELOP_REGISTERED_INDEX",
+        "TEST_REGISTERED_INDEX"
+      ],
+      "implementation_paths": [
+        "backend/repository.py",
+        "tests/test_repository_intelligence.py"
+      ],
+      "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+      "data_scope": "SYNTHETIC_DATA_ONLY",
+      "live_database_authorized": false,
+      "owner_database_authorized": false,
+      "production_placement_accepted": false,
+      "deployment_authorized": false,
+      "application_pr_merge_authorized": false,
+      "startup_criteria_status": "UNKNOWN_NOT_APPROVED",
+      "maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+      "query_and_proof_semantics": "UNCHANGED"
+    }
+  },
+  "proposal_commit_sha": "369832d4c296cacf114c1181b2a65b06a49fde49",
+  "proposal_blob_sha": "0a87463111c78263db11ac4d3bf103c16e47f261"
+}''')
+INDEX_RESUME_EVENT = json.loads(r'''{
+  "type": "RESUME",
+  "recorded_at": "2026-10-11T17:43:21Z",
+  "baseline_commit_sha": "37b96ec504d60f62bcdb5f4e69e0e5a0d8082f34",
+  "baseline_manifest_blob_sha": "386687c230db26e46ad831bbaeaeddddecfae795",
+  "checkpoint": {
+    "type": "STOP_CHECKPOINT",
+    "recorded_at": "2026-10-11T14:50:33Z",
+    "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+    "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+    "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+    "reason": "AUDIT_ORIGIN_INDEX_SCHEMA_OPERATION_OUTSIDE_REGISTERED_SCOPE",
+    "evidence": {
+      "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+      "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+      "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+    },
+    "resume_requirement": "NEW_OWNER_DECISION_BOUND_TO_INDEX_OPERATION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+  },
+  "scope_extension": {
+    "type": "SCOPE_EXTENSION",
+    "recorded_at": "2026-10-11T14:50:33Z",
+    "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+    "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+    "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+    "added_paths": [],
+    "added_schema_operations": [
+      {
+        "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+        "index_name": "idx_security_audit_origin_proof",
+        "table": "security_audit_events",
+        "columns": [
+          "action",
+          "target_type",
+          "target_id",
+          "organization_id"
+        ],
+        "unique": false,
+        "implementation_path": "backend/repository.py",
+        "test_path": "tests/test_repository_intelligence.py"
+      }
+    ],
+    "scope_addendum": {
+      "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+      "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+      "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+    },
+    "owner_scope_decision": {
+      "id": "DECISION-FC20-12-F01A-INDEX-SCOPE-REGISTRATION-PREPARATION-2026-10-11",
+      "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/197#issuecomment-6110969163",
+      "recorded_at": "2026-10-11T14:44:04Z",
+      "effect": "PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME",
+      "subject": {
+        "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+        "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+        "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+        "allowed_paths": [
+          "backend/asie_local_api.py",
+          "backend/repository.py",
+          "backend/intelligence_prerun_service.py",
+          "tests/test_repository_intelligence.py",
+          "tests/test_intelligence_prerun_service.py",
+          "tests/test_intelligence_context_ingress_api.py",
+          "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+          "tests/test_live_location_api.py",
+          "tests/test_intelligence_consumption.py"
+        ],
+        "allowed_schema_operations": [
+          {
+            "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+            "index_name": "idx_security_audit_origin_proof",
+            "table": "security_audit_events",
+            "columns": [
+              "action",
+              "target_type",
+              "target_id",
+              "organization_id"
+            ],
+            "unique": false,
+            "implementation_path": "backend/repository.py",
+            "test_path": "tests/test_repository_intelligence.py"
+          }
+        ]
+      },
+      "proposal_commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+      "proposal_blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+    },
+    "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+  },
+  "owner_resume_decision": {
+    "id": "DECISION-FC20-12-F01A-INDEX-CONDITIONAL-RESUME-2026-10-11",
+    "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/199#issuecomment-6111816253",
+    "recorded_at": "2026-10-11T17:37:41Z",
+    "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+    "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+    "subject": {
+      "baseline_commit_sha": "37b96ec504d60f62bcdb5f4e69e0e5a0d8082f34",
+      "baseline_manifest_blob_sha": "386687c230db26e46ad831bbaeaeddddecfae795",
+      "checkpoint": {
+        "type": "STOP_CHECKPOINT",
+        "recorded_at": "2026-10-11T14:50:33Z",
+        "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+        "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+        "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+        "reason": "AUDIT_ORIGIN_INDEX_SCHEMA_OPERATION_OUTSIDE_REGISTERED_SCOPE",
+        "evidence": {
+          "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+          "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+          "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+        },
+        "resume_requirement": "NEW_OWNER_DECISION_BOUND_TO_INDEX_OPERATION_AND_REVIEWED_EXACT_HEAD_GOVERNANCE_TRANSITION"
+      },
+      "scope_extension": {
+        "type": "SCOPE_EXTENSION",
+        "recorded_at": "2026-10-11T14:50:33Z",
+        "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+        "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+        "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+        "added_paths": [],
+        "added_schema_operations": [
+          {
+            "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+            "index_name": "idx_security_audit_origin_proof",
+            "table": "security_audit_events",
+            "columns": [
+              "action",
+              "target_type",
+              "target_id",
+              "organization_id"
+            ],
+            "unique": false,
+            "implementation_path": "backend/repository.py",
+            "test_path": "tests/test_repository_intelligence.py"
+          }
+        ],
+        "scope_addendum": {
+          "url": "https://github.com/alphasigma13579-lang/ASIE/blob/33ac90a47966afda4917f34162f11f5826eab565/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md",
+          "commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+          "blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+        },
+        "owner_scope_decision": {
+          "id": "DECISION-FC20-12-F01A-INDEX-SCOPE-REGISTRATION-PREPARATION-2026-10-11",
+          "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/197#issuecomment-6110969163",
+          "recorded_at": "2026-10-11T14:44:04Z",
+          "effect": "PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME",
+          "subject": {
+            "baseline_commit_sha": "83afd28398c0cef9821e08c8db1162d6ec2fdfc4",
+            "baseline_manifest_blob_sha": "1cfbaf1940bfc0a1e7c276fde4a9d0a8cea05a70",
+            "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+            "allowed_paths": [
+              "backend/asie_local_api.py",
+              "backend/repository.py",
+              "backend/intelligence_prerun_service.py",
+              "tests/test_repository_intelligence.py",
+              "tests/test_intelligence_prerun_service.py",
+              "tests/test_intelligence_context_ingress_api.py",
+              "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+              "tests/test_live_location_api.py",
+              "tests/test_intelligence_consumption.py"
+            ],
+            "allowed_schema_operations": [
+              {
+                "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+                "index_name": "idx_security_audit_origin_proof",
+                "table": "security_audit_events",
+                "columns": [
+                  "action",
+                  "target_type",
+                  "target_id",
+                  "organization_id"
+                ],
+                "unique": false,
+                "implementation_path": "backend/repository.py",
+                "test_path": "tests/test_repository_intelligence.py"
+              }
+            ]
+          },
+          "proposal_commit_sha": "33ac90a47966afda4917f34162f11f5826eab565",
+          "proposal_blob_sha": "9be7964b01ebd393724dc2adf6a559a8a1eddd64"
+        },
+        "effect": "SCOPE_EXTENSION_ONLY_NO_RESUME"
+      },
+      "application_head_sha": "7df4ea3c6dfbcfb70cc219ef59622b7387052dc4",
+      "allowed_paths": [
+        "backend/asie_local_api.py",
+        "backend/repository.py",
+        "backend/intelligence_prerun_service.py",
+        "tests/test_repository_intelligence.py",
+        "tests/test_intelligence_prerun_service.py",
+        "tests/test_intelligence_context_ingress_api.py",
+        "docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md",
+        "tests/test_live_location_api.py",
+        "tests/test_intelligence_consumption.py"
+      ],
+      "allowed_schema_operations": [
+        {
+          "operation": "CREATE_INDEX_IF_NOT_EXISTS",
+          "index_name": "idx_security_audit_origin_proof",
+          "table": "security_audit_events",
+          "columns": [
+            "action",
+            "target_type",
+            "target_id",
+            "organization_id"
+          ],
+          "unique": false,
+          "implementation_path": "backend/repository.py",
+          "test_path": "tests/test_repository_intelligence.py"
+        }
+      ],
+      "execution_scope": {
+        "activities": [
+          "DEVELOP_REGISTERED_INDEX",
+          "TEST_REGISTERED_INDEX"
+        ],
+        "implementation_paths": [
+          "backend/repository.py",
+          "tests/test_repository_intelligence.py"
+        ],
+        "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+        "data_scope": "SYNTHETIC_DATA_ONLY",
+        "live_database_authorized": false,
+        "owner_database_authorized": false,
+        "production_placement_accepted": false,
+        "deployment_authorized": false,
+        "application_pr_merge_authorized": false,
+        "startup_criteria_status": "UNKNOWN_NOT_APPROVED",
+        "maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+        "query_and_proof_semantics": "UNCHANGED"
+      }
+    },
+    "proposal_commit_sha": "369832d4c296cacf114c1181b2a65b06a49fde49",
+    "proposal_blob_sha": "0a87463111c78263db11ac4d3bf103c16e47f261"
+  },
+  "effect": "F01A_DEFENSIVE_RESUME_ONLY"
+}''')
+INDEX_RESUME_VIEW_PREFIX_BLOBS = json.loads(r'''{
+  "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md": "6ad9850c3407c5a90422ac4fcb1dd2b1f5f88b3e",
+  "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md": "6f14a56dfc1bfa329f793bfa012ecd1dff948117",
+  "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md": "391940ecbb9b6be83bd0f9e1570bdeecd3a8d4b7",
+  "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md": "be62522331e6ee4517bd43e49ac439451dfeeb3a",
+  "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md": "a5e4f95f86cc0f2995097b3cbde81a9a1907c036"
+}''')
+INDEX_RESUME_VIEW_SHA256 = json.loads(r'''{
+  "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md": "4b7c66ad2500081ed0cd10f1fcddea4cd093245950d4df885fe4662150996633",
+  "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md": "a18102e44f18cac3eac3487a2a367934300b255453f8cffe9fa167cdcb50c70b",
+  "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md": "7d396001509f6c77400ef60597dadaf43c5e9095963e04459db4e39d46f6d935",
+  "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md": "2a2cd62bb16184f0384029b68c2d7ab04c031e2a2550f059254b6230b35207c5",
+  "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md": "abe2e2f6ea207761886311f08591be0d042936e5a1b6113a1d3c7872ec2e039d"
+}''')
+INDEX_RESUME_VIEW_MARKER = '<!-- F01A-INDEX-CONDITIONAL-RESUME-2026-10-11 -->'
+INDEX_RESUME_RECORD = deepcopy(INDEX_SCOPE_RECORD)
+INDEX_RESUME_RECORD["execution_authorized"] = True
+INDEX_RESUME_RECORD["events"].append(deepcopy(INDEX_RESUME_EVENT))
+
+
+def validate_index_resume(record: dict, active_target: object) -> None:
+    """IRG-01/03/04/08: true is bound to exact synthetic, temporary-only scope."""
+    assert isinstance(record, dict), "invalid_defensive_record"
+    assert set(record) == set(INDEX_RESUME_RECORD), "defensive_fields"
+    assert record == INDEX_RESUME_RECORD, "defensive_record_mismatch"
+    assert json.dumps(record, sort_keys=True) == json.dumps(INDEX_RESUME_RECORD, sort_keys=True), "index_resume_literal_types"
+    assert record["execution_authorized"] is True, "index_resume_literal_flag"
+    assert all(record[key] is False for key in (
+        "network_authorized", "provider_activation_authorized", "deployment_authorized",
+    )), "defensive_external_effect"
+    assert active_target == DEFENSIVE_START_TARGET, "index_resume_slot"
+    decision = record["events"][9]["owner_resume_decision"]
+    assert decision == INDEX_RESUME_DECISION, "index_resume_decision_mismatch"
+    assert decision["subject"]["execution_scope"] == INDEX_RESUME_EXECUTION_SCOPE, "index_resume_execution_scope"
+    assert all(decision["subject"]["execution_scope"][key] is False for key in (
+        "live_database_authorized", "owner_database_authorized", "production_placement_accepted",
+        "deployment_authorized", "application_pr_merge_authorized",
+    )), "index_resume_forbidden_effect"
+    for operations in (record["allowed_schema_operations"], decision["subject"]["allowed_schema_operations"]):
+        assert operations == [INDEX_OPERATION], "index_resume_operation"
+        assert operations[0]["unique"] is False, "index_resume_unique_literal"
+    assert re.fullmatch(
+        r"https://github\.com/alphasigma13579-lang/ASIE/pull/199#issuecomment-[0-9]+",
+        decision["record_url"],
+    ), "index_resume_receipt"
+
+
+def validate_index_resume_baseline(manifest: dict) -> dict:
+    """IRG-05: undo only the tenth event/flag and pin the entire stopped manifest."""
+    restored = deepcopy(manifest)
+    record = defensive_record(restored)
+    validate_index_resume(record, restored["execution_sequence"]["active_target"])
+    assert record["events"].pop() == INDEX_RESUME_EVENT
+    record["execution_authorized"] = False
+    validate_index_scope(record, restored["execution_sequence"]["active_target"])
+    source = (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert git_blob_sha(source) == "386687c230db26e46ad831bbaeaeddddecfae795", "index_resume_baseline_mismatch"
+    return restored
+
+
+def historical_index_scope_manifest() -> dict:
+    """Verified nine-event fixture only; not a current authority fallback."""
+    return validate_index_resume_baseline(load_manifest())
+
+
+def index_resume_historical_view(source_bytes: bytes, relative_path: str) -> bytes:
+    """IRG-06: seal complete history and one path-bound terminal resume section."""
+    assert isinstance(source_bytes, bytes), "index_resume_view_source_bytes"
+    assert relative_path in INDEX_RESUME_VIEW_SHA256, "index_resume_view_path"
+    marker = INDEX_RESUME_VIEW_MARKER.encode("utf-8")
+    separator = b"\n" + marker + b"\n"
+    assert source_bytes.count(marker) == 1, "index_resume_view_marker"
+    assert source_bytes.count(separator) == 1, "index_resume_view_boundary"
+    prefix, section = source_bytes.split(separator, 1)
+    assert git_blob_sha(prefix) == INDEX_RESUME_VIEW_PREFIX_BLOBS[relative_path], "index_resume_view_prefix_changed"
+    assert hashlib.sha256(marker + b"\n" + section).hexdigest() == INDEX_RESUME_VIEW_SHA256[relative_path], "index_resume_view_projection_changed"
+    index_scope_historical_view(prefix, relative_path)
+    return prefix
+
+
+def test_index_resume_has_one_delta_and_full_inverse_chain() -> None:
+    """IRG-01/02/05/08: preserve all nine events, operation, paths and old oracles."""
+    manifest = load_manifest()
+    validate_routing_registration(manifest)
+    record = defensive_record(manifest)
+    assert record == INDEX_RESUME_RECORD
+    assert record["events"][:9] == INDEX_SCOPE_RECORD["events"]
+    assert len(record["events"]) == 10
+    event = record["events"][9]
+    assert event["checkpoint"] == record["events"][7]
+    assert event["scope_extension"] == record["events"][8]
+    assert event["owner_resume_decision"]["subject"]["checkpoint"] == record["events"][7]
+    assert event["owner_resume_decision"]["subject"]["scope_extension"] == record["events"][8]
+    assert record["allowed_paths"] == INDEX_SCOPE_RECORD["allowed_paths"]
+    assert len(record["allowed_paths"]) == 9
+    assert record["allowed_schema_operations"] == [INDEX_OPERATION]
+    assert manifest["execution_sequence"]["held_packages"] == HELD_PACKAGES
+    assert active_execution_targets(manifest["packages"], {"FC20-05"}) == ["FC20-12/f01a_defensive_ingress"]
+    stopped = validate_index_resume_baseline(manifest)
+    previous_resume = validate_index_scope_baseline(stopped)
+    consumption_scope = validate_consumption_resume_baseline(previous_resume)
+    old_resume = validate_consumption_scope_baseline(consumption_scope)
+    validate_scope_extension_baseline(validate_resume_baseline(old_resume))
+
+
+@pytest.mark.parametrize("field", tuple(INDEX_RESUME_EVENT))
+def test_index_resume_requires_all_event_fields(field: str) -> None:
+    """IRG-03: no partial evidence can become a new resume decision."""
+    manifest = load_manifest()
+    defensive_record(manifest)["events"][9].pop(field)
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
         validate_routing_registration(manifest)
+
+
+def index_resume_leaf_paths(value: object, prefix: tuple = ()) -> list[tuple]:
+    """Enumerate nested mapping/list leaves, including each copied operation."""
+    if isinstance(value, dict) and value:
+        return [path for key, child in value.items() for path in index_resume_leaf_paths(child, (*prefix, key))]
+    if isinstance(value, list) and value:
+        return [path for index, child in enumerate(value) for path in index_resume_leaf_paths(child, (*prefix, index))]
+    return [prefix]
+
+
+@pytest.mark.parametrize("path", index_resume_leaf_paths(INDEX_RESUME_EVENT))
+def test_index_resume_pins_every_evidence_leaf(path: list) -> None:
+    """IRG-03: independently pin receipt, timestamps, baselines and nested copies."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)["events"][9]
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = "[unreviewed]"
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field", tuple(INDEX_RESUME_EXECUTION_SCOPE))
+@pytest.mark.parametrize("mutation", ("missing", "changed"))
+def test_index_resume_requires_closed_limited_execution_scope(field: str, mutation: str) -> None:
+    """IRG-03/08: remove or broaden any restriction and admission fails."""
+    manifest = load_manifest()
+    scope = defensive_record(manifest)["events"][9]["owner_resume_decision"]["subject"]["execution_scope"]
+    if mutation == "missing":
+        scope.pop(field)
+    else:
+        scope[field] = True if field.endswith(("authorized", "accepted")) else "UNRESTRICTED"
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field", ("live_database_authorized", "owner_database_authorized", "production_placement_accepted", "deployment_authorized", "application_pr_merge_authorized"))
+@pytest.mark.parametrize("value", (0, 1, "false", None))
+def test_index_resume_scope_requires_literal_booleans(field: str, value: object) -> None:
+    """IRG-03/08: false-like metadata never substitutes for explicit prohibitions."""
+    manifest = load_manifest()
+    defensive_record(manifest)["events"][9]["owner_resume_decision"]["subject"]["execution_scope"][field] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ("unknown", "extra_activity", "extra_path", "path_order", "real_data", "live_database", "startup_approved", "recovery_approved", "changed_query", "empty_scope"))
+def test_index_resume_never_interprets_true_as_general_execution(mutation: str) -> None:
+    """IRG-08: an otherwise exact true record cannot authorize broader work."""
+    manifest = load_manifest()
+    subject = defensive_record(manifest)["events"][9]["owner_resume_decision"]["subject"]
+    scope = subject["execution_scope"]
+    if mutation == "unknown":
+        scope["trusted_override"] = True
+    elif mutation == "extra_activity":
+        scope["activities"].append("DEPLOY")
+    elif mutation == "extra_path":
+        scope["implementation_paths"].append("backend/asie_local_api.py")
+    elif mutation == "path_order":
+        scope["implementation_paths"].reverse()
+    elif mutation == "real_data":
+        scope["data_scope"] = "OWNER_DATA"
+    elif mutation == "live_database":
+        scope["database_scope"] = "OWNER_DATABASE"
+    elif mutation == "startup_approved":
+        scope["startup_criteria_status"] = "APPROVED"
+    elif mutation == "recovery_approved":
+        scope["maintenance_recovery_acceptance"] = "APPROVED"
+    elif mutation == "changed_query":
+        scope["query_and_proof_semantics"] = "REPLACED"
+    else:
+        subject["execution_scope"] = {}
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("mutation", ("old_resume", "scope_decision", "preparation_effect", "missing_condition", "new_branch_baseline", "old_checkpoint_baseline", "unknown_decision", "unknown_subject", "duplicate_resume"))
+def test_index_resume_rejects_reused_or_ambiguous_authority(mutation: str) -> None:
+    """IRG-03/07: design, publication, scope or merge approvals are not this decision."""
+    manifest = load_manifest()
+    record = defensive_record(manifest)
+    event = record["events"][9]
+    if mutation == "old_resume":
+        event["owner_resume_decision"] = deepcopy(CONSUMPTION_RESUME_DECISION)
+    elif mutation == "scope_decision":
+        event["owner_resume_decision"] = deepcopy(INDEX_SCOPE_DECISION)
+    elif mutation == "preparation_effect":
+        event["owner_resume_decision"]["effect"] = "PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME"
+    elif mutation == "missing_condition":
+        event["owner_resume_decision"].pop("condition")
+    elif mutation == "new_branch_baseline":
+        event["baseline_commit_sha"] = "63b18a192e8eac3c66ad5440a667e6d1d9959d10"
+    elif mutation == "old_checkpoint_baseline":
+        event["baseline_commit_sha"] = INDEX_STOP_EVENT["baseline_commit_sha"]
+        event["baseline_manifest_blob_sha"] = INDEX_STOP_EVENT["baseline_manifest_blob_sha"]
+    elif mutation == "unknown_decision":
+        event["owner_resume_decision"]["approved"] = True
+    elif mutation == "unknown_subject":
+        event["owner_resume_decision"]["subject"]["override"] = True
+    else:
+        record["events"].append(deepcopy(event))
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("index", range(10))
+@pytest.mark.parametrize("mutation", ("delete", "duplicate", "change", "reorder"))
+def test_index_resume_preserves_each_event(index: int, mutation: str) -> None:
+    """IRG-02: every historical or current event is required in its exact position."""
+    manifest = load_manifest()
+    events = defensive_record(manifest)["events"]
+    if mutation == "delete":
+        events.pop(index)
+    elif mutation == "duplicate":
+        events.insert(index, deepcopy(events[index]))
+    elif mutation == "change":
+        events[index]["type"] = "OVERRIDE"
+    else:
+        other = (index + 1) % len(events)
+        events[index], events[other] = events[other], events[index]
+    with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("field,value", (("execution_authorized", False), ("execution_authorized", 1), ("execution_authorized", "true"), ("state", "DELIVERED"), ("delivery_evidence", {"passed": True}), ("closure_effect", "COMPLETE"), ("environment", "LIVE"), ("network_authorized", 0), ("network_authorized", True), ("provider_activation_authorized", True), ("deployment_authorized", True)))
+def test_index_resume_requires_literal_flags_and_no_terminal_effects(field: str, value: object) -> None:
+    """IRG-04/08: no implicit Boolean authority, completion or external activation."""
+    manifest = load_manifest()
+    defensive_record(manifest)[field] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("record", (DEFENSIVE_REGISTRATION, DEFENSIVE_START_RECORD, DEFENSIVE_STOP_RECORD, DEFENSIVE_SCOPE_EXTENSION_RECORD, DEFENSIVE_RESUME_RECORD, CONSUMPTION_SCOPE_RECORD, CONSUMPTION_RESUME_RECORD, INDEX_SCOPE_RECORD, lifecycle_fixture()[0]))
+def test_index_resume_never_admits_any_historical_or_fixture_state(record: dict) -> None:
+    """IRG-07: only the new exact conditional decision is current authority."""
+    with pytest.raises(AssertionError):
+        validate_index_resume(deepcopy(record), DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("mutation", ("root", "rule", "package", "dependency", "hold", "limit", "frozen", "routing", "release"))
+def test_index_resume_full_inverse_rejects_every_unrelated_delta(mutation: str) -> None:
+    """IRG-05: seal the full manifest, not only a convenient authority subset."""
+    manifest = load_manifest()
+    packages = {p["id"]: p for p in manifest["packages"]}
+    if mutation == "root":
+        manifest["override"] = True
+    elif mutation == "rule":
+        manifest["rules"]["single_source_of_truth"] = False
+    elif mutation == "package":
+        packages["FC20-05"]["title"] = "changed"
+    elif mutation == "dependency":
+        packages["FC20-12"]["depends_on"].pop()
+    elif mutation == "hold":
+        manifest["execution_sequence"]["held_packages"] = []
+    elif mutation == "limit":
+        manifest["execution_sequence"]["max_active_executions"] = 2
+    elif mutation == "frozen":
+        manifest["frozen_files"].append("backend/unknown.py")
+    elif mutation == "routing":
+        packages["FC20-12"]["execution_slices"][0]["required_entry_controls"]["single_active_execution"]["status"] = "PASS"
+    else:
+        manifest["public_release_authorized"] = True
+    with pytest.raises(AssertionError, match="index_resume_baseline_mismatch"):
+        validate_index_resume_baseline(manifest)
+
+
+@pytest.mark.parametrize("slot", (None, {}, {"kind": "package", "package_id": "FC20-05"}))
+def test_index_resume_retains_single_counted_slot(slot: object) -> None:
+    """IRG-04: resume retains the same slot and cannot hand it to held work."""
+    manifest = load_manifest()
+    manifest["execution_sequence"]["active_target"] = slot
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("relative_path", tuple(INDEX_RESUME_VIEW_SHA256))
+def test_index_resume_preserves_all_historical_projection_seals(relative_path: str) -> None:
+    """IRG-06: full prior documents and every old oracle stay independently sealed."""
+    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    prefix = index_resume_historical_view(source, relative_path)
+    index_scope_historical_view(prefix, relative_path)
+    assert set(INDEX_RESUME_VIEW_SHA256) == set(INDEX_RESUME_VIEW_PREFIX_BLOBS) == set(INDEX_VIEW_SHA256)
+
+
+@pytest.mark.parametrize("relative_path", tuple(INDEX_RESUME_VIEW_SHA256))
+@pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "live_authority", "startup_approved", "data_scope", "scope_order"))
+def test_index_resume_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
+    """IRG-06/08: exact terminal bytes, including every restricted-execution claim."""
+    source = (Path(__file__).resolve().parents[1] / relative_path).read_bytes()
+    marker = INDEX_RESUME_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
+    prefix, section = source.split(separator, 1)
+    if mutation == "missing_marker":
+        tampered = source.replace(marker, b"", 1)
+    elif mutation == "duplicate_marker":
+        tampered = source + separator
+    elif mutation == "separator":
+        tampered = source.replace(separator, b"\n\n" + marker + b"\n", 1)
+    elif mutation == "prefix":
+        tampered = b"edited\n" + source
+    elif mutation == "prefix_crlf":
+        tampered = prefix.replace(b"\n", b"\r\n") + separator + section
+    elif mutation == "whole_crlf":
+        tampered = source.replace(b"\n", b"\r\n")
+    elif mutation == "section_crlf":
+        tampered = prefix + separator + section.replace(b"\n", b"\r\n")
+    elif mutation in ("suffix", "comment", "trailing_blank_line"):
+        tampered = source + {"suffix": b"\n### Override\n", "comment": b"\n<!-- override -->\n", "trailing_blank_line": b"\n"}[mutation]
+    elif mutation == "missing_final_newline":
+        tampered = source.removesuffix(b"\n")
+    elif mutation == "scope_order":
+        first, second = (f"- `{p}`\n".encode() for p in INDEX_SCOPE_RECORD["allowed_paths"][:2])
+        tampered = prefix + separator + section.replace(first + second, second + first)
+    else:
+        old, new = {"live_authority": (b"live_database_authorized=false", b"live_database_authorized=true"), "startup_approved": (b"startup_criteria_status=UNKNOWN_NOT_APPROVED", b"startup_criteria_status=APPROVED"), "data_scope": (b"SYNTHETIC_DATA_ONLY", b"OWNER_DATA")}[mutation]
+        tampered = prefix + separator + section.replace(old, new)
+    assert tampered != source
+    with pytest.raises(AssertionError, match="index_resume_view_"):
+        index_resume_historical_view(tampered, relative_path)
+
+
+@pytest.mark.parametrize("relative_path", tuple(INDEX_RESUME_VIEW_SHA256))
+def test_index_resume_rejects_cross_path_projection_transplants(relative_path: str) -> None:
+    """IRG-06: authentic content from another path cannot borrow this path's seal."""
+    root = Path(__file__).resolve().parents[1]
+    other = next(p for p in INDEX_RESUME_VIEW_SHA256 if p != relative_path)
+    source, other_source = (root / relative_path).read_bytes(), (root / other).read_bytes()
+    separator = ("\n" + INDEX_RESUME_VIEW_MARKER + "\n").encode()
+    with pytest.raises(AssertionError, match="index_resume_view_prefix_changed"):
+        index_resume_historical_view(other_source, relative_path)
+    with pytest.raises(AssertionError, match="index_resume_view_projection_changed"):
+        index_resume_historical_view(source.split(separator, 1)[0] + separator + other_source.split(separator, 1)[1], relative_path)
+
+
+@pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
+def test_index_resume_projection_has_no_default_path(path: str) -> None:
+    """IRG-06: no fallback seal is accepted for unregistered documents."""
+    source = (Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes()
+    with pytest.raises(AssertionError, match="index_resume_view_path"):
+        index_resume_historical_view(source, path)
+
+
+def test_index_resume_requires_raw_view_bytes_and_preserves_reviewed_design() -> None:
+    """IRG-06/08: source bytes and immutable design remain independent evidence."""
+    root = Path(__file__).resolve().parents[1]
+    path = CONSUMPTION_VIEW_PATHS[0]
+    with pytest.raises(AssertionError, match="index_resume_view_source_bytes"):
+        index_resume_historical_view((root / path).read_text(), path)
+    assert git_blob_sha((root / "docs/FC20-12-F01A-INDEX-CONDITIONAL-RESUME-PROPOSAL-2026-10-11.md").read_bytes()) == "0a87463111c78263db11ac4d3bf103c16e47f261", "index_resume_design_changed"
+
+
+@pytest.mark.parametrize("container,keys", (("decision", tuple(INDEX_RESUME_DECISION)), ("subject", tuple(INDEX_RESUME_DECISION["subject"]))))
+def test_index_resume_requires_each_decision_and_subject_field(container: str, keys: tuple) -> None:
+    """IRG-03: complete receipt and exact subject are mandatory, not optional metadata."""
+    for field in keys:
+        manifest = load_manifest()
+        target = defensive_record(manifest)["events"][9]["owner_resume_decision"]
+        if container == "subject":
+            target = target["subject"]
+        target.pop(field)
+        with pytest.raises(AssertionError, match="defensive_record_mismatch"):
+            validate_routing_registration(manifest)
+
+
+@pytest.mark.parametrize("path", [p for p in index_resume_leaf_paths(INDEX_RESUME_RECORD) if p[-1] == "unique"])
+@pytest.mark.parametrize("value", (0, 1, "false", None))
+def test_index_resume_operation_booleans_are_literal_in_every_copy(path: list, value: object) -> None:
+    """IRG-03: copied historical and current operations reject false-like integers."""
+    manifest = load_manifest()
+    target = defensive_record(manifest)
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(AssertionError):
+        validate_routing_registration(manifest)
+
+
+
+def test_index_resume_nested_operation_mutation_inventory_is_nonempty() -> None:
+    """IRG-03: a list-blind enumerator must not silently skip operation copies."""
+    paths = [p for p in index_resume_leaf_paths(INDEX_RESUME_RECORD) if p[-1] == "unique"]
+    assert ("allowed_schema_operations", 0, "unique") in paths
+    assert ("events", 9, "owner_resume_decision", "subject", "allowed_schema_operations", 0, "unique") in paths
+    assert len(paths) >= 3
