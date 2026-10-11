@@ -28,6 +28,21 @@ class RepositoryIntelligenceTests(unittest.TestCase):
         self.foreign = self.repo.create_project({"organization_id": "org-b", "name": "Foreign", "sector": "retail", "jurisdiction": "SA"})
         self.principal = Principal("u", "s", "org-a", "organization_owner")
 
+    def test_consumption_validation_preserves_ordinary_and_valid_legacy_reads(self):
+        context = self.model("legacy-readable")
+        record = self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        with closing(self.repo.connect()) as db, db:
+            db.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1' AND target_id = ?", (context.context_build_id,))
+        args = dict(context_build_id=context.context_build_id, organization_id="org-a", project_id=self.project.project_id, principal=self.principal)
+        self.assertEqual(record, self.repo.get_intelligence_context(**args))
+        self.assertEqual(record, self.repo.get_intelligence_context(**args, validate_for_consumption=True))
+        legacy = record | {"legacy_metadata": "readable"}
+        with closing(self.repo.connect()) as db, db:
+            db.execute("UPDATE intelligence_contexts SET payload_json = ? WHERE context_build_id = ?", (json.dumps(legacy), context.context_build_id))
+        self.assertEqual(legacy, self.repo.get_intelligence_context(**args))
+        with self.assertRaisesRegex(ValueError, "context_integrity_invalid"):
+            self.repo.get_intelligence_context(**args, validate_for_consumption=True)
+
     def draft(self, key="draft", project=None):
         return self.repo.create_intelligence_context(payload={"project_id": (project or self.project).project_id, "idempotency_key": key}, principal=self.principal)
 

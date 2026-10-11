@@ -2439,6 +2439,7 @@ class Handler(BaseHTTPRequestHandler):
                     organization_id=scope.organization_id,
                     project_id=project_id,
                     principal=tenant_principal,
+                    validate_for_consumption=True,
                 )
                 receipt = REPO.get_intelligence_approval_receipt(
                     receipt_id=approval_receipt_id,
