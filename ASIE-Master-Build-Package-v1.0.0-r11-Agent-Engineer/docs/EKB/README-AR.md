@@ -65,4 +65,4 @@
 
 ## مقترح فهرس إثبات المنشأ F-01A
 
-- [نطاق فهرس التدقيق فقط — 2026-10-11](../FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md): **PROPOSED / REVIEW_REQUIRED / NOT_EFFECTIVE / NOT_IMPLEMENTED**؛ استثناء عملية schema واحدة مقترحة لاستعلام إثبات المنشأ المنفذ في فرع Draft #189 المثبت وغير المدمج في main؛ الفهرس غير منفذ، ولا يستهدف قارئ audit-events العام. لا زيادة للمسارات التسعة أو مصدر ثقة موازٍ. يفصل التصميم عن STOP/SCOPE_EXTENSION وRESUME والدمج والتنفيذ؛ لا يغير manifest أو قاعدة المالك، وT08 يبقى OPEN.
+- [نطاق فهرس التدقيق فقط — 2026-10-11](../FC20-12-F01A-AUDIT-ORIGIN-INDEX-SCOPE-PROPOSAL-2026-10-11.md): **PROPOSED / REVIEW_REQUIRED / NOT_EFFECTIVE / NOT_IMPLEMENTED**؛ استثناء عملية schema واحدة مقترحة لاستعلام إثبات المنشأ المنفذ في فرع Draft #189 المثبت وغير المدمج في main؛ الفهرس غير منفذ، ولا يستهدف قارئ audit-events العام. لا زيادة للمسارات التسعة أو مصدر ثقة موازٍ. موضع التهيئة مشروط ببوابة إتاحة وأدلة وقيود مالك غير مستوفاة؛ لا SLO أو rollout تنفيذي مفترض. يفصل التصميم عن STOP/SCOPE_EXTENSION وRESUME والدمج والتنفيذ؛ لا يغير manifest أو قاعدة المالك، وT08 يبقى OPEN.
