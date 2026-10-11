@@ -2151,7 +2151,7 @@ class Handler(BaseHTTPRequestHandler):
         except RequestError as exc:
             kind = "too_large" if exc.status == 413 else "invalid"
             self._intelligence_ingress_error(kind, exc.status, principal)
-        except (ValueError, TypeError):
+        except ValueError:
             self._intelligence_ingress_error("invalid", 400, principal)
         except Exception:
             self._intelligence_ingress_error("unavailable", 503, principal)
@@ -2454,6 +2454,8 @@ class Handler(BaseHTTPRequestHandler):
                     receipt.get("intelligence_context_id") != context_build_id
                     or receipt.get("intelligence_context_hash") != context_hash
                     or receipt.get("approved_for_contract_version") != "live.intelligence.narrative.v1"
+                    or receipt.get("approval_scope") != "narrative"
+                    or receipt.get("conditions") != []
                     or not _approval_is_current(receipt)
                 ):
                     write_error(self, "approved_evidence_context_required", 409)
@@ -2482,6 +2484,7 @@ class Handler(BaseHTTPRequestHandler):
                         project_id=project_id,
                         context_hash=context_hash,
                         contract_version="live.intelligence.narrative.v1",
+                        expected_scope="narrative",
                         principal=tenant_principal,
                     )
                     narrative = _live_narrative_service().create_reviewed_narrative(
@@ -2960,3 +2963,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

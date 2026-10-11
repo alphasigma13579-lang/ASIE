@@ -28,7 +28,7 @@ class IntelligenceConsumptionTests(unittest.TestCase):
             self.receipt = self.repo.save_intelligence_approval(organization_id="o", project_id=self.project.project_id, principal=self.principal, receipt={"intelligence_context_id": self.context.context_build_id, "intelligence_context_hash": self.context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "run", "approved_for_contract_version": "context.v1", "valid_until": "2026-10-11T12:00:00+03:00"})
 
     def consume(self, **overrides):
-        return self.repo.consume_intelligence_approval(**({"receipt_id": self.receipt["approval_receipt_id"], "organization_id": "o", "project_id": self.project.project_id, "context_hash": self.context.context_hash, "contract_version": "context.v1", "principal": self.principal} | overrides))
+        return self.repo.consume_intelligence_approval(**({"receipt_id": self.receipt["approval_receipt_id"], "organization_id": "o", "project_id": self.project.project_id, "context_hash": self.context.context_hash, "contract_version": "context.v1", "expected_scope": "run", "principal": self.principal} | overrides))
 
     def business_rows(self):
         with closing(self.repo.connect()) as db:
@@ -91,6 +91,25 @@ class IntelligenceConsumptionTests(unittest.TestCase):
             original = {"receipt_hash": self.receipt["approval_receipt_hash"], "context_build_id": self.context.context_build_id, "created_at": self.receipt["created_at"]}[column]
             with closing(self.repo.connect()) as db, db:
                 db.execute("UPDATE intelligence_approval_receipts SET " + column + " = ? WHERE approval_receipt_id = ?", (original, self.receipt["approval_receipt_id"]))
+
+    def test_non_object_and_malformed_receipts_are_integrity_errors(self):
+        for raw in ("[]", "null", "true", "123", '"receipt"', "{broken"):
+            with closing(self.repo.connect()) as db, db:
+                db.execute("UPDATE intelligence_approval_receipts SET payload_json = ? WHERE approval_receipt_id = ?", (raw, self.receipt["approval_receipt_id"]))
+            before = self.business_rows()
+            with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, "^approval_integrity_invalid$"):
+                self.consume()
+            self.assertEqual(before, self.business_rows())
+
+    def test_receipts_for_other_scope_or_unresolved_conditions_are_not_consumable(self):
+        for approval_scope, conditions in (("other-operation", []), ("run", ["manual prerequisite not satisfied"])):
+            review = self.repo.save_intelligence_review(organization_id="o", project_id=self.project.project_id, principal=self.principal, overlay={"intelligence_context_id": self.context.context_build_id, "intelligence_context_hash": self.context.context_hash, "review_scope": "context", "reviewed_output_hash": self.context.context_hash, "decision": "APPROVE_WITH_CONDITIONS" if conditions else "APPROVE", "conditions": conditions})
+            with patch("backend.repository.now_iso", return_value="2026-10-11T08:00:00+00:00"):
+                receipt = self.repo.save_intelligence_approval(organization_id="o", project_id=self.project.project_id, principal=self.principal, receipt={"intelligence_context_id": self.context.context_build_id, "intelligence_context_hash": self.context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": approval_scope, "approved_for_contract_version": "context.v1", "valid_until": "2026-10-11T09:00:00+00:00", "conditions": conditions})
+            before = self.business_rows()
+            with self.subTest(approval_scope=approval_scope, conditions=conditions), patch("backend.repository.now_iso", return_value="2026-10-11T08:30:00+00:00"), self.assertRaisesRegex(ValueError, "approval_scope_mismatch|approval_conditions_unverified"):
+                self.consume(receipt_id=receipt["approval_receipt_id"])
+            self.assertEqual(before, self.business_rows())
 
     def test_future_offset_expiry_remains_consumable(self):
         before = self.business_rows()

@@ -89,6 +89,18 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
             self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM security_audit_events WHERE action = 'aia.context.origin.v1'").fetchone()[0])
         self.assertEqual((1, 0, 0, 0, 0), self.counts())
 
+    def test_internal_type_error_is_unavailable_not_invalid_input(self):
+        marker = "SECRET_INTERNAL_TYPE_ERROR"
+        for locale in ("ar", "en"):
+            self.repo.save_customer_locale(self.owner["user_id"], locale)
+            with self.subTest(locale=locale), patch.object(self.repo, "create_intelligence_context", side_effect=TypeError(marker)):
+                status, body = self.request("/api/intelligence/contexts", {"project_id": self.project.project_id, "idempotency_key": "type-failure"}, token=self.token)
+            self.assertEqual(503, status)
+            self.assertEqual(503, body["status"])
+            self.assertNotIn(marker, json.dumps(body))
+            self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
+        self.assertEqual((0, 0, 0, 0, 0), self.counts())
+
     def test_minimal_request_creates_only_server_owned_draft_and_replays_it(self):
         payload = {"project_id": self.project.project_id, "idempotency_key": "minimal"}
         status, body = self.request("/api/intelligence/contexts", payload, token=self.token)

@@ -1797,7 +1797,7 @@ class Repository:
             row = conn.execute("SELECT payload_json FROM intelligence_synthesis_packs WHERE pack_id = ? AND organization_id = ? AND project_id = ?", (pack_id, organization_id, project_id)).fetchone()
         return None if row is None else json_loads(row["payload_json"], {})
 
-    def consume_intelligence_approval(self, *, receipt_id: str, organization_id: str, project_id: str, context_hash: str, contract_version: str, principal: Principal | None) -> dict[str, Any]:
+    def consume_intelligence_approval(self, *, receipt_id: str, organization_id: str, project_id: str, context_hash: str, contract_version: str, expected_scope: str, principal: Principal | None) -> dict[str, Any]:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.run", action="aia.approval.consume", target_id=receipt_id)
         with closing(self.connect()) as conn:
             row = conn.execute("SELECT * FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?", (receipt_id, organization_id, project_id)).fetchone()
@@ -1808,7 +1808,7 @@ class Repository:
         except (TypeError, ValueError) as exc:
             raise ValueError("approval_integrity_invalid") from exc
         if not isinstance(receipt, dict):
-            raise ValueError("approval_expiry_invalid")
+            raise ValueError("approval_integrity_invalid")
         if receipt.get("intelligence_context_hash") != context_hash or receipt.get("approved_for_contract_version") != contract_version:
             raise ValueError("approval_receipt_contract_or_hash_mismatch")
         expiry_text = receipt.get("valid_until")
@@ -1838,6 +1838,13 @@ class Repository:
                 or model.intelligence_context_id != row["context_build_id"]
                 or receipt["created_at"] != row["created_at"]):
             raise ValueError("approval_integrity_invalid")
+        # AIA-02 sections 6.3.1/11.2 bind consumption to the receipt's scope
+        # and conditions. No condition evaluator is admitted on this boundary;
+        # never turn a caller's assertion into proof of satisfaction.
+        if not isinstance(expected_scope, str) or not expected_scope.strip() or model.approval_scope != expected_scope:
+            raise ValueError("approval_scope_mismatch")
+        if model.conditions:
+            raise ValueError("approval_conditions_unverified")
         if expiry <= datetime.fromisoformat(now_iso()):
             raise ValueError("approval_expired")
         return {"approval_receipt_id": receipt_id, "organization_id": organization_id, "project_id": project_id, "context_hash": context_hash, "contract_version": contract_version, "consumable": True, "snapshot_mutation": False}

@@ -175,8 +175,9 @@ class LiveLocationApiTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def create_approved_narrative_context(self) -> tuple[str, str]:
+    def create_approved_narrative_context(self, *, approval_scope="narrative", conditions=None) -> tuple[str, str]:
         """Use the native model and approval guards, never browser state/hash claims."""
+        conditions = [] if conditions is None else conditions
         context_id = "ctx-narrative-a"
         principal = self.repo.principal_for_token(self.token_a, self.org_a_id)
         assert principal is not None
@@ -206,7 +207,8 @@ class LiveLocationApiTests(unittest.TestCase):
                 "intelligence_context_hash": context.context_hash,
                 "review_scope": "narrative",
                 "reviewed_output_hash": context.context_hash,
-                "decision": "APPROVE",
+                "decision": "APPROVE_WITH_CONDITIONS" if conditions else "APPROVE",
+                "conditions": conditions,
             },
             principal=principal,
         )
@@ -217,7 +219,8 @@ class LiveLocationApiTests(unittest.TestCase):
                 "intelligence_context_hash": context.context_hash,
                 "review_overlay_id": overlay["review_overlay_id"],
                 "review_overlay_hash": overlay["review_overlay_hash"],
-                "approval_scope": "narrative",
+                "approval_scope": approval_scope,
+                "conditions": conditions,
                 "approved_for_contract_version": "live.intelligence.narrative.v1",
                 "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             },
@@ -643,6 +646,15 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual("failed", events[-1]["result"])
         self.assertEqual("provider_unavailable", events[-1]["reason"])
 
+    def test_live_narrative_rejects_other_scope_and_unresolved_conditions_before_provider(self) -> None:
+        for approval_scope, conditions in (("other-operation", []), ("narrative", ["manual prerequisite not satisfied"])):
+            context_id, receipt_id = self.create_approved_narrative_context(approval_scope=approval_scope, conditions=conditions)
+            with self.subTest(approval_scope=approval_scope, conditions=conditions), patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False), patch.object(api, "_live_narrative_service", side_effect=AssertionError("unapproved operation must not construct provider")) as provider:
+                status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id, "approval_scope": approval_scope, "conditions_satisfied": True})
+            self.assertEqual(409, status)
+            self.assertEqual("approved_evidence_context_required", body["error"])
+            provider.assert_not_called()
+
     def test_live_narrative_uses_only_persisted_approved_evidence_and_hides_internals(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
         service = FakeNarrativeService()
@@ -802,3 +814,4 @@ class LiveLocationApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
