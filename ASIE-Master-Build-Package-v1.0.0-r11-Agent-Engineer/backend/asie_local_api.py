@@ -2434,19 +2434,23 @@ class Handler(BaseHTTPRequestHandler):
                 tenant_principal = self._principal(scope.organization_id)
                 if tenant_principal is None:
                     return
-                context = REPO.get_intelligence_context(
-                    context_build_id=context_build_id,
-                    organization_id=scope.organization_id,
-                    project_id=project_id,
-                    principal=tenant_principal,
-                    validate_for_consumption=True,
-                )
-                receipt = REPO.get_intelligence_approval_receipt(
-                    receipt_id=approval_receipt_id,
-                    organization_id=scope.organization_id,
-                    project_id=project_id,
-                    principal=tenant_principal,
-                )
+                try:
+                    context = REPO.get_intelligence_context(
+                        context_build_id=context_build_id,
+                        organization_id=scope.organization_id,
+                        project_id=project_id,
+                        principal=tenant_principal,
+                        validate_for_consumption=True,
+                    )
+                    receipt = REPO.get_intelligence_approval_receipt(
+                        receipt_id=approval_receipt_id,
+                        organization_id=scope.organization_id,
+                        project_id=project_id,
+                        principal=tenant_principal,
+                    )
+                except ValueError:
+                    write_error(self, "approved_evidence_context_required", 409)
+                    return
                 if context is None or not isinstance(receipt, dict):
                     write_error(self, "approved_evidence_context_required", 409)
                     return
@@ -2465,19 +2469,6 @@ class Handler(BaseHTTPRequestHandler):
                 if approved_context is None:
                     write_error(self, "approved_evidence_context_required", 409)
                     return
-                if not provider_status_snapshot()["external_fetch_enabled"]:
-                    REPO.audit(
-                        actor_user_id=principal.user_id,
-                        organization_id=scope.organization_id,
-                        action="live_narrative",
-                        target_type="project",
-                        target_id=project_id,
-                        result="denied",
-                        reason="external_fetch_disabled",
-                        correlation_id=self.request_id,
-                    )
-                    self._write_provider_unavailable("live_narrative")
-                    return
                 try:
                     try:
                         REPO.consume_intelligence_approval(
@@ -2491,6 +2482,19 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     except ValueError:
                         write_error(self, "approved_evidence_context_required", 409)
+                        return
+                    if not provider_status_snapshot()["external_fetch_enabled"]:
+                        REPO.audit(
+                            actor_user_id=principal.user_id,
+                            organization_id=scope.organization_id,
+                            action="live_narrative",
+                            target_type="project",
+                            target_id=project_id,
+                            result="denied",
+                            reason="external_fetch_disabled",
+                            correlation_id=self.request_id,
+                        )
+                        self._write_provider_unavailable("live_narrative")
                         return
                     narrative = _live_narrative_service().create_reviewed_narrative(
                         scope=scope,

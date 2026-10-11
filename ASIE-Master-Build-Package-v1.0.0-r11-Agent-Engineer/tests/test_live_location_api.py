@@ -14,6 +14,7 @@ import unittest
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
+from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -167,6 +168,9 @@ class LiveLocationApiTests(unittest.TestCase):
         self.token_a, _ = self.repo.create_session(email=self.user_a["email"], password="location-password-a1")
         self.token_b, _ = self.repo.create_session(email=self.user_b["email"], password="location-password-b1")
 
+        limiter_patch = patch.object(api, "REQUEST_RATE_LIMITER", api.LocalRateLimiter())
+        limiter_patch.start()
+        self.addCleanup(limiter_patch.stop)
         previous_repo = api.REPO
         api.REPO = self.repo
         self.addCleanup(setattr, api, "REPO", previous_repo)
@@ -659,7 +663,7 @@ class LiveLocationApiTests(unittest.TestCase):
         for key in ("source", "lineage", "value", "geography", "sector", "confidence"):
             mutations.append((key, ["unapproved evidence"] if key == "lineage" else "tampered", "component"))
         mutations += [("source", 42, "component"), ("lineage", ["approved", 42], "component"), ("state", "STALE", "row"), ("state", "REJECTED", "row")]
-        for key, value, mode in mutations:
+        for (key, value, mode), external_fetch in product(mutations, ("true", "false")):
             with self.subTest(key=key, value=value, mode=mode):
                 record = json.loads(original["payload_json"])
                 if mode == "component":
@@ -671,20 +675,20 @@ class LiveLocationApiTests(unittest.TestCase):
                 with closing(self.repo.connect()) as db, db:
                     db.execute("UPDATE intelligence_contexts SET payload_json = ?, state = ? WHERE context_build_id = ?", (json.dumps(record), value if mode == "row" else original["state"], context_id))
                 with (
-                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
                     patch.object(api, "_live_narrative_service", side_effect=AssertionError("unverified context must not construct provider")) as provider,
                 ):
                     status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
-                self.assertEqual(400, status)
-                self.assertEqual("invalid_request", body["error"])
+                self.assertEqual(409, status)
+                self.assertEqual("approved_evidence_context_required", body["error"])
                 provider.assert_not_called()
 
     def test_live_narrative_rejects_corrupt_persisted_contexts_before_provider(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
-        cases = [(json.dumps(context), 400, "invalid_request")
+        cases = [(json.dumps(context), 409, "approved_evidence_context_required")
                  for context in ([], ["corrupt context"], "corrupt context", 42, True, None)]
-        cases += [("{malformed context", 400, "invalid_request"), ("", 400, "invalid_request"), ("{}", 400, "invalid_request")]
-        for raw_context, expected_status, expected_error in cases:
+        cases += [("{malformed context", 409, "approved_evidence_context_required"), ("", 409, "approved_evidence_context_required"), ("{}", 409, "approved_evidence_context_required")]
+        for (raw_context, expected_status, expected_error), external_fetch in product(cases, ("true", "false")):
             with self.subTest(raw_context=raw_context):
                 with closing(self.repo.connect()) as db, db:
                     db.execute(
@@ -692,7 +696,7 @@ class LiveLocationApiTests(unittest.TestCase):
                         (raw_context, context_id),
                     )
                 with (
-                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
                     patch.object(api, "_live_narrative_service", side_effect=AssertionError("corrupt context must not construct provider")) as provider,
                 ):
                     status, body = self.request(
@@ -705,6 +709,19 @@ class LiveLocationApiTests(unittest.TestCase):
                 self.assertNotIn("corrupt context", json.dumps(body))
                 self.assertNotIn("malformed context", json.dumps(body))
                 provider.assert_not_called()
+
+    def test_live_narrative_valid_approval_still_obeys_disabled_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "false"}, clear=False),
+            patch.object(self.repo, "consume_intelligence_approval", wraps=self.repo.consume_intelligence_approval) as consume,
+            patch.object(api, "_live_narrative_service") as provider,
+        ):
+            status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        consume.assert_called_once()
+        provider.assert_not_called()
 
     def test_live_narrative_preserves_safe_internal_consumption_failures(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
@@ -727,7 +744,7 @@ class LiveLocationApiTests(unittest.TestCase):
         cases = [(key, None, "remove") for key in original_record]
         cases += [(key, 42, "payload") for key in original_record]
         cases += [(key, "mismatch", "row") for key in ("context_build_id", "receipt_hash", "created_at")]
-        for key, value, mode in cases:
+        for (key, value, mode), external_fetch in product(cases, ("true", "false")):
             with self.subTest(key=key, mode=mode):
                 record = dict(original_record)
                 if mode == "remove":
@@ -740,7 +757,7 @@ class LiveLocationApiTests(unittest.TestCase):
                 with closing(self.repo.connect()) as db, db:
                     db.execute("UPDATE intelligence_approval_receipts SET payload_json = ?, context_build_id = ?, receipt_hash = ?, created_at = ? WHERE approval_receipt_id = ?", (json.dumps(record), row["context_build_id"], row["receipt_hash"], row["created_at"], receipt_id))
                 with (
-                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
                     patch.object(api, "_live_narrative_service", side_effect=AssertionError("invalid receipt must not construct provider")) as provider,
                 ):
                     status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
@@ -755,8 +772,8 @@ class LiveLocationApiTests(unittest.TestCase):
         context_id, receipt_id = self.create_approved_narrative_context()
         cases = [(json.dumps(receipt), 409, "approved_evidence_context_required")
                  for receipt in ([], ["corrupt receipt"], "corrupt receipt", 42, True, None, {}, {"valid_until": []})]
-        cases += [("{malformed receipt", 400, "invalid_request"), ("", 409, "approved_evidence_context_required")]
-        for raw_receipt, expected_status, expected_error in cases:
+        cases += [("{malformed receipt", 409, "approved_evidence_context_required"), ("", 409, "approved_evidence_context_required")]
+        for (raw_receipt, expected_status, expected_error), external_fetch in product(cases, ("true", "false")):
             with self.subTest(raw_receipt=raw_receipt):
                 with closing(self.repo.connect()) as db, db:
                     db.execute(
@@ -764,7 +781,7 @@ class LiveLocationApiTests(unittest.TestCase):
                         (raw_receipt, receipt_id),
                     )
                 with (
-                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
                     patch.object(api, "_live_narrative_service", side_effect=AssertionError("corrupt receipt must not construct provider")) as provider,
                 ):
                     status, body = self.request(
