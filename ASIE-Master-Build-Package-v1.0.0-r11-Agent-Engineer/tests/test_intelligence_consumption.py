@@ -71,6 +71,27 @@ class IntelligenceConsumptionTests(unittest.TestCase):
                     self.consume()
                 self.assertEqual(before, self.business_rows())
 
+    def test_tampered_expiry_and_receipt_material_cannot_be_consumed(self):
+        variants = ({"valid_until": "2099-01-01T00:00:00+00:00"}, {"approval_scope": "changed"}, {"conditions": ["changed"]}, {"organization_id": "other"}, {"project_id": "other"}, {"intelligence_context_id": "other"}, {"approval_receipt_id": "other"}, {"review_overlay_id": "other"}, {"approval_receipt_hash": "changed"})
+        for variant in variants:
+            material = self.receipt | variant
+            with closing(self.repo.connect()) as db, db:
+                db.execute("UPDATE intelligence_approval_receipts SET payload_json = ? WHERE approval_receipt_id = ?", (json.dumps(material), self.receipt["approval_receipt_id"]))
+            before = self.business_rows()
+            with self.subTest(variant=variant), patch("backend.repository.now_iso", return_value="2026-10-11T10:00:00+00:00" if "valid_until" in variant else "2026-10-11T08:30:00+00:00"), self.assertRaisesRegex(ValueError, "approval_integrity_invalid"):
+                self.consume()
+            self.assertEqual(before, self.business_rows())
+
+    def test_receipt_row_hash_and_context_identity_are_checked(self):
+        for column in ("receipt_hash", "context_build_id", "created_at"):
+            with closing(self.repo.connect()) as db, db:
+                db.execute("UPDATE intelligence_approval_receipts SET " + column + " = ? WHERE approval_receipt_id = ?", ("changed", self.receipt["approval_receipt_id"]))
+            with self.subTest(column=column), patch("backend.repository.now_iso", return_value="2026-10-11T08:30:00+00:00"), self.assertRaisesRegex(ValueError, "approval_integrity_invalid"):
+                self.consume()
+            original = {"receipt_hash": self.receipt["approval_receipt_hash"], "context_build_id": self.context.context_build_id, "created_at": self.receipt["created_at"]}[column]
+            with closing(self.repo.connect()) as db, db:
+                db.execute("UPDATE intelligence_approval_receipts SET " + column + " = ? WHERE approval_receipt_id = ?", (original, self.receipt["approval_receipt_id"]))
+
     def test_future_offset_expiry_remains_consumable(self):
         before = self.business_rows()
         with patch("backend.repository.now_iso", return_value="2026-10-11T08:59:59+00:00"):

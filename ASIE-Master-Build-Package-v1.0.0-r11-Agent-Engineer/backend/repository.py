@@ -1800,10 +1800,13 @@ class Repository:
     def consume_intelligence_approval(self, *, receipt_id: str, organization_id: str, project_id: str, context_hash: str, contract_version: str, principal: Principal | None) -> dict[str, Any]:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.run", action="aia.approval.consume", target_id=receipt_id)
         with closing(self.connect()) as conn:
-            row = conn.execute("SELECT payload_json FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?", (receipt_id, organization_id, project_id)).fetchone()
+            row = conn.execute("SELECT * FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?", (receipt_id, organization_id, project_id)).fetchone()
         if row is None:
             raise ValueError("approval_receipt_not_found")
-        receipt = json_loads(row["payload_json"], {})
+        try:
+            receipt = json_loads(row["payload_json"], {})
+        except (TypeError, ValueError) as exc:
+            raise ValueError("approval_integrity_invalid") from exc
         if not isinstance(receipt, dict):
             raise ValueError("approval_expiry_invalid")
         if receipt.get("intelligence_context_hash") != context_hash or receipt.get("approved_for_contract_version") != contract_version:
@@ -1817,6 +1820,24 @@ class Repository:
             raise ValueError("approval_expiry_invalid") from exc
         if expiry.tzinfo is None or expiry.utcoffset() is None:
             raise ValueError("approval_expiry_invalid")
+        # Expiry is a hashed receipt field. Syntax alone cannot establish that
+        # the stored authorization actually granted this validity interval.
+        receipt_fields = {field.name for field in fields(ApprovalReceipt)}
+        if set(receipt) != receipt_fields | {"approval_receipt_hash", "created_at"}:
+            raise ValueError("approval_integrity_invalid")
+        try:
+            material = self._intelligence_model_payload({key: receipt[key] for key in receipt_fields}, ApprovalReceipt, derived_hash="approval_receipt_hash")
+            model = ApprovalReceipt(**material)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("approval_integrity_invalid") from exc
+        if (model.approval_receipt_hash != row["receipt_hash"]
+                or receipt["approval_receipt_hash"] != row["receipt_hash"]
+                or model.approval_receipt_id != row["approval_receipt_id"]
+                or model.organization_id != row["organization_id"]
+                or model.project_id != row["project_id"]
+                or model.intelligence_context_id != row["context_build_id"]
+                or receipt["created_at"] != row["created_at"]):
+            raise ValueError("approval_integrity_invalid")
         if expiry <= datetime.fromisoformat(now_iso()):
             raise ValueError("approval_expired")
         return {"approval_receipt_id": receipt_id, "organization_id": organization_id, "project_id": project_id, "context_hash": context_hash, "contract_version": contract_version, "consumable": True, "snapshot_mutation": False}

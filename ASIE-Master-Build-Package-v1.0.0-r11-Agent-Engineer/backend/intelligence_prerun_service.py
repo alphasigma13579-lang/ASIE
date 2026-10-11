@@ -20,6 +20,8 @@ class IntelligencePreRunService:
         scope = self.repository.intelligence_project_scope(organization_id=organization_id, project_id=project_id, principal=principal, correlation_id=correlation_id)
         if scope != {"geography": geography, "sector": sector}:
             raise ValueError("context_saved_scope_mismatch")
+        if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+            return {"error": "local_context_validation_failed", "snapshot_mutation": False, "external_fetch_enabled": False}
         context = IntelligenceContext(context_build_id, organization_id, project_id, geography, sector, idempotency_key)
         try:
             context.components = [ContextComponent(**component) for component in components]
@@ -45,3 +47,4 @@ class IntelligencePreRunService:
         except (ValueError, RuntimeError, TimeoutError, OSError):
             return {"error": "local_context_unavailable", "snapshot_mutation": False, "external_fetch_enabled": False}
         return {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}
+
