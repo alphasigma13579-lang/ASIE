@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
 from pathlib import Path
@@ -63,6 +63,31 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
     def counts(self):
         with self.repo.connect() as conn:
             return tuple(conn.execute("SELECT COUNT(*) FROM " + name).fetchone()[0] for name in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"))
+
+    def test_unproven_replay_is_localized_safe_and_never_builds_or_retrofits(self):
+        payload = {"project_id": self.project.project_id, "idempotency_key": "legacy-http"}
+        status, body = self.request("/api/intelligence/contexts", payload, token=self.token)
+        self.assertEqual(201, status)
+        context_id = body["context"]["context_build_id"]
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1'")
+            original = tuple(conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (context_id,)).fetchone())
+        with patch.object(IntelligenceContextWorkflow, "execute", side_effect=AssertionError("workflow must not run")) as workflow:
+            for locale in ("ar", "en"):
+                self.repo.save_customer_locale(self.owner["user_id"], locale)
+                for request_payload in (payload, payload | {"origin": "aia.context.origin.v1"}):
+                    with self.subTest(locale=locale, claims=len(request_payload)):
+                        status, rejected = self.request("/api/intelligence/contexts", request_payload, token=self.token)
+                        self.assertEqual(400, status)
+                        self.assertNotIn("context", rejected)
+                        self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in rejected["error"]))
+                        for secret in (context_id, self.project.project_id, self.org, "context_idempotency_conflict", "aia.context.origin.v1", "legacy-http"):
+                            self.assertNotIn(secret, json.dumps(rejected))
+            workflow.assert_not_called()
+        with closing(self.repo.connect()) as conn:
+            self.assertEqual(original, tuple(conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (context_id,)).fetchone()))
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM security_audit_events WHERE action = 'aia.context.origin.v1'").fetchone()[0])
+        self.assertEqual((1, 0, 0, 0, 0), self.counts())
 
     def test_minimal_request_creates_only_server_owned_draft_and_replays_it(self):
         payload = {"project_id": self.project.project_id, "idempotency_key": "minimal"}
@@ -350,3 +375,4 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

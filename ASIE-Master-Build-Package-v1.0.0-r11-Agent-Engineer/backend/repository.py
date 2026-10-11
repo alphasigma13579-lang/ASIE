@@ -1509,22 +1509,67 @@ class Repository:
             if (complete or key in payload) and (not isinstance(payload.get(key), str) or not payload[key].strip() or len(payload[key]) > 256):
                 raise ValueError("invalid_context_request")
 
-    def _insert_intelligence_context(self, record: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _intelligence_context_record(record: Any, *, creation_path: str) -> None:
+        # This fixed shape comes from the two server-side constructors, never
+        # from a stored payload's claims. Origin evidence is kept out of it.
+        string_fields = {"context_build_id", "organization_id", "project_id", "idempotency_key", "geography", "sector", "state", "context_hash", "created_at", "updated_at", "idempotency_fingerprint"}
+        if not isinstance(record, dict) or set(record) != string_fields | {"version", "component_manifest"}:
+            raise ValueError("context_idempotency_conflict")
+        if any(not isinstance(record[key], str) for key in string_fields):
+            raise ValueError("context_idempotency_conflict")
+        if any(not record[key].strip() for key in string_fields - {"geography", "sector", "context_hash"}):
+            raise ValueError("context_idempotency_conflict")
+        if type(record["version"]) is not int or record["version"] < 1 or not isinstance(record["component_manifest"], list):
+            raise ValueError("context_idempotency_conflict")
+        if creation_path == "public_draft":
+            if record["state"] != "DRAFT" or record["context_hash"] or record["component_manifest"]:
+                raise ValueError("context_idempotency_conflict")
+        elif creation_path == "validated_model":
+            if record["state"] != "REVIEW_PENDING" or record["version"] != 4 or not record["context_hash"] or not record["component_manifest"]:
+                raise ValueError("context_idempotency_conflict")
+            component_fields = {field.name for field in fields(ContextComponent)}
+            if any(not isinstance(component, dict) or set(component) != component_fields for component in record["component_manifest"]):
+                raise ValueError("context_idempotency_conflict")
+        else:
+            raise ValueError("context_idempotency_conflict")
+
+    @staticmethod
+    def _intelligence_origin_material(record: dict[str, Any], *, creation_path: str) -> str:
+        # Draft CAS changes version/time only without renewing creation proof.
+        # A changed project scope deliberately invalidates replay of this proof.
+        mutable = {"version", "updated_at"} if creation_path == "public_draft" else set()
+        identity = {key: value for key, value in record.items() if key not in mutable}
+        return json_dumps({"policy": "aia.context.origin.v1", "creation_path": creation_path, "project_id": record["project_id"], "creation_fingerprint": canonical_hash(identity)})
+
+    def _insert_intelligence_context(self, record: dict[str, Any], *, creation_path: str, actor_user_id: str) -> dict[str, Any]:
         fingerprint = idempotency_fingerprint(record["organization_id"], record["project_id"], record["idempotency_key"])
         record = record | {"idempotency_fingerprint": fingerprint}
+        self._intelligence_context_record(record, creation_path=creation_path)
         with closing(self.connect()) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM intelligence_contexts WHERE idempotency_fingerprint = ? AND organization_id = ? AND project_id = ?", (fingerprint, record["organization_id"], record["project_id"])).fetchone()
             if row is not None:
-                existing = json_loads(row["payload_json"], {})
-                if row["state"] != record["state"] or row["context_hash"] != record["context_hash"] or existing.get("geography") != record["geography"] or existing.get("sector") != record["sector"]:
+                try:
+                    existing = json_loads(row["payload_json"], {})
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("context_idempotency_conflict") from exc
+                self._intelligence_context_record(existing, creation_path=creation_path)
+                if any(type(existing[key]) is not type(row[key]) or existing[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
                     raise ValueError("context_idempotency_conflict")
-                if record["state"] == "DRAFT" and existing.get("component_manifest") != []:
+                if any(existing[key] != record[key] for key in ("organization_id", "project_id", "idempotency_key", "idempotency_fingerprint", "state", "context_hash", "geography", "sector", "component_manifest")):
                     raise ValueError("context_idempotency_conflict")
-                if record["state"] != "DRAFT" and existing.get("context_build_id") != record["context_build_id"]:
+                if creation_path == "validated_model" and existing["context_build_id"] != record["context_build_id"]:
                     raise ValueError("context_idempotency_conflict")
-                return existing | {"version": row["version"], "state": row["state"], "context_hash": row["context_hash"], "idempotency_fingerprint": fingerprint}
+                proofs = conn.execute("SELECT * FROM security_audit_events WHERE organization_id = ? AND target_type = 'intelligence_context' AND target_id = ? AND action = 'aia.context.origin.v1'", (record["organization_id"], row["context_build_id"])).fetchall()
+                expected = self._intelligence_origin_material(existing, creation_path=creation_path)
+                if len(proofs) != 1 or proofs[0]["result"] != "created" or proofs[0]["reason"] != expected or not proofs[0]["actor_user_id"] or proofs[0]["correlation_id"] is not None:
+                    raise ValueError("context_idempotency_conflict")
+                return existing
             conn.execute("INSERT INTO intelligence_contexts (context_build_id, organization_id, project_id, context_hash, state, version, idempotency_fingerprint, payload_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", (record["context_build_id"], record["organization_id"], record["project_id"], record["context_hash"], record["state"], record["version"], fingerprint, json_dumps(record), record["created_at"], record["updated_at"]))
+            # Same connection and commit as the context; audit() would commit
+            # separately. This is local provenance, not a cryptographic seal.
+            conn.execute("INSERT INTO security_audit_events (event_id, actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at) VALUES (?, ?, ?, 'aia.context.origin.v1', 'intelligence_context', ?, 'created', ?, NULL, ?)", (new_id("audit"), actor_user_id, record["organization_id"], record["context_build_id"], self._intelligence_origin_material(record, creation_path=creation_path), now_iso()))
         return record
 
     def create_intelligence_context(self, *, payload: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
@@ -1537,7 +1582,7 @@ class Repository:
         scope = self.intelligence_project_scope(organization_id=organization_id or "", project_id=project_id, principal=principal, correlation_id=correlation_id)
         self._intelligence_draft_payload(payload, complete=True)
         timestamp = now_iso()
-        record = self._insert_intelligence_context({"context_build_id": new_id("ctx"), "organization_id": organization_id, "project_id": project_id, "idempotency_key": payload["idempotency_key"], **scope, "component_manifest": [], "state": "DRAFT", "context_hash": "", "version": 1, "created_at": timestamp, "updated_at": timestamp})
+        record = self._insert_intelligence_context({"context_build_id": new_id("ctx"), "organization_id": organization_id, "project_id": project_id, "idempotency_key": payload["idempotency_key"], **scope, "component_manifest": [], "state": "DRAFT", "context_hash": "", "version": 1, "created_at": timestamp, "updated_at": timestamp}, creation_path="public_draft", actor_user_id=principal.user_id)
         self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.context.create", target_type="intelligence_context", target_id=record["context_build_id"], result="allowed", correlation_id=correlation_id)
         return record
 
@@ -1574,13 +1619,15 @@ class Repository:
         if type(context) is not IntelligenceContext:
             raise ValueError("validated_context_model_required")
         scope = self.intelligence_project_scope(organization_id=context.organization_id, project_id=context.project_id, principal=principal, correlation_id=correlation_id)
+        if not isinstance(context.idempotency_key, str) or not context.idempotency_key.strip():
+            raise ValueError("context_idempotency_key_invalid")
         candidate = self._validated_intelligence_model(context)
         if candidate.state != "REVIEW_PENDING" or scope != {"geography": candidate.geography, "sector": candidate.sector}:
             raise ValueError("context_saved_scope_mismatch")
         record = asdict(candidate)
         record["component_manifest"] = record.pop("components")
         record.pop("stale_reason")
-        saved = self._insert_intelligence_context(record)
+        saved = self._insert_intelligence_context(record, creation_path="validated_model", actor_user_id=principal.user_id)
         self.audit(actor_user_id=principal.user_id, organization_id=candidate.organization_id, action="aia.context.create", target_type="intelligence_context", target_id=saved["context_build_id"], result="allowed", correlation_id=correlation_id)
         return saved
 
@@ -1757,8 +1804,21 @@ class Repository:
         if row is None:
             raise ValueError("approval_receipt_not_found")
         receipt = json_loads(row["payload_json"], {})
+        if not isinstance(receipt, dict):
+            raise ValueError("approval_expiry_invalid")
         if receipt.get("intelligence_context_hash") != context_hash or receipt.get("approved_for_contract_version") != contract_version:
             raise ValueError("approval_receipt_contract_or_hash_mismatch")
+        expiry_text = receipt.get("valid_until")
+        if not isinstance(expiry_text, str):
+            raise ValueError("approval_expiry_invalid")
+        try:
+            expiry = datetime.fromisoformat(expiry_text)
+        except ValueError as exc:
+            raise ValueError("approval_expiry_invalid") from exc
+        if expiry.tzinfo is None or expiry.utcoffset() is None:
+            raise ValueError("approval_expiry_invalid")
+        if expiry <= datetime.fromisoformat(now_iso()):
+            raise ValueError("approval_expired")
         return {"approval_receipt_id": receipt_id, "organization_id": organization_id, "project_id": project_id, "context_hash": context_hash, "contract_version": contract_version, "consumable": True, "snapshot_mutation": False}
 
     def datasets(self, organization_id: str | None = None) -> list[dict[str, Any]]:
@@ -1978,3 +2038,4 @@ class Repository:
         filters = json_loads(data.pop("filters_json", None), {})
         lineage = json_loads(data.pop("lineage_json", None), {})
         return data | {"input_columns": input_columns, "filters": filters, "lineage": lineage}
+

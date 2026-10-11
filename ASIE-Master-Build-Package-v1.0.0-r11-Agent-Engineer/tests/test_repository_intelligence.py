@@ -1,3 +1,6 @@
+import json
+import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +39,188 @@ class RepositoryIntelligenceTests(unittest.TestCase):
 
     def review(self, context, **overrides):
         return {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_scope": "offline-example", "reviewed_output_hash": context.context_hash, "decision": "APPROVE", **overrides}
+
+
+    def origin_events(self):
+        with closing(self.repo.connect()) as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM security_audit_events WHERE action = 'aia.context.origin.v1'")]
+
+    def test_internal_key_type_rejected_before_lifecycle_fingerprint_or_insert(self):
+        for key in (123, True, {}, {"key": "x"}, [], ["x"], None, "", "   "):
+            context = self.model()
+            context.idempotency_key = key
+            with self.subTest(key=key), patch.object(IntelligenceContext, "transition", side_effect=AssertionError("lifecycle reached")), patch("backend.repository.idempotency_fingerprint", side_effect=AssertionError("fingerprint reached")), patch.object(self.repo, "_insert_intelligence_context", side_effect=AssertionError("insert reached")), self.assertRaisesRegex(ValueError, "context_idempotency_key_invalid"):
+                self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        with closing(self.repo.connect()) as conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+        self.assertEqual([], self.origin_events())
+
+    def test_new_context_origin_is_atomic_unique_and_survives_draft_cas(self):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            records = list(pool.map(lambda _: self.draft("origin-concurrent"), range(2)))
+        self.assertEqual(records[0], records[1])
+        original_proof = self.origin_events()
+        self.assertEqual(1, len(original_proof))
+        self.assertEqual(records[0]["context_build_id"], original_proof[0]["target_id"])
+        updated = self.repo.update_intelligence_context(context_build_id=records[0]["context_build_id"], organization_id="org-a", project_id=self.project.project_id, payload={}, expected_version=1, principal=self.principal)
+        self.assertEqual(updated, self.draft("origin-concurrent"))
+        self.assertEqual(original_proof, self.origin_events())
+        model = self.model("origin-native")
+        saved = self.repo.persist_validated_intelligence_context(context=model, principal=self.principal)
+        self.assertEqual(saved, self.repo.persist_validated_intelligence_context(context=model, principal=self.principal))
+        self.assertEqual(2, len(self.origin_events()))
+
+    def test_legacy_replay_fails_closed_without_retroactive_origin(self):
+        draft = self.draft("legacy")
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1'")
+            original = tuple(conn.execute("SELECT * FROM intelligence_contexts").fetchone())
+        with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+            self.draft("legacy")
+        self.assertEqual([], self.origin_events())
+        read = self.repo.get_intelligence_context(context_build_id=draft["context_build_id"], organization_id="org-a", project_id=self.project.project_id, principal=self.principal)
+        self.assertEqual(draft, read)
+        with closing(self.repo.connect()) as conn:
+            self.assertEqual(original, tuple(conn.execute("SELECT * FROM intelligence_contexts").fetchone()))
+        self.repo.update_intelligence_context(context_build_id=draft["context_build_id"], organization_id="org-a", project_id=self.project.project_id, payload={}, expected_version=1, principal=self.principal)
+        self.assertEqual([], self.origin_events())
+        with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+            self.draft("legacy")
+        self.draft("new-key")
+        self.assertEqual(1, len(self.origin_events()))
+
+    def test_replay_rejects_malformed_shape_identity_and_client_origin(self):
+        corruptions = [{"trusted": True}, {"origin": "public_draft"}, {"organization_id": "org-b"}, {"project_id": "foreign"}, {"context_build_id": "client-owned"}, {"version": True}, {"created_at": "forged"}, {"idempotency_key": "different"}, {"idempotency_fingerprint": "forged"}, {"component_manifest": [{"trusted": True}]}]
+        for index, claims in enumerate(corruptions):
+            key = "shape-" + str(index)
+            draft = self.draft(key)
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE intelligence_contexts SET payload_json = ? WHERE context_build_id = ?", (json.dumps(draft | claims), draft["context_build_id"]))
+                before = tuple(conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (draft["context_build_id"],)).fetchone())
+            with self.subTest(claims=claims), self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+                self.draft(key)
+            with closing(self.repo.connect()) as conn:
+                self.assertEqual(before, tuple(conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (draft["context_build_id"],)).fetchone()))
+
+    def test_origin_insert_failure_rolls_back_context_then_retry_creates_one_pair(self):
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("CREATE TRIGGER fail_origin BEFORE INSERT ON security_audit_events WHEN NEW.action = 'aia.context.origin.v1' BEGIN SELECT RAISE(ABORT, 'injected_origin_failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.draft("retry")
+        with closing(self.repo.connect()) as conn, conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+            conn.execute("DROP TRIGGER fail_origin")
+        self.assertEqual([], self.origin_events())
+        self.draft("retry")
+        self.assertEqual(1, len(self.origin_events()))
+
+    def test_origin_proof_scope_path_material_and_duplicate_are_fail_closed(self):
+        changes = ({"organization_id": "org-b"}, {"target_id": "another-context"}, {"target_type": "other"}, {"action": "aia.context.create"}, {"result": "allowed"}, {"actor_user_id": None}, {"correlation_id": "forged"}, {"reason": "not-json"})
+        for index, changeset in enumerate(changes):
+            key = "proof-" + str(index)
+            draft = self.draft(key)
+            proof = self.origin_events()[-1]
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE security_audit_events SET " + ", ".join(field + " = ?" for field in changeset) + " WHERE event_id = ?", (*changeset.values(), proof["event_id"]))
+            with self.subTest(changeset=changeset), self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+                self.draft(key)
+        for field, value in (("policy", "unsupported"), ("creation_path", "validated_model"), ("project_id", self.second.project_id), ("creation_fingerprint", "different")):
+            key = "material-" + field
+            self.draft(key)
+            proof = self.origin_events()[-1]
+            reason = json.loads(proof["reason"]) | {field: value}
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE security_audit_events SET reason = ? WHERE event_id = ?", (json.dumps(reason, ensure_ascii=False, separators=(",", ":")), proof["event_id"]))
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+                self.draft(key)
+        self.draft("duplicate")
+        proof = self.origin_events()[-1]
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("INSERT INTO security_audit_events (event_id, actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at) SELECT 'duplicate-proof', actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at FROM security_audit_events WHERE event_id = ?", (proof["event_id"],))
+        with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+            self.draft("duplicate")
+
+    def test_malformed_replay_json_and_missing_fields_are_safe_conflicts(self):
+        for index, material in enumerate(("not-json", "[]", "null", "123", "{}")):
+            key = "malformed-" + str(index)
+            draft = self.draft(key)
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE intelligence_contexts SET payload_json = ? WHERE context_build_id = ?", (material, draft["context_build_id"]))
+            with self.subTest(material=material), self.assertRaisesRegex(ValueError, "^context_idempotency_conflict$"):
+                self.draft(key)
+
+    def test_authorized_other_actor_can_replay_but_changed_scope_cannot(self):
+        draft = self.draft("other-actor")
+        other = Principal("second-owner", "s2", "org-a", "organization_owner")
+        replay = self.repo.create_intelligence_context(payload={"project_id": self.project.project_id, "idempotency_key": "other-actor"}, principal=other, correlation_id="aia.context.origin.v1")
+        self.assertEqual(draft, replay)
+        proof = self.origin_events()
+        self.assertEqual("u", proof[0]["actor_user_id"])
+        with patch.object(self.repo, "intelligence_project_scope", return_value={"geography": "AE", "sector": "retail"}):
+            self.repo.update_intelligence_context(context_build_id=draft["context_build_id"], organization_id="org-a", project_id=self.project.project_id, payload={}, expected_version=1, principal=self.principal)
+            with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+                self.draft("other-actor")
+        self.assertEqual(proof, self.origin_events())
+
+    def test_context_insert_failure_and_precommit_interruption_leave_no_orphans(self):
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("CREATE TRIGGER fail_context BEFORE INSERT ON intelligence_contexts BEGIN SELECT RAISE(ABORT, 'injected_context_failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.draft("context-failure")
+        self.assertEqual([], self.origin_events())
+        with closing(self.repo.connect()) as conn, conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+            conn.execute("DROP TRIGGER fail_context")
+        self.draft("context-failure")
+        self.assertEqual(1, len(self.origin_events()))
+
+        class InterruptedConnection(sqlite3.Connection):
+            def __exit__(connection, exc_type, exc_value, traceback):
+                if exc_type is None and connection.in_transaction:
+                    connection.rollback()
+                    raise RuntimeError("injected_precommit_interruption")
+                return super().__exit__(exc_type, exc_value, traceback)
+
+        def connect():
+            connection = sqlite3.connect(self.repo.db_path, factory=InterruptedConnection)
+            connection.row_factory = sqlite3.Row
+            return connection
+
+        with patch.object(self.repo, "connect", side_effect=connect), self.assertRaisesRegex(RuntimeError, "injected_precommit_interruption"):
+            self.draft("interrupted")
+        with closing(self.repo.connect()) as conn:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM intelligence_contexts").fetchone()[0])
+        self.assertEqual(1, len(self.origin_events()))
+        self.draft("interrupted")
+        self.assertEqual(2, len(self.origin_events()))
+
+    def test_native_replay_requires_native_proof_and_accepts_reconstructed_retry(self):
+        original = self.model("native-retry")
+        saved = self.repo.persist_validated_intelligence_context(context=original, principal=self.principal)
+        reconstructed = self.model("native-retry")
+        self.assertEqual(saved, self.repo.persist_validated_intelligence_context(context=reconstructed, principal=self.principal))
+        proof = self.origin_events()[0]
+        reason = json.loads(proof["reason"])
+        self.assertEqual("validated_model", reason["creation_path"])
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("DELETE FROM security_audit_events WHERE event_id = ?", (proof["event_id"],))
+        with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+            self.repo.persist_validated_intelligence_context(context=reconstructed, principal=self.principal)
+        self.assertEqual([], self.origin_events())
+
+    def test_client_owned_consistent_legacy_identity_and_old_allow_event_do_not_prove_origin(self):
+        draft = self.draft("legacy-client-id")
+        client_id = "ctx-client-chosen"
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1'")
+            conn.execute("UPDATE intelligence_contexts SET context_build_id = ?, payload_json = ? WHERE context_build_id = ?", (client_id, json.dumps(draft | {"context_build_id": client_id}), draft["context_build_id"]))
+            conn.execute("UPDATE security_audit_events SET target_id = ? WHERE action = 'aia.context.create'", (client_id,))
+            before = tuple(conn.execute("SELECT * FROM intelligence_contexts").fetchone())
+        with self.assertRaisesRegex(ValueError, "context_idempotency_conflict"):
+            self.repo.create_intelligence_context(payload={"project_id": self.project.project_id, "idempotency_key": "legacy-client-id"}, principal=self.principal, correlation_id="aia.context.origin.v1")
+        with closing(self.repo.connect()) as conn:
+            self.assertEqual(before, tuple(conn.execute("SELECT * FROM intelligence_contexts").fetchone()))
+        self.assertEqual([], self.origin_events())
 
     def test_official_repository_enforces_tenant_and_optimistic_version(self):
         created = self.draft()
@@ -349,3 +534,4 @@ class RepositoryIntelligenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
