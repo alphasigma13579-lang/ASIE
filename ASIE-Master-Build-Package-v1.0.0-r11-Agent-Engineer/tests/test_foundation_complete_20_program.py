@@ -31,7 +31,8 @@ def load_manifest() -> dict:
     manifest = json.loads(source_bytes.decode("utf-8"))
     canonical_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     # .gitattributes requires LF on every supported platform; do not normalize here.
-    assert source_bytes == canonical_bytes, "manifest_noncanonical_source"
+    source_is_canonical = source_bytes == canonical_bytes
+    assert source_is_canonical, "manifest_noncanonical_source"
     return manifest
 
 
@@ -6558,3 +6559,23 @@ def test_key_binding_resume_inverse_rejection_does_not_mutate_input(corruption: 
     with pytest.raises(AssertionError):
         _key_binding_resume_historical_inverse(manifest)
     assert json.dumps(manifest, sort_keys=True) == before
+
+
+def test_manifest_byte_rejection_does_not_build_ci_diff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CS-05: exact byte denial stays bounded even with CI assertion diagnostics."""
+    import difflib
+
+    manifest = load_manifest()
+    tampered = (json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    diff_calls = []
+
+    def unexpected_diff(*args, **kwargs):
+        diff_calls.append(True)
+        raise RuntimeError("unexpected_manifest_relational_diff")
+
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: tampered)
+    monkeypatch.setattr(difflib, "ndiff", unexpected_diff)
+    with pytest.raises(AssertionError, match=r"^manifest_noncanonical_source(?:\n|$)"):
+        load_manifest()
+    assert not diff_calls, "manifest_rejection_constructed_relational_diff"
