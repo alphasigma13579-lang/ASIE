@@ -6085,14 +6085,26 @@ def validate_key_binding_resume(record: dict, active_target: object) -> None:
 
 def _key_binding_resume_historical_inverse(manifest: dict) -> dict:
     """KBRG-05: structure-only test history; never current admission authority."""
-    restored = deepcopy(manifest)
-    record = defensive_record(restored)
-    _validate_key_binding_resume_structure(record, restored["execution_sequence"]["active_target"])
+    original_record = defensive_record(manifest)
+    _validate_key_binding_resume_structure(original_record, manifest["execution_sequence"]["active_target"])
+    # Copy only the edited path before serializing the complete JSON tree. The
+    # verified bytes below detach every returned container, without copying the
+    # large RESUME event that this inverse immediately removes.
+    restored = dict(manifest)
+    restored["packages"] = list(manifest["packages"])
+    package_index = next(i for i, package in enumerate(manifest["packages"]) if package["id"] == "FC20-12")
+    package = dict(manifest["packages"][package_index])
+    restored["packages"][package_index] = package
+    package["execution_slices"] = list(package["execution_slices"])
+    record = dict(original_record)
+    package["execution_slices"][1] = record
+    record["events"] = list(record["events"])
     assert record["events"].pop() == KEY_BINDING_RESUME_EVENT
     record["execution_authorized"] = False
     source = (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     assert git_blob_sha(source) == "6c0defd45b71bd8b28dc85d109e5bc7d1d3e8628", "key_binding_resume_baseline_mismatch"
-    validate_key_binding_scope(record, restored["execution_sequence"]["active_target"])
+    restored = json.loads(source)
+    validate_key_binding_scope(defensive_record(restored), restored["execution_sequence"]["active_target"])
     return restored
 
 
@@ -6493,3 +6505,56 @@ def test_key_binding_resume_never_reuses_index_or_preparation_authority(mutation
         subject["execution_scope"]["implementation_paths"].append("backend/asie_local_api.py")
     with pytest.raises(AssertionError, match="defensive_record_mismatch"):
         _validate_key_binding_resume_structure(record, DEFENSIVE_START_TARGET)
+
+
+def test_key_binding_resume_inverse_matches_deepcopy_reference_without_aliases() -> None:
+    """KBRG-05: optimized restoration preserves exact bytes and detached JSON trees."""
+    manifest = load_manifest()
+    input_bytes = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    constants_bytes = json.dumps(KEY_BINDING_RESUME_RECORD, sort_keys=True)
+    reference = deepcopy(manifest)
+    record = defensive_record(reference)
+    _validate_key_binding_resume_structure(record, reference["execution_sequence"]["active_target"])
+    assert record["events"].pop() == KEY_BINDING_RESUME_EVENT
+    record["execution_authorized"] = False
+    reference_bytes = (json.dumps(reference, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert git_blob_sha(reference_bytes) == "6c0defd45b71bd8b28dc85d109e5bc7d1d3e8628"
+    validate_key_binding_scope(record, reference["execution_sequence"]["active_target"])
+    restored = _key_binding_resume_historical_inverse(manifest)
+    second = _key_binding_resume_historical_inverse(manifest)
+    assert (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode("utf-8") == reference_bytes
+    assert json.dumps(manifest, ensure_ascii=False, indent=2) + "\n" == input_bytes
+
+    def container_ids(value: object) -> set[int]:
+        if isinstance(value, dict):
+            return {id(value)}.union(*(container_ids(item) for item in value.values()))
+        if isinstance(value, list):
+            return {id(value)}.union(*(container_ids(item) for item in value))
+        return set()
+
+    output_ids = container_ids(restored)
+    for other in (manifest, second, KEY_BINDING_RESUME_RECORD, KEY_BINDING_SCOPE_RECORD):
+        assert output_ids.isdisjoint(container_ids(other))
+    defensive_record(restored)["events"][0]["type"] = "MUTATED_RETURN_VALUE"
+    restored["packages"][0]["state"] = "MUTATED_RETURN_VALUE"
+    assert json.dumps(manifest, ensure_ascii=False, indent=2) + "\n" == input_bytes
+    assert json.dumps(KEY_BINDING_RESUME_RECORD, sort_keys=True) == constants_bytes
+    assert (json.dumps(second, ensure_ascii=False, indent=2) + "\n").encode("utf-8") == reference_bytes
+    subsequent = _key_binding_resume_historical_inverse(manifest)
+    assert (json.dumps(subsequent, ensure_ascii=False, indent=2) + "\n").encode("utf-8") == reference_bytes
+
+
+@pytest.mark.parametrize("corruption", ["structure", "literal_type", "unrelated_manifest"])
+def test_key_binding_resume_inverse_rejection_does_not_mutate_input(corruption: str) -> None:
+    """KBRG-05: rejected structure and unrelated bytes retain caller-owned data."""
+    manifest = load_manifest()
+    if corruption == "structure":
+        defensive_record(manifest)["events"][-1]["type"] = "UNKNOWN"
+    elif corruption == "literal_type":
+        defensive_record(manifest)["execution_authorized"] = 1
+    else:
+        manifest["program_id"] = "UNRELATED_CORRUPTION"
+    before = json.dumps(manifest, sort_keys=True)
+    with pytest.raises(AssertionError):
+        _key_binding_resume_historical_inverse(manifest)
+    assert json.dumps(manifest, sort_keys=True) == before
