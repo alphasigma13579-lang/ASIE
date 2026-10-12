@@ -1652,6 +1652,14 @@ class Repository:
         self.audit(actor_user_id=principal.user_id, organization_id=candidate.organization_id, action="aia.context.create", target_type="intelligence_context", target_id=saved["context_build_id"], result="allowed", correlation_id=correlation_id)
         return saved
 
+    def _validated_stored_intelligence_context(self, row: sqlite3.Row, record: Any) -> IntelligenceContext:
+        """Revalidate the exact stored row without another lookup or origin policy."""
+        self._intelligence_context_record(record, creation_path="validated_model")
+        if any(type(record[key]) is not type(row[key]) or record[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
+            raise ValueError("context_integrity_invalid")
+        context = IntelligenceContext(record["context_build_id"], record["organization_id"], record["project_id"], record["geography"], record["sector"], record["idempotency_key"], state=record["state"], version=record["version"], context_hash=record["context_hash"], components=[ContextComponent(**component) for component in record["component_manifest"]])
+        return self._validated_intelligence_model(context)
+
     def get_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, principal: Principal | None, validate_for_consumption: bool = False) -> dict[str, Any] | None:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="snapshot.read", action="aia.context.read", target_id=context_build_id)
         with closing(self.connect()) as conn:
@@ -1666,11 +1674,7 @@ class Repository:
             # material bound by the receipt, not merely a stored hash label.
             # Keep ordinary historical reads separate from this consumer gate.
             try:
-                self._intelligence_context_record(record, creation_path="validated_model")
-                if any(type(record[key]) is not type(row[key]) or record[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
-                    raise ValueError("context_integrity_invalid")
-                context = IntelligenceContext(record["context_build_id"], record["organization_id"], record["project_id"], record["geography"], record["sector"], record["idempotency_key"], state=record["state"], version=record["version"], context_hash=record["context_hash"], components=[ContextComponent(**component) for component in record["component_manifest"]])
-                self._validated_intelligence_model(context)
+                self._validated_stored_intelligence_context(row, record)
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("context_integrity_invalid") from exc
         return record | {"version": row["version"], "context_hash": row["context_hash"], "state": row["state"]}
@@ -1701,10 +1705,9 @@ class Repository:
         row = conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (context_id, organization_id, project_id)).fetchone()
         if row is None or row["state"] != "REVIEW_PENDING" or not row["context_hash"]:
             raise ValueError("context_not_review_eligible")
-        record = json_loads(row["payload_json"], {})
         try:
-            context = IntelligenceContext(row["context_build_id"], organization_id, project_id, record["geography"], record["sector"], record["idempotency_key"], state=row["state"], version=row["version"], context_hash=row["context_hash"], components=[ContextComponent(**component) for component in record["component_manifest"]])
-            return self._validated_intelligence_model(context)
+            record = json_loads(row["payload_json"], {})
+            return self._validated_stored_intelligence_context(row, record)
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("context_not_review_eligible") from exc
 

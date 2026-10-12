@@ -31,6 +31,143 @@ class RepositoryIntelligenceTests(unittest.TestCase):
         self.foreign = self.repo.create_project({"organization_id": "org-b", "name": "Foreign", "sector": "retail", "jurisdiction": "SA"})
         self.principal = Principal("u", "s", "org-a", "organization_owner")
 
+    def integrity_write_fixture(self, boundary, key):
+        """Keep approval validation independent by saving its review before tampering."""
+        context = self.model(key)
+        self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+        if boundary == "review":
+            return context, self.repo.save_intelligence_review, {"overlay": self.review(context)}
+        review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context), principal=self.principal)
+        receipt = {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        return context, self.repo.save_intelligence_approval, {"receipt": receipt}
+
+    def integrity_storage_snapshot(self):
+        """Ignore permitted authorization audit but preserve all approval and proof bytes."""
+        with closing(self.repo.connect()) as conn:
+            result = {table: [tuple(row) for row in conn.execute("SELECT * FROM " + table + " ORDER BY rowid")] for table in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts")}
+            result["origin"] = [tuple(row) for row in conn.execute("SELECT * FROM security_audit_events WHERE action = 'aia.context.origin.v1' ORDER BY rowid")]
+            return result
+
+    def test_review_and_approval_reject_corrupt_stored_context_without_writes(self):
+        """Both transactional boundaries reject corrupt JSON, shape, identity and material."""
+        for boundary in ("review", "approval"):
+            context, save, payload = self.integrity_write_fixture(boundary, "integrity-" + boundary)
+            with closing(self.repo.connect()) as conn:
+                row = dict(conn.execute("SELECT rowid AS storage_rowid, * FROM intelligence_contexts WHERE context_build_id = ?", (context.context_build_id,)).fetchone())
+            original = json.loads(row["payload_json"])
+            cases = [("invalid-json", "{", {}), ("empty-json", "", {})]
+            for value in (None, [], ["x"], "text", 42, True):
+                cases.append(("non-object-" + repr(value), json.dumps(value), {}))
+            for key in original:
+                missing = dict(original)
+                del missing[key]
+                cases.append(("missing-" + key, json.dumps(missing), {}))
+                for value in (None, [], {}, True, 12):
+                    cases.append(("type-" + key + "-" + repr(value), json.dumps(original | {key: value}), {}))
+            cases.append(("extra", json.dumps(original | {"untrusted": True}), {}))
+            mirrored = ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")
+            for key in mirrored:
+                value = 5 if key == "version" else "mismatch"
+                cases.append(("payload-mismatch-" + key, json.dumps(original | {key: value}), {}))
+                cases.append(("row-mismatch-" + key, row["payload_json"], {key: value}))
+            for state in ("DRAFT", "VALIDATING", "INTEGRITY_LOCKED", "STALE", "REJECTED"):
+                cases.append(("lifecycle-" + state, json.dumps(original | {"state": state}), {"state": state}))
+            for field, value in (("geography", "US"), ("sector", "other")):
+                cases.append(("material-" + field, json.dumps(original | {field: value}), {}))
+            component = original["component_manifest"][0]
+            for field in component:
+                for value in (None, True, [], {"unexpected": "material"}):
+                    changed = component | {field: value}
+                    cases.append(("component-" + field + "-" + repr(value), json.dumps(original | {"component_manifest": [changed]}), {}))
+                changed = dict(component)
+                del changed[field]
+                cases.append(("component-missing-" + field, json.dumps(original | {"component_manifest": [changed]}), {}))
+            for components in ([component | {"source": "different evidence"}], [component | {"lineage": ["different reference"]}], [component | {"lineage": [123]}], [component | {"extra": "x"}], [component, {}], [component, "bad"]):
+                cases.append(("component-material-" + repr(components), json.dumps(original | {"component_manifest": components}), {}))
+            columns = [key for key in row if key != "storage_rowid"]
+            for label, raw, row_changes in cases:
+                candidate = row | row_changes | {"payload_json": raw}
+                with closing(self.repo.connect()) as conn, conn:
+                    conn.execute("UPDATE intelligence_contexts SET " + ", ".join(key + " = ?" for key in columns) + " WHERE rowid = ?", (*[candidate[key] for key in columns], row["storage_rowid"]))
+                before = self.integrity_storage_snapshot()
+                with self.subTest(boundary=boundary, case=label), self.assertRaisesRegex(ValueError, "^context_not_review_eligible$"):
+                    save(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **payload)
+                self.assertEqual(before, self.integrity_storage_snapshot(), (boundary, label))
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE intelligence_contexts SET " + ", ".join(key + " = ?" for key in columns) + " WHERE rowid = ?", (*[row[key] for key in columns], row["storage_rowid"]))
+
+    def test_review_and_approval_keep_valid_historical_context_without_origin_proof(self):
+        """Native legacy records remain eligible without retroactive origin evidence."""
+        for boundary in ("review", "approval"):
+            context, save, payload = self.integrity_write_fixture(boundary, "legacy-" + boundary)
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1' AND target_id = ?", (context.context_build_id,))
+            args = dict(context_build_id=context.context_build_id, organization_id="org-a", project_id=self.project.project_id, principal=self.principal)
+            before = self.repo.get_intelligence_context(**args)
+            saved = save(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **payload)
+            self.assertTrue(saved["review_overlay_hash" if boundary == "review" else "approval_receipt_hash"])
+            self.assertEqual(before, self.repo.get_intelligence_context(**args))
+            self.assertEqual(before, self.repo.get_intelligence_context(**args, validate_for_consumption=True))
+            self.assertFalse(any(event["target_id"] == context.context_build_id for event in self.origin_events()))
+
+    def test_review_and_approval_validate_exact_transaction_row_without_new_connection(self):
+        """The shared validator uses the already-read transaction row, never the getter."""
+        for boundary in ("review", "approval"):
+            context, save, payload = self.integrity_write_fixture(boundary, "transaction-" + boundary)
+            lookup = self.repo._intelligence_review_context
+            validate = self.repo._validated_stored_intelligence_context
+            active = []
+            validated = []
+
+            def lookup_in_transaction(conn, **kwargs):
+                self.assertTrue(conn.in_transaction)
+                active.append(conn)
+                try:
+                    return lookup(conn, **kwargs)
+                finally:
+                    active.pop()
+
+            def validate_same_row(row, record):
+                self.assertEqual(1, len(active))
+                conn = active[0]
+                self.assertTrue(conn.in_transaction)
+                stored = conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (context.context_build_id,)).fetchone()
+                self.assertEqual(dict(stored), dict(row))
+                self.assertEqual(json.loads(stored["payload_json"]), record)
+                with patch.object(self.repo, "connect", side_effect=AssertionError("second validator connection")):
+                    result = validate(row, record)
+                validated.append(result)
+                return result
+
+            with patch.object(self.repo, "_intelligence_review_context", side_effect=lookup_in_transaction), patch.object(self.repo, "_validated_stored_intelligence_context", side_effect=validate_same_row), patch.object(self.repo, "get_intelligence_context", side_effect=AssertionError("public getter called")):
+                save(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **payload)
+            self.assertEqual(1, len(validated))
+
+    def test_review_and_approval_authorization_hides_corrupt_context(self):
+        """Invalid principals and tenant/project scopes cannot reach stored validation."""
+        for boundary in ("review", "approval"):
+            context, save, payload = self.integrity_write_fixture(boundary, "denied-" + boundary)
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("UPDATE intelligence_contexts SET payload_json = '{' WHERE context_build_id = ?", (context.context_build_id,))
+            for principal, org, project in ((None, "org-a", self.project.project_id), (Principal("viewer", "s", "org-a", "viewer"), "org-a", self.project.project_id), (Principal("other", "s", "org-b", "organization_owner"), "org-a", self.project.project_id), (self.principal, "org-b", self.foreign.project_id), (self.principal, "org-a", self.foreign.project_id), (self.principal, "org-a", "missing-project")):
+                before = self.integrity_storage_snapshot()
+                error = "intelligence_access_denied" if principal is self.principal and org == "org-a" else "intelligence_authorization_denied"
+                with self.subTest(boundary=boundary, principal=principal, org=org, project=project), patch.object(self.repo, "_intelligence_review_context", side_effect=AssertionError("unauthorized lookup")), patch.object(self.repo, "_validated_stored_intelligence_context", side_effect=AssertionError("unauthorized validation")), self.assertRaisesRegex(PermissionError, "^" + error + "$"):
+                    save(organization_id=org, project_id=project, principal=principal, **payload)
+                self.assertEqual(before, self.integrity_storage_snapshot())
+            # Another authorized project cannot see the corrupt record either.
+            with patch.object(self.repo, "_validated_stored_intelligence_context", side_effect=AssertionError("cross-project validation")), self.assertRaisesRegex(ValueError, "^context_not_review_eligible$"):
+                save(organization_id="org-a", project_id=self.second.project_id, principal=self.principal, **payload)
+
+    def test_review_and_approval_do_not_hide_storage_failure(self):
+        """Unexpected storage faults propagate and leave approval/proof state intact."""
+        for boundary in ("review", "approval"):
+            _, save, payload = self.integrity_write_fixture(boundary, "storage-fault-" + boundary)
+            before = self.integrity_storage_snapshot()
+            with patch.object(self.repo, "_validated_stored_intelligence_context", side_effect=sqlite3.OperationalError("synthetic storage failure")), self.assertRaisesRegex(sqlite3.OperationalError, "synthetic storage failure"):
+                save(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **payload)
+            self.assertEqual(before, self.integrity_storage_snapshot())
+
     def test_consumption_validation_preserves_ordinary_and_valid_legacy_reads(self):
         context = self.model("legacy-readable")
         record = self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)

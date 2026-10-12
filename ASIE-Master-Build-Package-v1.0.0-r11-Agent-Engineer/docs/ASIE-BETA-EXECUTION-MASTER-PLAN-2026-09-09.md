@@ -465,3 +465,83 @@ C-01/C-02/C-03 وAC-01–AC-13 وT-01–T-09: `NOT_RUN_IN_THIS_TRANSITION`؛ `T0
 `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING`؛ FC20-12 `ACR_REQUIRED` واعتمادياته والتجميد محفوظة؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE`؛ `T08 OPEN`. لا F01B أو تعديل Finance/Snapshot/AAS/Decision Council أو دعوات/أسرار/خدمات أو تشغيل المالك. لا دمج #189.
 
 التوقف الآمن: مراجعة هذا الرأس واختباراته ثم موافقة دمج منفصلة. قبل نفاذ الانتقال لا تطوير index أو اختبار SQL جديد؛ بعده فقط العمل المعزول المحدد، مع إبقاء قاعدة المالك وقبول startup الفعلي محجوبين حتى اعتماد معاييرهما. لا يدمج هذا الطلب نفسه ولا يخفض بوابات الإطلاق.
+
+<!-- F01A-REVIEW-IDENTITY-SCOPE-REGISTRATION-2026-10-11 -->
+### تسجيل نطاق تحقق السياق عند المراجعة والاعتماد دون استئناف — مرشح 2026-10-11
+
+الحالة: `GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. هذا إسقاط مشتق؛ المصدر النافذ هو manifest المدمج. إيصال قرار إعداد التسجيل [ملخص موافقة المالك](https://github.com/alphasigma13579-lang/ASIE/pull/201#issuecomment-6113714644) مثبت؛ أذن المالك بنشر هذا الملخص والملفات السبعة كمسودة عند `2026-10-11T20:59:57Z` بعد الفحوص النهائية. الإعداد والنشر لا يجعلان هذا الانتقال نافذًا؛ موافقة دمجه منفصلة.
+مصدر الإسقاط `docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md`؛ prefix blob `55eebca832956adc8ce55010749b83ddaff15d5c` محفوظ بايتًا. baseline بعد دمج #201 هو `abbdea3913630a7e940c454c46919f88c673aa0f` وmanifest blob `d76e7b0f6d18a701985469664c0cb6c1f757c869`؛ التصميم المراجع #201 عند `ae4b69ee3e56930ce1af944a2577e79e5ab44681` وblob `7aa270286535f831a8eac25170ee495043b40bf5`. كل ما سبق هذا القسم تاريخ محفوظ، بما فيه أوصاف الفهرس القديمة.
+
+قرار المالك عند `2026-10-11T20:44:24Z` أجاز دمج التصميم إذا سمحت البوابات ثم إعداد تسجيل النطاق المحدد للمراجعة؛ أثره `PREPARE_GOVERNANCE_PR_ONLY_NO_MERGE_NO_RESUME`. الإيصال تلخيص المساعد لموافقة المالك، وليس توقيع هوية مستقلًا. قرار الإعداد لا يمثل إذن دمج التسجيل أو تنفيذ الإصلاح أو الاستئناف؛ إذن النشر اللاحق منفصل ومحدد أعلاه. موافقة الإعداد الأقدم في #189 لا تستبدل هذا القرار المرتبط بالتصميم المقبول.
+
+الدلتا المقترحة الوحيدة: `execution_authorized=true → false` حرفيًا؛ إلحاق STOP_CHECKPOINT حادي عشر وSCOPE_EXTENSION ثاني عشر عند `2026-10-11T20:51:05Z`. `f01a_defensive_ingress IN_PROGRESS/false` في المرشح، دون RESUME أو START أو DELIVERED. تحفظ الأحداث العشرة كاملة، ويثبت موضوع القرار نسخة السجل المرجعي والـRESUME العاشر كاملة. `active_target محفوظ ومحسوب` في `FC20-12/f01a_defensive_ingress` و`max_active_executions=1` و`FC20-05 held`.
+
+المسارات التسعة ثابتة بالترتيب؛ `added_paths=[]`، ولا `added_schema_operations` في الحدث الجديد:
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/intelligence_prerun_service.py`
+- `tests/test_repository_intelligence.py`
+- `tests/test_intelligence_prerun_service.py`
+- `tests/test_intelligence_context_ingress_api.py`
+- `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+- `tests/test_live_location_api.py`
+- `tests/test_intelligence_consumption.py`
+
+تبقى عملية `allowed_schema_operations` الوحيدة كما هي: `CREATE_INDEX_IF_NOT_EXISTS` / `idx_security_audit_origin_proof` على `security_audit_events(action, target_type, target_id, organization_id)`؛ `unique=false` حرفيًا. هذه التوسعة دلالية، ولا تعدل الفهرس أو SQL أو schema أو بيانات أو إثبات منشأ أو query أو API.
+
+موضوع الإصلاح المغلق في `owner_scope_decision.subject.repair_scope`:
+- `purpose=REVIEW_APPROVAL_STORED_CONTEXT_INTEGRITY_ONLY`
+- `implementation_paths=[backend/repository.py, tests/test_repository_intelligence.py]`
+- `boundary=EXISTING_TRANSACTIONAL_INTELLIGENCE_REVIEW_CONTEXT`
+- `validation=REUSE_CONSUMPTION_SHAPE_TYPED_ROW_EQUALITY_NATIVE_LIFECYCLE_HASH`
+- `historical_read_and_origin_proof_policy=UNCHANGED`
+- `additional_schema_operations=[]`
+- `database_and_data_scope=DISPOSABLE_TEMPORARY_DATABASES_SYNTHETIC_DATA_ONLY`
+
+مصدر التطبيق هو Draft #189 غير المدمج عند `3cf88c7bae98a48c5cd950df978678f452501980`، وليس كود main أو فرع الحوكمة. التحقق الصارم والحد المعاملاتي المشار إليهما موجودان في #189 فقط؛ يستمر الإصلاح بعد تفويضه على ذلك الفرع أو خلفه المتحقق مع إدخال main الحاكم بأمان. غياب التحقق أو تغير دلالته يوقف العمل ويعيد التصميم؛ لا يعاد بناؤه في main ولا ينشأ مصدر/مسار بديل. الفهرس منفذ ومختبر اصطناعيًا في #189؛ فجوة الهوية مثبتة قبله أيضًا، ولم يثبت تجاوز عزل العملاء أو وصول إلى مزود.
+
+الإصلاح المستقبلي يعيد استعمال تحقق الصف نفسه داخل اتصال المعاملة نفسه بعد التفويض والعزل وقبل إدراج المراجعة/الإيصال. القراءة التاريخية العادية وسياسة إثبات المنشأ وبصمات ونطاق وشروط ReviewOverlay/ApprovalReceipt تبقى كما هي. لا proof مطلوب جديد لسياق أصلي صالح قديم؛ لا إصلاح صامت أو backfill أو حذف أو إعادة ختم. تبقى أخطاء المراجعة `context_not_review_eligible` واستهلاك السياق `context_integrity_invalid`، وعقد HTTP المراجعة/الاعتماد invalid/400 دون نقل 409 من narrative؛ لا ابتلاع أخطاء التخزين.
+
+اختبارات إصلاح التطبيق في §5 من التصميم `NOT_IMPLEMENTED / NOT_RUN`: مصفوفتان مستقلتان لحفظ المراجعة والاعتماد، JSON/شكل/نوع/هوية/مادة/lifecycle غير صالح، bool مقابل int، rollback وعدم إنشاء overlay/receipt، العزل قبل الوصول، توافق السياقات الأصلية الصحيحة بلا origin proof جديد، واستعمال الاتصال المعاملاتي نفسه دون getter عام. لا تنقل نتائج #189 السابقة لتزعم نجاح الإصلاح.
+
+حارس التسجيل RISG-01–RISG-08 مستقل ومغلق: يثبت القرار وموضوعه والتصميم والأنواع الحرفية وكل نسخة للعملية؛ يرفض القرارات السابقة أو true أو schema/مسارات/حقول إضافية. عكس الحدثين والعلم يعيد manifest الكامل إلى `d76e7b0f6d18a701985469664c0cb6c1f757c869` ثم سلسلة IRG→ISG→CRG→CS→RG→SG. أختام raw bytes لكل prefix والقسم النهائي خاصة بمساره؛ لا اقتطاع غير متحقق أو fallback حالي إلى حالة تاريخية. اختبارات التاريخ والبنية السابقة لنشر الإيصال لا تثبت وحدها القبول النهائي؛ يلزم تشغيل الحارس الكامل على الرأس ذي الإيصال المثبت.
+
+تبقى `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING` وFC20-12 `ACR_REQUIRED` واعتمادياته والتجميد؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE` و`T08 OPEN`. معايير startup/maintenance/recovery `UNKNOWN_NOT_APPROVED`؛ لا قاعدة مالك/live أو قبول production placement أو deployment أو دمج #189. لا F01B أو واجهة تعافٍ أو Finance/Snapshot/AAS/Decision Council.
+
+التوقف الآمن: إذن نشر الإيصال والتسجيل مستوفى؛ تبقى اختبارات الرأس النهائي ومراجعته ثم موافقة دمج التسجيل منفصلة. بعد نفاذ التسجيل يلزم قرار RESUME جديد مقيد بموضوع الإصلاح وانتقال مستقل مراجع ومصرح بدمجه قبل الكود. لا يحمل RESUME الفهرس السابق أو إذن الإعداد هذا التفويض. لا ينفذ التسجيل إصلاح التطبيق أو الفهرس أو SQL.
+
+<!-- F01A-REVIEW-IDENTITY-CONDITIONAL-RESUME-2026-10-12 -->
+### استئناف مشروط لإصلاح سلامة السياق عند حفظ المراجعة والاعتماد — مرشح 2026-10-12
+
+الحالة: `GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. أذن المالك في `2026-10-12T08:47:04Z` بدمج #202 ثم تجهيز طلب الاستئناف فقط. ثم وافق بقرار جديد عند `2026-10-12T09:04:31Z` على التطوير والاختبار المشروطين المحددين أدناه، وعلى نشر ملخص القرار وملفات الانتقال السبعة كمسودة بعد الفحوص. [إيصال القرار](https://github.com/alphasigma13579-lang/ASIE/pull/202#issuecomment-6121127349) تلخيص المساعد لموافقة المالك، وليس توقيع هوية مستقلًا. أثر القرار `F01A_DEFENSIVE_RESUME_ONLY`، وشرط النفاذ `REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL`. لا يصبح الإعداد أو نشر هذا المرشح إذن دمج أو تنفيذ قبل نفاذ الاستئناف.
+
+مصدر الإسقاط `docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md`؛ prefix blob `cf5b5618b84034314f91c5542fa14114d43095b5` محفوظ بايتًا. مصدر الحالة النافذة manifest على main `fcfd9222e1b47b9d95b96b589ec204b91bae8378` بعد دمج #202 عند الرأس `5af26b37986c75a5f8e014d6d69c449f93bca61e`، blob `ef142b9a2c2001e0bea4d6068b0f36d5c44c5a4c`: اثنا عشر حدثًا و`execution_authorized=false`. التصميم المقبول #201 عند `ae4b69ee3e56930ce1af944a2577e79e5ab44681` وblob `7aa270286535f831a8eac25170ee495043b40bf5` يثبت هذا الانتقال في §6–6.1؛ لا حاجة إلى طلب تصميم مستقل إضافي.
+
+الدلتا المقترحة فقط: `execution_authorized=false → true` حرفيًا، وإلحاق RESUME ثالث عشر عند `2026-10-12T09:05:19Z`. `f01a_defensive_ingress IN_PROGRESS/true` في المرشح غير النافذ، لا في main. جميع الأحداث الاثني عشر محفوظة؛ ينسخ الحدث وموضوع القرار STOP11 وSCOPE12 كاملين، ويحفظ repair_scope المثبت والقوائم والعملية. لا START أو DELIVERED أو تعديل تاريخ. `active_target محفوظ ومحسوب` في `FC20-12/f01a_defensive_ingress` و`max_active_executions=1` و`FC20-05 held`.
+
+المسارات التسعة لا تتغير بالترتيب:
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/intelligence_prerun_service.py`
+- `tests/test_repository_intelligence.py`
+- `tests/test_intelligence_prerun_service.py`
+- `tests/test_intelligence_context_ingress_api.py`
+- `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+- `tests/test_live_location_api.py`
+- `tests/test_intelligence_consumption.py`
+
+تبقى `allowed_schema_operations` عملية واحدة byte-exact: `CREATE_INDEX_IF_NOT_EXISTS` / `idx_security_audit_origin_proof` على `security_audit_events(action, target_type, target_id, organization_id)`؛ `unique=false`. حفظ هذه العملية التاريخية لا يجعلها نشاطًا مفوضًا جديدًا في الاستئناف المقترح؛ لا تعديل index أو schema أو query أو proof أو API.
+
+موضوع القرار التنفيذي المقترح مغلق ومقيد: `DEVELOP_REGISTERED_REVIEW_APPROVAL_CONTEXT_INTEGRITY` و`TEST_REGISTERED_REVIEW_APPROVAL_CONTEXT_INTEGRITY` فقط، في `backend/repository.py` و`tests/test_repository_intelligence.py`. ينسخ `repair_scope` نفسه: `REVIEW_APPROVAL_STORED_CONTEXT_INTEGRITY_ONLY`، حد `EXISTING_TRANSACTIONAL_INTELLIGENCE_REVIEW_CONTEXT`، تحقق `REUSE_CONSUMPTION_SHAPE_TYPED_ROW_EQUALITY_NATIVE_LIFECYCLE_HASH`، قراءة تاريخية وسياسة origin proof `UNCHANGED`، و`additional_schema_operations=[]`. لا يعاد استعمال أنشطة استئناف الفهرس أو إيصال إعداد التسجيل بوصفهما هذا القرار.
+
+العمل بعد التفويض فقط على `DISPOSABLE_TEMPORARY_DATABASES_ONLY` و`SYNTHETIC_DATA_ONLY`. `live_database_authorized=false` و`owner_database_authorized=false` و`production_placement_accepted=false` و`deployment_authorized=false` و`application_pr_merge_authorized=false`؛ `query_and_proof_semantics=UNCHANGED`. `startup_criteria_status=UNKNOWN_NOT_APPROVED` و`maintenance_recovery_acceptance=UNKNOWN_NOT_APPROVED`؛ لا اعتماد SLO أو موضع تشغيل فعلي ضمن هذا الانتقال.
+
+خط التطبيق هو Draft #189 غير المدمج عند `3cf88c7bae98a48c5cd950df978678f452501980` أو خلفه المتحقق، مع إدخال main الحاكم بأمان. التحقق الموجود والحد المعاملاتي مصدرهما ذلك الفرع، لا main أو فرع الحوكمة؛ إعادة التحقق من وجودهما ودلالتهما شرط قبل الكود. غيابهما أو تغير دلالتهما يعيد قرار التصميم، ولا يعاد بناء تنفيذ بديل على main. الإصلاح يشارك تحقق الصف نفسه في الاتصال المعاملاتي نفسه بعد التفويض والعزل، قبل إدراج المراجعة/الإيصال؛ لا getter بوصلة جديدة ولا resolver أو مصدر ثقة آخر.
+
+تظل القراءة التاريخية المصرح بها والسياقات الأصلية السليمة بلا origin proof جديد صالحة بحسب عقدها؛ لا proof أو backfill أو ختم أو حذف جديد. رفض المراجعة `context_not_review_eligible` والاستهلاك `context_integrity_invalid` وعقد HTTP المراجعة invalid/400 محفوظة دون ابتلاع أخطاء التخزين. اختبارات إصلاح التطبيق في §5 `NOT_IMPLEMENTED / NOT_RUN`: رفض مستقل عند كل كتابة، تلف JSON والشكل والأنواع والهوية والمادة وlifecycle، rollback والعزل والنجاح التاريخي واختبار استعمال الاتصال نفسه؛ لا نقل لنتائج #189 السابقة إلى إصلاح لم ينفذ.
+
+حارس RIRG-01–RIRG-08 يثبت القرار الحقيقي ووقته ونطاقه وكل نسخة تاريخية والأنواع الحرفية؛ لا يمر placeholder أو إعداد أو قرار فهرس سابق. عكس العلم والحدث الثالث عشر يعيد manifest الكامل إلى `ef142b9a2c2001e0bea4d6068b0f36d5c44c5a4c`، ثم RISG→IRG→ISG→CRG→CS→RG→SG دون إضعاف. أختام raw bytes الخمسة مستقلة وخاصة بالمسار؛ الاختبارات التاريخية تمر بعكس متحقق قبل تحويرها، ولا تستخدم فشل القبول المبكر كبديل للـoracle القديم. نتائج اختبارات البنية قبل صدور القرار لا تعوض الفحوص الكاملة على الرأس النهائي ذي الإيصال المثبت.
+
+تبقى `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING` وFC20-12 `ACR_REQUIRED` واعتمادياته والتجميد؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE` و`T08 OPEN`. لا F01B أو واجهة تعافٍ أو Finance/Snapshot/AAS/Decision Council أو نشر أو قاعدة مالك أو دمج #189.
+
+التوقف الآمن: قرار المالك المشروط وإذن توثيقه ونشر الانتقال مستوفيان بالإيصال المثبت؛ تبقى اختبارات الرأس النهائي ومراجعته ثم موافقة دمجه المنفصلة. لا true نافذة قبل الدمج المصرح، ولا يبدأ إصلاح التطبيق بمجرد إعداد أو نشر هذا المرشح. لا يتضمن القرار قاعدة تشغيل فعلية أو نشرًا أو دمج #189 أو معيار قبول startup مخترعًا.
