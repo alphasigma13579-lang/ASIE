@@ -271,12 +271,18 @@ class GovernedFreezeReviewTests(unittest.TestCase):
         self.assertIn(".conclusion == \"success\"", workflow)
         self.assertIn("gh run download", workflow)
         self.assertIn("--name rel-beta-07-complete-evidence", workflow)
+        self.assertIn(
+            "find gov-rel-09-input -type f -path '*/rel-beta-07-final/beta-release-gate-report.json'",
+            workflow,
+        )
+        self.assertIn('echo "ASIE_GATE_REPORT_PATH=$report_path" >> "$GITHUB_ENV"', workflow)
         self.assertIn("git rev-parse origin/main", workflow)
         self.assertIn("tools/gov_rel_09_governed_freeze_review.py", workflow)
         self.assertIn("--require-eligible", workflow)
         self.assertIn("env.ASIE_FREEZE_STATUS == 'ACTIVE'", workflow)
         self.assertIn("env.ASIE_FREEZE_STATUS == 'CLEARED'", workflow)
         self.assertIn("tools.gov_rel_10_controlled_unfreeze", workflow)
+        self.assertIn('--gate-report "$ASIE_GATE_REPORT_PATH"', workflow)
         self.assertIn("--require-verified", workflow)
         self.assertIn("fetch-depth: 0", workflow)
 
