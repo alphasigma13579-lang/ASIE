@@ -1657,6 +1657,9 @@ class Repository:
         self._intelligence_context_record(record, creation_path="validated_model")
         if any(type(record[key]) is not type(row[key]) or record[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
             raise ValueError("context_integrity_invalid")
+        fingerprint = idempotency_fingerprint(record["organization_id"], record["project_id"], record["idempotency_key"])
+        if fingerprint != record["idempotency_fingerprint"] or fingerprint != row["idempotency_fingerprint"]:
+            raise ValueError("context_integrity_invalid")
         context = IntelligenceContext(record["context_build_id"], record["organization_id"], record["project_id"], record["geography"], record["sector"], record["idempotency_key"], state=record["state"], version=record["version"], context_hash=record["context_hash"], components=[ContextComponent(**component) for component in record["component_manifest"]])
         return self._validated_intelligence_model(context)
 

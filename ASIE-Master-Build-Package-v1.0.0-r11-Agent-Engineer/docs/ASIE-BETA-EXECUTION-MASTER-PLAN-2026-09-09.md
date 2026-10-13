@@ -545,3 +545,123 @@ C-01/C-02/C-03 وAC-01–AC-13 وT-01–T-09: `NOT_RUN_IN_THIS_TRANSITION`؛ `T0
 تبقى `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING` وFC20-12 `ACR_REQUIRED` واعتمادياته والتجميد؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE` و`T08 OPEN`. لا F01B أو واجهة تعافٍ أو Finance/Snapshot/AAS/Decision Council أو نشر أو قاعدة مالك أو دمج #189.
 
 التوقف الآمن: قرار المالك المشروط وإذن توثيقه ونشر الانتقال مستوفيان بالإيصال المثبت؛ تبقى اختبارات الرأس النهائي ومراجعته ثم موافقة دمجه المنفصلة. لا true نافذة قبل الدمج المصرح، ولا يبدأ إصلاح التطبيق بمجرد إعداد أو نشر هذا المرشح. لا يتضمن القرار قاعدة تشغيل فعلية أو نشرًا أو دمج #189 أو معيار قبول startup مخترعًا.
+
+<!-- F01A-KEY-FINGERPRINT-SCOPE-REGISTRATION-2026-10-12 -->
+### تسجيل نطاق اتساق المفتاح والبصمة دون استئناف — مرشح 2026-10-12
+
+الحالة: `REVIEW_REQUIRED / NOT_EFFECTIVE`. هذا إسقاط مشتق لمرشح التسجيل؛ المصدر النافذ هو manifest المدمج، ولا يتغير بإعداد المرشح أو نشر مسودته. [إيصال قرار المالك](https://github.com/alphasigma13579-lang/ASIE/pull/204#issuecomment-6128022293) نقل تقني بواسطة المساعد، وليس توقيع هوية مستقلًا. أجاز القرار عند `2026-10-12T16:06:58Z` دمج التصميم #204 بالنسخة المحددة ثم تجهيز تسجيل نطاقه ونشره كمسودة؛ أثره `PREPARE_AND_PUBLISH_GOVERNANCE_DRAFT_ONLY_NO_MERGE_NO_RESUME`.
+
+مصدر هذا الإسقاط `docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md`؛ prefix blob `533060fff7981577e42bd2f348ee81ab3cb01ec5` محفوظ بايتًا. baseline بعد دمج #204 هو `3d95c5443ef18b59bf42132f3df67c6c12d00bc4` وmanifest blob `76b6d5b5892cf3a839f3fde95c04ff7ee366923f`. التصميم المقبول [#204](https://github.com/alphasigma13579-lang/ASIE/blob/8d512f0123cf81332de306c9b1b60ee12defa906/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-KEY-FINGERPRINT-SCOPE-PROPOSAL-2026-10-12.md) عند `8d512f0123cf81332de306c9b1b60ee12defa906` وblob `c932029f3c64ba0473596947e42ae1bdc1fcd51f`. كل ما سبق هذا القسم تاريخ محفوظ. لا تستمد سلطة من وصف تاريخي أو نجاح اختبارات مرشح غير مدمج.
+
+الدلتا المقترحة الوحيدة: `execution_authorized=true → false` حرفيًا، وإلحاق STOP_CHECKPOINT14 وSCOPE_EXTENSION15 عند `2026-10-12T16:08:54Z`. تبقى `f01a_defensive_ingress IN_PROGRESS/false` في المرشح دون RESUME أو START أو DELIVERED؛ تحفظ الأحداث الثلاثة عشر كاملة، ويثبت موضوع القرار نسخة السجل السابق وRESUME13 كاملين. `active_target محفوظ ومحسوب` في `FC20-12/f01a_defensive_ingress` و`max_active_executions=1` و`FC20-05 held`.
+
+المسارات التسعة ثابتة بالترتيب؛ `added_paths=[]`، ولا `added_schema_operations` في الحدث الجديد:
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/intelligence_prerun_service.py`
+- `tests/test_repository_intelligence.py`
+- `tests/test_intelligence_prerun_service.py`
+- `tests/test_intelligence_context_ingress_api.py`
+- `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+- `tests/test_live_location_api.py`
+- `tests/test_intelligence_consumption.py`
+
+تبقى عملية `allowed_schema_operations` الوحيدة كما هي: `CREATE_INDEX_IF_NOT_EXISTS` / `idx_security_audit_origin_proof` على `security_audit_events(action, target_type, target_id, organization_id)`؛ `unique=false` حرفيًا. لا index أو schema أو query أو proof-format جديد.
+
+موضوع الإصلاح المغلق في `owner_scope_decision.subject.repair_scope` مطابق للتصميم المقبول:
+```json
+{
+  "purpose": "STORED_CONTEXT_KEY_FINGERPRINT_BINDING_ONLY",
+  "implementation_paths": [
+    "backend/repository.py",
+    "tests/test_repository_intelligence.py"
+  ],
+  "boundary": "EXISTING_SHARED_STORED_CONTEXT_VALIDATOR",
+  "validation": "RECOMPUTE_EXISTING_FINGERPRINT_FROM_TYPED_EXACT_STORED_ORG_PROJECT_KEY",
+  "affected_gates": [
+    "VALIDATED_CONTEXT_CONSUMPTION_READ",
+    "TRANSACTIONAL_REVIEW_SAVE",
+    "TRANSACTIONAL_APPROVAL_SAVE"
+  ],
+  "compatibility": "REJECT_INCONSISTENT_BINDING_WITHOUT_REWRITE_OR_BACKFILL",
+  "historical_read_and_origin_proof_policy": "UNCHANGED",
+  "native_context_hash_and_fingerprint_function": "UNCHANGED",
+  "additional_schema_operations": [],
+  "database_and_data_scope": "DISPOSABLE_TEMPORARY_DATABASES_SYNTHETIC_DATA_ONLY"
+}
+```
+
+مصدر التطبيق هو Draft #189 غير المدمج عند `4fcb8b47971a8ee55fa0ae95f5928bdd5722890a`، وليس كود main أو فرع التسجيل. الدالة المشتركة `_validated_stored_intelligence_context` وحد حفظ المراجعة/الاعتماد موجودان على رأس التطبيق المثبت. بعد تفويض لاحق فقط يستمر العمل على فرع #189 أو خلفه المتحقق مع إدخال main الحاكم بأمان؛ غياب التحقق أو تغير معناه يوقف العمل، ولا يعاد بناؤه في main أو يضاف مصدر أو مسار بديل.
+
+الفحص المستقبلي يعيد حساب `idempotency_fingerprint` القائمة من قيم `organization_id/project_id/idempotency_key` المخزنة الصحيحة النوع كما هي، دون تحويل أو قص أو تطبيع Unicode أو تغيير native hash. يلزم التطابق مع payload والصف داخل التحقق المشترك القائم، بعد التفويض والعزل وفحوص الشكل/الأنواع/هوية الصف وقبل قبول النموذج. لا اتصال أو getter أو resolver جديد؛ يستعمل الصف والاتصال المعاملاتي القائمين. بوابات القراءة المتحققة للاستهلاك وحفظ المراجعة والاعتماد تتأثر، بينما القراءة التاريخية العادية لا تتغير.
+
+التوافق المقصود: السجل القديم الأصلي الصحيح المتسق يمر دون طلب origin proof جديد؛ عدم الاتساق الذي كان مقبولًا يرفض عند البوابات المتحققة. لا rewrite أو backfill أو حذف أو إعادة ختم أو تطبيع تلقائي، ولا حذف للإيصالات القديمة. دالة استهلاك الإيصال المباشرة لا تكتسب lookup سياق جديد؛ narrative يمر بقراءة السياق المتحققة القائمة. الربط فحص اتساق وليس دليل منشأ أو حماية من تعديل DB منسق يغير المفتاح وكل نسخ البصمة. يبقى مدى وجود سجلات مالك متأثرة `UNKNOWN`؛ لم تفحص قاعدة فعلية.
+
+أخطاء السياق تبقى `context_integrity_invalid` و`context_not_review_eligible` بحسب الحد القائم؛ narrative يستخدم 409، وحفظ review/approval يستخدم invalid/400، دون ابتلاع أعطال التخزين. تصنيف أخطاء ReviewOverlay المؤجل خارج النطاق. الفجوة قديمة أعيدت على baseline والتطبيق الحالي؛ المادة/الإسقاط لا يتغيران وreplay يفشل مغلقًا، ولم يثبت تجاوز صلاحيات أو محتوى أو إثبات. لا يزعم التسجيل إصلاحها.
+
+اختبارات التطبيق الجديدة في §5 من التصميم `NOT_IMPLEMENTED / NOT_RUN`: strict consumption getter وحفظ review وحفظ approval مستقلة، key-only أو fingerprint-only أو نسختا بصمة خاطئتان، حقول مفقودة/أنواع خاطئة قبل الحساب، قيم Unicode/whitespace صحيحة exact، توافق legacy بلا proof، العزل قبل الوصول، عدم كتابة أثر عند الرفض، اتصال المعاملة نفسه، وreplay/CAS/C01–C03/index دون تغيير. اختبارات HTTP القائمة يعاد تشغيلها دون تعديل؛ الحاجة لمسار خارج الملفين توقف التنفيذ. نتائج التطبيق السابقة ليست دليلًا للفحص المقترح.
+
+حارس التسجيل KBSG-01–KBSG-08 مستقل ومغلق، يثبت القرار والرابط والوقت والموضوع والتصميم والأنواع الحرفية وكل نسخ التاريخ والعملية. يرفض true أو سلطة قديمة أو نطاق/حقل/مسار/schema زائدًا. عكس الحدثين والعلم يعيد manifest الكامل إلى `76b6d5b5892cf3a839f3fde95c04ff7ee366923f` ثم سلسلة RIRG→RISG→IRG→ISG→CRG→CS→RG→SG. أختام raw bytes مستقلة لكل prefix والقسم النهائي وخاصة بمساره؛ لا fallback إلى تاريخ لإجازة المرشح الحالي. نجاح الحارس ليس قبول تطبيق أو إذن تنفيذ.
+
+تبقى `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING` وFC20-12 `ACR_REQUIRED` واعتمادياته والتجميد؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE` و`T08 OPEN`. `startup/maintenance/recovery=UNKNOWN_NOT_APPROVED`؛ لا live/owner database أو قبول production placement أو deployment أو دمج #189، ولا F01B أو تغيير Finance/Snapshot/AAS/Decision Council.
+
+التوقف الآمن: مراجعة رأس التسجيل وفحوصه، ثم موافقة دمجه المنفصلة. بعد نفاذه يلزم قرار تنفيذ جديد يثبت هذا الفحص والرفض والتوافق والملفين، ثم RESUME16 مستقل ينسخ STOP14/SCOPE15 والنطاق والقوائم والعملية كاملة، ومراجعة واعتماد دمجه قبل الكود. الأنشطة اللاحقة محدودة بالتطوير والاختبار على temporary/synthetic فقط؛ كل آثار live/owner/production/deployment/application-merge تبقى false. لا يعاد استخدام RESUME13 أو قرار الإعداد كإذن للفحص الجديد. لا ينفذ هذا التسجيل SQL أو تعديل بيانات أو تطبيقًا.
+
+<!-- F01A-KEY-FINGERPRINT-CONDITIONAL-RESUME-2026-10-12 -->
+### استئناف مشروط لفحص اتساق المفتاح والبصمة — مرشح 2026-10-12
+
+الحالة: `GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. أذن المالك عند `2026-10-12T17:37:18Z` بدمج #205 وإعداد الاستئناف فقط؛ ثم بقرار جديد عند `2026-10-12T17:52:48Z` وافق على تطوير واختبار فحص المفتاح والبصمة المحدد، بما فيه رفض السجلات القديمة غير المتسقة دون تعديل بياناتها تلقائيًا، على temporary/synthetic فقط. أجاز أيضًا نشر ملخص القرار وملفات الانتقال السبعة كمسودة. [إيصال القرار](https://github.com/alphasigma13579-lang/ASIE/pull/205#issuecomment-6129650208) نقل تقني بواسطة المساعد، وليس توقيع هوية مستقلًا. أثر القرار `F01A_DEFENSIVE_RESUME_ONLY` مشروط بـ`REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL`. لا تصبح true نافذة أو يبدأ التطبيق بمجرد نشر المرشح.
+
+مصدر الإسقاط `docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md`؛ prefix blob `98d85cd86bc163cfdd9d8cb660272c8473c02094` محفوظ بايتًا. main بعد دمج #205 هو `c365c85aded98811558fd190f3a2079434f1a9ad` عند رأس التسجيل `c6e7f335966baa5331a9e8fbf60b8391229f9aff`، manifest blob `6c0defd45b71bd8b28dc85d109e5bc7d1d3e8628`: خمسة عشر حدثًا و`execution_authorized=false`. التصميم المقبول #204 عند `8d512f0123cf81332de306c9b1b60ee12defa906` وblob `c932029f3c64ba0473596947e42ae1bdc1fcd51f` يحدد الاستئناف في §6؛ لا طلب تصميم مستقل إضافي.
+
+الدلتا المقترحة: `execution_authorized=false → true` حرفيًا وإلحاق RESUME16 عند `2026-10-12T17:53:43Z`. `f01a_defensive_ingress IN_PROGRESS/true` في المرشح غير النافذ فقط. الأحداث الخمسة عشر كاملة محفوظة، وSTOP14/SCOPE15 ينسخان كاملين في الحدث وموضوع القرار، مع القوائم والعملية والنطاق المسجل. لا START أو DELIVERED أو تغيير تاريخ. `active_target محفوظ ومحسوب` في `FC20-12/f01a_defensive_ingress` و`max_active_executions=1` و`FC20-05 held`.
+
+المسارات التسعة محفوظة بالترتيب:
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/intelligence_prerun_service.py`
+- `tests/test_repository_intelligence.py`
+- `tests/test_intelligence_prerun_service.py`
+- `tests/test_intelligence_context_ingress_api.py`
+- `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+- `tests/test_live_location_api.py`
+- `tests/test_intelligence_consumption.py`
+
+تبقى عملية `allowed_schema_operations` الوحيدة byte-exact: `CREATE_INDEX_IF_NOT_EXISTS` / `idx_security_audit_origin_proof` على `security_audit_events(action, target_type, target_id, organization_id)`؛ `unique=false`. حفظ العملية لا يمنح نشاط index جديدًا؛ لا schema أو query أو proof-format أو API جديد.
+
+موضوع القرار المقترح ينسخ نطاق التسجيل كاملًا دون إضافة أو تطبيع:
+```json
+{
+  "purpose": "STORED_CONTEXT_KEY_FINGERPRINT_BINDING_ONLY",
+  "implementation_paths": [
+    "backend/repository.py",
+    "tests/test_repository_intelligence.py"
+  ],
+  "boundary": "EXISTING_SHARED_STORED_CONTEXT_VALIDATOR",
+  "validation": "RECOMPUTE_EXISTING_FINGERPRINT_FROM_TYPED_EXACT_STORED_ORG_PROJECT_KEY",
+  "affected_gates": [
+    "VALIDATED_CONTEXT_CONSUMPTION_READ",
+    "TRANSACTIONAL_REVIEW_SAVE",
+    "TRANSACTIONAL_APPROVAL_SAVE"
+  ],
+  "compatibility": "REJECT_INCONSISTENT_BINDING_WITHOUT_REWRITE_OR_BACKFILL",
+  "historical_read_and_origin_proof_policy": "UNCHANGED",
+  "native_context_hash_and_fingerprint_function": "UNCHANGED",
+  "additional_schema_operations": [],
+  "database_and_data_scope": "DISPOSABLE_TEMPORARY_DATABASES_SYNTHETIC_DATA_ONLY"
+}
+```
+
+الأنشطة الوحيدة المقترحة `DEVELOP_REGISTERED_STORED_KEY_FINGERPRINT_BINDING` و`TEST_REGISTERED_STORED_KEY_FINGERPRINT_BINDING` في `backend/repository.py` و`tests/test_repository_intelligence.py`. على `DISPOSABLE_TEMPORARY_DATABASES_ONLY` و`SYNTHETIC_DATA_ONLY` فقط. `live_database_authorized=false` و`owner_database_authorized=false` و`production_placement_accepted=false` و`deployment_authorized=false` و`application_pr_merge_authorized=false`؛ `query_and_proof_semantics=UNCHANGED`. `startup_criteria_status=UNKNOWN_NOT_APPROVED` و`maintenance_recovery_acceptance=UNKNOWN_NOT_APPROVED`؛ لا SLO أو قبول تشغيل فعلي مفترض.
+
+مصدر التطبيق Draft #189 غير المدمج عند `4fcb8b47971a8ee55fa0ae95f5928bdd5722890a` أو خلفه المتحقق بعد إدخال main الحاكم بأمان. التحقق المشترك `_validated_stored_intelligence_context` على هذا الفرع، لا main أو فرع الحوكمة. بعد التفويض فقط يعاد حساب `idempotency_fingerprint` القائمة من org/project/key المخزنة الصحيحة النوع كما هي، بعد الشكل/الأنواع/مساواة الصف وقبل قبول native model؛ يطابق الحساب payload والصف. لا تحويل str أو قص أو تطبيع Unicode أو تغيير native hash/function، ولا مصدر/اتصال/getter/مسار بديل. غياب التحقق أو تغير دلالته يوقف الكود ويعيد القرار.
+
+يتغير القبول فقط عند القراءة المتحققة للاستهلاك وحفظ review/approval: السجل المتسق القديم الصحيح يظل مقبولًا دون origin proof جديد؛ عدم الاتساق يرفض دون rewrite/backfill/deletion/reseal. القراءة التاريخية العادية وإيصالاتها لا تعاد كتابتها، ودالة استهلاك الإيصال المباشرة لا تضيف lookup. فحص الاتساق لا يثبت المنشأ ولا يكتشف كل تعديل DB منسق؛ انتشار السجلات الفعلية المتأثرة UNKNOWN. أخطاء الحدود القائمة محفوظة: `context_integrity_invalid`/narrative409 و`context_not_review_eligible`/review-approval400، دون ابتلاع أعطال التخزين. تصنيف ReviewOverlay المؤجل خارج النطاق.
+
+اختبارات التطبيق الجديدة §5 `NOT_IMPLEMENTED / NOT_RUN`: مصفوفات مستقلة للاستهلاك والمراجعة والاعتماد، key-only وبصمة واحدة أو كلتيهما، الأنواع والحقول الناقصة قبل الحساب، Unicode/whitespace exact الصحيحة، legacy بلا proof، قراءة تاريخية عادية دون تغيير، auth/scope قبل الوصول، عدم كتابة عند الرفض والاتصال المعاملاتي نفسه، replay/CAS/C01–C03/index دون تغيير. اختبارات HTTP القائمة يعاد تشغيلها دون تعديل؛ الحاجة لمسار ثالث تعيد قرار النطاق. لا تعد نتائج التطبيق السابقة دليلًا لهذا الفحص الجديد.
+
+حارس KBRG-01–KBRG-08 مستقل مغلق: يثبت القرار الحقيقي ووقته وكل نسخ STOP14/SCOPE15 والموضوع/الأنشطة/التوافق والأنواع. لا تمر موافقة تجهيز أو نشر أو دمج التسجيل ولا RESUME13 أو أنشطة الفهرس بدل القرار الجديد. عكس RESUME16 والعلم يعيد manifest الكامل إلى `6c0defd45b71bd8b28dc85d109e5bc7d1d3e8628` ثم KBSG→RIRG→RISG→IRG→ISG→CRG→CS→RG→SG دون تخفيف. أختام raw bytes الخمسة path-specific؛ يمر التاريخ بعكس بنيوي متحقق لأغراض الاختبار فقط، ولا يجيز placeholder أو الحالية. نجاح اختبارات البنية ليس قبول استئناف.
+
+تبقى `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة `PENDING` وFC20-12 `ACR_REQUIRED` واعتمادياته والتجميد؛ `release BLOCK` و`DARK_OFFLINE` و`network/provider/deployment=false` و`delivery_evidence=null` و`closure_effect=NONE` و`T08 OPEN`. لا live/owner database أو production/deployment أو دمج #189 أو F01B أو Finance/Snapshot/AAS/Decision Council.
+
+التوقف الآمن: القرار التنفيذي المشروط وإذن نشر ملخصه والانتقال مستوفيان بالإيصال المثبت؛ تبقى الفحوص الكاملة والمراجعات على الرأس النهائي ثم موافقة دمجه المنفصلة قبل الكود. true المقترحة ليست صلاحية نافذة قبل الدمج المصرح. لا يتضمن القرار قاعدة فعلية أو بيانات مالك أو قبول production/startup أو deployment أو دمج #189؛ لا تختلق معايير غير معتمدة.

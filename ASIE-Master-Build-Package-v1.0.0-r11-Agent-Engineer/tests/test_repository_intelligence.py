@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.identity import Principal
-from backend.intelligence_context import ContextComponent, IntelligenceContext
+from backend.intelligence_context import ContextComponent, IntelligenceContext, idempotency_fingerprint
 from backend.repository import Repository
 
 
@@ -40,6 +40,96 @@ class RepositoryIntelligenceTests(unittest.TestCase):
         review = self.repo.save_intelligence_review(organization_id="org-a", project_id=self.project.project_id, overlay=self.review(context), principal=self.principal)
         receipt = {"intelligence_context_id": context.context_build_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
         return context, self.repo.save_intelligence_approval, {"receipt": receipt}
+
+    def binding_fixture(self, boundary, key):
+        """Exercise consumption independently and approval only after a valid review."""
+        if boundary == "consumption":
+            context = self.model(key)
+            self.repo.persist_validated_intelligence_context(context=context, principal=self.principal)
+            return context, self.repo.get_intelligence_context, {"context_build_id": context.context_build_id, "validate_for_consumption": True}
+        return self.integrity_write_fixture(boundary, key)
+
+    def test_stored_key_fingerprint_binding_rejects_inconsistent_legacy_without_writes(self):
+        """Each gate rejects corrupt replay identity while ordinary reads remain available."""
+        for boundary in ("consumption", "review", "approval"):
+            context, call, kwargs = self.binding_fixture(boundary, "binding-" + boundary)
+            with closing(self.repo.connect()) as conn, conn:
+                conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1' AND target_id = ?", (context.context_build_id,))
+                row = dict(conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (context.context_build_id,)).fetchone())
+            original = json.loads(row["payload_json"])
+            wrong = "wrong-" + boundary
+            cases = (
+                ("key-only", original | {"idempotency_key": "changed-key"}, row["idempotency_fingerprint"]),
+                ("payload-fingerprint", original | {"idempotency_fingerprint": wrong}, row["idempotency_fingerprint"]),
+                ("row-fingerprint", original, wrong),
+                ("both-fingerprints", original | {"idempotency_fingerprint": wrong}, wrong),
+                ("key-and-wrong-fingerprints", original | {"idempotency_key": "changed-key", "idempotency_fingerprint": wrong}, wrong),
+                ("trimmed-key-fingerprint", original | {"idempotency_key": "  " + original["idempotency_key"] + "  "}, row["idempotency_fingerprint"]),
+                ("other-org-fingerprint", original | {"idempotency_fingerprint": idempotency_fingerprint("org-b", self.project.project_id, original["idempotency_key"])}, idempotency_fingerprint("org-b", self.project.project_id, original["idempotency_key"])),
+                ("other-project-fingerprint", original | {"idempotency_fingerprint": idempotency_fingerprint("org-a", self.second.project_id, original["idempotency_key"])}, idempotency_fingerprint("org-a", self.second.project_id, original["idempotency_key"])),
+            )
+            for label, record, fingerprint in cases:
+                with closing(self.repo.connect()) as conn, conn:
+                    conn.execute("UPDATE intelligence_contexts SET payload_json = ?, idempotency_fingerprint = ? WHERE context_build_id = ?", (json.dumps(record), fingerprint, context.context_build_id))
+                before = self.integrity_storage_snapshot()
+                error = "context_integrity_invalid" if boundary == "consumption" else "context_not_review_eligible"
+                with self.subTest(boundary=boundary, case=label), self.assertRaisesRegex(ValueError, "^" + error + "$"):
+                    call(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **kwargs)
+                historical = self.repo.get_intelligence_context(context_build_id=context.context_build_id, organization_id="org-a", project_id=self.project.project_id, principal=self.principal)
+                self.assertEqual(record, historical)
+                self.assertEqual(before, self.integrity_storage_snapshot())
+
+    def test_stored_binding_exact_unicode_and_whitespace_legacy_positive(self):
+        """Existing exact fingerprint inputs are neither normalized nor backfilled."""
+        for boundary in ("consumption", "review", "approval"):
+            for suffix in ("  مفتاح  ", "e\u0301", "é"):
+                key = boundary + suffix
+                context, call, kwargs = self.binding_fixture(boundary, key)
+                with closing(self.repo.connect()) as conn, conn:
+                    conn.execute("DELETE FROM security_audit_events WHERE action = 'aia.context.origin.v1' AND target_id = ?", (context.context_build_id,))
+                with patch("backend.repository.idempotency_fingerprint", wraps=idempotency_fingerprint) as fingerprint:
+                    result = call(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **kwargs)
+                fingerprint.assert_called_once_with("org-a", self.project.project_id, key)
+                self.assertTrue(result)
+                stored = self.repo.get_intelligence_context(context_build_id=context.context_build_id, organization_id="org-a", project_id=self.project.project_id, principal=self.principal)
+                self.assertEqual(key, stored["idempotency_key"])
+                self.assertEqual(idempotency_fingerprint("org-a", self.project.project_id, key), stored["idempotency_fingerprint"])
+                self.assertFalse(any(event["target_id"] == context.context_build_id for event in self.origin_events()))
+
+    def test_stored_binding_types_and_row_identity_precede_fingerprint(self):
+        """Malformed stored inputs never reach the existing hash primitive."""
+        for boundary in ("consumption", "review", "approval"):
+            context, call, kwargs = self.binding_fixture(boundary, "typed-" + boundary)
+            with closing(self.repo.connect()) as conn:
+                original = json.loads(conn.execute("SELECT payload_json FROM intelligence_contexts WHERE context_build_id = ?", (context.context_build_id,)).fetchone()[0])
+            for field in ("organization_id", "project_id", "idempotency_key"):
+                cases = [original | {field: value} for value in (None, True, 12, [], {}, "", "   ")]
+                missing = dict(original)
+                del missing[field]
+                cases.append(missing)
+                if field != "idempotency_key":
+                    cases.append(original | {field: "different-row-identity"})
+                for record in cases:
+                    with closing(self.repo.connect()) as conn, conn:
+                        conn.execute("UPDATE intelligence_contexts SET payload_json = ? WHERE context_build_id = ?", (json.dumps(record), context.context_build_id))
+                    before = self.integrity_storage_snapshot()
+                    error = "context_integrity_invalid" if boundary == "consumption" else "context_not_review_eligible"
+                    with self.subTest(boundary=boundary, field=field, record=record), patch("backend.repository.idempotency_fingerprint", side_effect=AssertionError("invalid input reached fingerprint")), self.assertRaisesRegex(ValueError, "^" + error + "$"):
+                        call(organization_id="org-a", project_id=self.project.project_id, principal=self.principal, **kwargs)
+                    self.assertEqual(before, self.integrity_storage_snapshot())
+
+    def test_stored_binding_authorization_precedes_fingerprint(self):
+        """Denied principals and cross-project requests cannot compute stored bindings."""
+        for boundary in ("consumption", "review", "approval"):
+            context, call, kwargs = self.binding_fixture(boundary, "auth-binding-" + boundary)
+            with patch("backend.repository.idempotency_fingerprint", side_effect=AssertionError("unauthorized fingerprint")):
+                with self.assertRaises(PermissionError):
+                    call(organization_id="org-a", project_id=self.project.project_id, principal=None, **kwargs)
+                if boundary == "consumption":
+                    self.assertIsNone(call(organization_id="org-a", project_id=self.second.project_id, principal=self.principal, **kwargs))
+                else:
+                    with self.assertRaisesRegex(ValueError, "^context_not_review_eligible$"):
+                        call(organization_id="org-a", project_id=self.second.project_id, principal=self.principal, **kwargs)
 
     def integrity_storage_snapshot(self):
         """Ignore permitted authorization audit but preserve all approval and proof bytes."""
