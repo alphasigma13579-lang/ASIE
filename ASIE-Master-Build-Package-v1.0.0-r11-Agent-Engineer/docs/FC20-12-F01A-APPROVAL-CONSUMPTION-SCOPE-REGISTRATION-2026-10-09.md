@@ -494,3 +494,126 @@ baseline main `fc7ceec7ba910a6433427d19193955e78e1ac922`، manifest blob `a8785a
 R01–R14 وT01–T09 تبقى مطلوبة؛ اختبارات التعافي الجديدة `NOT_IMPLEMENTED / NOT_RUN`، وT08 OPEN. `routing_repair REGISTERED_BLOCKED/false` وضوابطه التسعة PENDING، FC20-12 ACR_REQUIRED، release BLOCK، DARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null وclosure_effect=NONE. startup/maintenance/recovery=UNKNOWN_NOT_APPROVED. اتجاه الصيانة المخططة لا يثبت مدة أو حجم أو قبول تشغيل؛ لا live/owner DB أو قبول production placement أو دمج #189.
 
 بعد مراجعة التسجيل وفحوص رأسه يلزم قرار دمجه المنفصل. بعد نفاذه فقط يلزم قرار تنفيذ جديد يثبت نطاق التعافي والتوافق والبيانات المؤقتة الاصطناعية، ثم RESUME19 مراجع وقرار دمجه قبل كود التطبيق. لا تصميم مستقل إضافي، ولا إعادة استخدام RESUME16 أو قرار تجهيز التسجيل كإذن تنفيذ.
+
+<!-- F01A-CUSTOMER-RECOVERY-CONDITIONAL-RESUME-2026-10-14 -->
+### استئناف تعافي العميل المشروط — مرشح 2026-10-14
+
+الحالة: `GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. إسقاط خاص بـ`docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md`، مع حفظ prefix blob `18bc022881772e6b59a51e862c34a8736e29b9cf` كاملًا. كل ما سبقه تاريخ؛ المصدر النافذ هو manifest المدمج، ولا يمنح نشر المرشح أو نجاح اختباراته سلطة تنفيذ.
+
+وافق المالك عند `2026-10-14T11:29:03.815159+00:00` على تطوير واختبار حزمة التعافي24 المسجلة بقواعد مؤقتة وبيانات اصطناعية، بما فيه حماية الحفظ من التعارض ورفض التحديث القديم بلا توقعات نسخة الأصل. القرار مشروط بمراجعة انتقال الاستئناف ثم موافقة منفصلة على دمجه قبل التطبيق. [الإيصال](https://github.com/alphasigma13579-lang/ASIE/pull/208#issuecomment-6167318361) ملخص تقني منقول بواسطة المساعد، لا توقيع مستقل؛ نُشر عند `2026-10-14T11:29:53Z`. أجاز أيضًا نشر الملخص والملفات السبعة والفحوص والمراجعة المستقلة وCodeRabbit ضمن الحصة المتاحة بلا تكلفة إضافية. لا دمج لهذا المرشح أو #189 ولا تشغيل فعلي من إذن النشر.
+
+baseline بعد دمج #208: `973c6a33080ddf50ade686a4ff8dbb21ed32c978`، manifest `3e8c82ea894af7d72865229f72d0b9c576d7da31` بحالةfalse و18حدثًا. رأس التسجيل المراجع `645005dbb59bdedb49761589cbbd44e4f116ea2f`. التصميم المقبول #207 عند `d2e9399a61b4a939fa174a8c9bada7bd699c2990` وblob `51cc1b68aee8f88db1b7e1569c6f1f9f74206e1b`، لا حاجة لتصميم مستقل آخر. مصدر التطبيق Draft #189 غير المدمج عند `b011a6b3773f4c5e0a905161b5504fff339496f6` أو خلفه المتحقق بعد إدخال main الحاكم بأمان، لا كود فرع الحوكمة.
+
+الدلتا الوحيدة: إلحاق RESUME19 عند `2026-10-14T11:29:53Z` وتغيير `execution_authorized=false → true` حرفيًا في المرشح فقط. ينسخ STOP17/SCOPE18 كاملين في الحدث وموضوع القرار، مع نطاق الإصلاح المسجل دون تغيير. أثر القرار `F01A_DEFENSIVE_RESUME_ONLY` وشرطه `REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL`. تبقى الشريحةIN_PROGRESS والموضع محفوظًا ومحسوبًا، max_active_executions=1 وFC20-05 held؛ لا START أو DELIVERED أو محو تاريخ.
+
+المسارات32 محفوظة بالترتيب؛ الأنشطة أدناه محصورة24 ملفًا فقط ولا تعيد فتح العمل التاريخي:
+- `backend/asie_local_api.py`
+- `backend/repository.py`
+- `backend/intelligence_prerun_service.py`
+- `tests/test_repository_intelligence.py`
+- `tests/test_intelligence_prerun_service.py`
+- `tests/test_intelligence_context_ingress_api.py`
+- `docs/FC20-12-F01-TRUSTED-CONTEXT-INGRESS-REPAIR-PLAN-2026-10-01.md`
+- `tests/test_live_location_api.py`
+- `tests/test_intelligence_consumption.py`
+- `backend/workspace.py`
+- `backend/workflow.py`
+- `backend/dib_api.py`
+- `backend/dib_persistence.py`
+- `backend/dib_tenant_api.py`
+- `backend/dib_http_mounting.py`
+- `backend/release_info.py`
+- `src/contracts.ts`
+- `src/dibApi.ts`
+- `src/App.tsx`
+- `src/customerLanguage.tsx`
+- `src/ASIECompleteSurfaceMount.tsx`
+- `src/DIBWorkspace.tsx`
+- `src/DIBIntakeItemGovernance.tsx`
+- `src/DIBManifestRunReadiness.tsx`
+- `registry/asie-canonical-api-output.v1.json`
+- `docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md`
+- `tests/test_customer_language_foundation.py`
+- `tests/test_gov_beta_04_server_owned_manifest_chain.py`
+- `tests/test_context_recovery_api.py`
+- `tests/test_dib_context_recovery.py`
+- `tests/test_customer_capability_projection.py`
+- `tools/check_context_recovery_browser.py`
+
+حد التنفيذ المقترح المغلق:
+```json
+{
+  "activities": [
+    "DEVELOP_REGISTERED_CANONICAL_CUSTOMER_RECOVERY",
+    "TEST_REGISTERED_CANONICAL_CUSTOMER_RECOVERY"
+  ],
+  "implementation_paths": [
+    "backend/asie_local_api.py",
+    "backend/workspace.py",
+    "backend/workflow.py",
+    "backend/dib_api.py",
+    "backend/dib_persistence.py",
+    "backend/dib_tenant_api.py",
+    "backend/dib_http_mounting.py",
+    "backend/release_info.py",
+    "src/contracts.ts",
+    "src/dibApi.ts",
+    "src/App.tsx",
+    "src/customerLanguage.tsx",
+    "src/ASIECompleteSurfaceMount.tsx",
+    "src/DIBWorkspace.tsx",
+    "src/DIBIntakeItemGovernance.tsx",
+    "src/DIBManifestRunReadiness.tsx",
+    "registry/asie-canonical-api-output.v1.json",
+    "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+    "tests/test_customer_language_foundation.py",
+    "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+    "tests/test_context_recovery_api.py",
+    "tests/test_dib_context_recovery.py",
+    "tests/test_customer_capability_projection.py",
+    "tools/check_context_recovery_browser.py"
+  ],
+  "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+  "data_scope": "SYNTHETIC_DATA_ONLY",
+  "live_database_authorized": false,
+  "owner_database_authorized": false,
+  "production_placement_accepted": false,
+  "deployment_authorized": false,
+  "application_pr_merge_authorized": false,
+  "network_authorized": false,
+  "provider_activation_authorized": false,
+  "startup_criteria_status": "UNKNOWN_NOT_APPROVED",
+  "maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+  "contract_change_scope": [
+    "EXISTING_DIB_SESSION_READ_SERVER_RECORD_REFERENCE",
+    "VERSIONED_EXISTING_BLUEPRINT_WRITE_PRECONDITIONS_ALL_THREE_EXISTING_CALLERS",
+    "ALLOWLISTED_EXISTING_WORKSPACE_RECOVERY_AND_DISPLAY_PROJECTION",
+    "CANONICAL_API_REGISTER_AND_COMPATIBILITY_DOCUMENTATION"
+  ],
+  "compatibility": "REJECT_LEGACY_UPDATES_WITHOUT_EXPECTED_ORIGINAL_VERSION_NO_SILENT_OVERWRITE_OR_BACKFILL",
+  "historical_snapshot_policy": "IMMUTABLE_EXPLICITLY_SEPARATE_FROM_CURRENT_DRAFT",
+  "audit_origin_index_query_and_proof_semantics": "UNCHANGED",
+  "excluded_changes": [
+    "FROZEN_RUNTIME_ENGINES_FINANCE_SNAPSHOT_AAS_DECISION_COUNCIL",
+    "F01B_CONTEXT_BUILDING_OR_ROUTING_ACTIVATION",
+    "IDENTITY_ROLES_OR_ADMIN_RELEASE_INFO_EXPOSURE",
+    "RUNTIME_ENABLE_FLAGS_OR_PARALLEL_STORE_SERVICE_ROUTE",
+    "VOICE_AGENT",
+    "ADDITIONAL_SCHEMA_OPERATIONS_OR_AUDIT_ORIGIN_INDEX_QUERY_PROOF_CHANGES",
+    "LIVE_OWNER_DATABASE_OR_DEPLOYMENT_OR_APPLICATION_PR_MERGE"
+  ],
+  "acceptance_plan": "ACCEPTED_DESIGN_R01_R14_AND_ORIGINAL_T01_T09_NO_WAIVER"
+}
+```
+
+يبقى repair_scope المطابق لتسجيل SCOPE18 كاملًا، لا مجرد قائمة أسماء: مرجع GET من هوية/نسخة/hash السجل الخادمي وقراءة متسقة مع صلاحيات المؤسسة وملكية المشروع الحالية؛ CAS داخل حد persistence القائم لكل تحديث ومعرف Blueprint جديد وإبطال Manifest/Gate. يرحّل الكتّاب الثلاثة؛ لا تجاوز عميل موثوق، ولا fetch لأحدث hash قبيل الحفظ لإخفاء تعارض، ولا overwrite/backfill. الطلب القديم الذي لا يحدد توقعات الأصل يرفض بأمان؛ تحفظ تعديلات المستخدم للمراجعة. حفظ نقص DIB لا يدعي تحديث مصدر المشروع الآخر، ولا اكتمال حتى الحفظ وإعادة قراءة المصدر المحدد.
+
+كل نقص مطلوب معروف له مصدر وسبب وهدف دقيق ومصرح وعودة scoped مع حفظ العمل وar/en؛ غياب الهدف أو السبب المطلوب فجوة تنفيذ لا N/A ولا generic fallback. Snapshot التاريخي ثابت ومنفصل عن المسودة. تبقى قيود ربط Dataset/assumption/criterion والجودة وصلاحيات مراجعة المصدر؛ لا فتح EngineeringSurfaceGate أو endpoint release-info الإداري. أخطاء precontroller وGETtenant وcontroller آمنة بلا أسرار مفاتيح العميل أو تفاصيل الاستثناء. الإعلان الجديد لـProduct & Engineering داخل release_info للعرض فقط، لا runtime-enable أو موعد مخترع. سند محلي حتمي، الصوت لاحق وخارج النطاق.
+
+عملية الفهرس السابقة byte-exact: `CREATE_INDEX_IF_NOT_EXISTS` / `idx_security_audit_origin_proof` على `security_audit_events(action, target_type, target_id, organization_id)` و`unique=false`. حفظها لا يمنح نشاط index جديدًا؛ لا schema أو تغيير استعلام/إثبات منشأ التدقيق، ولا Finance/Snapshot/AAS/Decision Council أو المحركات المجمدة أو F01B أو خدمة/مخزن/مسار بديل.
+
+حارس CRRG مستقل يثبت القرار الحقيقي وشرطه والنطاق والأنشطة والأنواع ونسخ checkpoint/scope. لا تجيزه موافقة تجهيز التسجيل أو دمجه أو RESUME16. عكس RESUME19 والعلم يعيد manifest الكامل إلى `3e8c82ea894af7d72865229f72d0b9c576d7da31` ثم أوراكل CRSG والسلسلة التاريخية دون تغيير. كل prefix وقسم جديد مثبت raw bytes وبمساره؛ لا fallback لإجازة الحالية. اختبارات التاريخ محفوظة، والـfixtures لا تشارك كائنات قابلة للتعديل، وتعيد فحص المصدر في كل حالة. لا تقليل تغطية أو رفع حدCI20دقيقة.
+
+اختبارات التطبيق R01–R14 وT01–T09 المطلوبة `NOT_IMPLEMENTED / NOT_RUN` لهذه الحزمة؛ T08 OPEN. routing_repair REGISTERED_BLOCKED/false وضوابطه التسعةPENDING، FC20-12 ACR_REQUIRED، release BLOCK، DARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null وclosure_effect=NONE. startup/maintenance/recovery=UNKNOWN_NOT_APPROVED؛ اتجاه الصيانة المخططة لا يثبت مدة أو حجم أو مشغّل أو قبول فعلي. لا owner/live DB أو قبولproduction أو deployment أو دمج#189.
+
+نقطة التوقف: فحوص ومراجعات رأس الانتقال النهائي، ثم موافقة المالك المنفصلة على دمجه. true المقترحة لا تصبح نافذة قبله. بعد نفاذ الاستئناف فقط: إصلاح التطبيق داخل24مسارًا، الاختبارات الاصطناعية وإثبات الرحلة، مراجعة الرأس، ثم عرض قرار دمج#189 بصورة منفصلة مع شروطه. لا إسقاط بقية إصلاحات ومحركات وخدمات المنصة ولا ادعاء اكتمالها بهذه الخطوة.
