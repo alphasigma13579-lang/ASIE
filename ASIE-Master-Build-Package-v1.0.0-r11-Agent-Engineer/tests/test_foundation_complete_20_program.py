@@ -8190,12 +8190,27 @@ def test_dataset_scope_projection_seals(relative_path: str, mutation: str) -> No
     if mutation == "valid":
         assert git_blob_sha(dataset_scope_historical_view(raw, relative_path)) == DATASET_VIEW_PREFIX_BLOBS[relative_path]
         return
-    if mutation == "prefix": raw = b" " + raw
-    elif mutation == "section": raw += b" "
-    elif mutation == "duplicate": raw += DATASET_VIEW_MARKER.encode()
-    elif mutation == "boundary": raw = raw.replace(("\n"+DATASET_VIEW_MARKER+"\n").encode(),("\r\n"+DATASET_VIEW_MARKER+"\n").encode())
-    else: relative_path = next(p for p in DATASET_VIEW_SHA256 if p != relative_path)
-    with pytest.raises(AssertionError): dataset_scope_historical_view(raw, relative_path)
+    separator = ("\n" + DATASET_VIEW_MARKER + "\n").encode()
+    expected = {
+        "prefix": "dataset_scope_view_prefix_changed",
+        "section": "dataset_scope_view_section_changed",
+        "duplicate": "dataset_scope_view_boundary",
+        "boundary": "dataset_scope_view_boundary",
+        "swap": "dataset_scope_view_prefix_changed",
+    }[mutation]
+    if mutation == "prefix":
+        raw = b" " + raw
+    elif mutation == "section":
+        raw += b" "
+    elif mutation == "duplicate":
+        raw += DATASET_VIEW_MARKER.encode()
+    elif mutation == "boundary":
+        # Keep every prefix byte, but invalidate the newline after the marker.
+        raw = raw.replace(separator, b"\n" + DATASET_VIEW_MARKER.encode() + b"\r\n", 1)
+    else:
+        relative_path = next(p for p in DATASET_VIEW_SHA256 if p != relative_path)
+    with pytest.raises(AssertionError, match=rf"^{expected}(?:\n|$)"):
+        dataset_scope_historical_view(raw, relative_path)
 
 
 def test_dataset_scope_history_equivalence_detachment_and_nonmutation(monkeypatch: pytest.MonkeyPatch) -> None:
