@@ -7500,22 +7500,38 @@ def validate_recovery_resume_baseline(manifest: dict) -> dict:
 _RECOVERY_RESUME_HISTORY_BYTES: tuple[bytes, bytes] | None = None
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=4, typed=True)
+def _recovery_resume_cached_blob_sha(raw: bytes) -> str:
+    """Memoize only a pure digest of exact immutable content, never admission state."""
+    return git_blob_sha(raw)
+
+
+def recovery_resume_blob_sha(raw: bytes) -> str:
+    """Validate byte type before lookup; a fresh read still checks every content byte."""
+    if type(raw) is not bytes:
+        raise TypeError("recovery_resume_digest_requires_exact_bytes")
+    return _recovery_resume_cached_blob_sha(raw)
+
+
 def recovery_resume_historical_source_bytes() -> bytes:
     """CRRG-08: re-pin every read and expose only immutable inverse-verified history."""
     global _RECOVERY_RESUME_HISTORY_BYTES
     source = MANIFEST_PATH.read_bytes()
-    assert git_blob_sha(source) == RECOVERY_RESUME_MANIFEST_BLOB, "recovery_resume_fixture_source_changed"
+    assert recovery_resume_blob_sha(source) == RECOVERY_RESUME_MANIFEST_BLOB, "recovery_resume_fixture_source_changed"
     if _RECOVERY_RESUME_HISTORY_BYTES is None:
         baseline = _recovery_resume_historical_inverse(json.loads(source.decode("utf-8")))
         raw = (json.dumps(baseline, ensure_ascii=False, indent=2) + "\n").encode()
-        assert git_blob_sha(raw) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_resume_fixture_baseline_changed"
+        assert recovery_resume_blob_sha(raw) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_resume_fixture_baseline_changed"
         _RECOVERY_RESUME_HISTORY_BYTES = (source, raw)
     assert isinstance(_RECOVERY_RESUME_HISTORY_BYTES, tuple) and len(_RECOVERY_RESUME_HISTORY_BYTES) == 2, "recovery_resume_fixture_cache_shape"
     cached_source, raw = _RECOVERY_RESUME_HISTORY_BYTES
-    assert isinstance(cached_source, bytes) and isinstance(raw, bytes), "recovery_resume_fixture_cache_type"
+    assert type(cached_source) is bytes and type(raw) is bytes, "recovery_resume_fixture_cache_type"
     source_matches = source == cached_source
     assert source_matches, "recovery_resume_fixture_cache_source_changed"
-    assert git_blob_sha(raw) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_resume_fixture_baseline_changed"
+    assert recovery_resume_blob_sha(raw) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_resume_fixture_baseline_changed"
     return raw
 
 
@@ -7765,3 +7781,88 @@ def test_recovery_resume_fixture_single_read_and_failed_initialization(monkeypat
     monkeypatch.setattr(module, "_recovery_resume_historical_inverse", failed)
     with pytest.raises(AssertionError, match="injected_inverse_failure"): historical_recovery_scope_manifest()
     assert _RECOVERY_RESUME_HISTORY_BYTES is None
+
+
+@pytest.mark.parametrize("raw", [b"", b"abc", b"abc\x00", b" abc ", bytes(range(256))])
+def test_recovery_resume_digest_matches_original_and_content_keys(raw: bytes) -> None:
+    """Distinct byte content cannot reuse an approval or a different digest."""
+    _recovery_resume_cached_blob_sha.cache_clear()
+    expected = git_blob_sha(raw)
+    assert recovery_resume_blob_sha(raw) == expected
+    fresh = memoryview(raw).tobytes()
+    if len(raw) > 1:
+        assert fresh is not raw
+    assert recovery_resume_blob_sha(fresh) == expected
+    assert _recovery_resume_cached_blob_sha.cache_info().hits == 1
+    changed = raw + b"!"
+    assert recovery_resume_blob_sha(changed) == git_blob_sha(changed)
+    assert _recovery_resume_cached_blob_sha.cache_info().misses == 2
+    if raw:
+        same_length_changed = bytes([raw[0] ^ 1]) + raw[1:]
+        assert len(same_length_changed) == len(raw)
+        assert recovery_resume_blob_sha(same_length_changed) == git_blob_sha(same_length_changed)
+        assert _recovery_resume_cached_blob_sha.cache_info().misses == 3
+
+
+@pytest.mark.parametrize("raw", [bytearray(b"abc"), memoryview(b"abc"), "abc", 1, True, None])
+def test_recovery_resume_digest_rejects_nonbytes_before_cache(raw: object) -> None:
+    """Invalid types cannot enter or hit the content-only cache."""
+    _recovery_resume_cached_blob_sha.cache_clear()
+    recovery_resume_blob_sha(b"abc")
+    before = _recovery_resume_cached_blob_sha.cache_info()
+    with pytest.raises(TypeError, match="requires_exact_bytes"):
+        recovery_resume_blob_sha(raw)
+    assert _recovery_resume_cached_blob_sha.cache_info() == before
+
+
+def test_recovery_resume_digest_rejects_bytes_subclass_and_bounds_storage() -> None:
+    """Only exact immutable bytes enter the four-entry cache."""
+    class DerivedBytes(bytes):
+        pass
+    _recovery_resume_cached_blob_sha.cache_clear()
+    with pytest.raises(TypeError, match="requires_exact_bytes"):
+        recovery_resume_blob_sha(DerivedBytes(b"abc"))
+    for i in range(8):
+        raw = bytes([i])
+        assert recovery_resume_blob_sha(raw) == git_blob_sha(raw)
+    info = _recovery_resume_cached_blob_sha.cache_info()
+    assert info.maxsize == 4 and info.currsize == 4 and info.misses == 8
+    assert recovery_resume_blob_sha(bytes([0])) == git_blob_sha(bytes([0]))
+    assert _recovery_resume_cached_blob_sha.cache_info().misses == 9
+
+
+def test_recovery_resume_digest_does_not_cache_failed_computation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A digest failure cannot become a reused result on a later read."""
+    _recovery_resume_cached_blob_sha.cache_clear()
+    original = git_blob_sha
+    def fail(raw: bytes) -> str:
+        raise ValueError("synthetic_digest_failure")
+    monkeypatch.setitem(globals(), "git_blob_sha", fail)
+    with pytest.raises(ValueError, match="synthetic_digest_failure"):
+        recovery_resume_blob_sha(b"abc")
+    assert _recovery_resume_cached_blob_sha.cache_info().currsize == 0
+    monkeypatch.setitem(globals(), "git_blob_sha", original)
+    assert recovery_resume_blob_sha(b"abc") == original(b"abc")
+    _recovery_resume_cached_blob_sha.cache_clear()
+
+
+def test_recovery_resume_warm_digest_does_not_cache_pin_admission(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A warmed content digest cannot preserve admission after its expected pin changes."""
+    recovery_resume_historical_source_bytes()
+    monkeypatch.setitem(globals(), "RECOVERY_RESUME_MANIFEST_BLOB", "0" * 40)
+    with pytest.raises(AssertionError, match="recovery_resume_fixture_source_changed"):
+        recovery_resume_historical_source_bytes()
+
+
+@pytest.mark.parametrize("position", [0, 1])
+def test_recovery_resume_rejects_cached_bytes_subclasses(monkeypatch: pytest.MonkeyPatch, position: int) -> None:
+    """Custom equality on byte subclasses cannot impersonate verified cached content."""
+    recovery_resume_historical_source_bytes()
+    class DerivedBytes(bytes):
+        def __eq__(self, other: object) -> bool:
+            return True
+    poisoned = list(_RECOVERY_RESUME_HISTORY_BYTES)
+    poisoned[position] = DerivedBytes(poisoned[position])
+    monkeypatch.setitem(globals(), "_RECOVERY_RESUME_HISTORY_BYTES", tuple(poisoned))
+    with pytest.raises(AssertionError, match="recovery_resume_fixture_cache_type"):
+        recovery_resume_historical_source_bytes()
