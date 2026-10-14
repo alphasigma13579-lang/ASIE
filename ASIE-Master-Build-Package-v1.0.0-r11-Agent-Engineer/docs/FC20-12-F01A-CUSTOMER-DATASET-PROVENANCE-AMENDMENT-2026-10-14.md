@@ -27,6 +27,8 @@ Use the common Repository Dataset writer within a transaction: separate create i
 
 On material Dataset content replacement, explicitly invalidate current Dataset approval and dependent transformation/link review in the same canonical persistence boundary; retain prior historical snapshots and provenance. The exact affected-record and rollback behavior must be registered and tested, rather than leaving previously approved derived output attached to changed input. Metadata-only edits must not be treated as content replacement without an explicit rule.
 
+Storage representation: the existing `datasets.source_id TEXT NOT NULL` column stores the empty string (`source_id = ""`) for recognized customer-study material. This means no platform-source association, not SQL NULL or an omitted INSERT binding. The existing normalizer already emits this empty string for a missing source and the current writer persists it; there is no source foreign key. Do not create a placeholder SourceReviewRecord or credit a source review. Reject any nonempty platform source association for this category. External and legacy records retain their existing nonempty-source eligibility checks. Acceptance must prove both storage compatibility and that reports/ledger emit no official-source URL or confidence credit.
+
 No table/column/index migration, new store, route, original-file archive, automatic backfill or data rewrite. Existing storage retains only a preview/profile, not the complete original file. Legacy, missing, malformed or unsupported provenance receives no exemption and retains existing eligibility checks.
 
 ## One eligibility authority and truthful consumption
