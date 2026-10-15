@@ -147,6 +147,23 @@ class CustomerDatasetProvenanceTests(unittest.TestCase):
                 self.repo.review_dataset(row["dataset_id"], payload)
             self.assertEqual(self.repo.get_dataset(row["dataset_id"]), row)
 
+    def test_csv_review_cannot_silently_replace_non_csv_dataset_with_empty_rows(self):
+        for method in ("manual_table", "manual_json"):
+            row = self.create_customer()
+            row = self.repo.review_dataset(row["dataset_id"], {"import_method": method})
+            before = self.repo.get_dataset(row["dataset_id"])
+            with self.subTest(method=method), self.assertRaisesRegex(ValueError, "dataset_content_shape_invalid"):
+                self.repo.review_dataset(row["dataset_id"], {"csv_text": "metric,value\nprice,100\n"})
+            self.assertEqual(self.repo.get_dataset(row["dataset_id"]), before)
+            replaced = self.repo.review_dataset(row["dataset_id"], {"import_method": "manual_csv", "csv_text": "metric,value\nprice,100\n"})
+            self.assertEqual(replaced["row_count"], 1)
+
+    def test_legacy_sources_argument_cannot_override_coherent_owner_sources(self):
+        expected = self.repo.read_project_evidence(self.project_a.project_id)["source_records"]
+        for supplied in ([], [{"source_id": "invented-caller-source"}]):
+            register = api.build_evidence_register(self.repo, self.project_a.project_id, "synthetic", supplied, organization_id=self.org_a_id)
+            self.assertEqual(register["source_records"], expected)
+
     def test_content_replacement_invalidates_dependents_and_malformed_rolls_back(self):
         row = self.create_customer()
         transform = self.repo.save_transformation(row["dataset_id"], {"operation_type": "select_column", "input_columns": ["value"], "review_status": "approved"})

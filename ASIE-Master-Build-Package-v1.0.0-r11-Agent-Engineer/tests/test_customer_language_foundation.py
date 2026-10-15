@@ -198,6 +198,7 @@ assert.equal(disk.get('draft'), 'later');
         program = """
 const assert = require('node:assert/strict');
 let project = null, busy = false;
+const csvText = 'first draft,123';
 const projectScope = {current:{generation:0}};
 const formOrigin = {current:null};
 const form = {name:'Synthetic project',inputs:{}};
@@ -205,7 +206,7 @@ const locale = 'en';
 const setIsBusy = value => {busy=value};
 const setError = () => {};
 const setOverview = () => {}, setReport = () => {}, setReportView = () => {}, setDecisionPack = () => {}, setActionItems = () => {};
-const setProject = value => { project=value; projectScope.current.generation += 1; };
+const setProject = (value, carried) => { assert.equal(carried,csvText); project=value; projectScope.current.generation += 1; };
 const createProject = async () => ({project_id:'synthetic',updated_at:'v1'});
 const updateProject = async () => {throw Error('unexpected update')};
 const fetchProjectWorkspace = async () => {throw Error('unexpected read')};
@@ -290,6 +291,10 @@ csvText='private-B,200'; persistRecoveryDraft();
 setProject({project_id:'A'}); assert.equal(csvText,'private-A,100');
 setProject(null); setProject({project_id:'B'}); assert.equal(csvText,'private-B,200');
 assert.equal(project.project_id,'B');
+setProject(null); csvText='new quote,300';
+setProject({project_id:'C'},csvText); assert.equal(csvText,'new quote,300');
+persistRecoveryDraft(); setProject({project_id:'A'}); assert.equal(csvText,'private-A,100');
+setProject({project_id:'C'}); assert.equal(csvText,'new quote,300');
 """
         completed = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -318,6 +323,90 @@ assert.deepEqual(Object.fromEntries(Object.entries(values).filter(([key,value]) 
 """
         completed = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
+    def test_file_intake_first_creation_is_not_blocked_by_project_bound_upload(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        start = source.index("  function validateWizardStepAt(")
+        block = source[start:source.index("\n  }", start) + len("\n  }")]
+        program = """
+const assert=require('node:assert/strict'), ts=require('typescript');
+let project=null, fileImportStatus='', datasets=[];
+const form={inputs:{intake_mode:'file'}}, text=(ar,en)=>en;
+""" + "\neval(ts.transpileModule(" + repr(block) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+assert.equal(validateWizardStepAt(7),null);
+project={project_id:'saved'};
+assert.equal(validateWizardStepAt(7),'Upload a data file before checking gaps.');
+fileImportStatus='Imported'; assert.equal(validateWizardStepAt(7),null);
+"""
+        result=subprocess.run(["node","-e",program],cwd=SRC.parent,text=True,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('<option value="">{text("اختر مجموعة بيانات", "Choose a dataset")}</option>',source)
+
+    def test_dib_non_json_401_expires_only_its_current_session(self):
+        import subprocess
+        source=(SRC/"dibApi.ts").read_text(encoding="utf-8")
+        block=source[source.index("export class DIBRequestError"):source.index("export interface DIBOriginReference")].replace("export class", "class")
+        program="""
+const assert=require('node:assert/strict'),ts=require('typescript');
+let revision=1,expired=0,stale=false,parsed=0,status=401;
+const getSessionRevision=()=>revision,getSessionToken=()=> 'token',getActiveOrganizationId=()=> 'org';
+const assertSessionRevision=r=>{if(r!==revision)throw Error('stale')};
+const handleUnauthorized=()=>{expired++;revision++};
+const fetch=async()=>{if(stale)revision++;return {status,ok:status===200,json:async()=>{parsed++;throw Error('HTML')}}};
+""" + "\neval(ts.transpileModule(" + repr(block) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program+="""
+(async()=>{
+try {await requestDibJson('/synthetic');assert.fail('must deny')} catch(e){assert.equal(e.status,401)}
+assert.equal(expired,1);assert.equal(parsed,0);
+stale=true;
+try {await requestDibJson('/synthetic');assert.fail('must deny')} catch(e){assert.equal(e.status,500)}
+assert.equal(expired,1);assert.equal(parsed,0);
+stale=false;status=200;
+try {await requestDibJson('/synthetic');assert.fail('malformed success must deny')} catch(e){assert.equal(e.status,500)}
+assert.equal(expired,1);assert.equal(parsed,1);
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+        result=subprocess.run(["node","-e",program],cwd=SRC.parent,text=True,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+
+    def test_dib_legacy_controls_and_zero_reason_follow_stored_origin(self):
+        import subprocess
+        source=(SRC/"DIBWorkspace.tsx").read_text(encoding="utf-8")
+        for name in ("persistManifest", "persistValidationGate", "closeSession"):
+            body = source.split(f"async function {name}() {{", 1)[1].split("\n  }", 1)[0]
+            self.assertIn("if (!session || legacyReadOnly || hasUnsavedItems) return;", body)
+        readiness = (SRC / "DIBManifestRunReadiness.tsx").read_text(encoding="utf-8")
+        self.assertIn('legacyReadOnly ? "تحتاج مراجعة المسؤول" : session?.current_blueprint ? "جاهز" : "ناقص"', readiness)
+        start=source.index("  const legacyReadOnly =")
+        controls=source[start:source.index("\n\n",start)]
+        start=source.index("  function updateItemValue(")
+        update=source[start:source.index("\n  function approveItem",start)]
+        program="""
+const assert=require('node:assert/strict'),ts=require('typescript');
+let session,items=[];const selectedProject={},operationBusy=false,hasUnsavedItems=false,blueprint=null,approvedManifest={status:'approved'};
+const setItems=fn=>{items=fn(items)};
+"""
+        program += "\nconst controlsSource="+repr(controls)+";"
+        program += """
+function state(value){session=value;return eval(ts.transpileModule(controlsSource+';({canSaveBlueprint,canApproveManifest,canRunGate})',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)}
+assert.deepEqual(state({current_blueprint:{},origin_reference:null}),{canSaveBlueprint:false,canApproveManifest:false,canRunGate:false});
+assert.equal(state({current_blueprint:null,origin_reference:null}).canSaveBlueprint,true);
+assert.deepEqual(state({current_blueprint:{},origin_reference:{}}),{canSaveBlueprint:true,canApproveManifest:true,canRunGate:true});
+"""
+        program += "\neval(ts.transpileModule("+repr(update)+",{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+for(const value_state of ['UNKNOWN','REJECTED','USER_PROVIDED']) {
+items=[{input_key:'price',value_state,reason:'old reason'}]; updateItemValue('price','0');
+assert.equal(items[0].value_state,'INTENTIONAL_ZERO');assert.equal(items[0].reason,'');
+}
+items=[{input_key:'price',value_state:'INTENTIONAL_ZERO',reason:'explicit zero reason'}];updateItemValue('price','0');assert.equal(items[0].reason,'explicit zero reason');
+"""
+        result=subprocess.run(["node","-e",program],cwd=SRC.parent,text=True,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
 
 
 if __name__ == "__main__":

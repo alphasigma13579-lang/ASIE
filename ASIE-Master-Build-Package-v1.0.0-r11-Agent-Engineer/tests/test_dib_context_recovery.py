@@ -30,6 +30,59 @@ class DIBRecoveryPersistenceTests(unittest.TestCase):
             return {table: [tuple(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY rowid")]
                     for table in ("dib_sessions", "dib_blueprints", "dib_approved_manifests", "dib_validation_gates", "dib_events")}
 
+    def test_verified_legacy_omissions_are_read_only_and_never_backfilled(self):
+        from backend.dib_persistence import _json_dump, _payload_hash
+        from backend.dib_api import dib_customer_recovery
+        first = self.create()
+        for omitted in (("project_id",), ("revision",), ("project_id", "revision")):
+            payload = copy.deepcopy(first["payload"])
+            for key in omitted: payload.pop(key)
+            with self.store._write_transaction() as connection:
+                connection.execute("UPDATE dib_blueprints SET payload_json=?, payload_hash=? WHERE blueprint_id=?",
+                    (_json_dump(payload), _payload_hash(payload), first["blueprint_id"]))
+            before = self.snapshot()
+            loaded = self.store.load_session(self.sid, allow_legacy_read=True)
+            self.assertEqual(loaded["current_blueprint"], payload)
+            self.assertIsNone(loaded["origin_reference"])
+            self.assertEqual(dib_customer_recovery(loaded, "synthetic-org")[0]["target"], {"kind": "owner_review"})
+            with self.assertRaises(DIBPersistenceError): self.store.load_session(self.sid)
+            with self.assertRaises(DIBPersistenceError): self.update(first["origin_reference"])
+            with self.assertRaises(DIBPersistenceError): self.store.close_session(self.sid)
+            with self.assertRaises(DIBApiError):
+                DIBApiController(self.store).dispatch("POST", f"/api/dib/sessions/{self.sid}/approved-manifests", {})
+            self.assertEqual(before, self.snapshot())
+            with self.store._write_transaction() as connection:
+                connection.execute("UPDATE dib_blueprints SET payload_hash='corrupt' WHERE blueprint_id=?", (first["blueprint_id"],))
+            with self.assertRaises(DIBPersistenceError): self.store.load_session(self.sid, allow_legacy_read=True)
+
+    def test_legacy_read_opt_in_rejects_contradictory_identity_types_and_hash(self):
+        from backend.dib_persistence import _payload_hash
+        first = self.create()
+        for change in ({"project_id": None}, {"project_id": "other"}, {"revision": True}, {"revision": "1"}, {"revision": 2}, {"blueprint_id": "other"}):
+            record = copy.deepcopy(first)
+            record["payload"].pop("revision" if "project_id" in change else "project_id")
+            record["payload"].update(change)
+            record["payload_hash"] = _payload_hash(record["payload"])
+            with self.subTest(change=change), self.assertRaises(DIBPersistenceError):
+                self.store._blueprint_reference(record, self.sid, "synthetic-project", allow_legacy_read=True)
+        record = copy.deepcopy(first); record["payload"].pop("revision")
+        record["payload_hash"] = _payload_hash(record["payload"]); record["revision"] = 2
+        with self.assertRaises(DIBPersistenceError):
+            self.store._blueprint_reference(record, self.sid, "synthetic-project", allow_legacy_read=True)
+
+    def test_new_exemption_state_requires_supplied_reason_not_inherited_reason(self):
+        prior = {"item_id": "item", "input_key": "unit_price", "required": True, "value": 12,
+            "value_state": "USER_PROVIDED", "reason": "Earlier unrelated explanation", "evidence_refs": []}
+        for state in ("INTENTIONAL_ZERO", "NOT_APPLICABLE"):
+            supplied = {"item_id": "item", "input_key": "unit_price", "value": 0, "value_state": state}
+            with self.subTest(state=state), self.assertRaisesRegex(DIBPersistenceError, "reason_required"):
+                self.store._revision_items({"items": [prior]}, [supplied], None)
+            supplied["reason"] = "Explicit current reason"
+            result = self.store._revision_items({"items": [prior]}, [supplied], None)[0]
+            self.assertEqual(result["reason"], "Explicit current reason")
+            repeated = dict(supplied); repeated.pop("reason")
+            self.assertEqual(self.store._revision_items({"items": [result]}, [repeated], None)[0]["reason"], "Explicit current reason")
+
     def test_legacy_create_preserved_and_unprotected_update_denied(self):
         first = self.create()
         self.assertEqual(first["blueprint_id"], self.blueprint["blueprint_id"])
@@ -144,8 +197,6 @@ class DIBRecoveryPersistenceTests(unittest.TestCase):
             self.store.load_session = original
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 class DIBRecoveryCommandBoundaryTests(DIBRecoveryPersistenceTests):
     def test_workspace_initial_intake_then_versioned_second_save(self):
@@ -303,6 +354,39 @@ class DIBRecoveryHttpSafetyTests(unittest.TestCase):
     def call(self, method, path, payload=None):
         return self.request(method, path, token=self.token_a, organization_id=self.org_a['organization_id'], payload=payload)
 
+    def test_tenant_legacy_read_and_list_keep_ownership_and_do_not_enable_writes(self):
+        from backend.dib_persistence import _json_dump, _payload_hash
+        status, body = self.call('POST', '/api/dib/sessions', {'project_profile': {'project_id': self.project_a.project_id}})
+        self.assertEqual(status, 201)
+        sid = body['session']['session_id']
+        status, body = self.call('POST', f'/api/dib/sessions/{sid}/blueprints', {'items': []})
+        self.assertEqual(status, 201)
+        store = self.mount.controller.store
+        saved = store.load_session(sid)['current_blueprint']
+        for omitted in (("project_id",), ("revision",), ("project_id", "revision")):
+            payload = copy.deepcopy(saved)
+            for key in omitted: payload.pop(key)
+            with store._write_transaction() as conn:
+                conn.execute('UPDATE dib_blueprints SET payload_json=?,payload_hash=? WHERE blueprint_id=?', (_json_dump(payload), _payload_hash(payload), saved['blueprint_id']))
+            with store._read_connection() as conn:
+                before = {table:[tuple(row) for row in conn.execute(f'SELECT * FROM {table}')] for table in ('dib_sessions','dib_blueprints','dib_approved_manifests','dib_validation_gates')}
+            status, body = self.call('GET', f'/api/dib/sessions/{sid}')
+            self.assertEqual(status, 200)
+            self.assertIsNone(body['session']['origin_reference'])
+            self.assertEqual(body['session']['current_blueprint'], payload)
+            self.assertEqual(body['session']['recovery_items'][0]['target'], {'kind':'owner_review'})
+            status, body = self.call('GET', '/api/dib/sessions?project_id=' + self.project_a.project_id)
+            self.assertEqual(status, 200)
+            self.assertIsNone(body['sessions'][0]['origin_reference'])
+            status, _ = self.request('GET', f'/api/dib/sessions/{sid}', token=self.token_b, organization_id=self.org_b['organization_id'])
+            self.assertEqual(status, 404)
+            for tail in ('approved-manifests','validation-gates','project-run-readiness','close'):
+                status, body = self.call('POST', f'/api/dib/sessions/{sid}/{tail}', {})
+                self.assertGreaterEqual(status, 400, (tail,body))
+            with store._read_connection() as conn:
+                after = {table:[tuple(row) for row in conn.execute(f'SELECT * FROM {table}')] for table in before}
+            self.assertEqual(before,after)
+
     def test_auth_store_failure_returns_safe_500(self):
         from unittest.mock import patch
         with patch.object(self.mount.auth_repo, 'principal_for_token', side_effect=RuntimeError('PRIVATE_MARKER')):
@@ -361,6 +445,18 @@ class DIBRecoveryHttpSafetyTests(unittest.TestCase):
         self.assertEqual(status, 403)
 
 class DIBSafeCanonicalErrorTests(unittest.TestCase):
+    def test_all_fixed_finance_admission_codes_preserve_domain_status(self):
+        codes = ["canonical_admission_invalid_" + key for key in ("operation_id", "idempotency_key", "expected_manifest_id", "expected_manifest_payload_hash", "expected_gate_id", "expected_gate_payload_hash")]
+        codes += ["canonical_admission_" + key + "_session_mismatch" for key in ("blueprint", "manifest", "gate")]
+        codes += ["stale_gate_lineage"]
+        for code in codes:
+            for status in (400, 409):
+                with self.subTest(code=code, status=status):
+                    error = DIBApiError(code, status)
+                    self.assertEqual((error.code, error.status), (code, status))
+                    private = DIBApiError(code + ":PRIVATE_MARKER", status)
+                    self.assertEqual((private.code, private.status), ("dib_operation_failed", 500))
+
     def test_dynamic_client_field_details_are_removed_without_changing_rejection_status(self):
         for category in ("canonical_admission_forbidden_fields", "canonical_admission_unknown_fields"):
             for suffix in ("finance_inputs", "PRIVATE_MARKER_secret_nested_key"):
@@ -372,3 +468,7 @@ class DIBSafeCanonicalErrorTests(unittest.TestCase):
                     self.assertEqual(DIBApiError(error.code, 422).code, category)
         unknown = DIBApiError("PRIVATE_MARKER_unknown", 422)
         self.assertEqual((unknown.code, unknown.status), ("dib_operation_failed", 500))
+
+
+if __name__ == "__main__":
+    unittest.main()

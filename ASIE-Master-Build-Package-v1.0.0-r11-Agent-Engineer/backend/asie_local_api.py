@@ -1004,6 +1004,9 @@ def build_evidence_register(
     *,
     organization_id: Any = _UNSCOPED_EVIDENCE,
 ) -> dict[str, Any]:
+    """Build from one owner snapshot; sources is retained only for legacy call compatibility."""
+    # The legacy positional argument never overrides coherent repository-owned sources.
+    del sources
     scoped = organization_id is not _UNSCOPED_EVIDENCE
     if scoped and (type(organization_id) is not str or not organization_id.strip()):
         raise ValueError("organization_scope_required")

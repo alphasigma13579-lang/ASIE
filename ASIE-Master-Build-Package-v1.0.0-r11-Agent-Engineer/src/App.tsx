@@ -798,11 +798,11 @@ function SessionWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProjectState] = useState<Project | null>(null);
   const projectScope = useRef({ id: "", generation: 0, load: 0 });
-  function setProject(next: Project | null) {
+  function setProject(next: Project | null, newlyCreatedCsv = "") {
     if (projectScope.current.id !== (next?.project_id ?? "")) {
       projectScope.current = { id: next?.project_id ?? "", generation: projectScope.current.generation + 1, load: 0 };
       recoveryOperation.current += 1; setIsBusy(false);
-      setCsvText(next ? readRecoveryStorage(`${recoveryStorageKey(next.project_id)}:customer-csv`) ?? "" : "");
+      setCsvText(next ? readRecoveryStorage(`${recoveryStorageKey(next.project_id)}:customer-csv`) ?? newlyCreatedCsv : "");
       setFileImportStatus("");
       setActiveRecovery(null); setOrphanedRecovery(null); setReviewedRecovery(null); setRecoveryValues({}); setRecoveryStatus(""); setEvidenceRecovery([]);
       setWorkspace(null); setReadiness(null); setAssumptions([]); setDraftEvidenceRegister(null);
@@ -1327,7 +1327,7 @@ function SessionWorkspace() {
       const nextProject = project ? await updateProject(project.project_id, form) : await createProject(form);
       if (generation !== projectScope.current.generation) return false;
       formOrigin.current = nextProject.updated_at;
-      setProject(nextProject);
+      setProject(nextProject, project ? "" : csvText);
       generation = projectScope.current.generation;
       const refreshed = await loadProjectWorkspace(nextProject.project_id);
       return Boolean(refreshed);
@@ -1763,14 +1763,14 @@ function SessionWorkspace() {
       return text("اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر.", "Select the available capital or enter an amount greater than zero.");
     }
     if (step === 7 && !form.inputs.intake_mode?.trim()) return text("اختر طريقة تعبئة تفاصيل المشروع.", "Select how you want to provide project details.");
-    if (step === 7 && form.inputs.intake_mode === "file" && !fileImportStatus && datasets.length === 0) {
+    if (step === 7 && form.inputs.intake_mode === "file" && project && !fileImportStatus && datasets.length === 0) {
       return text("ارفع ملف بيانات قبل فحص النواقص.", "Upload a data file before checking gaps.");
     }
     if (step === 7 && form.inputs.intake_mode === "manual") {
       if (form.inputs.startup_cost <= 0) return text("اكتب تكلفة التأسيس التقريبية.", "Enter the estimated setup cost.");
       if (form.inputs.unit_price <= 0) return text("اكتب سعر البيع أو الخدمة.", "Enter the product or service price.");
       if (form.inputs.monthly_units <= 0) return text("اكتب عدد العملاء أو الطلبات شهريًا.", "Enter the monthly number of customers or orders.");
-      if (form.inputs.variable_cost >= form.inputs.unit_price) return text("تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.", "The delivery cost should not exceed the selling price without an explanation.");
+      if (form.inputs.variable_cost >= form.inputs.unit_price) return text("يجب أن يكون سعر البيع أعلى من تكلفة تقديم الخدمة.", "The selling price must be higher than the delivery cost.");
       if (form.inputs.annual_discount_rate <= 0) return text("اكتب معدل الخصم السنوي المستخدم في التقييم.", "Enter the annual discount rate used in the assessment.");
       if (form.inputs.working_capital_months < 0) return text("أشهر رأس المال العامل لا يمكن أن تكون سالبة.", "Working-capital months cannot be negative.");
       if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return text("اكتب معدل تكلفة التمويل للقرض.", "Enter the annual financing cost for the loan.");
@@ -3056,6 +3056,7 @@ function SessionWorkspace() {
               <label className="field">
                 <span>{text("مجموعة البيانات المراد معالجتها", "Dataset to transform")}</span>
                 <select value={selectedDataset?.dataset_id ?? ""} onChange={(event) => setSelectedDatasetId(event.target.value)}>
+                  <option value="">{text("اختر مجموعة بيانات", "Choose a dataset")}</option>
                   {datasets.map((dataset) => (
                     <option value={dataset.dataset_id} key={dataset.dataset_id}>
                       {dataset.title}

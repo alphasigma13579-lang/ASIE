@@ -97,6 +97,8 @@ def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] 
     if review_status not in DATASET_STATES:
         raise ValueError("review_status must be draft, review_required, approved_for_use, rejected, or archived")
 
+    if existing is not None and "csv_text" in payload and import_method != "manual_csv":
+        raise ValueError("dataset_content_shape_invalid")
     rows = _extract_rows(payload, import_method)
     if not (CONTENT_INPUT_KEYS & payload.keys()) and existing:
         columns = list(existing.get("columns", []))

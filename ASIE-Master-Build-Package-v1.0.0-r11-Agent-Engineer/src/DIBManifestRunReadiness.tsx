@@ -92,9 +92,10 @@ export function DIBManifestRunReadiness() {
   const canStart = Boolean(selectedProject && !session && !operationBusy);
   const canResume = Boolean(latestSession && !session && !operationBusy);
   const canPrepare = Boolean(session && !session.current_blueprint && !operationBusy);
-  const canApproveManifest = Boolean(session?.current_blueprint && !session.approved_manifest && !operationBusy);
-  const canRunGate = Boolean(session?.approved_manifest && !session.validation_gate && !operationBusy);
-  const canCheckReadiness = Boolean(session && !operationBusy);
+  const legacyReadOnly = Boolean(session?.current_blueprint && !session.origin_reference);
+  const canApproveManifest = Boolean(session?.current_blueprint && !session.approved_manifest && !operationBusy && !legacyReadOnly);
+  const canRunGate = Boolean(session?.approved_manifest && !session.validation_gate && !operationBusy && !legacyReadOnly);
+  const canCheckReadiness = Boolean(session && !operationBusy && !legacyReadOnly);
 
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setOperationBusy(label);
@@ -179,25 +180,26 @@ export function DIBManifestRunReadiness() {
   }
 
   async function approveManifest() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const saved = await withOperation("approve-manifest", () => saveDIBApprovedManifest(session.session_id));
     if (saved) await refreshSession();
   }
 
   async function runValidationGate() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const saved = await withOperation("validation-gate", () => saveDIBValidationGate(session.session_id));
     if (saved) await refreshSession();
   }
 
   async function checkReadiness() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const result = await withOperation("project-run-readiness", () => buildDIBProjectRunReadiness(session.session_id));
     if (result) setReadiness(result.project_run_readiness);
   }
 
   return (
     <main className="app-shell dib-workspace" dir="rtl" data-ui-id={DIB_MANIFEST_RUN_READINESS_UI_ID}>
+      {legacyReadOnly ? <p role="status">هذه نسخة سابقة تحتاج مراجعة المسؤول قبل اعتمادها؛ بقيت بياناتها الأصلية محفوظة.</p> : null}
       <section className="page-intro">
         <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB Completion Package C · Manifest-to-Run Readiness</p>
         <h1>جاهزية Manifest للتسليم إلى Project Run</h1>
@@ -233,7 +235,7 @@ export function DIBManifestRunReadiness() {
       </section>
 
       <section className="dashboard-grid" aria-label="Package C metrics">
-        <article className="metric-card"><span>Blueprint</span><strong>{session?.current_blueprint ? "جاهز" : "ناقص"}</strong><small>{session?.current_blueprint_id ?? "لا يوجد"}</small></article>
+        <article className="metric-card"><span>Blueprint</span><strong>{legacyReadOnly ? "تحتاج مراجعة المسؤول" : session?.current_blueprint ? "جاهز" : "ناقص"}</strong><small>{session?.current_blueprint_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Manifest</span><strong>{manifestStatus}</strong><small>{session?.approved_manifest_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Validation Gate</span><strong>{gateStatus}</strong><small>{session?.validation_gate_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Run Readiness</span><strong>{readiness?.status ?? "لم يفحص"}</strong><small>Finance execution = not_executed</small></article>

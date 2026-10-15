@@ -27,9 +27,12 @@ async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const response = await fetch(path, { ...init, headers });
     assertSessionRevision(revision);
-    const payload = (await response.json()) as T & { error?: string };
+    if (response.status === 401 && token) {
+      handleUnauthorized();
+      throw new DIBRequestError("authentication_required", 401);
+    }
+    const payload = (await response.json().catch(() => { if (response.ok) throw new DIBRequestError("dib_operation_failed", 500); return {}; })) as T & { error?: string };
     assertSessionRevision(revision);
-    if (response.status === 401 && token) handleUnauthorized();
     if (!response.ok) throw new DIBRequestError(typeof payload.error === "string" ? payload.error : "dib_operation_failed", response.status);
     return payload;
   } catch (error) {

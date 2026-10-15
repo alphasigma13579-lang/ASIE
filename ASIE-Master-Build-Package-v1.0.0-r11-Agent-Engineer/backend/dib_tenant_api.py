@@ -139,7 +139,7 @@ class TenantScopedDIBApiController(DIBApiController):
                 binding = self.tenant_boundary.require_session_access(request_context, session_id)
                 self.tenant_boundary.require_project_access(request_context, binding["project_id"])
                 if method == "GET" and not tail:
-                    loaded = self.tenant_boundary.load_session(request_context, session_id)
+                    loaded = self._read_tenant_session(request_context, session_id)
                     loaded["recovery_items"] = dib_customer_recovery(loaded, request_context.organization_id)
                     return DIBApiResponse(200, {"session": loaded})
                 if method == "GET" and tail == ["events"]:
@@ -210,6 +210,12 @@ class TenantScopedDIBApiController(DIBApiController):
         session = self.tenant_boundary.start_session(context, dict(project_profile))
         return DIBApiResponse(201, {"session": session, "snapshot_mutation": False})
 
+    def _read_tenant_session(self, context: DIBTenantContext, session_id: str) -> dict[str, Any]:
+        binding = self.tenant_boundary.require_session_access(context, session_id)
+        self.tenant_boundary.require_project_access(context, binding["project_id"])
+        session = self.store.load_session(session_id, allow_legacy_read=True)
+        return {**session, "organization_id": binding["organization_id"], "created_by_user_id": binding["created_by_user_id"]}
+
     def _list_tenant_sessions(self, context: DIBTenantContext, path: str) -> DIBApiResponse:
         project_id = _query_value(path, "project_id")
         if not project_id:
@@ -224,7 +230,7 @@ class TenantScopedDIBApiController(DIBApiController):
             include_closed=_query_bool(path, "include_closed", default=False),
             limit=limit,
         )
-        sessions = [self.tenant_boundary.load_session(context, session_id) for session_id in session_ids]
+        sessions = [self._read_tenant_session(context, session_id) for session_id in session_ids]
         return DIBApiResponse(
             200,
             {

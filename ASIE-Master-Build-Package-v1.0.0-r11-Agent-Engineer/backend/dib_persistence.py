@@ -481,6 +481,9 @@ class DIBPersistenceStore:
                 state = merged.get("value_state")
                 if type(state) is not str:
                     raise DIBPersistenceError("dib_item_decision_invalid")
+                if state in {"INTENTIONAL_ZERO", "NOT_APPLICABLE"} and state != prior.get("value_state"):
+                    if type(item.get("reason")) is not str or not item["reason"].strip():
+                        raise DIBPersistenceError("dib_item_reason_required")
                 content_changed = any(_json_dump(merged.get(field)) != _json_dump(prior.get(field)) for field in editable)
                 if content_changed:
                     if state in {"USER_PROVIDED", "UNKNOWN", "REJECTED", "NOT_APPLICABLE"}:
@@ -530,9 +533,20 @@ class DIBPersistenceStore:
         return changed
 
     @staticmethod
-    def _blueprint_reference(record: dict[str, Any], session_id: str, project_id: str) -> dict[str, Any]:
+    def _blueprint_reference(record: dict[str, Any], session_id: str, project_id: str, *, allow_legacy_read: bool = False) -> dict[str, Any] | None:
         """Expose a stored, integrity-checked origin without accepting a browser-computed hash."""
         payload = record.get("payload")
+        missing = isinstance(payload, dict) and ("project_id" not in payload or "revision" not in payload)
+        if allow_legacy_read and missing:
+            if (record.get("session_id") != session_id or record.get("project_id") != project_id
+                    or payload.get("blueprint_id") != record.get("blueprint_id")
+                    or ("project_id" in payload and payload["project_id"] != project_id)
+                    or type(record.get("revision")) is not int or record["revision"] < 1
+                    or ("revision" not in payload and record["revision"] != 1)
+                    or ("revision" in payload and (type(payload["revision"]) is not int or payload["revision"] != record["revision"]))
+                    or _payload_hash(payload) != record.get("payload_hash")):
+                raise DIBPersistenceError("dib_blueprint_integrity_invalid")
+            return None
         if (not isinstance(payload, dict) or record.get("session_id") != session_id
                 or record.get("project_id") != project_id or payload.get("project_id") != project_id
                 or payload.get("blueprint_id") != record.get("blueprint_id")
@@ -644,7 +658,7 @@ class DIBPersistenceStore:
             )
         return self.load_validation_gate(gate_id)
 
-    def load_session(self, session_id: str) -> dict[str, Any]:
+    def load_session(self, session_id: str, *, allow_legacy_read: bool = False) -> dict[str, Any]:
         with self._read_connection() as connection:
             connection.execute("BEGIN")
             row = self._require_session_row(connection, session_id)
@@ -658,7 +672,7 @@ class DIBPersistenceStore:
                     "unknown DIB blueprint",
                 )
                 result["current_blueprint"] = blueprint_record["payload"]
-                result["origin_reference"] = self._blueprint_reference(blueprint_record, session_id, row["project_id"])
+                result["origin_reference"] = self._blueprint_reference(blueprint_record, session_id, row["project_id"], allow_legacy_read=allow_legacy_read)
             else:
                 result["origin_reference"] = None
             if row["approved_manifest_id"]:
@@ -754,7 +768,10 @@ class DIBPersistenceStore:
 
     def close_session(self, session_id: str) -> dict[str, Any]:
         with self._write_transaction() as connection:
-            self._require_session_row(connection, session_id)
+            session = self._require_session_row(connection, session_id)
+            if session["current_blueprint_id"]:
+                record = self._load_entity_row(connection, "dib_blueprints", "blueprint_id", session["current_blueprint_id"], "unknown DIB blueprint")
+                self._blueprint_reference(record, session_id, session["project_id"])
             self._update_session_row(connection, session_id, status="closed")
             self._append_event_row(
                 connection,
