@@ -194,8 +194,12 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             context.close()
 
     def navigate(self, page, locale):
+        expect(page.locator(".workspace")).to_be_visible()
         nav = page.locator("#workspace-navigation")
-        if not nav.is_visible(): page.get_by_role("button", name="فتح قائمة التنقل" if locale == "ar" else "Open navigation menu", exact=True).click()
+        toggle = page.get_by_role("button", name="فتح قائمة التنقل" if locale == "ar" else "Open navigation menu", exact=True)
+        expect(nav.and_(page.locator(":visible")).or_(toggle.and_(page.locator(":visible"))).first).to_be_visible()
+        if not nav.is_visible(): toggle.click()
+        expect(nav).to_be_visible()
         page.locator("#workspace-navigation .nav-item").filter(has_text="افحص النواقص" if locale == "ar" else "Check missing inputs").click()
         expect(page.get_by_role("heading", name="نواقص المسودة الحالية" if locale == "ar" else "Current draft requirements", exact=True)).to_be_visible()
 
