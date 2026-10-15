@@ -762,7 +762,7 @@
           "id": "f01a_defensive_ingress",
           "state": "IN_PROGRESS",
           "registry_effect": "BOUNDED_DEFENSIVE_ENABLING_ONLY",
-          "execution_authorized": true,
+          "execution_authorized": false,
           "prerequisite_for": {
             "package_id": "FC20-12",
             "slice_id": "routing_repair"
@@ -831,7 +831,10 @@
             "tests/test_context_recovery_api.py",
             "tests/test_dib_context_recovery.py",
             "tests/test_customer_capability_projection.py",
-            "tools/check_context_recovery_browser.py"
+            "tools/check_context_recovery_browser.py",
+            "backend/datasets.py",
+            "backend/evidence_ledger.py",
+            "src/api.ts"
           ],
           "environment": "DARK_OFFLINE",
           "entry_requirements": [
@@ -120798,6 +120801,117 @@
                 "proposal_commit_sha": "d2e9399a61b4a939fa174a8c9bada7bd699c2990",
                 "proposal_blob_sha": "51cc1b68aee8f88db1b7e1569c6f1f9f74206e1b"
               }
+            },
+            {
+              "type": "STOP_CHECKPOINT",
+              "recorded_at": "2026-10-14T19:15:53Z",
+              "baseline_commit_sha": "3ae62b855138d6d5c6ef36252e5a1b08a0bf800f",
+              "baseline_manifest_blob_sha": "20ef5f2af65cc5f2a1f1c06dbf0c008b039525fa",
+              "application_head_sha": "b011a6b3773f4c5e0a905161b5504fff339496f6",
+              "reason": "DATASET_PROVENANCE_ADMISSION_AND_PATH_EXTENSION_OUTSIDE_RECOVERY_RESUME",
+              "evidence": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/383e49df5ede8386a4715f451da4fa640acc19cc/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-CUSTOMER-DATASET-PROVENANCE-AMENDMENT-2026-10-14.md",
+                "commit_sha": "383e49df5ede8386a4715f451da4fa640acc19cc",
+                "blob_sha": "297e10abd1fb92d6e9bf812e3073f0374185b860"
+              },
+              "resume_requirement": "NEW_OWNER_EXECUTION_DECISION_AND_REVIEWED_SCOPE_BOUND_RESUME_MERGED_AFTER_SEPARATE_APPROVAL"
+            },
+            {
+              "type": "SCOPE_EXTENSION",
+              "recorded_at": "2026-10-14T19:15:53Z",
+              "baseline_commit_sha": "3ae62b855138d6d5c6ef36252e5a1b08a0bf800f",
+              "baseline_manifest_blob_sha": "20ef5f2af65cc5f2a1f1c06dbf0c008b039525fa",
+              "application_head_sha": "b011a6b3773f4c5e0a905161b5504fff339496f6",
+              "added_paths": [
+                "backend/datasets.py",
+                "backend/evidence_ledger.py",
+                "src/api.ts"
+              ],
+              "scope_addendum": {
+                "url": "https://github.com/alphasigma13579-lang/ASIE/blob/383e49df5ede8386a4715f451da4fa640acc19cc/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/FC20-12-F01A-CUSTOMER-DATASET-PROVENANCE-AMENDMENT-2026-10-14.md",
+                "commit_sha": "383e49df5ede8386a4715f451da4fa640acc19cc",
+                "blob_sha": "297e10abd1fb92d6e9bf812e3073f0374185b860"
+              },
+              "owner_scope_decision": {
+                "id": "DECISION-FC20-12-F01A-DATASET-PROVENANCE-REGISTRATION-2026-10-14",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/210#issuecomment-6176332891",
+                "recorded_at": "2026-10-14T19:14:26.505452+00:00",
+                "effect": "PREPARE_AND_PUBLISH_GOVERNANCE_DRAFT_ONLY_NO_MERGE_NO_RESUME",
+                "subject": {
+                  "baseline_commit_sha": "3ae62b855138d6d5c6ef36252e5a1b08a0bf800f",
+                  "baseline_manifest_blob_sha": "20ef5f2af65cc5f2a1f1c06dbf0c008b039525fa",
+                  "application_head_sha": "b011a6b3773f4c5e0a905161b5504fff339496f6",
+                  "previous_resume_event_index": 18,
+                  "previous_resume_sha256": "331b3183dc392ae39b86fa256ea2ba863fe48db977e4be9e190613ab530e0cff",
+                  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                  "repair_scope": {
+                    "kind": "CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+                    "implementation_paths": [
+                      "backend/asie_local_api.py",
+                      "backend/workspace.py",
+                      "backend/workflow.py",
+                      "backend/dib_api.py",
+                      "backend/dib_persistence.py",
+                      "backend/dib_tenant_api.py",
+                      "backend/dib_http_mounting.py",
+                      "backend/release_info.py",
+                      "src/contracts.ts",
+                      "src/dibApi.ts",
+                      "src/App.tsx",
+                      "src/customerLanguage.tsx",
+                      "src/ASIECompleteSurfaceMount.tsx",
+                      "src/DIBWorkspace.tsx",
+                      "src/DIBIntakeItemGovernance.tsx",
+                      "src/DIBManifestRunReadiness.tsx",
+                      "registry/asie-canonical-api-output.v1.json",
+                      "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+                      "tests/test_customer_language_foundation.py",
+                      "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+                      "tests/test_context_recovery_api.py",
+                      "tests/test_dib_context_recovery.py",
+                      "tests/test_customer_capability_projection.py",
+                      "tools/check_context_recovery_browser.py",
+                      "backend/datasets.py",
+                      "backend/repository.py",
+                      "backend/evidence_ledger.py",
+                      "src/api.ts"
+                    ],
+                    "preserved_recovery_scope_sha256": "0d527be319b1aa0654148b0623242533529f4794f4e92824326a97f05d16b51c",
+                    "preserved_recovery_contract": "FULL_REGISTERED_24_FILE_RECOVERY_CONTRACT_UNCHANGED",
+                    "origin_policy": "CUSTOMER_OWN_STUDY_NO_LICENSE_TERMS_PROOF_PLATFORM_SOURCE_PERMISSION_REMAINS_PLATFORM_OWNED",
+                    "provenance": "IMMUTABLE_AUTHENTICATED_SERVER_OWNED_SUBMISSION_CONTEXT_NOT_OWNERSHIP_OR_ACCURACY_PROOF",
+                    "customer_source_id": "",
+                    "nonempty_customer_source_association": "REJECT",
+                    "organization_policy": "IMMUTABLE_OWNER_ORGANIZATION_AUTHORIZED_SAME_ORGANIZATION_PROJECT_REUSE",
+                    "creation_project_id": "AUDIT_CONTEXT_NOT_EXCLUSIVE_REUSE_BOUNDARY",
+                    "collection_create": "CREATE_ONLY_REJECT_EXISTING_ID",
+                    "review_updates": "NO_ORGANIZATION_OR_PROVENANCE_REASSIGNMENT",
+                    "reserved_fields": "STRICT_TYPED_VERSIONED_SERVER_FIELDS_REJECT_NESTED_INJECTION",
+                    "transformation": "IMMUTABLE_PARENT_AND_OWNER_BINDING",
+                    "material_content_change": "INVALIDATE_AFFECTED_CURRENT_APPROVAL_TRANSFORMATION_LINK_REVIEWS",
+                    "legacy": "NO_EXEMPTION_WITHOUT_VALID_PROVENANCE_NO_AUTOMATIC_BACKFILL",
+                    "quality_privacy_classification_review": "PRESERVED_APPLICABLE_CHECKS_SEPARATE_FROM_LICENSE_POLICY",
+                    "evidence_admission": "EXISTING_REGISTER_AND_LEDGER_FALLBACK_SHARE_TRUSTED_PROJECT_ORGANIZATION_GATE",
+                    "evidence_targets": [
+                      "assumption",
+                      "sector_criterion"
+                    ],
+                    "sector_source_predicate": "UNCHANGED",
+                    "confidence_weights": "UNCHANGED_NO_OFFICIAL_SOURCE_CREDIT_FROM_CUSTOMER_EXEMPTION",
+                    "historical_snapshots": "IMMUTABLE",
+                    "storage": "EXISTING_DATASET_NOTES_JSON_NO_NEW_STORE",
+                    "routes": "EXISTING_DATASET_IMPORT_CREATE_REVIEW_EVIDENCE_ROUTES",
+                    "additional_schema_operations": [],
+                    "environment": "TEMPORARY_DATABASE_SYNTHETIC_DATA_ONLY_AFTER_REVIEWED_RESUME",
+                    "live_database_authorized": false,
+                    "provider_network_deployment_authorized": false,
+                    "application_pr_merge_authorized": false,
+                    "t08": "OPEN",
+                    "startup_acceptance": "UNKNOWN_NOT_APPROVED"
+                  }
+                }
+              },
+              "effect": "REGISTER_BOUNDED_DATASET_PROVENANCE_SCOPE_ONLY_EXECUTION_STOPPED"
             }
           ],
           "closure_effect": "NONE",
