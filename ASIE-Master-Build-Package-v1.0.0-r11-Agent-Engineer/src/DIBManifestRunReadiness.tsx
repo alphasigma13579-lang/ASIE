@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowLeft, BadgeCheck, Database, RefreshCcw, Send, Sparkles, Target } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project } from "./contracts";
 import {
@@ -55,9 +55,25 @@ function shortValue(value: unknown): string {
 
 export function DIBManifestRunReadiness() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectId, setProjectState] = useState("");
   const [sessions, setSessions] = useState<DIBSessionRecord[]>([]);
-  const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [session, setSessionState] = useState<DIBSessionRecord | null>(null);
+  const requestScope = useRef({ project: selectedProjectId, session: session?.session_id, origin: session?.origin_reference?.payload_hash, epoch: 0 });
+  const operationSequence = useRef(0);
+  function setSelectedProjectId(project: string) {
+    if (requestScope.current.project !== project) {
+      requestScope.current = { ...requestScope.current, project, epoch: requestScope.current.epoch + 1 };
+    }
+    setProjectState(project);
+  }
+  function setSession(next: DIBSessionRecord | null) {
+    if (requestScope.current.session !== next?.session_id || requestScope.current.origin !== next?.origin_reference?.payload_hash) {
+      requestScope.current = { ...requestScope.current, session: next?.session_id, origin: next?.origin_reference?.payload_hash, epoch: requestScope.current.epoch + 1 };
+    }
+    setSessionState(next);
+  }
+  useEffect(() => () => { requestScope.current.epoch += 1; }, []);
+
   const [readiness, setReadiness] = useState<DIBManifestRunReadinessPayload | null>(null);
   const [operationBusy, setOperationBusy] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -83,13 +99,17 @@ export function DIBManifestRunReadiness() {
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setOperationBusy(label);
     setErrorMessage(null);
+    const epoch = requestScope.current.epoch;
+    const operation = ++operationSequence.current;
     try {
-      return await action();
+      const result = await action();
+      return requestScope.current.epoch === epoch ? result : null;
     } catch (error) {
+      if (requestScope.current.epoch !== epoch) return null;
       setErrorMessage(error instanceof Error ? error.message : "تعذر تنفيذ Package C");
       return null;
     } finally {
-      setOperationBusy(null);
+      if (operationSequence.current === operation) setOperationBusy(null);
     }
   }
 
@@ -136,16 +156,26 @@ export function DIBManifestRunReadiness() {
 
   async function prepareBaselineBlueprint() {
     if (!session) return;
-    const saved = await withOperation("baseline-blueprint", () =>
-      saveDIBBlueprint(session.session_id, {
+    const result = await withOperation("baseline-blueprint", async () => {
+      const saved = await saveDIBBlueprint(session.session_id, {
         source: "dib_completion_package_c_manifest_run_readiness",
+        expected_original: null,
         intake_payload: {
           file_name: `package-c-baseline-${session.project_id}`,
           rows: requiredRows.map((row) => ({ ...row })),
         },
-      })
-    );
-    if (saved) await refreshSession();
+      });
+      const loaded = await fetchDIBSession(session.session_id);
+      if (!saved.origin_reference || !loaded.origin_reference ||
+          saved.origin_reference.payload_hash !== loaded.origin_reference.payload_hash ||
+          saved.origin_reference.blueprint_id !== loaded.origin_reference.blueprint_id ||
+          saved.origin_reference.revision !== loaded.origin_reference.revision) {
+        throw new Error("تغيرت البيانات بعد الحفظ. احتُفظ بالتعديلات الحالية؛ أعد تحميل النسخة قبل المتابعة.");
+      }
+      return { saved, loaded };
+    });
+    if (!result) return;
+    setSession(result.loaded);
   }
 
   async function approveManifest() {

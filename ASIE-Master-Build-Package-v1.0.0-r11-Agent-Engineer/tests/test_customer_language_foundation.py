@@ -61,7 +61,7 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         language = (SRC / "customerLanguage.tsx").read_text(encoding="utf-8")
         reports = (ROOT / "backend" / "reports.py").read_text(encoding="utf-8")
         self.assertIn("customerMessageText(error, locale)", app)
-        self.assertNotIn("customerErrorText(error, locale)", app)
+        self.assertNotIn("{customerErrorText(error, locale)}", app)  # Render safe validation state without reclassifying it; catch handlers may classify exceptions.
         self.assertIn("forbiddenOperationalDetail", language)
         self.assertIn("customerUnitText(item.unit, locale)", app)
         self.assertIn("unit_text(kpi.get('unit'), locale)", reports)
@@ -143,15 +143,181 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         app = (SRC / "App.tsx").read_text(encoding="utf-8")
         surface = (SRC / "ASIECompleteSurfaceMount.tsx").read_text(encoding="utf-8")
         self.assertIn('window.addEventListener("asie:navigate-missing-input"', app)
-        self.assertIn('data-asie-missing-label={firstMissingInputLabel', app)
+        self.assertIn('data-asie-missing-label={recoveryItems.length ?', app)
         self.assertIn('data-asie-missing-target={firstMissingInputTarget}', app)
         self.assertIn('focusWizardTarget(targetId)', app)
         self.assertIn('id="wizard-project-name"', app)
         self.assertIn('text("العودة إلى موضعك السابق", "Return to your previous place")', app)
-        self.assertIn('window.dispatchEvent(new CustomEvent("asie:navigate-missing-input"))', surface)
-        self.assertIn('sessionStorage.setItem("asie.sanad.return_stage"', surface)
-        self.assertIn('sessionStorage.removeItem("asie.sanad.return_stage")', surface)
+        self.assertIn('window.dispatchEvent(new CustomEvent("asie:navigate-missing-input", { detail:', surface)
+        self.assertIn('detail.generation !== projectScope.current.generation', app)
+        self.assertIn('writeRecoveryStorage("asie.sanad.return_stage"', surface)
+        self.assertIn('removeRecoveryStorage("asie.sanad.return_stage")', surface)
+        self.assertNotIn('window.sessionStorage.', surface)
         self.assertIn('text("أكمل هذا المدخل", "Complete this input")', surface)
+
+    def test_recovery_storage_prefers_latest_memory_and_preserves_discard_on_failure(self):
+        import subprocess
+        source = (SRC / "customerLanguage.tsx").read_text(encoding="utf-8")
+        start = source.index("const volatileRecoveryStorage")
+        functions = source[start:]
+        functions = functions.replace("new Map<string, string | null>()", "new Map()")
+        functions = functions.replace("export function ", "function ")
+        functions = functions.replace("(key: string, value: string): boolean", "(key, value)")
+        functions = functions.replace("(key: string): string | null", "(key)")
+        functions = functions.replace("(key: string): void", "(key)")
+        program = """
+const assert = require('node:assert/strict');
+const disk = new Map([['draft', 'old']]);
+let fail = false;
+global.window = {sessionStorage: {
+ getItem(key) { return disk.get(key) ?? null; },
+ setItem(key, value) { if (fail) throw Error('synthetic'); disk.set(key,value); },
+ removeItem(key) { if (fail) throw Error('synthetic'); disk.delete(key); }
+}};
+""" + functions + """
+assert.equal(readRecoveryStorage('draft'), 'old');
+fail = true;
+assert.equal(writeRecoveryStorage('draft', 'new'), false);
+assert.equal(readRecoveryStorage('draft'), 'new');
+removeRecoveryStorage('draft');
+assert.equal(readRecoveryStorage('draft'), null);
+fail = false;
+assert.equal(writeRecoveryStorage('draft', 'later'), true);
+assert.equal(readRecoveryStorage('draft'), 'later');
+assert.equal(disk.get('draft'), 'later');
+"""
+        completed = subprocess.run(["node", "-e", program], text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_first_project_save_transfers_its_own_generation_and_releases_busy(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        start = source.index("  async function handleSaveDraft()")
+        end = source.index("\n  }", start) + len("\n  }")
+        function = source[start:end]
+        program = """
+const assert = require('node:assert/strict');
+let project = null, busy = false;
+const projectScope = {current:{generation:0}};
+const formOrigin = {current:null};
+const form = {name:'Synthetic project',inputs:{}};
+const locale = 'en';
+const setIsBusy = value => {busy=value};
+const setError = () => {};
+const setOverview = () => {}, setReport = () => {}, setReportView = () => {}, setDecisionPack = () => {}, setActionItems = () => {};
+const setProject = value => { project=value; projectScope.current.generation += 1; };
+const createProject = async () => ({project_id:'synthetic',updated_at:'v1'});
+const updateProject = async () => {throw Error('unexpected update')};
+const fetchProjectWorkspace = async () => {throw Error('unexpected read')};
+const loadProjectWorkspace = async id => ({project_id:id});
+const customerErrorText = () => 'safe';
+""" + function + """
+(async () => {
+ assert.equal(await handleSaveDraft(), true);
+ assert.equal(project.project_id, 'synthetic');
+ assert.equal(formOrigin.current, 'v1');
+ assert.equal(busy, false);
+})().catch(error => {console.error(error);process.exit(1)});
+"""
+        completed = subprocess.run(["node", "-e", program], text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
+    def test_confirmed_owner_save_advances_dirty_baseline_for_revert(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        start = source.index('      const confirmedRecord = target.kind === "source_review"')
+        end_text = '      setRecoveryValues(confirmedValues); setRecoveryOriginalValues(confirmedOriginal);'
+        end = source.index(end_text, start) + len(end_text)
+        block = source[start:end]
+        program = """
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+let current = {publisher:'A', reviewer:'user'}, original = {publisher:'A', reviewer:'user'};
+const target = {kind:'source_review',source_id:'synthetic-source'};
+const workbench = {sources:[{source_id:'synthetic-source',publisher:'B',reviewer:'user'}]};
+const ledger = {evidence_register:{transformations:[]}};
+const freshDatasets = [];
+const recoveryValues = {publisher:'B',reviewer:'user'};
+const recoveryOriginalValues = {publisher:'A',reviewer:'user'};
+const sentRecoveryKeys = new Set(['publisher']);
+const setRecoveryValues = values => {current = values};
+const setRecoveryOriginalValues = values => {original = values};
+""" + "\neval(ts.transpileModule(" + repr(block) + """, {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);
+assert.deepEqual(current, {publisher:'B',reviewer:'user'});
+assert.deepEqual(original, current);
+current = {...current,publisher:'A'};
+const edited = Object.fromEntries(Object.entries(current).filter(([key,value]) => value !== original[key]));
+assert.deepEqual(edited, {publisher:'A'});
+const payload = {...workbench.sources[0],...edited};
+assert.equal(payload.publisher,'A');
+assert.equal(payload.reviewer,'user');
+"""
+        completed = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
+    def test_customer_csv_is_scoped_persisted_and_restored_without_cross_project_import(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        scope = source[source.index("  function setProject(next:"):source.index("  useEffect(() => () =>", source.index("  function setProject(next:"))]
+        persist = source[source.index("  function persistRecoveryDraft()"):source.index("  useEffect(() => { persistRecoveryDraft();")]
+        program = """
+const assert = require('node:assert/strict'), ts = require('typescript');
+const store = new Map();
+const projectScope = {current:{id:'A',generation:0,load:0}}, recoveryOperation = {current:0};
+let project = {project_id:'A'}, csvText = 'private-A,100', fileImportStatus = 'A imported';
+const authUser = {user_id:'user'}, activeOrganizationId = 'org';
+const pendingRecoveryRestore = {current:null}, formOrigin = {current:'v1'}, activeProjectOrigin = {current:'v1'};
+const form = {}, activeRecovery = null, orphanedRecovery = null, recoveryValues = {}, recoveryOriginalValues = {};
+const selectedDatasetId = '', selectedTransformationId = '', wizardStep = 0, stage = 'evidence';
+const recoveryStorageKey = id => `draft:user:org:${id}`;
+const readRecoveryStorage = key => store.get(key) ?? null;
+const writeRecoveryStorage = (key,value) => {store.set(key,value);return true};
+const retainTargetDraft = () => {}, setRecoveryStorageUnavailable = () => {};
+const setCsvText = value => {csvText=value}, setFileImportStatus = value => {fileImportStatus=value};
+const setProjectState = value => {project=value};
+"""
+        setters = set(re.findall(r"\b(set[A-Z]\w*)\(", scope)) - {"setProject", "setCsvText", "setFileImportStatus", "setProjectState"}
+        program += "\n" + "\n".join(f"const {name} = () => {{}};" for name in sorted(setters))
+        program += "\n" + "eval(ts.transpileModule(" + repr(scope + persist) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+persistRecoveryDraft();
+setProject({project_id:'B'});
+assert.equal(csvText,''); assert.equal(fileImportStatus,'');
+assert.equal(store.get('draft:user:org:A:customer-csv'),'private-A,100');
+csvText='private-B,200'; persistRecoveryDraft();
+setProject({project_id:'A'}); assert.equal(csvText,'private-A,100');
+setProject(null); setProject({project_id:'B'}); assert.equal(csvText,'private-B,200');
+assert.equal(project.project_id,'B');
+"""
+        completed = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("form, csvText, activeRecovery", source)
+
+    def test_ordinary_metadata_save_preserves_unsent_admin_proof_draft(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        start = source.index('      const confirmedRecord = target.kind === "source_review"')
+        finish = '      setRecoveryValues(confirmedValues); setRecoveryOriginalValues(confirmedOriginal);'
+        block = source[start:source.index(finish, start) + len(finish)]
+        program = """
+const assert = require('node:assert/strict'), ts = require('typescript');
+const target = {kind:'dataset_metadata',dataset_id:'d'};
+const workbench = {sources:[]}, ledger = {evidence_register:{transformations:[]}};
+const freshDatasets = [{dataset_id:'d',title:'New title',terms_hash:'OLD'}];
+const recoveryValues = {title:'New title',terms_hash:'UNSENT'}, recoveryOriginalValues = {title:'Old title',terms_hash:'OLD'};
+const sentRecoveryKeys = new Set(['title']);
+let values, baseline;
+const setRecoveryValues = v => {values=v}, setRecoveryOriginalValues = v => {baseline=v};
+""" + "\neval(ts.transpileModule(" + repr(block) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+assert.deepEqual(values,{title:'New title',terms_hash:'UNSENT'});
+assert.deepEqual(baseline,{title:'New title',terms_hash:'OLD'});
+assert.deepEqual(Object.fromEntries(Object.entries(values).filter(([key,value]) => value !== baseline[key])), {terms_hash:'UNSENT'});
+"""
+        completed = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

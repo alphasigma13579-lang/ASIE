@@ -1,3 +1,4 @@
+import { fetchDIBSessionsForProject, fetchDIBSession, saveDIBBlueprint, type DIBSessionRecord, type DIBOriginReference } from "./dibApi";
 import {
   Activity,
   AlertTriangle,
@@ -58,6 +59,7 @@ import {
   runProject,
   updateProjectActionItem,
   updateProject,
+  updateSourceReview,
   createOrganization,
   fetchFundingProfiles,
   fetchMe,
@@ -74,7 +76,7 @@ import {
   type SectorProfile,
 } from "./api";
 import { AuthScreen } from "./AuthScreens";
-import { CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerLocaleFromUrl, customerMessageText, customerNarrativeText, customerSourceName, customerStatusText, customerUnitText, useCustomerLanguage } from "./customerLanguage";
+import { readRecoveryStorage, writeRecoveryStorage, removeRecoveryStorage, recoveryFieldText, recoveryReasonText, isRecoveryField, CustomerLanguageSwitcher, customerBusinessText, customerErrorText, customerLocaleFromUrl, customerMessageText, customerNarrativeText, customerSourceName, customerStatusText, customerUnitText, useCustomerLanguage } from "./customerLanguage";
 import {
   clearSession,
   getActiveOrganizationId,
@@ -86,6 +88,7 @@ import {
   setSessionToken,
 } from "./session";
 import type {
+  CustomerRecoveryItem,
   ActionItem,
   AssumptionRecord,
   ArchitectureRuntimeStatus,
@@ -619,6 +622,155 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+
+function CustomerDIBRecovery({ project, userId }: { project: Project; userId: string }) {
+  const { locale, text } = useCustomerLanguage();
+  const [sessions, setSessions] = useState<DIBSessionRecord[]>([]);
+  const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [reviewedLatest, setReviewedLatest] = useState<DIBSessionRecord | null>(null);
+  const [orphanedEdit, setOrphanedEdit] = useState(false);
+  const [selected, setSelected] = useState("");
+  const [itemIndex, setItemIndex] = useState<number | null>(null);
+  const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
+  const [decision, setDecision] = useState<"enter_value" | "mark_unknown" | "not_applicable" | "intentional_zero">("enter_value");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const epoch = useRef(0);
+  const original = useRef<DIBOriginReference | null>(null);
+  const editFocus = useRef<HTMLInputElement | null>(null);
+  const storageKey = `asie.recovery.dib.v1:${userId}:${project.organization_id}:${project.project_id}`;
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  function readEdit(sessionId?: string, itemId?: string): { session_id: string; item_id: string; origin: DIBOriginReference; value: string; reason: string; decision: typeof decision } | null {
+    try {
+      const raw = readRecoveryStorage(sessionId && itemId ? `${storageKey}:${encodeURIComponent(sessionId)}:${encodeURIComponent(itemId)}` : storageKey);
+      if (!raw || raw.length > 100000) return null;
+      const edit = JSON.parse(raw);
+      return typeof edit.session_id === "string" && typeof edit.item_id === "string" && edit.origin?.project_id === project.project_id && typeof edit.value === "string" && typeof edit.reason === "string" && ["enter_value", "mark_unknown", "not_applicable", "intentional_zero"].includes(edit.decision) ? edit : null;
+    } catch { return null; }
+  }
+  useEffect(() => {
+    const target = itemIndex === null ? null : session?.recovery_items?.[itemIndex]?.target;
+    if (!target?.item_id || !original.current || !session) return;
+    const encoded = JSON.stringify({ session_id: session.session_id, item_id: target.item_id, origin: original.current, value, reason, decision });
+    const saved = writeRecoveryStorage(`${storageKey}:${encodeURIComponent(session.session_id)}:${encodeURIComponent(target.item_id)}`, encoded);
+    if (!writeRecoveryStorage(storageKey, encoded) || !saved) setStorageUnavailable(true);
+  }, [itemIndex, value, reason, decision, session, storageKey]);
+  useEffect(() => {
+    const token = ++epoch.current;
+    void fetchDIBSessionsForProject(project.project_id).then((rows) => {
+      if (epoch.current !== token) return;
+      setSessions(rows);
+      const edit = readEdit();
+      if (edit && rows.some((row) => row.session_id === edit.session_id)) void selectSession(edit.session_id, true);
+      else if (edit) {
+        setValue(edit.value); setReason(edit.reason); setDecision(edit.decision); original.current = edit.origin;
+        setOrphanedEdit(true);
+        setMessage(text("جلستك السابقة غير متاحة في القائمة الحالية. بقي عملك للقراءة دون اختيار جلسة بديلة.", "Your previous session is unavailable in the current list. Your work remains readable without selecting a substitute session."));
+      }
+    })
+      .catch((error) => { if (epoch.current === token) setMessage(customerErrorText(error, locale)); });
+    return () => { epoch.current += 1; };
+  }, [project.project_id, project.organization_id]);
+  async function selectSession(id: string, restore = false) {
+    const token = ++epoch.current;
+    setSelected(id); setSession(null); setReviewedLatest(null); setOrphanedEdit(false); setItemIndex(null); setMessage("");
+    if (!id) return;
+    setBusy(true);
+    try {
+      const loaded = await fetchDIBSession(id);
+      if (epoch.current !== token) return;
+      if (loaded.project_id !== project.project_id) throw new Error("recovery_target_missing");
+      setSession(loaded);
+      const edit = restore ? readEdit() : null;
+      if (edit?.session_id === id) {
+        const index = loaded.recovery_items?.findIndex((item) => item.target.item_id === edit.item_id) ?? -1;
+        setValue(edit.value); setReason(edit.reason); setDecision(edit.decision); original.current = edit.origin;
+        if (index >= 0) setItemIndex(index);
+        else setOrphanedEdit(true);
+        if (index < 0 || loaded.origin_reference?.payload_hash !== edit.origin.payload_hash) setMessage(text("استُعيد عملك، لكن المصدر تغير أو لم يعد الهدف موجودًا. لا يُعاد الحفظ فوق النسخة الجديدة تلقائيًا.", "Your work was restored, but the source changed or the target is gone. It is not automatically saved over the newer version."));
+      }
+    } catch (error) { if (epoch.current === token) setMessage(customerErrorText(error, locale)); }
+    finally { if (epoch.current === token) setBusy(false); }
+  }
+  function editItem(index: number) {
+    if (!session?.origin_reference) return;
+    const target = session.recovery_items?.[index]?.target;
+    const row = session.current_blueprint?.items.find((item) => item.item_id === target?.item_id && item.input_key === target?.input_key);
+    if (!row) return;
+    const retained = readEdit(session.session_id, String(row.item_id));
+    const recover = retained?.session_id === session.session_id && retained.item_id === row.item_id ? retained : null;
+    original.current = recover ? recover.origin : { ...session.origin_reference };
+    setReviewedLatest(null); setOrphanedEdit(false);
+    setItemIndex(index); setValue(recover?.value ?? (row.value == null ? "" : String(row.value))); setReason(recover?.reason ?? ""); setDecision(recover?.decision ?? "enter_value"); setMessage("");
+    window.requestAnimationFrame(() => editFocus.current?.focus());
+  }
+  async function reviewLatestItem() {
+    if (!session || itemIndex === null) return;
+    const token = epoch.current;
+    setBusy(true); setReviewedLatest(null);
+    try {
+      const loaded = await fetchDIBSession(session.session_id);
+      if (token !== epoch.current) return;
+      if (loaded.project_id !== project.project_id || !loaded.origin_reference) throw new Error("recovery_target_missing");
+      setReviewedLatest(loaded);
+    } catch (error) { if (token === epoch.current) setMessage(customerErrorText(error, locale)); }
+    finally { if (token === epoch.current) setBusy(false); }
+  }
+  function acceptLatestOrigin() {
+    const target = itemIndex === null ? null : session?.recovery_items?.[itemIndex]?.target;
+    if (!reviewedLatest?.origin_reference || !target) return;
+    const nextIndex = reviewedLatest.recovery_items?.findIndex((item) => item.target.item_id === target.item_id && item.target.input_key === target.input_key) ?? -1;
+    if (nextIndex < 0) { setMessage(text("لم يعد هذا النقص موجودًا. احتفظ بقيمتك أو ارجع دون إعادة الحفظ.", "This deficit is no longer present. Keep your value or return without saving again.")); return; }
+    original.current = { ...reviewedLatest.origin_reference };
+    setSession(reviewedLatest); setItemIndex(nextIndex); setReviewedLatest(null);
+    setMessage(text("اخترت النسخة الحالية أساسًا لحفظ قيمتك. راجعها قبل الحفظ.", "You selected the current revision as the basis for your value. Review it before saving."));
+  }
+  async function saveItem() {
+    if (!session || itemIndex === null || !original.current) return;
+    const requirement = session.recovery_items?.[itemIndex];
+    if (!requirement?.action.allowed) return;
+    const row = session.current_blueprint?.items.find((item) => item.item_id === requirement.target.item_id && item.input_key === requirement.target.input_key);
+    if (!row) return;
+    const reference = { ...original.current }, token = epoch.current;
+    setBusy(true); setMessage("");
+    try {
+      if (decision === "enter_value" && (!value.trim() || !Number.isFinite(Number(value)))) throw new Error("recovery_input_invalid");
+      if (decision !== "enter_value" && !reason.trim()) throw new Error("recovery_reason_required");
+      const saved = await saveDIBBlueprint(session.session_id, decision === "intentional_zero"
+        ? { expected_original: reference, items: [{ ...row, value: 0, value_state: "INTENTIONAL_ZERO", reason: reason.trim() }] }
+        : { expected_original: reference, item_decisions: [{ item_id: String(row.item_id), input_key: row.input_key,
+            decision: { action: decision, value: decision === "enter_value" ? Number(value) : undefined, reason: reason.trim() } }] });
+      const loaded = await fetchDIBSession(session.session_id);
+      if (epoch.current !== token) return;
+      if (!saved.origin_reference || !loaded.origin_reference ||
+          (["session_id", "project_id", "blueprint_id", "revision", "payload_hash"] as const).some((key) => loaded.origin_reference?.[key] !== saved.origin_reference?.[key]) ||
+          !Array.isArray(loaded.recovery_items) || !loaded.current_blueprint?.items.some((item) => item.item_id === row.item_id && item.input_key === row.input_key))
+        throw new Error("recovery_source_changed");
+      const remains = loaded.recovery_items.some((item) => item.recovery_id === requirement.recovery_id);
+      removeRecoveryStorage(`${storageKey}:${encodeURIComponent(session.session_id)}:${encodeURIComponent(String(row.item_id))}`);
+      removeRecoveryStorage(storageKey);
+      setSession(loaded); original.current = { ...saved.origin_reference }; setItemIndex(null); setReviewedLatest(null); setOrphanedEdit(false);
+      setMessage(remains ? text("حُفظ القرار، لكن هذا المدخل ما زال يحتاج معالجة.", "Saved, but this input still needs attention.")
+        : text("حُفظ المدخل وتحقق المصدر من زوال نقصه. اعتماد المدخلات والفحص السابقان أُبطلا؛ بناء السياق ما زال متوقفًا.", "Saved and the source confirms this input deficit is resolved. Earlier approval and validation were invalidated; context construction remains disabled."));
+    } catch (error) { if (epoch.current === token) setMessage(customerErrorText(error, locale)); }
+    finally { if (epoch.current === token) setBusy(false); }
+  }
+  const selectedRequirement = itemIndex === null ? null : session?.recovery_items?.[itemIndex];
+  return <section className="panel" aria-label={text("مدخلات جلسة المشروع", "Project session inputs")}>
+    <h2>{text("مدخلات جلسة المشروع", "Project session inputs")}</h2>
+    <p>{text("اختر الجلسة التي تعمل عليها. لن نختار أحدث جلسة أو ننشئ اعتمادًا تلقائيًا.", "Select the session you are editing. No session or approval is selected automatically.")}</p>
+    <label className="field"><span>{text("الجلسة", "Session")}</span><select disabled={busy || itemIndex !== null} value={selected} onChange={(event) => void selectSession(event.target.value)}><option value="">{text("اختر جلسة", "Choose a session")}</option>{sessions.map((row, index) => <option key={row.session_id} value={row.session_id}>{text("جلسة", "Session")} {index + 1} · {new Date(row.created_at ?? "").toLocaleDateString(locale)}</option>)}</select></label>
+    {!sessions.length ? <p>{text("لا توجد جلسة محفوظة لهذا المشروع؛ يلزم إكمال خطوة إنشاء الجلسة المعتمدة.", "No saved session exists for this project; the governed session-creation step is required.")}</p> : null}
+    {session && !session.current_blueprint ? <p>{text("الجلسة موجودة دون مسودة مدخلات محفوظة. يلزم إكمال خطوة الإدخال الأصلية.", "The session exists without a saved input draft. Complete its original intake step.")}</p> : null}
+    {session?.recovery_items?.map((item, index) => <article key={item.recovery_id}><p>{item.target.input_key ? recoveryFieldText(item.target.input_key, locale) : text("متطلب يحتاج مراجعة مالكه", "Requirement needs owner review")}</p><p>{text("القيمة ناقصة أو لم تُحسم صلاحيتها في هذه الجلسة.", "The value is missing or unresolved in this session.")}</p>{item.target.kind === "dib_item" ? <button disabled={busy || !item.action.allowed || itemIndex !== null} type="button" onClick={() => editItem(index)}>{text("تحرير المدخل المحدد", "Edit this input")}</button> : null}{!item.action.allowed ? <small>{text("يلزم محرر مخول.", "An authorized editor is required.")}</small> : null}</article>)}
+    {selectedRequirement ? <fieldset disabled={busy}><legend>{recoveryFieldText(selectedRequirement.target.input_key ?? "", locale)}</legend><label className="field"><span>{text("قرارك لهذا المدخل", "Your input decision")}</span><select value={decision} onChange={(event) => setDecision(event.target.value as typeof decision)}><option value="enter_value">{text("إدخال قيمة", "Enter a value")}</option><option value="intentional_zero">{text("صفر مقصود مع سبب", "Intentional zero with reason")}</option><option value="mark_unknown">{text("غير معروف مع سبب", "Unknown with reason")}</option><option value="not_applicable">{text("غير منطبق مع سبب", "Not applicable with reason")}</option></select></label><label className="field"><span>{text("القيمة", "Value")}</span><input ref={editFocus} type="number" disabled={decision !== "enter_value"} value={value} onChange={(event) => setValue(event.target.value)} /></label><label className="field"><span>{text("سبب القرار", "Decision reason")}</span><input value={reason} onChange={(event) => setReason(event.target.value)} /></label><button type="button" onClick={() => void saveItem()}>{text("حفظ وإعادة القراءة", "Save and reread")}</button><button type="button" onClick={() => void reviewLatestItem()}>{text("عرض النسخة الحالية قبل إعادة المحاولة", "Review current revision before retrying")}</button>{reviewedLatest ? <div><p>{text("القيمة المحفوظة حاليًا", "Currently saved value")}: {String(reviewedLatest.current_blueprint?.items.find((row) => row.item_id === selectedRequirement.target.item_id)?.value ?? text("غير مدخلة", "Not entered"))}</p><p>{text("قيمتك وسببك أعلاه محفوظان دون تغيير.", "Your value and reason above remain unchanged.")}</p><button type="button" onClick={acceptLatestOrigin}>{text("راجعت النسخة الحالية وأختارها أساسًا لقيمتي", "I reviewed the current revision and choose it as my value's basis")}</button></div> : null}<button type="button" onClick={() => { setItemIndex(null); setReviewedLatest(null); }}>{text("العودة إلى قائمة المدخلات", "Return to input list")}</button></fieldset> : null}
+    {orphanedEdit ? <section aria-label={text("عمل محفوظ لم يعد هدفه متاحًا", "Retained work whose target is unavailable")}><p>{text("لم يعد الهدف موجودًا في قائمة النواقص الحالية. قيمتك محفوظة للقراءة ولا يمكن حفظها على هدف بديل.", "The target is no longer in the current requirements. Your value is retained for reading and cannot be saved to a substitute target.")}</p><label>{text("القيمة المحتفظ بها", "Retained value")}<input readOnly value={value} /></label><label>{text("السبب المحتفظ به", "Retained reason")}<textarea readOnly value={reason} /></label><button type="button" onClick={() => { const retained = readEdit(); if (retained) removeRecoveryStorage(`${storageKey}:${encodeURIComponent(retained.session_id)}:${encodeURIComponent(retained.item_id)}`); removeRecoveryStorage(storageKey); setOrphanedEdit(false); setValue(""); setReason(""); original.current = null; }}>{text("تجاهل هذه المسودة المحتفظ بها", "Discard this retained draft")}</button></section> : null}
+    {storageUnavailable ? <p>{text("عملك محفوظ في الصفحة فقط؛ تخزين المتصفح غير متاح.", "Your work remains on this page only; browser storage is unavailable.")}</p> : null}
+    <p role="status">{message}</p>
+  </section>;
+}
+
 /** Reset the entire in-memory workspace, not only the transient GPS child. */
 export function App() {
   const revision = useSyncExternalStore(onSessionContextChanged, getSessionRevision);
@@ -644,7 +796,38 @@ function SessionWorkspace() {
   const [evidenceLedger, setEvidenceLedger] = useState<EvidenceLedgerRecord[]>([]);
   const [evidenceCoverage, setEvidenceCoverage] = useState<EvidenceCoverageMatrix | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [project, setProject] = useState<Project | null>(null);
+  const [project, setProjectState] = useState<Project | null>(null);
+  const projectScope = useRef({ id: "", generation: 0, load: 0 });
+  function setProject(next: Project | null) {
+    if (projectScope.current.id !== (next?.project_id ?? "")) {
+      projectScope.current = { id: next?.project_id ?? "", generation: projectScope.current.generation + 1, load: 0 };
+      recoveryOperation.current += 1; setIsBusy(false);
+      setCsvText(next ? readRecoveryStorage(`${recoveryStorageKey(next.project_id)}:customer-csv`) ?? "" : "");
+      setFileImportStatus("");
+      setActiveRecovery(null); setOrphanedRecovery(null); setReviewedRecovery(null); setRecoveryValues({}); setRecoveryStatus(""); setEvidenceRecovery([]);
+      setWorkspace(null); setReadiness(null); setAssumptions([]); setDraftEvidenceRegister(null);
+      setEvidenceCoverage(null); setEvidenceLedger([]); setTransformations([]); setSelectedEvidenceTarget(null);
+      setSelectedDatasetId(""); setSelectedTransformationId(""); setComparison(null);
+    }
+    setProjectState(next);
+  }
+  useEffect(() => () => { projectScope.current.generation += 1; }, []);
+  const [evidenceRecovery, setEvidenceRecovery] = useState<CustomerRecoveryItem[]>([]);
+  const [activeRecovery, setActiveRecovery] = useState<CustomerRecoveryItem | null>(null);
+  const [recoveryValues, setRecoveryValues] = useState<Record<string, string>>({});
+  const [recoveryOriginalValues, setRecoveryOriginalValues] = useState<Record<string, string>>({});
+  const [recoveryStatus, setRecoveryStatus] = useState("");
+  const [recoveryStorageUnavailable, setRecoveryStorageUnavailable] = useState(false);
+  const pendingRecoveryRestore = useRef<Record<string, unknown> | null>(null);
+  const [activeSourceAdministration, setActiveSourceAdministration] = useState(false);
+  const recoveryOperation = useRef(0);
+  const formOrigin = useRef<string | null>(null);
+  const activeProjectOrigin = useRef<string | null>(null);
+  const [reviewedRecovery, setReviewedRecovery] = useState<{ item: CustomerRecoveryItem; project: Project; values: Record<string, string> } | null>(null);
+  const [orphanedRecovery, setOrphanedRecovery] = useState<CustomerRecoveryItem | null>(null);
+  const recoveryOrigin = useRef<{ focus: HTMLElement | null; section: HTMLElement | null; x: number; y: number } | null>(null);
+  const recoveryFocus = useRef<HTMLHeadingElement | null>(null);
+  const [selectedEvidenceTarget, setSelectedEvidenceTarget] = useState<{ target_type: "assumption" | "sector_criterion"; target_id: string } | null>(null);
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
   const [comparison, setComparison] = useState<SnapshotComparison | null>(null);
   const [readiness, setReadiness] = useState<ProjectReadiness | null>(null);
@@ -676,14 +859,14 @@ function SessionWorkspace() {
   const [wizardStep, setWizardStep] = useState(0);
   const [maxUnlockedWizardStep, setMaxUnlockedWizardStep] = useState(0);
   const [missingInputReturnStage, setMissingInputReturnStage] = useState<AppStage | null>(() => {
-    const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
+    const stored = readRecoveryStorage("asie.sanad.return_stage") as AppStage | null;
     return stored && appStages.some((item) => item.id === stored) ? stored : null;
   });
   const missingInputReturnPosition = useRef<{ stage: AppStage; x: number; y: number } | null>(null);
   const restoreMissingPosition = useRef(false);
   const [showCustomSector, setShowCustomSector] = useState(false);
   const [showCustomSubsector, setShowCustomSubsector] = useState(false);
-  const [csvText, setCsvText] = useState("metric,value,unit\nmonthly_units,1600,count\nunit_price,85,SAR");
+  const [csvText, setCsvText] = useState("");
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedTransformationId, setSelectedTransformationId] = useState("");
   const [transformationOperation, setTransformationOperation] = useState("aggregate_average");
@@ -703,6 +886,22 @@ function SessionWorkspace() {
       capital_available: 0,
     },
   });
+
+  function recoveryStorageKey(projectId: string) { return `asie.recovery.edit.v1:${authUser?.user_id ?? "legacy"}:${activeOrganizationId}:${projectId}`; }
+  function recoveryTargetStorageKey(item: CustomerRecoveryItem) { return `${recoveryStorageKey(item.source.project_id)}:target:${encodeURIComponent(item.recovery_id)}`; }
+  function retainTargetDraft() {
+    if (!activeRecovery || !project || !authUser || activeRecovery.source.project_id !== project.project_id) return;
+    if (!writeRecoveryStorage(recoveryTargetStorageKey(activeRecovery), JSON.stringify({ item: activeRecovery, values: recoveryValues, originalValues: recoveryOriginalValues, projectOrigin: activeProjectOrigin.current, dataset: selectedDatasetId, transformation: selectedTransformationId }))) setRecoveryStorageUnavailable(true);
+  }
+  function persistRecoveryDraft() {
+    if (!project || !authUser || pendingRecoveryRestore.current) return;
+    retainTargetDraft();
+    if (!writeRecoveryStorage(`${recoveryStorageKey(project.project_id)}:customer-csv`, csvText)) setRecoveryStorageUnavailable(true);
+    const ok = writeRecoveryStorage(recoveryStorageKey(project.project_id), JSON.stringify({ project_id: project.project_id, organization_id: activeOrganizationId, form, formOrigin: formOrigin.current, recoveryProjectOrigin: activeProjectOrigin.current, activeRecovery: activeRecovery ?? orphanedRecovery, recoveryValues, recoveryOriginalValues, selectedDatasetId, selectedTransformationId, wizardStep, stage }));
+    writeRecoveryStorage(`asie.recovery.last.v1:${authUser.user_id}:${activeOrganizationId}`, project.project_id);
+    if (!ok) setRecoveryStorageUnavailable(true);
+  }
+  useEffect(() => { persistRecoveryDraft(); }, [project?.project_id, form, csvText, activeRecovery, recoveryValues, recoveryOriginalValues, selectedDatasetId, selectedTransformationId, orphanedRecovery, wizardStep, stage, authUser?.user_id, activeOrganizationId]);
 
   const activeStep = useMemo(() => {
     if (report) return 5;
@@ -789,7 +988,7 @@ function SessionWorkspace() {
     [form.inputs.primary_sector_id, sectorTaxonomy]
   );
   const selectedDataset = useMemo(
-    () => datasets.find((item) => item.dataset_id === selectedDatasetId) ?? datasets[0],
+    () => datasets.find((item) => item.dataset_id === selectedDatasetId),
     [datasets, selectedDatasetId]
   );
   const selectedDatasetTransformations = useMemo(
@@ -818,9 +1017,18 @@ function SessionWorkspace() {
   }, []);
 
   useEffect(() => {
-    const handleNavigateToMissingInput = () => {
+    const handleNavigateToMissingInput = (event: Event) => {
+      const detail = (event as CustomEvent<{ recoveryIndex?: number; generation?: number }>).detail;
+      if (detail?.recoveryIndex !== undefined) {
+        if (detail.generation !== projectScope.current.generation || !Number.isInteger(detail.recoveryIndex) || !recoveryItems[detail.recoveryIndex]) {
+          setError(text("تغيرت قائمة المتطلبات؛ أعد اختيار المتطلب الحالي.", "The requirements changed; choose the current requirement again.")); return;
+        }
+        rememberMissingInputReturnStage(stage);
+        openRecovery(recoveryItems[detail.recoveryIndex]);
+        return;
+      }
       rememberMissingInputReturnStage(stage);
-      const stored = window.sessionStorage.getItem("asie.sanad.return_stage") as AppStage | null;
+      const stored = readRecoveryStorage("asie.sanad.return_stage") as AppStage | null;
       if (stored && appStages.some((item) => item.id === stored)) setMissingInputReturnStage(stored);
       const incompleteStep = wizardJourney.findIndex((_, index) => Boolean(validateWizardStepAt(index)));
       if (incompleteStep >= 0) {
@@ -1030,9 +1238,12 @@ function SessionWorkspace() {
       setSourceChecklists(workbench.checklists);
       setProjects(nextProjects);
       setDatasets(nextDatasets);
-      setSelectedDatasetId((current) => current || nextDatasets[0]?.dataset_id || "");
+      setSelectedDatasetId((current) => nextDatasets.some((row) => row.dataset_id === current) ? current : "");
       setSectorTaxonomy(nextTaxonomy);
       setArchitectureStatus(nextArchitectureStatus);
+      const previousId = authUser ? readRecoveryStorage(`asie.recovery.last.v1:${authUser.user_id}:${activeOrganizationId}`) : null;
+      const previous = nextProjects.find((row) => row.project_id === previousId && row.organization_id === activeOrganizationId);
+      if (previous && !projectScope.current.id) openProject(previous, true);
     } catch (err) {
       setError(customerErrorText(err, locale));
     }
@@ -1047,6 +1258,8 @@ function SessionWorkspace() {
   }, [authState]);
 
   async function loadProjectWorkspace(projectId: string) {
+    const generation = projectScope.current.generation;
+    const load = ++projectScope.current.load;
     const [nextReadiness, nextAssumptions, nextWorkspace, nextEvidenceRegister, nextEvidenceLedger] = await Promise.all([
       fetchProjectReadiness(projectId),
       fetchProjectAssumptions(projectId),
@@ -1054,6 +1267,24 @@ function SessionWorkspace() {
       fetchProjectEvidenceRegister(projectId),
       fetchProjectEvidenceLedger(projectId),
     ]);
+    if (generation !== projectScope.current.generation || load !== projectScope.current.load || projectScope.current.id !== projectId) return null;
+    const freshEvidenceRecovery = (nextEvidenceLedger as typeof nextEvidenceLedger & { recovery_items?: CustomerRecoveryItem[] }).recovery_items ?? [];
+    setEvidenceRecovery(freshEvidenceRecovery);
+    const pending = pendingRecoveryRestore.current;
+    if (pending?.project_id === projectId) {
+      pendingRecoveryRestore.current = null;
+      const old = pending.activeRecovery as CustomerRecoveryItem | null;
+      const current = [...(nextWorkspace.current_recovery?.items ?? []), ...freshEvidenceRecovery].find((row) => row.recovery_id === old?.recovery_id);
+      if (current && old?.source) {
+        setActiveRecovery({ ...current, source: old.source });
+        activeProjectOrigin.current = typeof pending.recoveryProjectOrigin === "string" ? pending.recoveryProjectOrigin : formOrigin.current;
+        if (JSON.stringify(current.source) !== JSON.stringify(old.source)) setRecoveryStatus(text("استُعيد العمل، لكن المصدر تغير. راجع التعارض قبل الحفظ.", "Your work was restored, but the source changed. Review the conflict before saving."));
+      } else if (old) { setOrphanedRecovery(old); setRecoveryStatus(text("استُعيد العمل، لكن الهدف السابق لم يعد في القائمة الحالية.", "Your work was restored, but the previous target is no longer in the current list.")); }
+      if (pending.recoveryValues && typeof pending.recoveryValues === "object") setRecoveryValues(pending.recoveryValues as Record<string, string>);
+      if (pending.recoveryOriginalValues && typeof pending.recoveryOriginalValues === "object") setRecoveryOriginalValues(pending.recoveryOriginalValues as Record<string, string>);
+      if (typeof pending.selectedDatasetId === "string" && nextEvidenceRegister.datasets.some((row) => row.dataset_id === pending.selectedDatasetId)) setSelectedDatasetId(pending.selectedDatasetId);
+      if (typeof pending.selectedTransformationId === "string" && nextEvidenceRegister.transformations.some((row) => row.transformation_id === pending.selectedTransformationId && row.dataset_id === pending.selectedDatasetId)) setSelectedTransformationId(pending.selectedTransformationId);
+    }
     setReadiness(nextReadiness);
     setAssumptions(nextAssumptions);
     setWorkspace(nextWorkspace);
@@ -1063,20 +1294,23 @@ function SessionWorkspace() {
     setEvidenceCoverage(nextEvidenceLedger.evidence_coverage);
     setTransformations(nextEvidenceLedger.evidence_register.transformations ?? []);
     setTransformationLineage(nextEvidenceLedger.transformation_lineage ?? []);
-    setSelectedDatasetId((current) => current || nextEvidenceLedger.evidence_register.datasets[0]?.dataset_id || "");
-    setSelectedTransformationId((current) => current || nextEvidenceLedger.evidence_register.transformations?.[0]?.transformation_id || "");
+    setSelectedDatasetId((current) => nextEvidenceLedger.evidence_register.datasets.some((row) => row.dataset_id === current) ? current : "");
+    setSelectedTransformationId((current) => nextEvidenceLedger.evidence_register.transformations?.some((row) => row.transformation_id === current) ? current : "");
     setProjects((items) => {
       const withoutCurrent = items.filter((item) => item.project_id !== nextWorkspace.project.project_id);
       return [nextWorkspace.project, ...withoutCurrent].slice(0, 12);
     });
     if (nextWorkspace.runs.length >= 2) {
-      setComparison(await compareSnapshots(nextWorkspace.runs[1].snapshot_id ?? "", nextWorkspace.runs[0].snapshot_id ?? ""));
+      const comparison = await compareSnapshots(nextWorkspace.runs[1].snapshot_id ?? "", nextWorkspace.runs[0].snapshot_id ?? "");
+      if (generation === projectScope.current.generation && load === projectScope.current.load) setComparison(comparison);
     } else {
       setComparison(null);
     }
+    return nextWorkspace;
   }
 
   async function handleSaveDraft() {
+    let generation = projectScope.current.generation;
     setIsBusy(true);
     setError(null);
     setOverview(null);
@@ -1085,13 +1319,22 @@ function SessionWorkspace() {
     setDecisionPack(null);
     setActionItems([]);
     try {
+      if (project) {
+        const current = await fetchProjectWorkspace(project.project_id);
+        if (generation !== projectScope.current.generation) return false;
+        if (!formOrigin.current || current.project.updated_at !== formOrigin.current) throw new Error("recovery_source_changed");
+      }
       const nextProject = project ? await updateProject(project.project_id, form) : await createProject(form);
+      if (generation !== projectScope.current.generation) return false;
+      formOrigin.current = nextProject.updated_at;
       setProject(nextProject);
-      await loadProjectWorkspace(nextProject.project_id);
+      generation = projectScope.current.generation;
+      const refreshed = await loadProjectWorkspace(nextProject.project_id);
+      return Boolean(refreshed);
     } catch (err) {
-      setError(customerErrorText(err, locale));
+      if (generation === projectScope.current.generation) setError(customerErrorText(err, locale));
     } finally {
-      setIsBusy(false);
+      if (generation === projectScope.current.generation) setIsBusy(false);
     }
   }
 
@@ -1216,13 +1459,17 @@ function SessionWorkspace() {
   }
 
   async function handleCreateLocalDataset() {
+    if (!project) { setError(text("احفظ مشروعك قبل إضافة بيانات الدراسة.", "Save your project before adding study data.")); return; }
+    const generation = projectScope.current.generation;
     setIsBusy(true);
     setError(null);
     try {
       const dataset = await manualImportDataset({
-        source_id: "GASTAT_CANDIDATE",
+        source_id: "",
+        project_id: project.project_id,
+        intended_use: "customer_study" as const,
         title: `${form.name} - مدخلات محلية للمراجعة`,
-        publisher: "ASIE local manual entry",
+        publisher: text("بيانات مقدم الدراسة", "Study submitter data"),
         import_method: csvText.trim() ? "manual_csv" : "manual_table",
         review_status: "review_required",
         csv_text: csvText,
@@ -1232,20 +1479,23 @@ function SessionWorkspace() {
           { field: "monthly_units", value: form.inputs.monthly_units ?? "", unit: "count" },
         ],
       });
+      if (generation !== projectScope.current.generation) return;
       setDatasets((items) => [dataset, ...items.filter((item) => item.dataset_id !== dataset.dataset_id)]);
       setSelectedDatasetId(dataset.dataset_id);
       if (project) {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(customerErrorText(err, locale));
+      if (generation === projectScope.current.generation) setError(customerErrorText(err, locale));
     } finally {
-      setIsBusy(false);
+      if (generation === projectScope.current.generation) setIsBusy(false);
     }
   }
 
   async function handleFileImport(file: File | null) {
     if (!file) return;
+    if (!project) { setError(text("احفظ مشروعك قبل إضافة بيانات الدراسة.", "Save your project before adding study data.")); return; }
+    const generation = projectScope.current.generation;
     setIsBusy(true);
     setError(null);
     setFileImportStatus("");
@@ -1253,20 +1503,19 @@ function SessionWorkspace() {
       const basePayload = {
         file_name: file.name,
         file_type: file.type,
-        source_id: "GASTAT_CANDIDATE",
+        source_id: "",
+        project_id: project.project_id,
+        intended_use: "customer_study" as const,
         title: `${form.name} - ${file.name}`,
-        publisher: "ASIE local file import",
+        publisher: text("بيانات مقدم الدراسة", "Study submitter data"),
         review_status: "review_required",
       };
-      const dataset = file.name.toLowerCase().endsWith(".xlsx")
-        ? await fileImportDataset({
-            ...basePayload,
-            file_base64: arrayBufferToBase64(await file.arrayBuffer()),
-          })
-        : await fileImportDataset({
-            ...basePayload,
-            csv_text: await file.text(),
-          });
+      const content = file.name.toLowerCase().endsWith(".xlsx")
+        ? { file_base64: arrayBufferToBase64(await file.arrayBuffer()) }
+        : { csv_text: await file.text() };
+      if (generation !== projectScope.current.generation) return;
+      const dataset = await fileImportDataset({ ...basePayload, ...content });
+      if (generation !== projectScope.current.generation) return;
       setDatasets((items) => [dataset, ...items.filter((item) => item.dataset_id !== dataset.dataset_id)]);
       setSelectedDatasetId(dataset.dataset_id);
       setFileImportStatus(`${dataset.title} · ${dataset.row_count} ${text("صف", "rows")} · ${dataset.columns.length} ${text("أعمدة", "columns")}`);
@@ -1274,9 +1523,9 @@ function SessionWorkspace() {
         await loadProjectWorkspace(project.project_id);
       }
     } catch (err) {
-      setError(customerErrorText(err, locale));
+      if (generation === projectScope.current.generation) setError(customerErrorText(err, locale));
     } finally {
-      setIsBusy(false);
+      if (generation === projectScope.current.generation) setIsBusy(false);
     }
   }
 
@@ -1324,11 +1573,11 @@ function SessionWorkspace() {
       const reviewed = await reviewDataset(dataset.dataset_id, {
         review_status: reviewStatus,
         human_review_decision: reviewStatus === "approved_for_use" ? "approved" : "rejected",
-        license_snapshot_ref: dataset.license_snapshot_ref || `local_license_review:${dataset.dataset_id}`,
-        terms_hash: dataset.terms_hash || `local_terms_hash:${dataset.dataset_id}`,
-        classification: dataset.classification || "local_manual_dataset_pending_source_terms",
-        pdpl_check: dataset.pdpl_check || "local_review_no_personal_data_claim",
-        attribution: dataset.attribution || dataset.publisher || "local attribution pending exact source terms",
+        license_snapshot_ref: dataset.license_snapshot_ref,
+        terms_hash: dataset.terms_hash,
+        classification: dataset.classification,
+        pdpl_check: dataset.pdpl_check,
+        attribution: dataset.attribution,
       });
       setDatasets((items) => [reviewed, ...items.filter((item) => item.dataset_id !== reviewed.dataset_id)]);
       if (project) {
@@ -1375,9 +1624,8 @@ function SessionWorkspace() {
     if (!project) return;
     const register = draftEvidenceRegister ?? overview?.evidence_register;
     const approvedGate =
-      register?.quality_gates.find((item) => item.dataset_id === selectedDatasetId && item.can_use_for_assumptions) ??
-      register?.quality_gates.find((item) => item.can_use_for_assumptions);
-    const firstAssumption = assumptions[0] ?? overview?.assumption_book[0];
+      register?.quality_gates.find((item) => item.dataset_id === selectedDatasetId && item.can_use_for_assumptions);
+    const firstAssumption = selectedEvidenceTarget?.target_type === "assumption" ? assumptions.find((item) => item.assumption_id === selectedEvidenceTarget.target_id) : undefined;
     if (!approvedGate || !firstAssumption) {
       setError(text("لا توجد مجموعة بيانات معتمدة أو افتراض متاح للربط.", "No approved dataset or available assumption can be linked."));
       return;
@@ -1407,11 +1655,10 @@ function SessionWorkspace() {
     if (!project) return;
     const register = draftEvidenceRegister ?? overview?.evidence_register;
     const approvedGate =
-      register?.quality_gates.find((item) => item.dataset_id === selectedDatasetId && item.can_use_for_assumptions) ??
-      register?.quality_gates.find((item) => item.can_use_for_assumptions);
-    const firstCriterion = overview?.sector_intelligence.sector_criteria.criteria.find(
-      (item) => item.evidence_status === "needs_evidence"
-    );
+      register?.quality_gates.find((item) => item.dataset_id === selectedDatasetId && item.can_use_for_assumptions);
+    const firstCriterion = selectedEvidenceTarget?.target_type === "sector_criterion" ? evidenceCoverage?.targets.find(
+      (item) => item.target_type === "sector_criterion" && item.target_id === selectedEvidenceTarget.target_id
+    ) : undefined;
     if (!approvedGate || !firstCriterion) {
       setError(text("لا توجد مجموعة بيانات معتمدة أو متطلب قطاعي يحتاج دليلًا.", "No approved dataset or sector requirement needs evidence."));
       return;
@@ -1421,10 +1668,10 @@ function SessionWorkspace() {
     try {
       await createEvidenceLink(project.project_id, {
         target_type: "sector_criterion",
-        target_id: firstCriterion.criterion_id,
+        target_id: firstCriterion.target_id,
         dataset_id: approvedGate.dataset_id,
         transformation_id: selectedTransformationId || undefined,
-        evidence_ref: `dataset:${approvedGate.dataset_id}:${firstCriterion.criterion_id}`,
+        evidence_ref: `dataset:${approvedGate.dataset_id}:${firstCriterion.target_id}`,
         transformation_note: selectedTransformationId
           ? "backend transformation lineage attached to sector criterion"
           : "manual sector evidence mapping; no frontend calculation",
@@ -1456,7 +1703,7 @@ function SessionWorkspace() {
       if (form.inputs.startup_cost <= 0) return "wizard-startup-cost";
       if (form.inputs.unit_price <= 0) return "wizard-unit-price";
       if (form.inputs.monthly_units <= 0) return "wizard-monthly-units";
-      if (form.inputs.variable_cost > form.inputs.unit_price) return "wizard-variable-cost";
+      if (form.inputs.variable_cost >= form.inputs.unit_price) return "wizard-variable-cost";
       if (form.inputs.annual_discount_rate <= 0) return "wizard-discount-rate";
       if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return "wizard-interest-rate";
       if (form.inputs.debt_amount > 0 && form.inputs.loan_years <= 0) return "wizard-loan-years";
@@ -1480,13 +1727,14 @@ function SessionWorkspace() {
   function rememberMissingInputReturnStage(candidate: AppStage) {
     if (candidate === "wizard") return;
     missingInputReturnPosition.current = { stage: candidate, x: window.scrollX, y: window.scrollY };
-    window.sessionStorage.setItem("asie.sanad.return_stage", candidate);
+    writeRecoveryStorage("asie.sanad.return_stage", candidate);
     setMissingInputReturnStage(candidate);
   }
 
   function returnToMissingInputOrigin() {
+    if (activeRecovery) { closeRecovery(); return; }
     const target = missingInputReturnStage;
-    window.sessionStorage.removeItem("asie.sanad.return_stage");
+    removeRecoveryStorage("asie.sanad.return_stage");
     setMissingInputReturnStage(null);
     if (target) {
       restoreMissingPosition.current = true;
@@ -1522,7 +1770,7 @@ function SessionWorkspace() {
       if (form.inputs.startup_cost <= 0) return text("اكتب تكلفة التأسيس التقريبية.", "Enter the estimated setup cost.");
       if (form.inputs.unit_price <= 0) return text("اكتب سعر البيع أو الخدمة.", "Enter the product or service price.");
       if (form.inputs.monthly_units <= 0) return text("اكتب عدد العملاء أو الطلبات شهريًا.", "Enter the monthly number of customers or orders.");
-      if (form.inputs.variable_cost > form.inputs.unit_price) return text("تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.", "The delivery cost should not exceed the selling price without an explanation.");
+      if (form.inputs.variable_cost >= form.inputs.unit_price) return text("تكلفة تقديم الخدمة لا ينبغي أن تتجاوز سعر البيع دون توضيح.", "The delivery cost should not exceed the selling price without an explanation.");
       if (form.inputs.annual_discount_rate <= 0) return text("اكتب معدل الخصم السنوي المستخدم في التقييم.", "Enter the annual discount rate used in the assessment.");
       if (form.inputs.working_capital_months < 0) return text("أشهر رأس المال العامل لا يمكن أن تكون سالبة.", "Working-capital months cannot be negative.");
       if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return text("اكتب معدل تكلفة التمويل للقرض.", "Enter the annual financing cost for the loan.");
@@ -1556,8 +1804,7 @@ function SessionWorkspace() {
       handleSaveAndAdvance();
       return;
     }
-    await handleSaveDraft();
-    setStage("evidence");
+    if (await handleSaveDraft()) setStage("evidence");
   }
 
   function advanceWizardFromChoice() {
@@ -1597,7 +1844,284 @@ function SessionWorkspace() {
     setStage("reality");
   }
 
-  function openProject(item: Project) {
+
+  const recoveryItems = [...(workspace?.current_recovery?.items ?? []), ...evidenceRecovery];
+  function openRecovery(item: CustomerRecoveryItem) {
+    if (isBusy) return;
+    recoveryOperation.current += 1;
+    retainTargetDraft();
+    if (!project || item.source.project_id !== project.project_id || item.source.organization_id !== activeOrganizationId) return;
+    recoveryOrigin.current = { focus: document.activeElement instanceof HTMLElement ? document.activeElement : null, section: document.activeElement instanceof HTMLElement ? document.activeElement.closest("section") : null, x: window.scrollX, y: window.scrollY };
+    const target = item.target;
+    const dataset = datasets.find((row) => row.dataset_id === target.dataset_id);
+    const transformation = transformations.find((row) => row.transformation_id === target.transformation_id && row.dataset_id === target.dataset_id);
+    const source = sources.find((row) => row.source_id === target.source_id);
+    const record = target.kind === "transformation" ? transformation : target.kind === "source_review" ? source : dataset;
+    const values: Record<string, string> = {};
+    for (const key of target.field_keys ?? []) {
+      const value = (record as unknown as Record<string, unknown> | undefined)?.[key];
+      values[key] = Array.isArray(value) ? value.join(", ") : value == null ? "" : String(value);
+    }
+    if (target.kind === "source_review" && source) {
+      for (const key of ["publisher", "route", "url", "terms_url", "license_snapshot_ref", "terms_hash", "classification", "pdpl_check", "attribution", "nca_check", "lawful_purpose", "reviewer", "reviewer_decision", "state"]) values[key] = String((source as unknown as Record<string, unknown>)[key] ?? "");
+    }
+    let retained: { item: CustomerRecoveryItem; values: Record<string, string>; originalValues?: Record<string, string>; projectOrigin?: string; dataset?: string; transformation?: string } | null = null;
+    try {
+      const raw = readRecoveryStorage(recoveryTargetStorageKey(item));
+      const saved = raw && raw.length < 500000 ? JSON.parse(raw) : null;
+      if (saved?.item?.recovery_id === item.recovery_id && saved.item.source?.project_id === project.project_id && saved.item.source?.organization_id === activeOrganizationId && saved.values && typeof saved.values === "object" && !Array.isArray(saved.values) && Object.values(saved.values).every((value) => typeof value === "string")) retained = saved;
+    } catch { /* Invalid local storage never supplies authority. */ }
+    activeProjectOrigin.current = retained ? retained.projectOrigin ?? null : formOrigin.current;
+    setReviewedRecovery(null); setOrphanedRecovery(null); setActiveSourceAdministration(false);
+    setRecoveryValues(retained?.values ?? values);
+    setRecoveryOriginalValues(retained?.originalValues ?? values);
+    setActiveRecovery(retained ? { ...item, source: retained.item.source } : item);
+    setRecoveryStatus(retained && JSON.stringify(retained.item.source) !== JSON.stringify(item.source) ? text("استُعيدت تعديلاتك على نسخة أقدم. راجع المصدر الحالي قبل الحفظ.", "Your edits were restored against an older revision. Review the current source before saving.") : "");
+    setSelectedDatasetId(retained?.dataset ?? target.dataset_id ?? "");
+    setSelectedTransformationId(retained?.transformation ?? target.transformation_id ?? "");
+    if (target.kind === "evidence_binding" && target.target_type && target.target_id) setSelectedEvidenceTarget({ target_type: target.target_type, target_id: target.target_id });
+    window.requestAnimationFrame(() => {
+      const input = recoveryFocus.current?.parentElement?.querySelector<HTMLElement>("fieldset input:not(:disabled), fieldset select:not(:disabled), fieldset textarea:not(:disabled), fieldset button:not(:disabled)");
+      (input ?? recoveryFocus.current)?.focus();
+    });
+  }
+  function closeRecovery() {
+    if (isBusy) return;
+    recoveryOperation.current += 1;
+    retainTargetDraft();
+    setReviewedRecovery(null); setActiveSourceAdministration(false);
+    setActiveRecovery(null);
+    const origin = recoveryOrigin.current;
+    window.requestAnimationFrame(() => {
+      const target = origin?.focus?.isConnected ? origin.focus : origin?.section?.querySelector<HTMLElement>("h2");
+      if (target) { if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1"); target.focus(); }
+      if (origin) window.scrollTo(origin.x, origin.y);
+    });
+  }
+  async function reviewCurrentRecovery() {
+    if (!project || !activeRecovery) return;
+    const operation = recoveryOperation.current;
+    const generation = projectScope.current.generation, identity = activeRecovery.recovery_id;
+    setIsBusy(true); setReviewedRecovery(null);
+    try {
+      const [fresh, ledger, freshDatasets, workbench] = await Promise.all([fetchProjectWorkspace(project.project_id), fetchProjectEvidenceLedger(project.project_id), fetchDatasets(), fetchSourceWorkbench()]);
+      if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+      const item = [...(fresh.current_recovery?.items ?? []), ...((ledger as typeof ledger & { recovery_items?: CustomerRecoveryItem[] }).recovery_items ?? [])].find((row) => row.recovery_id === identity);
+      if (!item) throw new Error("recovery_target_missing");
+      const target = item.target;
+      const record = target.kind === "assumption_review" ? fresh.assumptions.find((row) => row.assumption_id === target.target_id)
+        : target.kind === "source_review" ? workbench.sources.find((row) => row.source_id === target.source_id)
+        : target.kind === "transformation" ? ledger.evidence_register.transformations.find((row) => row.transformation_id === target.transformation_id && row.dataset_id === target.dataset_id)
+        : freshDatasets.find((row) => row.dataset_id === target.dataset_id);
+      const values: Record<string, string> = {};
+      const previewKeys = target.kind === "source_review" ? ["publisher", "route", "url", "terms_url", "terms_hash", "license_snapshot_ref", "classification", "pdpl_check", "nca_check", "lawful_purpose", "reviewer", "reviewer_decision", "state"] : target.kind === "assumption_review" ? ["label", "value", "review_status"] : target.kind === "dataset_content" ? ["title", "row_count"] : target.field_keys ?? [];
+      for (const key of previewKeys) {
+        const current = target.kind === "project_field" || target.kind === "project_fields"
+          ? (["name", "sector", "jurisdiction"].includes(key) ? (fresh.project as unknown as Record<string, unknown>)[key] : (fresh.project.inputs as unknown as Record<string, unknown>)[key])
+          : (record as unknown as Record<string, unknown> | undefined)?.[key];
+        values[key] = target.kind === "assumption_review" && key === "label" && record ? assumptionLabel(record as AssumptionRecord, locale) : current == null ? "" : typeof current === "object" ? text("قائمة محفوظة؛ راجع تفاصيلها في موضعها", "Stored list; review its details in place") : String(current);
+      }
+      setReviewedRecovery({ item, project: fresh.project, values });
+    } catch (error) { if (generation === projectScope.current.generation && operation === recoveryOperation.current) setRecoveryStatus(customerErrorText(error, locale)); }
+    finally { if (generation === projectScope.current.generation && operation === recoveryOperation.current) setIsBusy(false); }
+  }
+  function acceptCurrentRecovery() {
+    if (!reviewedRecovery || !activeRecovery || reviewedRecovery.item.recovery_id !== activeRecovery.recovery_id) return;
+    setActiveRecovery(reviewedRecovery.item);
+    activeProjectOrigin.current = reviewedRecovery.project.updated_at;
+    setReviewedRecovery(null);
+    setRecoveryStatus(text("اخترت النسخة المعروضة أساسًا لهذا المتطلب فقط. بقيت تعديلاتك للمراجعة قبل الحفظ.", "You selected the displayed revision for this requirement only. Your edits remain for review before saving."));
+  }
+  async function saveRecovery() {
+    const item = activeRecovery;
+    if (!project || !item || !item.action.allowed || item.source.project_id !== project.project_id || item.source.organization_id !== activeOrganizationId) return;
+    const operation = recoveryOperation.current;
+    const generation = projectScope.current.generation;
+    const original = recoveryItems.find((row) => row.recovery_id === item.recovery_id);
+    if (!original) {
+      setRecoveryStatus(text("تغير المصدر أو حُذف الهدف. احتُفظ بما كتبته؛ أعد مراجعة المصدر.", "The source changed or the target was removed. Your edits are retained; review the source.")); return;
+    }
+    setIsBusy(true); setRecoveryStatus(""); setReviewedRecovery(null);
+    try {
+      const [freshBefore, ledgerBefore] = await Promise.all([fetchProjectWorkspace(project.project_id), fetchProjectEvidenceLedger(project.project_id)]);
+      if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+      const checked = [...(freshBefore.current_recovery?.items ?? []), ...((ledgerBefore as typeof ledgerBefore & { recovery_items?: CustomerRecoveryItem[] }).recovery_items ?? [])].find((row) => row.recovery_id === item.recovery_id);
+      if (!checked || !checked.action.allowed || JSON.stringify(checked.source) !== JSON.stringify(item.source)) {
+        setRecoveryStatus(text("تغير المصدر. احتُفظ بعملك؛ راجع النسخة الحالية قبل الحفظ.", "The source changed. Your work is retained; review the current version before saving.")); return;
+      }
+      const target = item.target;
+      const allowedEditFields = target.kind === "source_review" ? ["publisher", "route", "url", "terms_url", "license_snapshot_ref", "terms_hash", "classification", "pdpl_check", "attribution", "nca_check", "lawful_purpose", "reviewer", "reviewer_decision", "state"] : target.field_keys ?? [];
+      const editedValues = Object.fromEntries(Object.entries(recoveryValues).filter(([key, value]) => allowedEditFields.includes(key) && value !== recoveryOriginalValues[key]));
+      const sentRecoveryKeys = new Set(Object.keys(editedValues));
+      if (target.kind === "project_field" || target.kind === "project_fields" || target.kind === "assumption_add") {
+        if (!activeProjectOrigin.current || freshBefore.project.updated_at !== activeProjectOrigin.current) throw new Error("recovery_source_changed");
+        let candidate = { name: freshBefore.project.name, sector: freshBefore.project.sector, jurisdiction: freshBefore.project.jurisdiction, depth_profile: freshBefore.project.depth_profile, inputs: { ...freshBefore.project.inputs } };
+        for (const key of target.field_keys ?? []) {
+          if (["name", "sector", "jurisdiction"].includes(key)) candidate = { ...candidate, [key]: (form as unknown as Record<string, unknown>)[key] };
+          else candidate.inputs = { ...candidate.inputs, [key]: (form.inputs as unknown as Record<string, unknown>)[key] };
+        }
+        if (target.kind === "assumption_add") {
+          const label = recoveryValues.assumption_label?.trim();
+          const value = recoveryValues.assumption_value?.trim();
+          if (!label || label.length > 80 || !value || ["__proto__", "constructor", "prototype"].includes(label) || Object.hasOwn(form.inputs, label)) throw new Error("recovery_input_invalid");
+          candidate = { ...candidate, inputs: { ...candidate.inputs, [label]: value } };
+        }
+        const saved = await updateProject(project.project_id, candidate);
+        if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+        if (formOrigin.current === freshBefore.project.updated_at) formOrigin.current = saved.updated_at;
+        activeProjectOrigin.current = saved.updated_at;
+        setProject(saved);
+        if (target.kind === "assumption_add") setForm((current) => ({ ...current, inputs: { ...current.inputs, [recoveryValues.assumption_label.trim()]: recoveryValues.assumption_value.trim() } }));
+      } else if (target.kind === "assumption_review") {
+        const assumption = freshBefore.assumptions.find((row) => row.assumption_id === target.target_id);
+        if (!assumption) throw new Error("recovery_target_missing");
+        await createProjectAssumption(project.project_id, { ...assumption, review_status: "approved" });
+      } else if (target.kind === "dataset_metadata" || target.kind === "dataset_content") {
+        const dataset = ledgerBefore.evidence_register.datasets.find((row) => row.dataset_id === target.dataset_id);
+        if (!dataset) throw new Error("recovery_target_missing");
+        const payload: Partial<DatasetRecord> & { csv_text?: string } = target.kind === "dataset_content"
+          ? { csv_text: recoveryValues.content ?? "", import_method: "manual_csv", review_status: "review_required", human_review_decision: "pending" }
+          : { ...editedValues } as Partial<DatasetRecord>;
+        if (target.kind === "dataset_content" && !payload.csv_text?.trim()) throw new Error("recovery_content_required");
+        if (!activeSourceAdministration || authUser?.platform_role !== "platform_admin") {
+          delete payload.terms_hash; delete payload.license_snapshot_ref;
+          sentRecoveryKeys.delete("terms_hash"); sentRecoveryKeys.delete("license_snapshot_ref");
+        }
+        await reviewDataset(dataset.dataset_id, payload);
+      } else if (target.kind === "transformation") {
+        const row = ledgerBefore.evidence_register.transformations.find((entry) => entry.transformation_id === target.transformation_id && entry.dataset_id === target.dataset_id);
+        if (!row) throw new Error("recovery_target_missing");
+        const changedMethod = editedValues.operation_type !== undefined || editedValues.input_columns !== undefined;
+        const { output_value: previousOutput, ...preserved } = row;
+        await createDatasetTransformation(row.dataset_id, { ...preserved, ...editedValues,
+          input_columns: editedValues.input_columns === undefined ? row.input_columns : editedValues.input_columns.split(",").map((part) => part.trim()).filter(Boolean),
+          output_value: editedValues.output_value || (changedMethod ? undefined : previousOutput),
+          review_status: editedValues.review_status || row.review_status });
+      } else if (target.kind === "source_review") {
+        if (!activeSourceAdministration || authUser?.platform_role !== "platform_admin") throw new Error("recovery_target_missing");
+        const source = ledgerBefore.evidence_register.source_records.find((row) => row.source_id === target.source_id);
+        if (!source || source.state === "reference_only") throw new Error("recovery_target_missing");
+        const notes = source.notes ?? {};
+        const preservedScope = Object.fromEntries(["organization_id", "project_id", "discovery_allowed", "discovery_sectors", "discovery_geographies", "allowed_paths", "allow_query_parameters", "state_reason"].filter((key) => Object.hasOwn(notes, key)).map((key) => [key, notes[key]]));
+        await updateSourceReview(source.source_id, { ...source, ...preservedScope, ...editedValues, notes: notes.notes ?? "" } as unknown as SourceReviewRecord);
+      } else if (target.kind === "evidence_binding") {
+        const gate = ledgerBefore.evidence_register.quality_gates.find((row) => row.dataset_id === selectedDatasetId && row.can_use_for_assumptions);
+        const exactTarget = ledgerBefore.evidence_coverage.targets.find((row) => row.target_type === target.target_type && row.target_id === target.target_id);
+        const transform = selectedTransformationId ? ledgerBefore.evidence_register.transformations.find((row) => row.transformation_id === selectedTransformationId && row.dataset_id === selectedDatasetId) : null;
+        if (!gate || !exactTarget || (selectedTransformationId && !transform)) throw new Error("recovery_target_missing");
+        await createEvidenceLink(project.project_id, { target_type: target.target_type, target_id: target.target_id,
+          dataset_id: selectedDatasetId, transformation_id: selectedTransformationId || undefined,
+          evidence_ref: `dataset:${selectedDatasetId}`, human_review_decision: "approved", transformation_note: "Explicit current target selected by user" });
+      } else return;
+      if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+      const [fresh, ledger, freshDatasets, workbench] = await Promise.all([fetchProjectWorkspace(project.project_id), fetchProjectEvidenceLedger(project.project_id), fetchDatasets(), fetchSourceWorkbench()]);
+      if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+      await loadProjectWorkspace(project.project_id);
+      if (generation !== projectScope.current.generation || operation !== recoveryOperation.current) return;
+      setDatasets(freshDatasets); setSources(workbench.sources);
+      const confirmedRecord = target.kind === "source_review" ? workbench.sources.find((row) => row.source_id === target.source_id)
+        : target.kind === "transformation" ? ledger.evidence_register.transformations.find((row) => row.transformation_id === target.transformation_id && row.dataset_id === target.dataset_id)
+        : freshDatasets.find((row) => row.dataset_id === target.dataset_id);
+      const confirmedValues = { ...recoveryValues };
+      const confirmedOriginal = { ...recoveryOriginalValues };
+      if (confirmedRecord) for (const key of Object.keys(confirmedValues)) {
+        if (recoveryValues[key] !== recoveryOriginalValues[key] && !sentRecoveryKeys.has(key)) continue;
+        const savedValue = (confirmedRecord as unknown as Record<string, unknown>)[key];
+        if (key !== "content") {
+          confirmedValues[key] = Array.isArray(savedValue) ? savedValue.join(", ") : savedValue == null ? "" : String(savedValue);
+          confirmedOriginal[key] = confirmedValues[key];
+        }
+      }
+      setRecoveryValues(confirmedValues); setRecoveryOriginalValues(confirmedOriginal);
+      const remaining = [...(fresh.current_recovery?.items ?? []), ...((ledger as typeof ledger & { recovery_items?: CustomerRecoveryItem[] }).recovery_items ?? [])].find((row) => row.recovery_id === item.recovery_id);
+      if (remaining) { setActiveRecovery(remaining); setRecoveryStatus(text("حُفظ التعديل، لكن المتطلب ما زال مفتوحًا وفق فحص المصدر.", "Saved, but the source still reports this requirement as open.")); }
+      else setRecoveryStatus(text("حُفظ التعديل وتحقق المصدر من زوال هذا النقص. يمكنك العودة إلى موضعك.", "Saved and the source confirms this deficit is resolved. You can return to your previous place."));
+    } catch (error) {
+      if (generation === projectScope.current.generation && operation === recoveryOperation.current) setRecoveryStatus(customerErrorText(error, locale));
+    } finally { if (generation === projectScope.current.generation && operation === recoveryOperation.current) setIsBusy(false); }
+  }
+  function recoveryDisplayValue(key: string, value: string): string {
+    if (activeSourceAdministration && authUser?.platform_role === "platform_admin") return value;
+    if (key === "source_id") return sources.find((row) => row.source_id === value)?.publisher ?? text("المصدر السابق غير متاح", "Previous source is unavailable");
+    if (["state", "review_status", "reviewer_decision", "human_review_decision"].includes(key)) return statusText(value, locale);
+    if (key === "classification") return value === "public" ? text("بيانات عامة", "Public data") : value === "public_open_data" ? text("بيانات مفتوحة للعامة", "Public open data") : text("تصنيف مسجل يحتاج مراجعة", "Recorded classification needs review");
+    if (key === "operation_type") {
+      const methods: Record<string, [string, string]> = { select_column: ["اختيار عمود", "Select column"], aggregate_average: ["حساب المتوسط", "Average"], aggregate_sum: ["حساب المجموع", "Sum"], filter: ["تصفية", "Filter"], remove_outliers: ["استبعاد القيم الشاذة", "Remove outliers"], normalize: ["توحيد القيم", "Normalize"], manual_derivation_note: ["اشتقاق يدوي موثق", "Documented manual derivation"] };
+      const method = methods[value]; return method ? text(method[0], method[1]) : text("طريقة سابقة تحتاج مراجعة", "Previous method needs review");
+    }
+    return value;
+  }
+  function renderRecoveryEditor() {
+    if (!activeRecovery) return orphanedRecovery ? <section className="panel" aria-label={text("مسودة محتفظ بها لهدف غير متاح", "Retained draft for an unavailable target")}><h2>{text("بقي عملك محفوظًا", "Your work is retained")}</h2><p>{recoveryStatus}</p>{Object.entries(orphanedRecovery.target.kind === "source_review" ? {} : recoveryValues).filter(([key]) => !["terms_hash", "license_snapshot_ref"].includes(key)).map(([key, value]) => <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><textarea readOnly value={recoveryDisplayValue(key, value)} /></label>)}<button type="button" onClick={() => { removeRecoveryStorage(recoveryTargetStorageKey(orphanedRecovery)); setOrphanedRecovery(null); setRecoveryValues({}); setRecoveryStatus(""); }}>{text("تجاهل هذه المسودة", "Discard this draft")}</button></section> : null;
+    const item = activeRecovery, target = item.target;
+    if (target.kind === "source_review" && (!activeSourceAdministration || authUser?.platform_role !== "platform_admin")) return <section className="panel"><h2>{text("المصدر يحتاج مراجعة إدارة المنصة", "This source needs platform administration review")}</h2><p>{recoveryReasonText(item.requirement_code, locale)}</p><p>{text("يتولى مسؤول المنصة توثيق شروط الاستخدام والترخيص في واجهة المراجعة المحمية.", "A platform administrator records the terms and license evidence in the protected review surface.")}</p>{item.action.allowed && authUser?.platform_role === "platform_admin" ? <button type="button" onClick={() => setActiveSourceAdministration(true)}>{text("فتح مراجعة هذا المصدر الإدارية", "Open administrative review of this source")}</button> : null}<button type="button" onClick={closeRecovery}>{text("العودة مع حفظ العمل", "Return keeping work")}</button></section>;
+    const requiresPlatformProof = target.kind === "dataset_metadata" && (target.field_keys ?? []).some((key) => ["terms_hash", "license_snapshot_ref"].includes(key));
+    const projectFields = target.kind === "project_field" || target.kind === "project_fields";
+    const fieldKeys = target.kind === "source_review" ? Object.keys(recoveryValues) : target.field_keys ?? [];
+    return <section className="panel" role="region" aria-label={text("إكمال المتطلب المحدد", "Complete the selected requirement")}>
+      <h2 ref={recoveryFocus} tabIndex={-1}>{text("المتطلب المحدد", "Selected requirement")}</h2>
+      <p>{recoveryReasonText(item.requirement_code, locale)}</p>
+      {item.count ? <p>{text("الحالي / المطلوب / المتبقي", "Current / required / remaining")}: {item.count.current} / {item.count.required} / {item.count.remaining}</p> : null}
+      {!item.action.allowed ? <p>{text("يلزم المسؤول المخول لإجراء هذا التعديل.", "An authorized owner must make this change.")}</p> : null}
+      {requiresPlatformProof && !activeSourceAdministration ? <aside><p role="status">{text("هذه البيانات مسجلة كمصدر خارجي أو سجل سابق غير محدد المنشأ. تتولى إدارة المنصة مراجعة شروط استخدامها؛ بيانات الدراسة الجديدة التي تقدمها لمشروعك لا تطلب إثبات ترخيص. يمكنك إكمال بقية الحقول الآن.", "This dataset is external or a legacy record with unverified origin. Platform administration reviews its reuse terms; new customer-submitted study data does not require license proof. Other fields can be completed now.")}</p>{item.action.allowed && authUser?.platform_role === "platform_admin" ? <button type="button" onClick={() => setActiveSourceAdministration(true)}>{text("فتح مراجعة ترخيص هذه البيانات الإدارية", "Open administrative license review of this dataset")}</button> : null}</aside> : null}
+      <fieldset disabled={isBusy || !item.action.allowed}>
+      {(target.kind === "source_review" && !item.action.allowed ? [] : fieldKeys).map((key) => {
+        if (["terms_hash", "license_snapshot_ref"].includes(key) && (!activeSourceAdministration || authUser?.platform_role !== "platform_admin" || !item.action.allowed)) return null;
+        if (!isRecoveryField(key)) return <p key={key}>{text("هذا الحقل يحتاج خريطة معتمدة من المسؤول.", "This field needs an approved owner mapping.")}</p>;
+        if (projectFields) {
+          if (["name", "sector", "jurisdiction"].includes(key)) return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><input value={String((form as unknown as Record<string, unknown>)[key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>;
+          if (key === "primary_sector_id") return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><select value={form.inputs.primary_sector_id} onChange={(event) => updateInputs({ primary_sector_id: event.target.value })}><option value="">{text("اختر التصنيف", "Choose classification")}</option>{sectorTaxonomy.map((row) => <option key={row.sector_id} value={row.sector_id}>{locale === "ar" ? row.arabic_name : row.sector_name}</option>)}</select></label>;
+          if (key === "other_monthly_costs") return <div key={key}><strong>{recoveryFieldText(key, locale)}</strong>{(form.inputs.other_monthly_costs ?? []).map((row, index) => <label className="field" key={index}><span>{text("اسم المصروف الإضافي", "Additional expense name")}</span><input value={row.name} onChange={(event) => updateInputs({ other_monthly_costs: (form.inputs.other_monthly_costs ?? []).map((entry, position) => position === index ? { ...entry, name: event.target.value } : entry) })} /><span>{text("القيمة الشهرية", "Monthly amount")}</span><input type="number" value={row.amount} onChange={(event) => updateInputs({ other_monthly_costs: (form.inputs.other_monthly_costs ?? []).map((entry, position) => position === index ? { ...entry, amount: Number(event.target.value) } : entry) })} /></label>)}<button type="button" onClick={() => updateInputs({ other_monthly_costs: [...(form.inputs.other_monthly_costs ?? []), { name: "", amount: 0 }] })}>{text("إضافة مصروف فعلي آخر", "Add another actual expense")}</button></div>;
+          return <NumberField key={key} label={recoveryFieldText(key, locale)} value={Number((form.inputs as unknown as Record<string, unknown>)[key] ?? 0)} onChange={(value) => updateInputs({ [key]: value } as Partial<ProjectInputs>)} />;
+        }
+        if (key === "source_id") return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><select value={recoveryValues[key] ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, [key]: event.target.value }))}><option value="">{text("اختر المصدر الصحيح", "Choose the correct source")}</option>{sources.filter((row) => row.state !== "reference_only").map((row) => <option key={row.source_id} value={row.source_id}>{row.publisher}</option>)}</select></label>;
+        if (key === "classification" && target.kind === "dataset_metadata" && datasets.find((row) => row.dataset_id === target.dataset_id)?.notes.submission_provenance?.kind === "customer_study") {
+          return <label className="field" key={key}><span>{text("تصنيف بياناتك حسب حساسيتها ونطاق مشاركتها", "Classify your data by sensitivity and intended sharing")}</span><input value={recoveryValues[key] ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, [key]: event.target.value }))} /><small>{text("اكتب وصفًا صحيحًا مثل بيانات خاصة بالدراسة؛ لا يلزم أن تكون عامة.", "Enter an accurate description, such as private study data; it need not be public.")}</small></label>;
+        }
+        if (key === "classification" || key === "route") {
+          const choices: [string, string, string][] = key === "classification"
+            ? [["public", "بيانات عامة", "Public data"], ["public_open_data", "بيانات مفتوحة للعامة", "Public open data"]]
+            : [["official_open_dataset_or_api", "بيانات مفتوحة من مصدر رسمي", "Official open dataset or API"], ["manual_review", "مراجعة يدوية موثقة", "Documented manual review"]];
+          const current = recoveryValues[key] ?? "";
+          return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><select value={current} onChange={(event) => setRecoveryValues((values) => ({ ...values, [key]: event.target.value }))}><option value="">{text("اختر الوصف الصحيح وفق الدليل", "Choose the accurate description supported by evidence")}</option>{current && !choices.some(([value]) => value === current) ? <option value={current}>{text("القيمة المسجلة سابقًا، دون تغيير", "Previously recorded value, unchanged")}</option> : null}{choices.map(([value, ar, en]) => <option key={value} value={value}>{text(ar, en)}</option>)}</select></label>;
+        }
+        if (key === "operation_type") {
+          const methods: [string, string, string][] = [["select_column", "اختيار عمود", "Select column"], ["aggregate_average", "حساب المتوسط", "Average"], ["aggregate_sum", "حساب المجموع", "Sum"], ["filter", "تصفية", "Filter"], ["remove_outliers", "استبعاد القيم الشاذة", "Remove outliers"], ["normalize", "توحيد القيم", "Normalize"], ["manual_derivation_note", "اشتقاق يدوي موثق", "Documented manual derivation"]];
+          return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><select value={recoveryValues[key] ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, [key]: event.target.value }))}><option value="">{text("اختر طريقة", "Choose a method")}</option>{methods.map(([value, ar, en]) => <option key={value} value={value}>{text(ar, en)}</option>)}</select></label>;
+        }
+        const options = key === "state" && target.kind === "source_review" ? ["candidate", "blocked", "enabled"]
+          : key === "reviewer_decision" && target.kind === "source_review" ? ["", "approved"]
+          : key === "review_status" ? (target.kind === "transformation" ? ["draft", "review_required", "approved", "rejected"] : ["draft", "review_required", "approved_for_use", "rejected", "archived"])
+          : key === "human_review_decision" ? ["pending", "approved", "rejected"] : null;
+        if (options) return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><select value={recoveryValues[key] ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, [key]: event.target.value }))}>{!options.includes(recoveryValues[key] ?? "") ? <option disabled value={recoveryValues[key]}>{text("قيمة سابقة تحتاج مراجعة", "Existing value needs review")}</option> : null}{options.map((option) => <option key={option} value={option}>{option === "" ? text("لم تُراجع", "Not reviewed") : option === "archived" ? text("مؤرشف", "Archived") : option === "blocked" ? text("محجوب", "Blocked") : statusText(option, locale)}</option>)}</select></label>;
+        return <label className="field" key={key}><span>{recoveryFieldText(key, locale)}</span><input value={recoveryValues[key] ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, [key]: event.target.value }))} /></label>;
+      })}
+      {target.kind === "dataset_content" ? <label className="field"><span>{text("المحتوى الكامل البديل بصيغة CSV، وليس معاينة الصفوف", "Complete replacement CSV, not the row preview")}</span><textarea rows={8} value={recoveryValues.content ?? ""} onChange={(event) => setRecoveryValues({ content: event.target.value })} /></label> : null}
+      {target.kind === "assumption_review" ? <p>{assumptionLabel(assumptions.find((row) => row.assumption_id === target.target_id) ?? { label: "", input_key: "" } as AssumptionRecord, locale)}</p> : null}
+      {target.kind === "assumption_add" ? <><p>{text("أضف مدخلًا حقيقيًا باسم واضح وقيمة فعلية؛ سيبقى ضمن مدخلات المشروع ومراجعته.", "Add a real input with a clear name and actual value; it remains part of project inputs and review.")}</p><label className="field"><span>{text("اسم الافتراض", "Assumption name")}</span><input maxLength={80} value={recoveryValues.assumption_label ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, assumption_label: event.target.value }))} /></label><label className="field"><span>{text("القيمة المدخلة", "Actual value")}</span><input value={recoveryValues.assumption_value ?? ""} onChange={(event) => setRecoveryValues((current) => ({ ...current, assumption_value: event.target.value }))} /></label></> : null}
+      {target.kind === "evidence_binding" ? <><label className="field"><span>{text("البيانات لهذا المتطلب", "Dataset for this requirement")}</span><select value={selectedDatasetId} onChange={(event) => { setSelectedDatasetId(event.target.value); setSelectedTransformationId(""); }}><option value="">{text("اختر بنفسك", "Choose explicitly")}</option>{datasets.map((row) => <option key={row.dataset_id} value={row.dataset_id}>{row.title}</option>)}</select></label><label className="field"><span>{text("التحويل المرتبط، إن وجد", "Related transformation, if needed")}</span><select value={selectedTransformationId} onChange={(event) => setSelectedTransformationId(event.target.value)}><option value="">{text("دون تحويل", "No transformation")}</option>{transformations.filter((row) => row.dataset_id === selectedDatasetId).map((row, index) => <option key={row.transformation_id} value={row.transformation_id}>{text("تحويل", "Transformation")} {index + 1}</option>)}</select></label></> : null}
+      {target.kind !== "owner_review" && target.kind !== "dib_item" ? <button type="button" onClick={() => void saveRecovery()}>{text("حفظ وإعادة فحص المتطلب", "Save and recheck requirement")}</button> : null}
+      </fieldset>
+      <p role="status">{recoveryStatus}</p>
+      <button type="button" disabled={isBusy} onClick={() => void reviewCurrentRecovery()}>{text("عرض المصدر الحالي قبل إعادة المحاولة", "Review current source before retrying")}</button>
+      {reviewedRecovery ? <section><p>{text("المعلومات المحفوظة حاليًا لهذا المتطلب", "Currently saved information for this requirement")}</p>{Object.entries(reviewedRecovery.values).filter(([key]) => activeSourceAdministration && authUser?.platform_role === "platform_admin" || !["terms_hash", "license_snapshot_ref"].includes(key)).map(([key, value]) => <p key={key}>{recoveryFieldText(key, locale)}: {recoveryDisplayValue(key, value)}</p>)}<button type="button" disabled={isBusy || !reviewedRecovery.item.action.allowed} onClick={acceptCurrentRecovery}>{text("راجعت المصدر وأختار هذه النسخة لهذا المتطلب", "I reviewed the source and choose this revision for this requirement")}</button></section> : null}
+      <button type="button" disabled={isBusy} onClick={closeRecovery}>{text("العودة إلى موضعي مع حفظ العمل الحالي", "Return to my place, keeping current work")}</button>
+    </section>;
+  }
+
+  function openProject(item: Project, restoreLocation = false) {
+    persistRecoveryDraft();
+    let recovered: Record<string, unknown> | null = null;
+    try {
+      const raw = readRecoveryStorage(recoveryStorageKey(item.project_id));
+      if (raw && raw.length < 500000) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.project_id === item.project_id && parsed.organization_id === activeOrganizationId && parsed.form && typeof parsed.form === "object" && parsed.form.inputs && typeof parsed.form.inputs === "object" && !Array.isArray(parsed.form.inputs)) recovered = parsed;
+      }
+    } catch { /* Invalid storage never replaces server identity. */ }
+    pendingRecoveryRestore.current = recovered;
+    formOrigin.current = recovered ? (typeof recovered.formOrigin === "string" ? recovered.formOrigin : null) : item.updated_at;
+    setOrphanedRecovery(null);
     setProject(item);
     setForm({
       name: item.name,
@@ -1606,9 +2130,18 @@ function SessionWorkspace() {
       depth_profile: item.depth_profile,
       inputs: { ...defaultInputs, ...item.inputs },
     });
+    if (recovered) {
+      const savedForm = recovered.form as typeof form;
+      if ([savedForm.name, savedForm.sector, savedForm.jurisdiction, savedForm.depth_profile].every((value) => typeof value === "string")) setForm(savedForm);
+      if (Number.isInteger(recovered.wizardStep) && Number(recovered.wizardStep) >= 0 && Number(recovered.wizardStep) < wizardJourney.length) setWizardStep(Number(recovered.wizardStep));
+    }
     setMaxUnlockedWizardStep(wizardJourney.length - 1);
-    setStage("wizard");
+    setStage(restoreLocation && appStages.some((row) => row.id === recovered?.stage) ? recovered?.stage as AppStage : "wizard");
     void loadProjectWorkspace(item.project_id);
+  }
+
+  if (activeSourceAdministration && authState === "authenticated" && authUser?.platform_role === "platform_admin" && (activeRecovery?.target.kind === "source_review" || (activeRecovery?.target.kind === "dataset_metadata" && activeRecovery.target.field_keys?.some((key) => ["terms_hash", "license_snapshot_ref"].includes(key)))) && activeRecovery.action.allowed) {
+    return <main className="admin-shell" dir={direction}><h1>{text("مراجعة مصدر بواسطة إدارة المنصة", "Platform administration source review")}</h1>{renderRecoveryEditor()}<button type="button" disabled={isBusy} onClick={() => { retainTargetDraft(); setActiveSourceAdministration(false); }}>{text("العودة إلى مساحة العميل مع حفظ العمل", "Return to customer workspace keeping work")}</button></main>;
   }
 
   if (!hasEnteredProduct) {
@@ -1787,7 +2320,7 @@ function SessionWorkspace() {
         </div>
       </aside>
 
-      <section className="workspace" data-asie-missing-label={firstMissingInputLabel ?? ""} data-asie-missing-target={firstMissingInputTarget} data-asie-missing-count={readinessBlocked.length}>
+      <section className="workspace" data-asie-recovery-index={recoveryItems.length ? Math.max(0, recoveryItems.findIndex((item) => item.recovery_id === activeRecovery?.recovery_id)) : undefined} data-asie-project-generation={projectScope.current.generation} data-asie-missing-label={recoveryItems.length ? recoveryReasonText((activeRecovery ?? recoveryItems[0]).requirement_code, locale) : firstMissingInputLabel ?? ""} data-asie-missing-target={firstMissingInputTarget} data-asie-missing-count={readinessBlocked.length}>
         <header className="topbar">
           <div>
             <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
@@ -1900,6 +2433,7 @@ function SessionWorkspace() {
               if (target) openProject(target);
             }}
             onNewProject={() => {
+              persistRecoveryDraft(); formOrigin.current = null;
               setProject(null);
               setWorkspace(null);
               setReadiness(null);
@@ -1922,17 +2456,8 @@ function SessionWorkspace() {
             onOpenStage={(projectId, targetStage) => {
               const target = projects.find((item) => item.project_id === projectId);
               if (!target) return;
-              setProject(target);
-              setForm({
-                name: target.name,
-                sector: target.sector,
-                jurisdiction: target.jurisdiction,
-                depth_profile: target.depth_profile,
-                inputs: { ...defaultInputs, ...target.inputs },
-              });
-              setMaxUnlockedWizardStep(wizardJourney.length - 1);
+              openProject(target);
               setStage(targetStage);
-              void loadProjectWorkspace(target.project_id);
             }}
           />
         ) : null}
@@ -2052,6 +2577,15 @@ function SessionWorkspace() {
           </section>
         ) : null}
 
+        {recoveryStorageUnavailable ? <p role="status">{text("تعذر حفظ مسودة المتصفح. عملك باقٍ في هذه الصفحة، لكن لا نضمن استعادته بعد تحديثها.", "Browser draft storage is unavailable. Your work remains on this page, but refresh recovery is not guaranteed.")}</p> : null}
+        {renderRecoveryEditor()}
+        {project && (stage === "readiness" || stage === "reality") ? <CustomerDIBRecovery key={`${project.organization_id}:${project.project_id}`} project={project} userId={authUser?.user_id ?? "legacy"} /> : null}
+        {stage === "readiness" || stage === "reality" ? <section className="panel" aria-label={text("نواقص المسودة الحالية", "Current draft requirements")}>
+          <h2>{text("نواقص المسودة الحالية", "Current draft requirements")}</h2>
+          <p>{text("تُفحص هذه القائمة من البيانات الحالية؛ التقارير المحفوظة تبقى تاريخية. متطلبات الأدلة لا تضيف بوابة تشغيل جديدة.", "This list uses current data; saved reports remain historical. Evidence requirements do not add a new run gate.")}</p>
+          {recoveryItems.map((item, index) => <article key={item.recovery_id}><p>{recoveryReasonText(item.requirement_code, locale)}</p><p>{item.target.field_keys?.map((key) => recoveryFieldText(key, locale)).join(" · ")}</p><button type="button" disabled={isBusy} onClick={() => openRecovery(item)}>{text("افتح المتطلب", "Open requirement")} {index + 1}</button></article>)}
+          {workspace?.capabilities?.map((capability) => <p key={capability.capability_id}>{capability.state === "disabled" ? text("بناء السياق متوقف حاليًا بقرار التشغيل. تعديل المدخلات لا يفعّله تلقائيًا.", "Context construction is currently disabled by operating policy. Editing inputs does not enable it.") : capability.state === "not_built" ? text("هذه القدرة لم يكتمل بناؤها.", "This capability is not yet complete.") : capability.state === "coming_soon" ? text("هذه القدرة مخطط لها دون موعد معلن.", "This capability is planned without an announced date.") : capability.state === "temporary_fault" ? text("تعذر مؤقت مصنف من مالك العملية.", "A temporary failure classified by the operation owner.") : text("حالة هذه القدرة تحتاج تحققًا من المسؤول.", "This capability status needs owner verification.")}</p>)}
+        </section> : null}
         {stage === "run" ? (
           <section className="panel run-board">
             <div className="section-title">
@@ -2844,7 +3378,8 @@ function SessionWorkspace() {
                     </label>
                     <NumberField inputId="wizard-unit-price" label={text("سعر البيع أو الخدمة", "Product or service price")} value={form.inputs.unit_price} onChange={(value) => updateInputs({ unit_price: value })} />
                     <NumberField inputId="wizard-variable-cost" label={text("تكلفة تقديم الخدمة", "Service delivery cost")} value={form.inputs.variable_cost} onChange={(value) => updateInputs({ variable_cost: value })} />
-                    <NumberField inputId="wizard-monthly-units" label={text("عدد العملاء أو الطلبات شهرياً", "Monthly customers or orders")} value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />
+                    <label className="field"><span>{text("استخدام نموذج الطاقة التشغيلية", "Use operating-capacity model")}</span><input type="checkbox" checked={Boolean(form.inputs.use_operating_capacity)} onChange={(event) => updateInputs({ use_operating_capacity: event.target.checked })} /></label>
+                    {form.inputs.use_operating_capacity ? <>{["capacity_units_per_day", "operating_days_per_month", "utilization_rate"].map((key) => <NumberField key={key} inputId={`wizard-${key}`} label={recoveryFieldText(key, locale)} value={Number((form.inputs as unknown as Record<string, unknown>)[key] ?? 0)} onChange={(value) => updateInputs({ [key]: value } as Partial<ProjectInputs>)} />)}</> : <NumberField inputId="wizard-monthly-units" label={text("عدد العملاء أو الطلبات شهرياً", "Monthly customers or orders")} value={form.inputs.monthly_units} onChange={(value) => updateInputs({ monthly_units: value })} />}
                   </div>
                   <details className="manual-advanced-fields" open>
                     <summary>{text("إضافة تفاصيل تشغيلية أدق", "Add detailed operating information")} <small>{text("(اختياري)", "(optional)")}</small></summary>
@@ -2945,6 +3480,7 @@ function SessionWorkspace() {
                                     <strong>{assumptionLabel(item, locale)}</strong>
                                     <span>{item.value || text("غير محدد", "Not specified")} {item.unit === "unit" ? "" : customerUnitText(item.unit, locale)}</span>
                                     <small>{item.review_status === "approved" ? text("معتمد", "Approved") : text("بانتظار المراجعة", "Awaiting review")}</small>
+                                    <button type="button" disabled={isBusy || item.review_status === "approved"} onClick={() => void handleApproveAssumptions([item])}>{text("اعتماد هذا الافتراض", "Approve this assumption")}</button>
                                   </div>
                                 ))}
                               </div>

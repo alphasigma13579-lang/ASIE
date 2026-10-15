@@ -4,9 +4,12 @@ from typing import Any
 
 from backend.dib_api import (
     DIBApiController,
+    dib_customer_recovery,
     DIBApiError,
     DIBApiResponse,
     _parts,
+    _reject_forbidden_api_payload,
+    safe_dib_error_code,
     _query_bool,
     _query_value,
 )
@@ -15,7 +18,7 @@ from backend.dib_canonical_finance_admission import (
     DIBCanonicalFinanceAdmissionError,
     LocalProjectRunWorkflowExecutor,
 )
-from backend.dib_persistence import DIBPersistenceStore, create_dib_persistence_store
+from backend.dib_persistence import DIBPersistenceError, DIBPersistenceStore, create_dib_persistence_store
 from backend.dib_server_owned_manifest_chain import (
     DIBServerOwnedManifestChain,
     DIBServerOwnedManifestChainError,
@@ -123,6 +126,9 @@ class TenantScopedDIBApiController(DIBApiController):
             raise DIBApiError("dib_tenant_context_required", 403)
 
         try:
+            if payload is not None and type(payload) is not dict:
+                raise DIBApiError("json_object_required", 400)
+            _reject_forbidden_api_payload(payload or {})
             if method == "POST" and parts == ["api", "dib", "sessions"]:
                 return self._start_tenant_session(request_context, dict(payload or {}))
             if method == "GET" and parts == ["api", "dib", "sessions"]:
@@ -130,11 +136,12 @@ class TenantScopedDIBApiController(DIBApiController):
             if len(parts) >= 4 and parts[:3] == ["api", "dib", "sessions"]:
                 session_id = parts[3]
                 tail = parts[4:]
+                binding = self.tenant_boundary.require_session_access(request_context, session_id)
+                self.tenant_boundary.require_project_access(request_context, binding["project_id"])
                 if method == "GET" and not tail:
-                    return DIBApiResponse(
-                        200,
-                        {"session": self.tenant_boundary.load_session(request_context, session_id)},
-                    )
+                    loaded = self.tenant_boundary.load_session(request_context, session_id)
+                    loaded["recovery_items"] = dib_customer_recovery(loaded, request_context.organization_id)
+                    return DIBApiResponse(200, {"session": loaded})
                 if method == "GET" and tail == ["events"]:
                     return DIBApiResponse(
                         200,
@@ -168,8 +175,10 @@ class TenantScopedDIBApiController(DIBApiController):
                         dict(payload or {}),
                     )
             return super().dispatch(method, path, payload)
+        except DIBApiError:
+            raise
         except DIBTenantBoundaryError as exc:
-            code = str(exc)
+            code = safe_dib_error_code(str(exc))
             if code in {
                 "dib_session_not_found",
                 "dib_project_not_found",
@@ -178,11 +187,17 @@ class TenantScopedDIBApiController(DIBApiController):
                 raise DIBApiError("dib_resource_not_found", 404) from exc
             raise DIBApiError(code, 403) from exc
         except DIBServerOwnedManifestChainError as exc:
-            code = str(exc)
+            code = safe_dib_error_code(str(exc))
             status = 409 if code.startswith("stale_") or "requires_persisted" in code else 422
             raise DIBApiError(code, status) from exc
         except DIBCanonicalFinanceAdmissionError as exc:
             raise DIBApiError(exc.code, exc.status) from exc
+        except DIBPersistenceError as exc:
+            raise DIBApiError(safe_dib_error_code(str(exc)), 409) from exc
+        except (ValueError, TypeError) as exc:
+            raise DIBApiError(safe_dib_error_code(str(exc)), 422) from exc
+        except Exception as exc:
+            raise DIBApiError("dib_operation_failed", 500) from exc
 
     def _start_tenant_session(
         self,
@@ -202,7 +217,7 @@ class TenantScopedDIBApiController(DIBApiController):
         try:
             limit = min(25, max(1, int(_query_value(path, "limit") or 10)))
         except ValueError as exc:
-            raise DIBApiError("invalid DIB session query limit", 422) from exc
+            raise DIBApiError("dib_request_invalid", 422) from exc
         session_ids = self.tenant_boundary.list_session_ids_for_project(
             context,
             project_id,

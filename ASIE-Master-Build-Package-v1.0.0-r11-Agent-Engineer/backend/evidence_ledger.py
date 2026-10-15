@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.datasets import dataset_quality_gate
+from backend.datasets import dataset_quality_gate, is_customer_study_dataset
 from backend.transformations import transformation_quality_review
 
 
@@ -17,11 +17,14 @@ def build_evidence_ledger(
     sources = {row["source_id"]: row for row in source_records}
     gates = {row["dataset_id"]: row for row in evidence_register.get("quality_gates", [])}
     transformations_by_id = {row["transformation_id"]: row for row in transformations or []}
+    context = evidence_register.get("consuming_context")
+    context = context if type(context) is dict else {}
     ledger = []
     for link in evidence_register.get("evidence_links", []):
         dataset = datasets.get(link.get("dataset_id"), {})
-        source = sources.get(dataset.get("source_id"), {})
-        gate = gates.get(dataset.get("dataset_id")) or dataset_quality_gate(dataset, source)
+        customer = is_customer_study_dataset(dataset)
+        source = {} if customer else sources.get(dataset.get("source_id"), {})
+        gate = gates.get(dataset.get("dataset_id")) or dataset_quality_gate(dataset, source, organization_id=context.get("organization_id"), project_id=context.get("project_id"))
         transformation = transformations_by_id.get(link.get("transformation_id") or "", {})
         transformation_review = (
             transformation_quality_review(transformation, dataset)
@@ -41,6 +44,7 @@ def build_evidence_ledger(
                 "target_id": link.get("target_id") or link.get("assumption_id", ""),
                 "dataset_id": dataset.get("dataset_id", ""),
                 "dataset_title": dataset.get("title", ""),
+                "material_origin": "customer_study" if customer else "governed_external_or_legacy",
                 "source_id": source.get("source_id", dataset.get("source_id", "")),
                 "source_state": source.get("state", "candidate"),
                 "dataset_review_status": dataset.get("review_status", ""),

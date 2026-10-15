@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.contracts import DB_PATH, json_dumps, json_loads, new_id, now_iso
-from backend.datasets import normalize_dataset_payload, normalize_evidence_link
+from backend.datasets import CONTENT_INPUT_KEYS, PROVENANCE_KEY, normalize_dataset_payload, normalize_evidence_link, reject_client_dataset_provenance, dataset_submission_provenance
 from backend.decision_pack import normalize_action_item_patch, normalize_review
 from backend.source_registry import normalize_source_review, seed_source_records
 from backend.snapshot_assembly import canonical_hash
@@ -1891,6 +1891,24 @@ class Repository:
             raise ValueError("approval_expired")
         return {"approval_receipt_id": receipt_id, "organization_id": organization_id, "project_id": project_id, "context_hash": context_hash, "contract_version": contract_version, "consumable": True, "snapshot_mutation": False}
 
+    def read_project_evidence(self, project_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Read evidence owners from one SQLite snapshot; never combine approval epochs."""
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN")
+            sources = [self._source_from_row(row) for row in conn.execute("SELECT * FROM source_records ORDER BY source_id").fetchall()]
+            datasets = [self._dataset_from_row(row) for row in conn.execute("SELECT * FROM datasets ORDER BY updated_at DESC").fetchall()]
+            links = [dict(row) for row in conn.execute("SELECT * FROM evidence_links WHERE project_id = ? ORDER BY updated_at DESC", (project_id,)).fetchall()]
+            for link in links:
+                link["target_id"] = link.get("target_id") or link.get("assumption_id", "")
+                link["target_type"] = link.get("target_type") or "assumption"
+                link["transformation_id"] = link.get("transformation_id") or ""
+            dataset_ids = {row["dataset_id"] for row in links}
+            transformation_ids = {row["transformation_id"] for row in links if row["transformation_id"]}
+            transformations = [self._transformation_from_row(row) for row in conn.execute("SELECT * FROM transformations ORDER BY updated_at DESC").fetchall()]
+            transformations = [row for row in transformations if row["dataset_id"] in dataset_ids or row["transformation_id"] in transformation_ids]
+            conn.commit()
+        return {"source_records": sources, "datasets": datasets, "evidence_links": links, "transformations": transformations}
+
     def datasets(self, organization_id: str | None = None) -> list[dict[str, Any]]:
         with closing(self.connect()) as conn:
             if organization_id:
@@ -1904,11 +1922,49 @@ class Repository:
             row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
         return None if row is None else self._dataset_from_row(row)
 
-    def save_dataset(self, payload: dict[str, Any]) -> dict[str, Any]:
-        existing = self.get_dataset(str(payload.get("dataset_id") or ""))
-        record = normalize_dataset_payload(payload, existing)
-        record["organization_id"] = str(payload.get("organization_id") or (existing or {}).get("organization_id") or LEGACY_ORGANIZATION_ID)
+    def save_dataset(self, payload: dict[str, Any], *, create_only: bool = False, update_only: bool = False, submission_context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Persist identity, owner and provenance under the same atomic write boundary."""
+        reject_client_dataset_provenance(payload)
+        if create_only and update_only:
+            raise ValueError("dataset_write_intent_invalid")
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (str(payload.get("dataset_id") or ""),)).fetchone()
+            existing = self._dataset_from_row(row) if row is not None else None
+            if create_only and existing is not None:
+                raise ValueError("dataset_identity_already_exists")
+            if update_only and existing is None:
+                raise ValueError("dataset_not_found")
+            if existing is not None and "organization_id" in payload and payload["organization_id"] != existing["organization_id"]:
+                raise PermissionError("dataset_organization_immutable")
+            if existing is not None and submission_context is not None:
+                raise PermissionError("dataset_provenance_immutable")
+            organization_id = (existing or {}).get("organization_id") or payload.get("organization_id") or LEGACY_ORGANIZATION_ID
+            if type(organization_id) is not str or not organization_id.strip():
+                raise ValueError("dataset_organization_required")
+            provenance = None
+            if submission_context is not None:
+                if type(submission_context) is not dict or set(submission_context) != {"kind", "creator_user_id", "initial_project_id", "organization_id"}:
+                    raise ValueError("dataset_submission_context_invalid")
+                provenance = dict(submission_context, version=1, created_at=now_iso())
+                if provenance["organization_id"] != organization_id or dataset_submission_provenance({"organization_id": organization_id, "notes": {PROVENANCE_KEY: provenance}}) is None:
+                    raise ValueError("dataset_submission_context_invalid")
+                creator = conn.execute("SELECT user_id FROM users WHERE user_id = ? AND status = 'active'", (provenance["creator_user_id"],)).fetchone()
+                if creator is None:
+                    raise PermissionError("dataset_submission_actor_invalid")
+                if provenance["initial_project_id"]:
+                    project = conn.execute("SELECT organization_id FROM projects WHERE project_id = ?", (provenance["initial_project_id"],)).fetchone()
+                    if project is None or project["organization_id"] != organization_id:
+                        raise PermissionError("dataset_submission_project_invalid")
+            replacement = existing is not None and bool(CONTENT_INPUT_KEYS & payload.keys())
+            # Explicit content submission is a replacement even when the retained
+            # five-row preview/profile happens to match; metadata-only edits are not.
+            effective_payload = payload | {"review_status": "review_required", "human_review_decision": ""} if replacement else payload
+            record = normalize_dataset_payload(effective_payload, existing, submission_provenance=provenance)
+            record["organization_id"] = organization_id
+            if replacement:
+                record["review_status"] = "review_required"
+                record["human_review_decision"] = ""
             conn.execute(
                 """
                 INSERT INTO datasets (
@@ -1943,26 +1999,38 @@ class Repository:
                 """,
                 record,
             )
+            if replacement:
+                conn.execute("UPDATE transformations SET review_status = 'review_required', updated_at = ? WHERE dataset_id = ?", (record["updated_at"], record["dataset_id"]))
+                conn.execute("UPDATE evidence_links SET human_review_decision = '', updated_at = ? WHERE dataset_id = ?", (record["updated_at"], record["dataset_id"]))
+            saved_row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (record["dataset_id"],)).fetchone()
+            saved = self._dataset_from_row(saved_row)
             conn.commit()
-        saved = self.get_dataset(record["dataset_id"])
-        if saved is None:
-            raise RuntimeError("dataset_save_failed")
-        return saved
+            return saved
 
     def review_dataset(self, dataset_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        existing = self.get_dataset(dataset_id)
-        if existing is None:
-            return None
-        payload = payload | {"dataset_id": dataset_id}
-        return self.save_dataset(payload)
+        if "dataset_id" in payload and payload["dataset_id"] != dataset_id:
+            raise PermissionError("dataset_identity_immutable")
+        try:
+            return self.save_dataset(payload | {"dataset_id": dataset_id}, update_only=True)
+        except ValueError as exc:
+            if str(exc) == "dataset_not_found":
+                return None
+            raise
 
     def save_transformation(self, dataset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        dataset = self.get_dataset(dataset_id)
-        if dataset is None:
-            raise ValueError("dataset_not_found")
-        existing = self.get_transformation(str(payload.get("transformation_id") or ""))
-        record = normalize_transformation_payload(dataset, payload | {"dataset_id": dataset_id}, existing)
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            dataset_row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+            if dataset_row is None:
+                raise ValueError("dataset_not_found")
+            dataset = self._dataset_from_row(dataset_row)
+            if "dataset_id" in payload and payload["dataset_id"] != dataset_id:
+                raise PermissionError("transformation_dataset_immutable")
+            existing_row = conn.execute("SELECT * FROM transformations WHERE transformation_id = ?", (str(payload.get("transformation_id") or ""),)).fetchone()
+            existing = self._transformation_from_row(existing_row) if existing_row is not None else None
+            if existing is not None and existing["dataset_id"] != dataset_id:
+                raise PermissionError("transformation_dataset_immutable")
+            record = normalize_transformation_payload(dataset, payload | {"dataset_id": dataset_id}, existing)
             conn.execute(
                 """
                 INSERT INTO transformations (
@@ -2026,14 +2094,18 @@ class Repository:
             if row["transformation_id"] in linked_ids or row["dataset_id"] in dataset_ids
         ]
 
-    def save_evidence_link(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        existing = self.get_evidence_link(
-            project_id,
-            str(payload.get("target_id") or payload.get("assumption_id") or ""),
-            str(payload.get("dataset_id") or ""),
-        )
-        record = normalize_evidence_link(project_id, payload, existing)
+    def save_evidence_link(self, project_id: str, payload: dict[str, Any], *, expected_dataset_revision: str | None = None) -> dict[str, Any]:
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            dataset_id = str(payload.get("dataset_id") or "")
+            if expected_dataset_revision is not None:
+                dataset = conn.execute("SELECT updated_at, review_status FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+                if dataset is None or dataset["updated_at"] != expected_dataset_revision or dataset["review_status"] != "approved_for_use":
+                    raise ValueError("dataset_revision_conflict")
+            previous = conn.execute("SELECT * FROM evidence_links WHERE project_id = ? AND assumption_id = ? AND dataset_id = ?",
+                (project_id, str(payload.get("target_id") or payload.get("assumption_id") or ""), dataset_id)).fetchone()
+            existing = dict(previous) if previous else None
+            record = normalize_evidence_link(project_id, payload, existing)
             conn.execute(
                 """
                 INSERT INTO evidence_links (

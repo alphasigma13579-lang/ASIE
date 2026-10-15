@@ -1,4 +1,5 @@
-import { getActiveOrganizationId, getSessionToken, handleUnauthorized } from "./session";
+import type { CustomerRecoveryItem } from "./contracts";
+import { getActiveOrganizationId, getSessionToken, handleUnauthorized, getSessionRevision, assertSessionRevision } from "./session";
 
 export const DIB_UI_LIVE_API_WIRING_ID = "DIB-LIVE-002J-UI-LIVE-API-WIRING-v1";
 export const DIB_SESSION_CONTINUITY_UI_ID = "DIB-COMPLETION-PACKAGE-A-SESSION-CONTINUITY-v1";
@@ -7,7 +8,14 @@ export const DIB_MANIFEST_RUN_READINESS_UI_ID = "DIB-COMPLETION-PACKAGE-C-MANIFE
 export const DIB_CONTROLLED_FINANCE_WIRING_UI_ID = "DIB-COMPLETION-PACKAGE-D-CONTROLLED-FINANCE-WIRING-v1";
 export const DIB_SNAPSHOT_PROJECTION_HANDOFF_UI_ID = "DIB-COMPLETION-PACKAGE-E-SNAPSHOT-PROJECTION-HANDOFF-v1";
 
+export class DIBRequestError extends Error {
+  constructor(public readonly code: string, public readonly status: number) {
+    super("تعذر إتمام الطلب. احتفظ بتعديلاتك وأعد قراءة الحالة قبل المحاولة.");
+  }
+}
+
 async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const revision = getSessionRevision();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init?.headers as Record<string, string> | undefined) ?? {}),
@@ -16,13 +24,32 @@ async function requestDibJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (token) headers.Authorization = `Bearer ${token}`;
   const organizationId = getActiveOrganizationId();
   if (organizationId) headers["X-ASIE-Organization-Id"] = organizationId;
-  const response = await fetch(path, { ...init, headers });
-  if (response.status === 401 && token) handleUnauthorized();
-  const payload = (await response.json()) as T & { error?: string };
-  if (!response.ok) {
-    throw new Error(payload.error ?? `تعذر الاتصال بواجهة DIB (${response.status})`);
+  try {
+    const response = await fetch(path, { ...init, headers });
+    assertSessionRevision(revision);
+    const payload = (await response.json()) as T & { error?: string };
+    assertSessionRevision(revision);
+    if (response.status === 401 && token) handleUnauthorized();
+    if (!response.ok) throw new DIBRequestError(typeof payload.error === "string" ? payload.error : "dib_operation_failed", response.status);
+    return payload;
+  } catch (error) {
+    if (error instanceof DIBRequestError) throw error;
+    throw new DIBRequestError("dib_operation_failed", 500);
   }
-  return payload;
+}
+
+export interface DIBOriginReference {
+  session_id: string;
+  project_id: string;
+  blueprint_id: string;
+  revision: number;
+  payload_hash: string;
+}
+
+export interface DIBStoredItemDecision {
+  item_id: string;
+  input_key: string;
+  decision: { action: "enter_value" | "mark_unknown" | "reject" | "not_applicable"; value?: number; reason?: string };
 }
 
 export type DIBItemState =
@@ -65,6 +92,8 @@ export interface DIBStatusPayload {
 }
 
 export interface DIBSessionRecord {
+  recovery_items?: CustomerRecoveryItem[];
+  origin_reference?: DIBOriginReference | null;
   session_id: string;
   project_id: string;
   status: string;
@@ -145,6 +174,7 @@ export interface DIBValidationGatePayload {
 }
 
 export interface DIBPersistedEntity<TPayload> {
+  origin_reference?: DIBOriginReference;
   payload: TPayload;
   payload_hash?: string;
   created_at?: string;
@@ -390,6 +420,8 @@ export async function buildDIBSnapshotProjectionHandoff(
 export async function saveDIBBlueprint(
   sessionId: string,
   payload: {
+    expected_original: DIBOriginReference | null;
+    item_decisions?: DIBStoredItemDecision[];
     source?: string;
     intake_payload?: { file_name: string; rows: Array<Record<string, unknown>> };
     existing_items?: DIBBlueprintItem[];
@@ -399,7 +431,7 @@ export async function saveDIBBlueprint(
 ): Promise<DIBPersistedEntity<DIBBlueprintPayload>> {
   const response = await requestDibJson<{ blueprint: DIBPersistedEntity<DIBBlueprintPayload> }>(
     `/api/dib/sessions/${sessionId}/blueprints`,
-    { method: "POST", body: JSON.stringify(payload) }
+    { method: "POST", body: JSON.stringify({ ...payload, contract_id: "dib.blueprint.write.v2" }) }
   );
   return response.blueprint;
 }

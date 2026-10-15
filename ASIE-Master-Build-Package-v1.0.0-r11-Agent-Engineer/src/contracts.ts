@@ -55,6 +55,7 @@ export interface ProjectInputs {
 }
 
 export interface Project {
+  organization_id: string;
   project_id: string;
   name: string;
   sector: string;
@@ -104,6 +105,7 @@ export interface WizardStepStatus {
 }
 
 export interface ProjectReadiness {
+  recovery_items?: CustomerRecoveryItem[];
   project_id: string;
   ready_to_run: boolean;
   steps: WizardStepStatus[];
@@ -199,6 +201,7 @@ export interface DatasetQualityReview {
 }
 
 export interface DatasetRecord {
+  organization_id?: string;
   dataset_id: string;
   source_id: string;
   title: string;
@@ -219,6 +222,14 @@ export interface DatasetRecord {
     profile?: Record<string, DatasetColumnProfile>;
     quality_review?: DatasetQualityReview;
     external_fetch_allowed?: boolean;
+    readonly submission_provenance?: {
+      readonly version: 1;
+      readonly kind: "customer_study" | "governed_external";
+      readonly organization_id: string;
+      readonly creator_user_id: string;
+      readonly initial_project_id: string;
+      readonly created_at: string;
+    };
   };
   created_at: string;
   updated_at: string;
@@ -321,6 +332,7 @@ export interface EvidenceBindingTarget {
 }
 
 export interface EvidenceLedgerRecord {
+  material_origin?: "customer_study" | "governed_external_or_legacy";
   ledger_id: string;
   evidence_link_id: string;
   project_id: string;
@@ -1239,6 +1251,8 @@ export interface SnapshotReportView {
 }
 
 export interface ProjectWorkspace {
+  current_recovery?: { contract_id: "customer.recovery.v1"; source: "current_draft"; project_id: string; organization_id: string; updated_at: string; items: CustomerRecoveryItem[] };
+  capabilities?: CustomerCapability[];
   project: Project;
   readiness: ProjectReadiness;
   assumptions: AssumptionRecord[];
@@ -1290,4 +1304,38 @@ export interface SnapshotComparison {
     to: string | undefined;
     changed: boolean;
   };
+}
+
+export interface CustomerRecoveryTarget {
+  kind: "project_field" | "project_fields" | "dib_item" | "assumption_review" | "assumption_add" | "evidence_binding" | "dataset_metadata" | "dataset_content" | "transformation" | "source_review" | "owner_review";
+  field_keys?: string[];
+  target_type?: "assumption" | "sector_criterion";
+  target_id?: string;
+  dataset_id?: string;
+  transformation_id?: string;
+  source_id?: string;
+  session_id?: string;
+  blueprint_id?: string;
+  item_id?: string;
+  input_key?: string;
+}
+export interface CustomerRecoveryItem {
+  recovery_id: string;
+  requirement_code: string;
+  reason_key: string;
+  required: boolean;
+  severity: "required" | "review";
+  source: { kind: string; organization_id: string; project_id: string; entity_id: string; updated_at?: string; version?: string; revision?: number; payload_hash?: string };
+  target: CustomerRecoveryTarget;
+  action: { required_permission: string; allowed: boolean; responsible_role: string };
+  resolution: "unresolved" | "unmapped";
+  count?: { current: number; required: number; remaining: number };
+}
+export interface CustomerCapability {
+  capability_id: string;
+  state: "disabled" | "temporary_fault" | "not_built" | "coming_soon";
+  owner: string;
+  version: string;
+  evidence_ref: string;
+  reason_key: string;
 }

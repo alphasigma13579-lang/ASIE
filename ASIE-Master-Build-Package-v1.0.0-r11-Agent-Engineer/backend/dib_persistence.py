@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import tempfile
 import threading
@@ -351,53 +352,197 @@ class DIBPersistenceStore:
             )
         return self.load_session(session_id)
 
-    def save_blueprint(self, session_id: str, blueprint: dict[str, Any]) -> dict[str, Any]:
+    def save_blueprint(
+        self, session_id: str, blueprint: dict[str, Any], *,
+        expected_original: dict[str, Any] | None = None,
+        command_contract: str | None = None,
+        item_decisions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Save a new revision atomically; every existing writer must supply its edit origin."""
+        if not isinstance(blueprint, dict):
+            raise DIBPersistenceError("dib_blueprint_object_required")
         _reject_forbidden_payload(blueprint, context="blueprint")
-        contract_id = str(blueprint.get("contract_id") or "")
-        if contract_id not in {"dynamic.input.blueprint.v1", "dib.draft.revision.v1"}:
-            raise DIBPersistenceError("DIB persistence accepts only blueprint or draft revision contracts")
-        blueprint_id = str(blueprint.get("blueprint_id") or "").strip()
-        if not blueprint_id:
-            raise DIBPersistenceError("DIB blueprint requires blueprint_id")
-        created_at = str(blueprint.get("created_at") or now_iso())
+        if blueprint.get("contract_id") not in {"dynamic.input.blueprint.v1", "dib.draft.revision.v1"}:
+            raise DIBPersistenceError("dib_blueprint_contract_invalid")
+        if command_contract not in {None, "dib.blueprint.write.v2"}:
+            raise DIBPersistenceError("dib_blueprint_write_contract_invalid")
         with self._write_transaction() as connection:
             session = self._require_session_row(connection, session_id)
-            project_id = str(blueprint.get("project_id") or session["project_id"])
-            if project_id != session["project_id"]:
-                raise DIBPersistenceError("DIB blueprint project_id does not match session")
+            if session["status"] == "closed":
+                raise DIBPersistenceError("dib_session_closed")
+            project_id = blueprint.get("project_id")
+            if type(project_id) is not str or project_id != session["project_id"]:
+                raise DIBPersistenceError("dib_blueprint_project_mismatch")
+            current_id = session["current_blueprint_id"]
+            if current_id:
+                if command_contract != "dib.blueprint.write.v2" or expected_original is None:
+                    raise DIBPersistenceError("dib_blueprint_origin_required")
+                current = self._load_entity_row(connection, "dib_blueprints", "blueprint_id", current_id, "unknown DIB blueprint")
+                reference = self._blueprint_reference(current, session_id, project_id)
+                if (type(expected_original) is not dict or set(expected_original) != set(reference)
+                        or any(type(expected_original[key]) is not type(value) or expected_original[key] != value
+                               for key, value in reference.items())):
+                    raise DIBPersistenceError("dib_blueprint_write_conflict")
+                items = self._revision_items(current["payload"], blueprint.get("items"), item_decisions)
+                from backend.dib_runtime import create_draft_revision
+                saved_payload = create_draft_revision(current["payload"], items, reason="user_revision")
+            else:
+                if item_decisions is not None:
+                    raise DIBPersistenceError("dib_blueprint_origin_required")
+                if expected_original is not None:
+                    raise DIBPersistenceError("dib_blueprint_write_conflict")
+                saved_payload = dict(blueprint)
+                if type(saved_payload.get("blueprint_id")) is not str or not saved_payload["blueprint_id"].strip():
+                    raise DIBPersistenceError("dib_blueprint_identity_invalid")
+                revision = saved_payload.get("revision", 1)
+                if type(revision) is not int or revision < 1:
+                    raise DIBPersistenceError("dib_blueprint_revision_invalid")
+                saved_payload["revision"] = revision
+            blueprint_id = saved_payload["blueprint_id"]
+            created_at = saved_payload.get("created_at") or now_iso()
+            saved_payload["created_at"] = created_at
             connection.execute(
-                """
-                INSERT OR REPLACE INTO dib_blueprints (
+                """INSERT INTO dib_blueprints (
                     blueprint_id, session_id, project_id, revision, contract_id,
                     payload_json, payload_hash, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    blueprint_id,
-                    session_id,
-                    project_id,
-                    int(blueprint.get("revision") or 1),
-                    contract_id,
-                    _json_dump(blueprint),
-                    _payload_hash(blueprint),
-                    created_at,
-                ),
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (blueprint_id, session_id, project_id, saved_payload["revision"],
+                 saved_payload["contract_id"], _json_dump(saved_payload), _payload_hash(saved_payload), created_at),
             )
-            self._update_session_row(
-                connection,
-                session_id,
-                status="blueprint_saved",
-                current_blueprint_id=blueprint_id,
-            )
-            self._append_event_row(
-                connection,
-                session_id,
-                event_type="blueprint.saved",
-                entity_type="dib_blueprint",
-                entity_id=blueprint_id,
-                payload=blueprint,
-            )
-        return self.load_blueprint(blueprint_id)
+            self._update_session_row(connection, session_id, status="blueprint_saved", current_blueprint_id=blueprint_id)
+            if current_id:
+                connection.execute("UPDATE dib_sessions SET approved_manifest_id = NULL, validation_gate_id = NULL WHERE session_id = ?", (session_id,))
+            self._append_event_row(connection, session_id, event_type="blueprint.saved",
+                                   entity_type="dib_blueprint", entity_id=blueprint_id, payload=saved_payload)
+            # Return exactly the committed revision, not a later writer's current pointer.
+            result = self._load_entity_row(connection, "dib_blueprints", "blueprint_id", blueprint_id, "unknown DIB blueprint")
+            result["origin_reference"] = self._blueprint_reference(result, session_id, project_id)
+        return result
+
+    @staticmethod
+    def _revision_items(parent: dict[str, Any], submitted: Any, decisions: Any) -> list[dict[str, Any]]:
+        """Apply decisions to the persisted item; full-list writers retain immutable item identity."""
+        rows = parent.get("items")
+        if not isinstance(rows, list) or any(not isinstance(item, dict) for item in rows):
+            raise DIBPersistenceError("dib_blueprint_integrity_invalid")
+        if any(type(item.get("input_key")) is not str or type(item.get("item_id")) is not str for item in rows):
+            raise DIBPersistenceError("dib_blueprint_integrity_invalid")
+        by_key = {item.get("input_key"): item for item in rows}
+        identities = [item.get("item_id") for item in rows]
+        if (len(by_key) != len(rows) or len(set(identities)) != len(rows)
+                or any(type(key) is not str or not key for key in by_key)
+                or any(type(identity) is not str or not identity for identity in identities)):
+            raise DIBPersistenceError("dib_blueprint_integrity_invalid")
+        if decisions is not None:
+            if type(decisions) is not list or not decisions:
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            from backend.dib_intake_item_governance import apply_governed_item_decision
+            changed, seen = [], set()
+            for command in decisions:
+                if type(command) is not dict or set(command) != {"item_id", "input_key", "decision"}:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                key, identity = command["input_key"], command["item_id"]
+                if type(key) is not str or key in seen or key not in by_key or identity != by_key[key]["item_id"]:
+                    raise DIBPersistenceError("dib_item_target_changed")
+                decision = command["decision"]
+                if type(decision) is not dict or set(decision) - {"action", "value", "reason"}:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                action = decision.get("action")
+                if type(action) is not str or action not in {"enter_value", "mark_unknown", "reject", "not_applicable"}:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                if action == "enter_value" and (type(decision.get("value")) not in {int, float} or not math.isfinite(decision["value"])):
+                    raise DIBPersistenceError("dib_item_value_invalid")
+                if action in {"not_applicable", "mark_unknown", "reject"} and (type(decision.get("reason")) is not str or not decision["reason"].strip()):
+                    raise DIBPersistenceError("dib_item_reason_required")
+                changed.append(apply_governed_item_decision(by_key[key], decision)["item"])
+                seen.add(key)
+            return changed
+        if type(submitted) is not list or any(type(item) is not dict for item in submitted):
+            raise DIBPersistenceError("dib_blueprint_items_invalid")
+        changed, seen_keys, seen_ids = [], set(), set()
+        editable = {"label", "value", "unit", "value_state", "value_source", "source_type", "confidence", "evidence_refs", "review_status", "reason"}
+        for item in submitted:
+            key, identity = item.get("input_key"), item.get("item_id")
+            if (type(key) is not str or not key or key in seen_keys or type(identity) is not str
+                    or not identity or identity in seen_ids):
+                raise DIBPersistenceError("dib_blueprint_items_invalid")
+            if "action" in item or "evidence_pack" in item:
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            if key in by_key:
+                prior = by_key[key]
+                if (identity != prior["item_id"] or type(item.get("required", prior.get("required"))) is not type(prior.get("required"))
+                        or item.get("required", prior.get("required")) != prior.get("required")):
+                    raise DIBPersistenceError("dib_item_target_changed")
+                merged = prior | {field: item[field] for field in editable if field in item}
+                refs = merged.get("evidence_refs", [])
+                file_refs = type(refs) is list and all(type(ref) is str and ref.startswith("file:") and len(ref) <= 512 for ref in refs)
+                if refs != prior.get("evidence_refs", []) and not file_refs:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                state = merged.get("value_state")
+                if type(state) is not str:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                content_changed = any(_json_dump(merged.get(field)) != _json_dump(prior.get(field)) for field in editable)
+                if content_changed:
+                    if state in {"USER_PROVIDED", "UNKNOWN", "REJECTED", "NOT_APPLICABLE"}:
+                        action = {"USER_PROVIDED": "enter_value", "UNKNOWN": "mark_unknown", "REJECTED": "reject", "NOT_APPLICABLE": "not_applicable"}[state]
+                        if action == "not_applicable" and (type(merged.get("reason")) is not str or not merged["reason"].strip()):
+                            raise DIBPersistenceError("dib_item_reason_required")
+                        decision = {"action": action, "value": merged.get("value"), "reason": merged.get("reason") or "user_revision"}
+                        if action == "enter_value" and (type(decision["value"]) not in {int, float} or not math.isfinite(decision["value"])):
+                            raise DIBPersistenceError("dib_item_value_invalid")
+                        from backend.dib_intake_item_governance import apply_governed_item_decision
+                        merged = apply_governed_item_decision(prior | {"evidence_refs": refs}, decision)["item"]
+                    elif state == "INTENTIONAL_ZERO":
+                        if (type(merged.get("value")) not in {int, float} or merged["value"] != 0
+                                or type(merged.get("reason")) is not str or not merged["reason"].strip()):
+                            raise DIBPersistenceError("dib_item_reason_required")
+                        merged = prior | {"value": 0, "value_state": "INTENTIONAL_ZERO", "reason": merged["reason"],
+                                          "review_status": "approved", "value_source": "user_input", "source_type": "user_input", "confidence": 0.78}
+                    elif state == "FILE_IMPORTED":
+                        if (not file_refs or merged.get("value_source") != "file_import" or merged.get("source_type") != "file_import"
+                                or merged.get("review_status") != "draft" or merged.get("confidence") != 0.72):
+                            raise DIBPersistenceError("dib_item_decision_invalid")
+                        if type(merged.get("value")) not in {int, float} or not math.isfinite(merged["value"]):
+                            raise DIBPersistenceError("dib_item_value_invalid")
+                    else:
+                        raise DIBPersistenceError("dib_item_decision_invalid")
+                changed.append(merged)
+            else:
+                if identity in identities:
+                    raise DIBPersistenceError("dib_item_target_changed")
+                refs = item.get("evidence_refs", [])
+                if (type(item.get("value_state")) is not str or item.get("value_state") not in {"UNKNOWN", "FILE_IMPORTED", "USER_PROVIDED"}
+                        or type(refs) is not list or any(type(ref) is not str or not ref.startswith("file:") or len(ref) > 512 for ref in refs)):
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                if item.get("value_state") == "FILE_IMPORTED" and (item.get("value_source") != "file_import" or item.get("source_type") != "file_import" or item.get("review_status") != "draft" or item.get("confidence") != 0.72):
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                if item.get("value_state") == "USER_PROVIDED" and (item.get("value_source") != "user_input" or item.get("source_type") != "user_input" or item.get("review_status") != "approved" or item.get("confidence") != 0.78):
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                if item.get("value_state") == "UNKNOWN" and item.get("review_status") not in {None, "draft", "needs_review"}:
+                    raise DIBPersistenceError("dib_item_decision_invalid")
+                if item.get("value") is not None and (type(item["value"]) not in {int, float} or not math.isfinite(item["value"])):
+                    raise DIBPersistenceError("dib_item_value_invalid")
+                from backend.dib_runtime import FINANCE_REQUIRED_KEYS
+                changed.append({field: value for field, value in item.items() if field in editable | {"input_key", "item_id"}} |
+                               {"required": key in FINANCE_REQUIRED_KEYS, "revision": 1})
+            seen_keys.add(key)
+            seen_ids.add(identity)
+        return changed
+
+    @staticmethod
+    def _blueprint_reference(record: dict[str, Any], session_id: str, project_id: str) -> dict[str, Any]:
+        """Expose a stored, integrity-checked origin without accepting a browser-computed hash."""
+        payload = record.get("payload")
+        if (not isinstance(payload, dict) or record.get("session_id") != session_id
+                or record.get("project_id") != project_id or payload.get("project_id") != project_id
+                or payload.get("blueprint_id") != record.get("blueprint_id")
+                or type(payload.get("revision")) is not int
+                or payload.get("revision") != record.get("revision")
+                or _payload_hash(payload) != record.get("payload_hash")):
+            raise DIBPersistenceError("dib_blueprint_integrity_invalid")
+        return {"session_id": session_id, "project_id": project_id,
+                "blueprint_id": record["blueprint_id"], "revision": record["revision"],
+                "payload_hash": record["payload_hash"]}
 
     def save_approved_manifest(self, session_id: str, manifest: dict[str, Any]) -> dict[str, Any]:
         _reject_forbidden_payload(manifest, context="approved_manifest")
@@ -501,16 +646,21 @@ class DIBPersistenceStore:
 
     def load_session(self, session_id: str) -> dict[str, Any]:
         with self._read_connection() as connection:
+            connection.execute("BEGIN")
             row = self._require_session_row(connection, session_id)
             result = self._session_row_to_public(row)
             if row["current_blueprint_id"]:
-                result["current_blueprint"] = self._load_entity_row(
+                blueprint_record = self._load_entity_row(
                     connection,
                     "dib_blueprints",
                     "blueprint_id",
                     row["current_blueprint_id"],
                     "unknown DIB blueprint",
-                )["payload"]
+                )
+                result["current_blueprint"] = blueprint_record["payload"]
+                result["origin_reference"] = self._blueprint_reference(blueprint_record, session_id, row["project_id"])
+            else:
+                result["origin_reference"] = None
             if row["approved_manifest_id"]:
                 result["approved_manifest"] = self._load_entity_row(
                     connection,
@@ -798,6 +948,7 @@ class DIBPersistenceStore:
             "project_id": row["project_id"] if "project_id" in row.keys() else None,
             "status": row["status"] if "status" in row.keys() else None,
             "payload_hash": row["payload_hash"],
+            "revision": row["revision"] if "revision" in row.keys() else None,
             "payload": _json_load(row["payload_json"]),
             "created_at": row["created_at"],
         }
