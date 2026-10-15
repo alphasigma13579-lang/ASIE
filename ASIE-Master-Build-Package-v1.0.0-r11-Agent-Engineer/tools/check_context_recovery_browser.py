@@ -149,6 +149,7 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
                 items = [] if state["project"]["name"] else [requirement(state["project"])]
                 readiness = {"project_id": state["project"]["project_id"], "ready_to_run": False, "steps": [], "blockers": []}
                 if tail == "readiness": payload = readiness
+                elif tail == "runs" and method == "GET": payload = {"runs": []}
                 elif tail == "assumptions": payload = {"assumptions": []}
                 elif tail == "evidence-register": payload = register
                 elif tail == "evidence-ledger": payload = {"evidence_register": register, "evidence_ledger": [], "evidence_coverage": {"targets": [], "gaps": [], "supported": 0, "needs_evidence": 0}, "transformation_lineage": [], "recovery_items": evidence_requirements(state)}
@@ -179,7 +180,12 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             yield page, state
             self.assertEqual(state["blocked"], [])
             self.assertEqual(state["errors"], [])
-            self.assertFalse(any("/runs" in path or "pre-runs" in path or "manifest" in path or "validation-gate" in path for _, path, _ in state["requests"]))
+            allowed_run_reads = {f"/api/projects/{project_id}/runs" for project_id in owners}
+            self.assertFalse(any(
+                "pre-runs" in path or "manifest" in path or "validation-gate" in path
+                or ("/runs" in path and not (method == "GET" and path in allowed_run_reads))
+                for method, path, _ in state["requests"]
+            ))
             visible = page.locator("body").inner_text()
             for marker in ("PRIVATE-ORIGIN-HASH", "private-blueprint", "private-item", "INTERNAL-UNSAFE-LABEL", "PRIVATE-EXCEPTION-MARKER"):
                 self.assertNotIn(marker, visible)
@@ -447,8 +453,8 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
     def test_same_organization_projects_keep_distinct_drafts_and_owner_writes(self):
         with self.app("en", evidence=True, two_projects=True) as (page, state):
             def switch(letter):
-                page.locator("#workspace-navigation .nav-item").filter(has_text="Set up your project").click()
-                page.locator(".project-row").filter(has=page.get_by_text(f"Synthetic project {letter}", exact=True)).click()
+                page.locator("#workspace-navigation .nav-item").filter(has_text="Summary").click()
+                page.locator(".cc-row").filter(has=page.get_by_text(f"Synthetic project {letter}", exact=True)).get_by_role("button", name="Continue", exact=True).click()
                 self.navigate(page, "en")
             def evidence():
                 page.locator("#workspace-navigation .nav-item").filter(has_text="Link evidence").click()
@@ -515,8 +521,8 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             deadline = time.monotonic() + 5
             while not state["pending_dib"] and time.monotonic() < deadline: page.wait_for_timeout(20)
             self.assertEqual(len(state["pending_dib"]), 1)
-            page.locator("#workspace-navigation .nav-item").filter(has_text="Set up your project").click()
-            page.locator(".project-row").filter(has=page.get_by_text("Synthetic project B", exact=True)).click()
+            page.locator("#workspace-navigation .nav-item").filter(has_text="Summary").click()
+            page.locator(".cc-row").filter(has=page.get_by_text("Synthetic project B", exact=True)).get_by_role("button", name="Continue", exact=True).click()
             self.navigate(page, "en")
             page.get_by_role("combobox", name="Session", exact=True).select_option("synthetic-dib-session-b")
             page.get_by_role("button", name="Edit this input", exact=True).click()
