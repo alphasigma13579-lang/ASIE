@@ -466,10 +466,16 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             def close_metadata():
                 page.get_by_role("button", name="Return to my place, keeping current work", exact=True).click()
             def dib(session_id, value=None):
-                page.get_by_role("combobox", name="Session", exact=True).select_option(session_id)
-                edit = page.get_by_role("button", name="Edit this input", exact=True)
-                expect(edit).to_be_visible(); edit.click()
+                selector = page.get_by_role("combobox", name="Session", exact=True)
+                expect(selector.locator(f'option[value="{session_id}"]')).to_have_count(1)
+                if selector.is_enabled() and selector.input_value() != session_id:
+                    selector.select_option(session_id)
+                expect(selector).to_have_value(session_id)
                 field = page.get_by_role("spinbutton", name="Value", exact=True)
+                edit = page.get_by_role("button", name="Edit this input", exact=True).and_(page.locator(":enabled"))
+                expect(field.or_(edit).first).to_be_visible()
+                if not field.is_visible(): edit.click()
+                expect(field).to_be_visible()
                 if value is not None: field.fill(value)
                 return field
             metadata("A metadata draft"); close_metadata()
