@@ -837,3 +837,114 @@ baseline بعد دمج #208: `973c6a33080ddf50ade686a4ff8dbb21ed32c978`، manife
 لا schema إضافي: تبقى عملية idx_security_audit_origin_proof السابقة حرفيًا، ولا نشاط فهرس جديد. موضع F01A محفوظ ومحسوب وmax_active_executions=1 وFC20-05 held. routing_repair REGISTERED_BLOCKED/false؛ release BLOCK؛ DARK_OFFLINE؛ network/provider/deployment=false؛ delivery_evidence=null وclosure_effect=NONE. T08 OPEN وstartup/maintenance/recovery UNKNOWN_NOT_APPROVED؛ لا live/owner DB أو قبول تشغيل أو دمج#189.
 
 بعد فحوص ومراجعة التسجيل يلزم قرار دمجه المنفصل، ثم قرار تنفيذ مشروط وRESUME22 مراجع وموافقة منفصلة على دمجه. التنفيذ الموسع لا يبدأ من موافقة التصميم أو نشر التسجيل. لا تصميم مستقل إضافي ولا مصدر أو مسار بديل.
+
+<!-- F01A-DATASET-PROVENANCE-CONDITIONAL-RESUME-2026-10-15 -->
+### استئناف منشأ بيانات العميل والتعافي المشروط — مرشح 2026-10-15
+
+الحالة: `GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. إسقاط خاص بالمسار `docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md`، يحفظ prefix blob `f412f07f4b5f3c6a938cafaf84ce6005c4986cfa` كاملًا. المصدر النافذ هو manifest المدمج؛ نشر المرشح ونجاح الاختبارات لا يفعّلان التنفيذ.
+
+وافق المالك عند `2026-10-15T09:41:11.266227+00:00` على تطوير واختبار نفس حزمة الإصلاح المسجلة28 ملفًا، ببيانات اصطناعية وقواعد مؤقتة، بعد مراجعة انتقال RESUME22 وموافقته المنفصلة على دمجه. أجاز نشر الملخص وملفات الاستئناف السبعة والفحص والمراجعة ضمن الحصة المشمولة. [القرار](https://github.com/alphasigma13579-lang/ASIE/pull/211#issuecomment-6189149415) ملخص تقني منقول بواسطة المساعد وليس توقيعًا مستقلًا، ونُشر عند `2026-10-15T09:42:26Z`. لا يجيز هذا الإذن دمج المرشح الآن أو دمج #189 أو الإطلاق أو تغيير قاعدة التشغيل.
+
+خط الأساس بعد دمج #211 هو `a1e82fccaba18986ae9552fbfd41364d8179fd19`، manifest `56e59d99d30e608b2f9b96e2abac0ed3daa0f841` بحالةfalse و21حدثًا، ورأس التسجيل `7f62bc0ad3ff8466cbe6fe62222c5c176b992598`. التصميم المقبول #207 وتعديله #210 يحددان العقد؛ لا تصميم موازٍ. مصدر التطبيق هو Draft #189 غير المدمج عند `b011a6b3773f4c5e0a905161b5504fff339496f6` أو خلفه المتحقق بعد إدخال main الحاكم بأمان، وليس فرع الحوكمة.
+
+الدلتا: RESUME22 واحد وتغيير execution_authorized=false→true في المرشح فقط. يحفظ الأحداث21 والمسارات35 بالترتيب، وينسخ STOP20/SCOPE21 كاملين في الحدث وموضوع القرار. repair_scope مطابق للتسجيل دون تغيير، ويرتبط execution_scope ببصمته وفق UTF8 JSON ensure_ascii=false وsort_keys=true وseparators=(',',':'). أثر القرار F01A_DEFENSIVE_RESUME_ONLY وشرطه REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL. تبقى IN_PROGRESS وموضع واحد محفوظ ومحسوب وFC20-05 held؛ لا START أو DELIVERED أو إغلاق F01A.
+
+المسارات التراكمية35 تحفظ الإصلاحات السابقة، أما التنفيذ المحدد فهو نفس28ملفًا فقط:
+- `backend/asie_local_api.py`
+- `backend/workspace.py`
+- `backend/workflow.py`
+- `backend/dib_api.py`
+- `backend/dib_persistence.py`
+- `backend/dib_tenant_api.py`
+- `backend/dib_http_mounting.py`
+- `backend/release_info.py`
+- `src/contracts.ts`
+- `src/dibApi.ts`
+- `src/App.tsx`
+- `src/customerLanguage.tsx`
+- `src/ASIECompleteSurfaceMount.tsx`
+- `src/DIBWorkspace.tsx`
+- `src/DIBIntakeItemGovernance.tsx`
+- `src/DIBManifestRunReadiness.tsx`
+- `registry/asie-canonical-api-output.v1.json`
+- `docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md`
+- `tests/test_customer_language_foundation.py`
+- `tests/test_gov_beta_04_server_owned_manifest_chain.py`
+- `tests/test_context_recovery_api.py`
+- `tests/test_dib_context_recovery.py`
+- `tests/test_customer_capability_projection.py`
+- `tools/check_context_recovery_browser.py`
+- `backend/datasets.py`
+- `backend/repository.py`
+- `backend/evidence_ledger.py`
+- `src/api.ts`
+
+حد التنفيذ المغلق:
+```json
+{
+  "kind": "BOUNDED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY_DEVELOPMENT_TESTING",
+  "implementation_paths": [
+    "backend/asie_local_api.py",
+    "backend/workspace.py",
+    "backend/workflow.py",
+    "backend/dib_api.py",
+    "backend/dib_persistence.py",
+    "backend/dib_tenant_api.py",
+    "backend/dib_http_mounting.py",
+    "backend/release_info.py",
+    "src/contracts.ts",
+    "src/dibApi.ts",
+    "src/App.tsx",
+    "src/customerLanguage.tsx",
+    "src/ASIECompleteSurfaceMount.tsx",
+    "src/DIBWorkspace.tsx",
+    "src/DIBIntakeItemGovernance.tsx",
+    "src/DIBManifestRunReadiness.tsx",
+    "registry/asie-canonical-api-output.v1.json",
+    "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+    "tests/test_customer_language_foundation.py",
+    "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+    "tests/test_context_recovery_api.py",
+    "tests/test_dib_context_recovery.py",
+    "tests/test_customer_capability_projection.py",
+    "tools/check_context_recovery_browser.py",
+    "backend/datasets.py",
+    "backend/repository.py",
+    "backend/evidence_ledger.py",
+    "src/api.ts"
+  ],
+  "activities": [
+    "DEVELOP_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+    "TEST_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY"
+  ],
+  "repair_scope_sha256": "53e37b158f8446d29637ff8f47f29b06eeed8ec910cbcdde4f3ac4eb9a1b640f",
+  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+  "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+  "data_scope": "SYNTHETIC_DATA_ONLY",
+  "existing_recovery_contract": "PRESERVE_FULL_REGISTERED_24_FILE_CONTRACT",
+  "customer_policy": "NO_LICENSE_TERMS_PROOF_FOR_AUTHENTICATED_CUSTOMER_OWN_STUDY_MATERIAL",
+  "legacy_policy": "NO_EXEMPTION_WITHOUT_VALID_PROVENANCE_NO_AUTOMATIC_BACKFILL",
+  "same_owner_reuse": "AUTHORIZED_PROJECTS_WITHIN_SAME_ORGANIZATION",
+  "additional_schema_operations": [],
+  "live_database_authorized": false,
+  "provider_activation_authorized": false,
+  "external_network_authorized": false,
+  "deployment_authorized": false,
+  "application_merge_authorized": false,
+  "production_placement_accepted": false,
+  "startup_maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+  "t08": "OPEN"
+}
+```
+
+يبقى عقد التعافي24 كاملًا: GET خادمي متسق لهوية/نسخة/hash المصدر، صلاحية المؤسسة وملكية المشروع الحالية، CAS في حد persistence لجميع الكتّاب ومعرف Blueprint جديد وإبطال Manifest/Gate، ورفض تحديثات قديمة بلا توقعات الأصل. يحفظ عمل المستخدم والنسخة الأصلية، ولا يعيد تأسيسها على أحدث hash خفية. كل نقص معروف له سبب ومصدر وهدف دقيق ومصرح وعودة مع ar/en، وغياب الهدف فجوة لا N/A. Snapshot التاريخي ثابت ومنفصل عن المسودة؛ حالات القدرة للعرض فقط من مالكها، وسند محلي والصوت خارج النطاق.
+
+تطبق إضافة منشأ Dataset العقد المقبول نفسه: بيانات العميل الخاصة بدراسته لا تطلب إثبات ترخيص أو شروط، مع بقاء الجودة والخصوصية والتصنيف والمراجعة منفصلة. المنشأ خادمي ثابت في notes_json القائم؛ source_id للعميل سلسلةفارغة، ولا تحويل بياناته إلى مصدر رسمي. ملكية المؤسسة ثابتة وcreationproject للتدقيق، وإعادة الاستخدام بين مشروعات المؤسسة المصرح بها. لا overwrite عبر create ولا إعادة تعيين provenance/owner عبر review، ولا parent transformation عابر للمؤسسة. التغيير المادي يبطل الاعتمادات الحالية المتأثرة دون تغيير Snapshot تاريخي. السجل القديم بلا منشأ صالح لا يحصل على إعفاء تلقائي؛ لا backfill أو إعادة تصنيف صامتة. يبقى assumption وsector_criterion ومقياس الثقة، ويستعمل مسار current-run جهة المشروع الخادمية؛ fallback يمر بنفس البوابة. لا مخزن أو مسار أو خدمة بديلة ولا تفعيل مزود/APIcredentials.
+
+استثناء الفهرس التاريخي محفوظ حرفيًا: CREATE_INDEX_IF_NOT_EXISTS / idx_security_audit_origin_proof على security_audit_events(action,target_type,target_id,organization_id)، unique=false. لا عملية schema إضافية ولا تغيير معنى الاستعلام أو إثبات المنشأ؛ لا Finance/Snapshot/AAS/Decision Council أو F01B أو تغيير محركات مجمدة.
+
+حارس DPRG مستقل يثبت القرار الحقيقي والشرط والأنواع والنطاق الكامل؛ لا تستبدله موافقة تجهيز التسجيل أو دمجه. العكس الكامل يحذف RESUME22 ويعيد العلمfalse ويطابق manifest56e59d99d30e608b2f9b96e2abac0ed3daa0f841 ثم أوراكل DPSG والسلسلة السابقة دون تغيير. كل prefix وقسم جديد مثبت بالبايت والمسار، وكل قراءة مصدر تعاد مطابقتها، وكائنات fixtures منفصلة. لا رفع حدCI20دقيقة ولا حذف اختبارات أو إضعاف أوراكل تاريخي.
+
+التنفيذ الموسع لم يبدأ، واختبارات قبول تعديل منشأ Dataset لم تُشغّل. أعمال التعافي المحلية السابقة محفوظة ولا تصبح دليل قبول لهذه الإضافة؛ T08 OPEN. routing_repair REGISTERED_BLOCKED/false وضوابطه التسعةPENDING، FC20-12 ACR_REQUIRED، release BLOCK، DARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null وclosure_effect=NONE. قبول بدء الخدمة والصيانة والتعافي UNKNOWN_NOT_APPROVED؛ اتجاه الصيانة المخططة لا يحدد مدة أو بيانات أو قبولًا فعليًا. لا قاعدة تشغيل أو نشر أو قبولproduction أو دمج#189.
+
+بعد فحوص ومراجعات رأس الانتقال النهائي، يلزم قرار منفصل لدمجه. بعد نفاذه فقط يبدأ تطوير واختبار هذه28ملفًا بالقواعد المؤقتة والبيانات الاصطناعية. بقية إصلاحات ومحركات وخدمات المنصة مطلوبة ولا تسقط بهذه الدفعة.
