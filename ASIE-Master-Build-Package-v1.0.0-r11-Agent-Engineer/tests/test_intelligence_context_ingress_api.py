@@ -15,7 +15,7 @@ from unittest.mock import patch
 import backend.asie_local_api as api
 from backend.intelligence_workflow import IntelligenceContextWorkflow
 from backend.intelligence_context import ContextComponent, IntelligenceContext
-from backend.repository import Repository
+from backend.repository import Repository, ReviewOverlay
 
 
 class IntelligenceContextIngressApiTests(unittest.TestCase):
@@ -222,6 +222,96 @@ class IntelligenceContextIngressApiTests(unittest.TestCase):
                     self.assertNotIn(marker, json.dumps(body))
                     self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
         self.assertEqual((1, 1, 0, 0, 0), self.counts())
+
+
+    def stored_overlay_fixture(self):
+        """Create a valid pending review through the existing authorized boundary."""
+        principal = self.repo.principal_for_token(self.token, self.org)
+        context = IntelligenceContext("ctx-stored-overlay", self.org, self.project.project_id, "SA", "Custom activity", "stored-overlay", components=[ContextComponent("evidence", "reference", {"summary": "Synthetic stored overlay"}, "official-reference", "today", "SA", "Custom activity", "medium", ["evidence-reference"])])
+        context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
+        self.repo.persist_validated_intelligence_context(context=context, principal=principal)
+        route = "/api/intelligence/contexts/" + context.context_build_id
+        status, body = self.request(route + "/reviews", {"project_id": self.project.project_id, "intelligence_context_hash": context.context_hash, "review_scope": "offline-example", "reviewed_output_hash": context.context_hash, "decision": "APPROVE"}, token=self.token)
+        self.assertEqual(201, status)
+        review = body["review"]
+        receipt = {"project_id": self.project.project_id, "intelligence_context_hash": context.context_hash, "review_overlay_id": review["review_overlay_id"], "review_overlay_hash": review["review_overlay_hash"], "approval_scope": "offline-example", "approved_for_contract_version": "offline.example.v1", "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        return context, route + "/approval", receipt, review, principal
+
+    def stored_overlay_snapshot(self):
+        """Capture persisted approval inputs and outputs, excluding denial audit metadata."""
+        with closing(self.repo.connect()) as conn:
+            return tuple(tuple(tuple(row) for row in conn.execute("SELECT * FROM " + table + " ORDER BY rowid")) for table in ("intelligence_contexts", "intelligence_review_overlays", "intelligence_approval_receipts", "runs", "snapshots"))
+
+    def replace_stored_overlay(self, review_id, raw):
+        """Inject only synthetic persisted corruption without changing the approved row hash."""
+        with closing(self.repo.connect()) as conn, conn:
+            conn.execute("UPDATE intelligence_review_overlays SET payload_json = ? WHERE review_overlay_id = ?", (raw, review_id))
+
+    def test_stored_overlay_corruption_has_narrow_safe_classification_and_no_effects(self):
+        """Stored decode/construction errors are 400 in both locales and never approve."""
+        context, route, receipt, review, principal = self.stored_overlay_fixture()
+        marker = "SECRET_STORED_OVERLAY_MARKER"
+        cases = ("{", "", "null", "[]", json.dumps([marker]), json.dumps(marker), "42", "true", json.dumps({"reason": marker}), json.dumps({key: value for key, value in review.items() if key != "reason"}))
+        repository_receipt = receipt | {"intelligence_context_id": context.context_build_id}
+        for raw in cases:
+            self.replace_stored_overlay(review["review_overlay_id"], raw)
+            before = self.stored_overlay_snapshot()
+            with self.subTest(boundary="repository", raw=raw):
+                with self.assertRaisesRegex(ValueError, "^review_integrity_invalid$") as caught:
+                    self.repo.save_intelligence_approval(organization_id=self.org, project_id=self.project.project_id, receipt=repository_receipt, principal=principal)
+                self.assertIsInstance(caught.exception.__cause__, (KeyError, TypeError, ValueError))
+                self.assertEqual(before, self.stored_overlay_snapshot())
+            for locale in ("ar", "en"):
+                self.repo.save_customer_locale(self.owner["user_id"], locale)
+                with self.subTest(boundary="http", locale=locale, raw=raw):
+                    status, body = self.request(route, receipt, token=self.token)
+                    self.assertEqual(400, status)
+                    self.assertEqual(400, body["status"])
+                    self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
+                    for secret in (marker, "review_integrity_invalid", "payload_json", review["review_overlay_id"], self.project.project_id, self.org):
+                        self.assertNotIn(secret, json.dumps(body))
+                    self.assertEqual(before, self.stored_overlay_snapshot())
+        self.assertNotIn(marker, json.dumps(self.repo.security_audit_events()))
+        self.replace_stored_overlay(review["review_overlay_id"], json.dumps(review))
+        status, body = self.request(route, receipt, token=self.token)
+        self.assertEqual(201, status)
+        self.assertEqual((1, 1, 1, 0, 0), self.counts())
+
+    def test_stored_overlay_validation_faults_outside_decode_remain_unavailable(self):
+        """Unexpected faults after reconstruction retain 503 and transaction rollback."""
+        _, route, receipt, _, _ = self.stored_overlay_fixture()
+        before = self.stored_overlay_snapshot()
+        for locale in ("ar", "en"):
+            self.repo.save_customer_locale(self.owner["user_id"], locale)
+            for fault in (TypeError("SECRET_OUTSIDE_DECODE"), RuntimeError("SECRET_OUTSIDE_DECODE"), sqlite3.OperationalError("SECRET_OUTSIDE_DECODE")):
+                with self.subTest(locale=locale, fault=type(fault).__name__), patch.object(ReviewOverlay, "validate_for", side_effect=fault) as validation:
+                    status, body = self.request(route, receipt, token=self.token)
+                    validation.assert_called_once()
+                self.assertEqual(503, status)
+                self.assertNotIn("SECRET_OUTSIDE_DECODE", json.dumps(body))
+                self.assertEqual(locale == "ar", any("\u0600" <= ch <= "\u06ff" for ch in body["error"]))
+                self.assertEqual(before, self.stored_overlay_snapshot())
+
+    def test_stored_overlay_corruption_is_not_decoded_before_authorization_and_scope(self):
+        """Session, tenant, role and project denials precede stored overlay decoding."""
+        _, route, receipt, review, _ = self.stored_overlay_fixture()
+        raw = '{"SECRET_UNAUTHORIZED_STORED_OVERLAY":'
+        self.replace_stored_overlay(review["review_overlay_id"], raw)
+        before = self.stored_overlay_snapshot()
+        import backend.repository as repository_module
+        real_loads = repository_module.json_loads
+        def guarded_loads(value, default=None):
+            if value == raw:
+                self.fail("unauthorized request reached stored overlay decoding")
+            return real_loads(value, default)
+        cases = ((None, self.org, self.project.project_id, 401), (self.other_token, self.org, self.project.project_id, 422), (self.token, self.foreign_org, self.project.project_id, 422), (self.token, self.org, self.foreign.project_id, 422), (self.token, self.org, self.same_org_project.project_id, 400))
+        with patch.object(repository_module, "json_loads", side_effect=guarded_loads):
+            for token, org, project_id, expected in cases:
+                with self.subTest(token=token is not None, org=org, project_id=project_id):
+                    status, body = self.request(route, receipt | {"project_id": project_id}, token=token, org=org)
+                    self.assertEqual(expected, status)
+                    self.assertNotIn("SECRET_UNAUTHORIZED_STORED_OVERLAY", json.dumps(body))
+                    self.assertEqual(before, self.stored_overlay_snapshot())
 
     def ingress_routes(self):
         project_query = "?project_id=" + self.project.project_id

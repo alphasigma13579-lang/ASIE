@@ -1776,8 +1776,11 @@ class Repository:
             row = conn.execute("SELECT * FROM intelligence_review_overlays WHERE review_overlay_id = ? AND organization_id = ? AND project_id = ? AND context_build_id = ?", (model.review_overlay_id, organization_id, project_id, context.context_build_id)).fetchone()
             if row is None:
                 raise ValueError("approval_reference_mismatch")
-            overlay_record = json_loads(row["payload_json"], {})
-            overlay_model = ReviewOverlay(**{field.name: overlay_record[field.name] for field in fields(ReviewOverlay)})
+            try:
+                overlay_record = json_loads(row["payload_json"], {})
+                overlay_model = ReviewOverlay(**{field.name: overlay_record[field.name] for field in fields(ReviewOverlay)})
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("review_integrity_invalid") from exc
             overlay_model.validate_for(context)
             if row["overlay_hash"] != overlay_model.review_overlay_hash or model.conditions != overlay_model.conditions:
                 raise ValueError("approval_reference_mismatch")
