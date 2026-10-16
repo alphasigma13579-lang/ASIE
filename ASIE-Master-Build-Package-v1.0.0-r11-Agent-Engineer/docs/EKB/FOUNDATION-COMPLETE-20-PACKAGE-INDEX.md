@@ -914,3 +914,94 @@ baseline بعد دمج #208: `973c6a33080ddf50ade686a4ff8dbb21ed32c978`، manife
 التنفيذ الموسع لم يبدأ، واختبارات قبول تعديل منشأ Dataset لم تُشغّل. أعمال التعافي المحلية السابقة محفوظة ولا تصبح دليل قبول لهذه الإضافة؛ T08 OPEN. routing_repair REGISTERED_BLOCKED/false وضوابطه التسعةPENDING، FC20-12 ACR_REQUIRED، release BLOCK، DARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null وclosure_effect=NONE. قبول بدء الخدمة والصيانة والتعافي UNKNOWN_NOT_APPROVED؛ اتجاه الصيانة المخططة لا يحدد مدة أو بيانات أو قبولًا فعليًا. لا قاعدة تشغيل أو نشر أو قبولproduction أو دمج#189.
 
 بعد فحوص ومراجعات رأس الانتقال النهائي، يلزم قرار منفصل لدمجه. بعد نفاذه فقط يبدأ تطوير واختبار هذه28ملفًا بالقواعد المؤقتة والبيانات الاصطناعية. بقية إصلاحات ومحركات وخدمات المنصة مطلوبة ولا تسقط بهذه الدفعة.
+
+<!-- F01A-REVIEW-OVERLAY-MAINTENANCE-SCOPE-2026-10-16 -->
+### تسجيل صيانة ReviewOverlay المتبقية — STOP23/SCOPE24، 2026-10-16
+
+الحالة `REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL`. إسقاط خاص بالمسار `docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md` مع حفظ prefix `6882cdaa44dfc293419f220b5f8f5e5c35c64b27` كاملًا. المرجع النافذ هو manifest المدمج؛ لا تنفيذ من نشر المرشح.
+
+خط الأساس main `d1bfdd544b54f34f293a7a8dad67d7f8c56511c7` وmanifest `6e05c33c3df07a42ee5b7e695e3b528f9866d342`؛ مصدر التطبيق Draft #189 غير المدمج عند `492206f4703c9a1e5dc84fca40516cc438ca3352`. [قرار النطاق](https://github.com/alphasigma13579-lang/ASIE/pull/189#issuecomment-6215466332) ملخص تقني منقول بواسطة المساعد، وليس توقيعًا مستقلًا. وقت موافقة المالك `2026-10-16T12:23:15.105926+00:00` ووقت نشر الملخص `2026-10-16T12:26:07Z`. أجاز تسجيل الإضافة ونشرها للمراجعة واستكمال إجراءات الاستئناف؛ لا يعد هذا دمجًا للتسجيل أو قرار استئناف نافذًا.
+
+الدلتا: execution_authorized=true→false، وإلحاق STOP23/SCOPE24 مع حفظ22حدثًا حرفيًا. القائمة التاريخية35 ثابتة بالترتيب وadded_paths=[]؛ النشط30=28السابق+ملفي tests/test_intelligence_prerun_service.py وtests/test_intelligence_context_ingress_api.py الموجودين تاريخيًا. repository.py نشط سابقًا، لكن العملية الجديدة محددة هنا، ولا تُنسب إلى RESUME22. يبقى كامل عقد28ملفًا بما فيه تعافي العميل ومنشأDataset وR01–R14/T01–T09 محفوظًا، ولا يسقط أي محرك أو خدمة لازمة.
+
+الحد الفني الصغير: داخل معاملة الاعتماد القائمة، يترجم فقط KeyError/TypeError/ValueError الناتجة عن فك JSON لسجل ReviewOverlay المخزن وبناء حقوله الحالية إلى ValueError(review_integrity_invalid) مع حفظ السبب. يستخدم HTTP400 الآمن القائم؛ الصحيح يبقى201. تبقى validate_for/hash/conditions/expiry وSQL والصلاحيات خارج الالتقاط دون تغيير؛ لا defaults أو تطبيع أو قبول جديد. الاختبارات العربية والإنجليزية تثبت رفض التلف دون آثار جانبية، والعزل قبل الفك، والخطأ الداخلي خارج الحد يحتفظ بتصنيفه القائم. تنظيفSQLite يغير عمر ثلاث اتصالات اختبار فقط مع إبقاء معاملاتها وتأكيداتها.
+
+النطاق المغلق:
+```json
+{
+  "kind": "PRESERVED_DATASET_PROVENANCE_RECOVERY_WITH_REVIEW_OVERLAY_MAINTENANCE",
+  "implementation_paths": [
+    "backend/asie_local_api.py",
+    "backend/workspace.py",
+    "backend/workflow.py",
+    "backend/dib_api.py",
+    "backend/dib_persistence.py",
+    "backend/dib_tenant_api.py",
+    "backend/dib_http_mounting.py",
+    "backend/release_info.py",
+    "src/contracts.ts",
+    "src/dibApi.ts",
+    "src/App.tsx",
+    "src/customerLanguage.tsx",
+    "src/ASIECompleteSurfaceMount.tsx",
+    "src/DIBWorkspace.tsx",
+    "src/DIBIntakeItemGovernance.tsx",
+    "src/DIBManifestRunReadiness.tsx",
+    "registry/asie-canonical-api-output.v1.json",
+    "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+    "tests/test_customer_language_foundation.py",
+    "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+    "tests/test_context_recovery_api.py",
+    "tests/test_dib_context_recovery.py",
+    "tests/test_customer_capability_projection.py",
+    "tools/check_context_recovery_browser.py",
+    "backend/datasets.py",
+    "backend/repository.py",
+    "backend/evidence_ledger.py",
+    "src/api.ts",
+    "tests/test_intelligence_prerun_service.py",
+    "tests/test_intelligence_context_ingress_api.py"
+  ],
+  "preserved_repair_scope_sha256": "53e37b158f8446d29637ff8f47f29b06eeed8ec910cbcdde4f3ac4eb9a1b640f",
+  "preserved_execution_scope_sha256": "c74dbd2b30ce1f1ef1dc3fe433c52db64970f97e66e0618d2a829ed50dffbe2a",
+  "preserved_contract": "FULL_REGISTERED_28_FILE_DATASET_PROVENANCE_AND_RECOVERY_CONTRACT_UNCHANGED",
+  "maintenance_paths": [
+    "backend/repository.py",
+    "tests/test_intelligence_prerun_service.py",
+    "tests/test_intelligence_context_ingress_api.py"
+  ],
+  "stored_review_boundary": "ONLY_STORED_JSON_DECODE_AND_EXISTING_REVIEWOVERLAY_FIELD_RECONSTRUCTION_INSIDE_EXISTING_APPROVAL_TRANSACTION",
+  "caught_errors": [
+    "KeyError",
+    "TypeError",
+    "ValueError"
+  ],
+  "domain_error": "review_integrity_invalid",
+  "http_classification": "EXISTING_LOCALIZED_INVALID_REQUEST_400",
+  "unexpected_errors": "UNCHANGED_OUTSIDE_NARROW_BOUNDARY",
+  "valid_approval_status": 201,
+  "overlay_acceptance_hash_conditions_defaults": "UNCHANGED_NO_NEW_DEFAULTS_NORMALIZATION_OR_VALIDATION",
+  "authorization": "EXISTING_SESSION_TENANT_PROJECT_AUTHORIZATION_BEFORE_STORED_REVIEW_DECODE",
+  "sqlite_cleanup": "THREE_PRERUN_TEST_CONNECTION_CONTEXTS_CLOSING_PLUS_EXISTING_TRANSACTION_NO_ASSERTION_REMOVAL",
+  "regressions": [
+    "DIRECT_AND_AR_EN_HTTP_STORED_CORRUPTION",
+    "VALID_201",
+    "TENANT_PROJECT_VIEWER_SESSION_DENIAL_BEFORE_DECODE",
+    "NO_RECEIPT_RUN_SNAPSHOT_OR_EXISTING_ROW_MUTATION_ON_REJECTION",
+    "UNEXPECTED_FAULT_CLASSIFICATION_UNCHANGED"
+  ],
+  "additional_schema_operations": [],
+  "environment": "TEMPORARY_DATABASE_SYNTHETIC_DATA_ONLY_AFTER_REVIEWED_RESUME",
+  "live_database_authorized": false,
+  "provider_network_deployment_authorized": false,
+  "application_pr_merge_authorized": false
+}
+```
+
+مرجعRESUME22 وبصمتا عقده ونطاقه محفوظة بمراجعSHA256 مغلقة وقابلة للاسترجاع عند baseline أعلاه؛ لا إعادة نسخ تاريخ متضاعف داخل نفسه. الخوارزمية UTF8 JSON ensure_ascii=false،sort_keys=true،separators=(',',':'). حذف الحدثين وإعادة العلمtrue يعيد manifest كاملًا إلى `6e05c33c3df07a42ee5b7e695e3b528f9866d342`؛ لا تعديل للأحداث22 أو إيصالاتها أو أختامها.
+
+حارس الاختبار يبدأ من [نسخة492206 المراجعة](https://github.com/alphasigma13579-lang/ASIE/blob/492206f4703c9a1e5dc84fca40516cc438ca3352/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/tests/test_foundation_complete_20_program.py)، blob `ee3ffc612b1fba7542a902831af5687afa587c53`، ويحفظ تحسينَي التشخيص وحسابdigest واختباراتهما. هذا فرق معلن عن حارسmain، ضمن شرط ملحقfixture2026-10-04السطر93 لتعديل الاختبار الحاكم؛ لا توسعة لسلطة التطبيق أو إعادة كتابة للتاريخ. فحصa8ae السابق أُلغي بعد نجاحPython؛ فحص492206نجح كاملًا. لا ادعاء نجاح الفحص الأول. تظل كل المقارنات والأختام وقراءة المصدر والعكس والاختبارات وحدCI20دقيقة محفوظة.
+
+الموضع الواحد محفوظ ومحسوب وFC20-05held؛ استثناءidx_security_audit_origin_proof السابق دون تغيير ولاschema إضافي. routing_repair REGISTERED_BLOCKED/false، release BLOCK، DARK_OFFLINE،network/provider/deployment=false،delivery_evidence=null،closure_effect=NONE. لا liveDB أو نشر أو دمج#189. توثيق الدوال خارج هذه الإضافة. لا ادعاء إغلاقT08 أو قبولبدءالخدمة/الصيانة/التعافي UNKNOWN_NOT_APPROVED من هذا التسجيل؛ أدلة متصفح#189 تبقى دليل رأسها المحدد.
+
+بعد مراجعة التسجيل وفحوصه يلزم قرار دمجه المنفصل. ثم RESUME25 بقرار تنفيذ محدد علىcheckpoint محقق، ومراجعة وموافقة دمج منفصلة قبل كود الإضافة. لا وثيقة تصميم مستقلة جديدة ولا مسار تشغيل بديل.
