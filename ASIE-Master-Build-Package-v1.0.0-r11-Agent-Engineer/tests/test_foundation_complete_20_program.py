@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 from copy import deepcopy
+from functools import lru_cache
 import re
 
 import pytest
@@ -6901,23 +6902,34 @@ def validate_recovery_scope_baseline(manifest: dict) -> dict:
 _RECOVERY_HISTORY_BYTES: tuple[bytes, bytes] | None = None
 
 
+@lru_cache(maxsize=2, typed=True)
+def _key_binding_cached_blob_sha(raw: bytes) -> str:
+    """Memoize only exact immutable content digests, never fixture admission."""
+    return git_blob_sha(raw)
+
+
+def key_binding_fixture_blob_sha(raw: bytes) -> str:
+    """Retain original buffer/subclass behavior outside the exact-bytes cache."""
+    return _key_binding_cached_blob_sha(raw) if type(raw) is bytes else git_blob_sha(raw)
+
+
 def historical_key_binding_resume_manifest() -> dict:
     """CRSG-04: re-pin every source read; cache only inverse-verified immutable bytes."""
     global _RECOVERY_HISTORY_BYTES
     source = recovery_resume_historical_source_bytes()
-    assert git_blob_sha(source) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_fixture_source_changed"
+    assert key_binding_fixture_blob_sha(source) == "3e8c82ea894af7d72865229f72d0b9c576d7da31", "recovery_fixture_source_changed"
     if _RECOVERY_HISTORY_BYTES is None:
         # Validate exactly the bytes above, not a second potentially changed read.
         verified = _recovery_scope_historical_inverse(json.loads(source.decode("utf-8")))
         baseline = (json.dumps(verified, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-        assert git_blob_sha(baseline) == "a8785adda21236df9320c7c2ff0aac8a7628c7ab", "recovery_fixture_baseline_changed"
+        assert key_binding_fixture_blob_sha(baseline) == "a8785adda21236df9320c7c2ff0aac8a7628c7ab", "recovery_fixture_baseline_changed"
         _RECOVERY_HISTORY_BYTES = (source, baseline)
     assert isinstance(_RECOVERY_HISTORY_BYTES, tuple) and len(_RECOVERY_HISTORY_BYTES) == 2, "recovery_fixture_cache_shape"
     cached_source, baseline = _RECOVERY_HISTORY_BYTES
     assert isinstance(cached_source, bytes) and isinstance(baseline, bytes), "recovery_fixture_cache_type"
     source_matches = source == cached_source
     assert source_matches, "recovery_fixture_cache_source_changed"
-    assert git_blob_sha(baseline) == "a8785adda21236df9320c7c2ff0aac8a7628c7ab", "recovery_fixture_baseline_changed"
+    assert key_binding_fixture_blob_sha(baseline) == "a8785adda21236df9320c7c2ff0aac8a7628c7ab", "recovery_fixture_baseline_changed"
     # No parsed dictionaries/lists or aliases survive between cases.
     return json.loads(baseline.decode("utf-8"))
 
@@ -7498,9 +7510,6 @@ def validate_recovery_resume_baseline(manifest: dict) -> dict:
 
 
 _RECOVERY_RESUME_HISTORY_BYTES: tuple[bytes, bytes] | None = None
-
-
-from functools import lru_cache
 
 
 @lru_cache(maxsize=4, typed=True)
@@ -8448,7 +8457,15 @@ def dataset_resume_historical_source_bytes() -> bytes:
     """DPRG-08: re-pin every read and expose only immutable inverse-verified history."""
     global _DATASET_RESUME_HISTORY_BYTES
     source = MANIFEST_PATH.read_bytes()
-    assert recovery_resume_blob_sha(source) == DATASET_RESUME_MANIFEST_BLOB, "dataset_resume_fixture_source_changed"
+    # Reuse object identity only after comparing every byte of the fresh read.
+    # Ineligible/poisoned caches still reach the original checks in their order.
+    digest_source = source
+    history = _DATASET_RESUME_HISTORY_BYTES
+    if (type(source) is bytes and type(history) is tuple and len(history) == 2
+            and type(history[0]) is bytes and type(history[1]) is bytes
+            and source == history[0]):
+        digest_source = history[0]
+    assert recovery_resume_blob_sha(digest_source) == DATASET_RESUME_MANIFEST_BLOB, "dataset_resume_fixture_source_changed"
     if _DATASET_RESUME_HISTORY_BYTES is None:
         baseline = _dataset_resume_historical_inverse(json.loads(source.decode("utf-8")))
         raw = (json.dumps(baseline, ensure_ascii=False, indent=2) + "\n").encode()
@@ -8712,3 +8729,101 @@ def test_dataset_resume_fixture_single_read_and_failed_initialization(monkeypatc
     assert _DATASET_RESUME_HISTORY_BYTES is None
 
 
+
+
+def test_key_binding_digest_memo_is_content_only_and_bounded() -> None:
+    """Digest reuse preserves exact bytes, bounded eviction and the original hash."""
+    _key_binding_cached_blob_sha.cache_clear()
+    first = b"synthetic-key-binding-content"; equal = bytes(bytearray(first))
+    assert first == equal and first is not equal
+    assert key_binding_fixture_blob_sha(first) == git_blob_sha(first)
+    assert key_binding_fixture_blob_sha(equal) == git_blob_sha(equal)
+    assert _key_binding_cached_blob_sha.cache_info().hits == 1
+    changed = first[:-1] + b"X"
+    assert key_binding_fixture_blob_sha(changed) == git_blob_sha(changed) != git_blob_sha(first)
+    key_binding_fixture_blob_sha(b"third")
+    assert _key_binding_cached_blob_sha.cache_info().currsize == 2
+    misses = _key_binding_cached_blob_sha.cache_info().misses
+    key_binding_fixture_blob_sha(first)
+    assert _key_binding_cached_blob_sha.cache_info().misses == misses + 1
+
+
+def test_key_binding_digest_memo_preserves_nonexact_buffer_behavior() -> None:
+    """Mutable buffers and custom bytes never inherit a cached content decision."""
+    class PretendBytes(bytes):
+        def __eq__(self, other): return True
+        __hash__ = bytes.__hash__
+    _key_binding_cached_blob_sha.cache_clear()
+    mutable = bytearray(b"original")
+    for raw in (mutable, memoryview(mutable), PretendBytes(b"original")):
+        assert key_binding_fixture_blob_sha(raw) == git_blob_sha(raw)
+    mutable[0] = ord("X")
+    assert key_binding_fixture_blob_sha(mutable) == git_blob_sha(mutable) != git_blob_sha(b"original")
+    assert _key_binding_cached_blob_sha.cache_info().currsize == 0
+    for raw in (None, "text", 1, []):
+        with pytest.raises(TypeError): git_blob_sha(raw)
+        with pytest.raises(TypeError): key_binding_fixture_blob_sha(raw)
+
+
+def test_key_binding_digest_memo_does_not_cache_failed_computation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed pure digest cannot publish a cache entry."""
+    import sys
+    module = sys.modules[__name__]; _key_binding_cached_blob_sha.cache_clear()
+    original = git_blob_sha
+    def failed(raw): raise RuntimeError("synthetic_digest_failure")
+    monkeypatch.setattr(module, "git_blob_sha", failed)
+    with pytest.raises(RuntimeError, match="synthetic_digest_failure"):
+        key_binding_fixture_blob_sha(b"fresh")
+    assert _key_binding_cached_blob_sha.cache_info().currsize == 0
+    monkeypatch.setattr(module, "git_blob_sha", original)
+    assert key_binding_fixture_blob_sha(b"fresh") == original(b"fresh")
+    _key_binding_cached_blob_sha.cache_clear()
+
+
+def test_dataset_resume_digest_reuses_only_fresh_equal_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every warm lookup reads and compares source bytes before object reuse."""
+    import sys
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "_DATASET_RESUME_HISTORY_BYTES", None)
+    baseline = dataset_resume_historical_source_bytes()
+    cached_source, cached_baseline = _DATASET_RESUME_HISTORY_BYTES
+    calls = []; reads = []; original = recovery_resume_blob_sha
+    def fresh(_path):
+        raw = bytes(bytearray(cached_source)); reads.append(raw); return raw
+    def observed(raw):
+        calls.append(raw); return original(raw)
+    monkeypatch.setattr(Path, "read_bytes", fresh)
+    monkeypatch.setattr(module, "recovery_resume_blob_sha", observed)
+    assert dataset_resume_historical_source_bytes() == baseline
+    assert len(reads) == 1 and reads[0] is not cached_source
+    assert calls[0] is cached_source and calls[-1] is cached_baseline
+    monkeypatch.setattr(module, "DATASET_RESUME_MANIFEST_BLOB", "0" * 40)
+    with pytest.raises(AssertionError, match="dataset_resume_fixture_source_changed"):
+        dataset_resume_historical_source_bytes()
+
+
+@pytest.mark.parametrize("mutation", ("source_subclass", "cache_source_subclass", "cache_baseline_subclass", "cache_shape", "poisoned_source", "poisoned_baseline", "source_and_cache"))
+def test_dataset_resume_digest_fast_path_preserves_denial_order(monkeypatch: pytest.MonkeyPatch, mutation: str) -> None:
+    """Fast-path eligibility cannot hide changed bytes, custom equality or bad caches."""
+    import sys
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "_DATASET_RESUME_HISTORY_BYTES", None)
+    dataset_resume_historical_source_bytes(); source, baseline = _DATASET_RESUME_HISTORY_BYTES
+    class PretendBytes(bytes):
+        def __eq__(self, other): return True
+        __hash__ = bytes.__hash__
+    fresh = source; cache = (source, baseline)
+    expected = "dataset_resume_fixture_cache_type"
+    if mutation == "source_subclass":
+        fresh = PretendBytes(source); expected = "recovery_resume_digest_requires_exact_bytes"
+    elif mutation == "cache_source_subclass": cache = (PretendBytes(source), baseline)
+    elif mutation == "cache_baseline_subclass": cache = (source, PretendBytes(baseline))
+    elif mutation == "cache_shape": cache = (source,); expected = "dataset_resume_fixture_cache_shape"
+    elif mutation == "poisoned_source": cache = (source+b" ", baseline); expected = "dataset_resume_fixture_cache_source_changed"
+    elif mutation == "poisoned_baseline": cache = (source, baseline+b" "); expected = "dataset_resume_fixture_baseline_changed"
+    else:
+        fresh = source[:-1]+b" "; cache = (source,); expected = "dataset_resume_fixture_source_changed"
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: fresh)
+    monkeypatch.setattr(module, "_DATASET_RESUME_HISTORY_BYTES", cache)
+    with pytest.raises((AssertionError, TypeError), match=expected): dataset_resume_historical_source_bytes()
+    assert _DATASET_RESUME_HISTORY_BYTES is cache
