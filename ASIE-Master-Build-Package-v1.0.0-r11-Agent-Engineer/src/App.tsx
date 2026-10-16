@@ -1846,6 +1846,11 @@ function SessionWorkspace() {
 
 
   const recoveryItems = [...(workspace?.current_recovery?.items ?? []), ...evidenceRecovery];
+  const currentRecoveryIndex = recoveryItems.length ? Math.max(0, recoveryItems.findIndex((item) => item.recovery_id === activeRecovery?.recovery_id)) : undefined;
+  const currentRecoveryItem = currentRecoveryIndex === undefined ? undefined : recoveryItems[currentRecoveryIndex];
+  const selectedAssumptionTarget = selectedEvidenceTarget?.target_type === "assumption" && assumptions.some((item) => item.assumption_id === selectedEvidenceTarget.target_id);
+  const selectedCriterionTarget = selectedEvidenceTarget?.target_type === "sector_criterion" && evidenceCoverage?.targets.some((item) => item.target_type === "sector_criterion" && item.target_id === selectedEvidenceTarget.target_id);
+
   function openRecovery(item: CustomerRecoveryItem) {
     if (isBusy) return;
     recoveryOperation.current += 1;
@@ -2320,7 +2325,7 @@ function SessionWorkspace() {
         </div>
       </aside>
 
-      <section className="workspace" data-asie-recovery-index={recoveryItems.length ? Math.max(0, recoveryItems.findIndex((item) => item.recovery_id === activeRecovery?.recovery_id)) : undefined} data-asie-project-generation={projectScope.current.generation} data-asie-missing-label={recoveryItems.length ? recoveryReasonText((activeRecovery ?? recoveryItems[0]).requirement_code, locale) : firstMissingInputLabel ?? ""} data-asie-missing-target={firstMissingInputTarget} data-asie-missing-count={readinessBlocked.length}>
+      <section className="workspace" data-asie-recovery-index={currentRecoveryIndex} data-asie-project-generation={projectScope.current.generation} data-asie-missing-label={currentRecoveryItem ? recoveryReasonText(currentRecoveryItem.requirement_code, locale) : firstMissingInputLabel ?? ""} data-asie-missing-target={firstMissingInputTarget} data-asie-missing-count={readinessBlocked.length}>
         <header className="topbar">
           <div>
             <p className="eyebrow">{text("بيئة بيتا محكومة", "Governed beta environment")}</p>
@@ -3120,15 +3125,16 @@ function SessionWorkspace() {
                 <RefreshCw size={18} aria-hidden="true" />
                 <span>{text("تعديل المعالجة", "Revise transformation")}</span>
               </button>
-              <button disabled={!project || isBusy} onClick={handleLinkApprovedDataset} title={text("ربط البيانات بافتراض يحتاج دليلاً", "Link data to an assumption that needs evidence")}>
+              <button disabled={!project || isBusy || !selectedAssumptionTarget} onClick={handleLinkApprovedDataset} title={text("ربط البيانات بافتراض يحتاج دليلاً", "Link data to an assumption that needs evidence")}>
                 <BadgeCheck size={18} aria-hidden="true" />
                 <span>{text("ربط دليل", "Link evidence")}</span>
               </button>
-              <button disabled={!project || isBusy} onClick={handleLinkSectorCriterion} title={text("ربط البيانات بمتطلب قطاعي", "Link data to a sector requirement")}>
+              <button disabled={!project || isBusy || !selectedCriterionTarget} onClick={handleLinkSectorCriterion} title={text("ربط البيانات بمتطلب قطاعي", "Link data to a sector requirement")}>
                 <Layers3 size={18} aria-hidden="true" />
                 <span>{text("ربط معيار", "Link requirement")}</span>
               </button>
             </div>
+            {!selectedAssumptionTarget && !selectedCriterionTarget && <p className="muted">{text("لربط الدليل، افتح المتطلب المحدد من قائمة المتطلبات التي تحتاج إلى استكمال، ثم اختر مجموعة البيانات.", "To link evidence, open the specific requirement from the requirements needing attention, then select the dataset.")}</p>}
             <div className="source-list">
               {datasets.slice(0, 3).map((dataset) => (
                 <article key={dataset.dataset_id}>

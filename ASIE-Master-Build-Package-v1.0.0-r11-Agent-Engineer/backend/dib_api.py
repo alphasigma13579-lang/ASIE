@@ -410,14 +410,19 @@ class DIBApiController:
                     },
                 )
                 items = list(intake.get("mapped_items") or [])
-            blueprint = execute_dib_module_adapter(
-                "module.dynamic_input_blueprint",
-                {
-                    "project_profile": project_profile,
-                    "items": items,
-                    "source": str(payload.get("source") or "dib_api"),
-                },
-            )
+            current = session.get("current_blueprint")
+            if isinstance(current, dict):
+                # Preserve persisted identities; the store merges submitted items under CAS.
+                blueprint = current | {"items": items}
+            else:
+                blueprint = execute_dib_module_adapter(
+                    "module.dynamic_input_blueprint",
+                    {
+                        "project_profile": project_profile,
+                        "items": items,
+                        "source": str(payload.get("source") or "dib_api"),
+                    },
+                )
         saved = self.store.save_blueprint(
             session_id, blueprint, expected_original=payload.get("expected_original"),
             command_contract=payload.get("contract_id"), item_decisions=payload.get("item_decisions"),

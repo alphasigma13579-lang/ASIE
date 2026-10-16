@@ -187,18 +187,110 @@ class DIBRecoveryPersistenceTests(unittest.TestCase):
     def test_unknown_internal_fault_is_safe_server_error(self):
         controller = DIBApiController(self.store)
         original = self.store.load_session
-        self.store.load_session = lambda _: (_ for _ in ()).throw(ValueError("PRIVATE_MARKER"))
+        self.store.load_session = lambda _, *, allow_legacy_read=False: (_ for _ in ()).throw(ValueError("PRIVATE_MARKER"))
         try:
             with self.assertRaises(DIBApiError) as caught:
                 controller.dispatch("GET", f"/api/dib/sessions/{self.sid}")
             self.assertEqual(caught.exception.status, 500)
             self.assertEqual(caught.exception.code, "dib_operation_failed")
+            self.assertIsInstance(caught.exception.__cause__, ValueError)
+            self.assertEqual(str(caught.exception.__cause__), "PRIVATE_MARKER")
         finally:
             self.store.load_session = original
 
 
 
 class DIBRecoveryCommandBoundaryTests(DIBRecoveryPersistenceTests):
+    def test_partial_item_save_preserves_other_items_and_origin_conflicts(self):
+        first = self.create()
+        controller = DIBApiController(self.store)
+        row = copy.deepcopy(first["payload"]["items"][0])
+        row.update(value=0, value_state="INTENTIONAL_ZERO", reason="Synthetic explicit zero")
+        command = {"contract_id": "dib.blueprint.write.v2", "expected_original": first["origin_reference"], "items": [row]}
+        saved = controller.dispatch("POST", f"/api/dib/sessions/{self.sid}/blueprints", command)
+        self.assertEqual(saved.status, 201)
+        current = self.store.load_session(self.sid)["current_blueprint"]
+        self.assertEqual([item["item_id"] for item in current["items"]], [item["item_id"] for item in first["payload"]["items"]])
+        self.assertEqual(current["items"][1:], first["payload"]["items"][1:])
+        self.assertEqual(current["items"][0]["value_state"], "INTENTIONAL_ZERO")
+        self.assertEqual(current["items"][0]["reason"], row["reason"])
+        before = self.snapshot()
+        with self.assertRaises(DIBApiError) as caught:
+            controller.dispatch("POST", f"/api/dib/sessions/{self.sid}/blueprints", command)
+        self.assertEqual(caught.exception.status, 409)
+        self.assertEqual(before, self.snapshot())
+        row = copy.deepcopy(current["items"][1])
+        row.update(value=125, value_state="USER_PROVIDED")
+        original = self.store.load_session(self.sid)["origin_reference"]
+        saved = controller.dispatch("POST", f"/api/dib/sessions/{self.sid}/blueprints", command | {"expected_original": original, "items": [row]})
+        self.assertEqual(saved.status, 201)
+        after = self.store.load_session(self.sid)["current_blueprint"]
+        self.assertEqual(after["items"][0], current["items"][0])
+        self.assertEqual(after["items"][2:], current["items"][2:])
+        self.assertEqual(after["items"][1]["value"], 125)
+
+    def test_initial_items_reject_forged_authority_and_malformed_data_atomically(self):
+        from backend.dib_runtime import _item
+        base = _item("startup_cost", value=100, state="USER_PROVIDED", required=True, confidence=0.78)
+        base["review_status"] = "approved"
+        changes = [
+            {"value_state": "HUMAN_APPROVED"}, {"value_state": "EVIDENCE_VERIFIED"},
+            {"value_state": "MARKET_ESTIMATED"}, {"evidence_refs": {"verified": "invented"}},
+            {"evidence_refs": ["verified:invented"]}, {"evidence_refs": [True]},
+            {"evidence_refs": ["file:"]}, {"evidence_refs": ["file:" + "x" * 512]},
+            {"value_state": "INTENTIONAL_ZERO", "value": 0, "reason": ""},
+            {"value_state": "NOT_APPLICABLE", "value": 0, "reason": " "},
+            {"value_state": "NOT_APPLICABLE", "value": 3, "reason": "Synthetic"},
+            {"value": True}, {"value": float("nan")}, {"value": float("inf")}, {"value": "10"},
+            {"item_id": 1}, {"input_key": True}, {"required": False}, {"required": 1},
+            {"review_status": "verified"}, {"source_type": "evidence_verified", "value_source": "evidence_verified"},
+            {"approved_by": "forged"}, {"action": "approve"}, {"evidence_pack": {}},
+            {"source_type": []}, {"value_source": {}}, {"review_status": []},
+            {"confidence": float("nan")}, {"confidence": True}, {"revision": True}, {"revision": 0},
+            {"category": {"approved_by": "forged"}}, {"label": []}, {"unit": {}}, {"reason": []},
+            {"value_state": "AI_SUGGESTED", "value_source": "product_ai_interview", "source_type": "product_ai_interview", "confidence": .45, "review_status": "draft"},
+            {"value_state": "FILE_IMPORTED", "value_source": "file_import", "source_type": "file_import", "confidence": .72},
+        ]
+        controller = DIBApiController(self.store)
+        before = self.snapshot()
+        for route in ("items", "blueprint"):
+            for change in changes:
+                with self.subTest(route=route, change=change):
+                    rows = [base | change]
+                    command = {"items": rows} if route == "items" else {"blueprint": build_dynamic_input_blueprint({"project_id": "synthetic-project"}, rows)}
+                    with self.assertRaises(DIBApiError) as caught:
+                        controller.dispatch("POST", f"/api/dib/sessions/{self.sid}/blueprints", command)
+                    self.assertEqual(caught.exception.status, 422)
+                    self.assertEqual(before, self.snapshot())
+        for rows in ([base, base | {"input_key": "unit_price"}], [base, base | {"item_id": "another"}], None, {}, [None]):
+            with self.subTest(rows=rows), self.assertRaises(DIBPersistenceError):
+                self.store.save_blueprint(self.sid, self.blueprint | {"items": rows})
+            self.assertEqual(before, self.snapshot())
+
+    def test_initial_canonical_adapters_and_decisions_preserve_all_metadata(self):
+        from backend.dib_module_adapters import execute_dib_module_adapter
+        from backend.dib_intake_item_governance import apply_governed_item_decision
+        profile = {"project_id": "synthetic-project"}
+        ai = execute_dib_module_adapter("module.product_ai_interview", {"project_profile": profile})["proposed_items"]
+        file_rows = execute_dib_module_adapter("module.data_intake", {"intake_payload": {"file_name": "synthetic.csv", "csv_text": "input_key,value\nunit_price,0\n"}})["mapped_items"]
+        entered = apply_governed_item_decision(file_rows[0], {"action": "enter_value", "value": 12})["item"]
+        unknown = apply_governed_item_decision(entered, {"action": "mark_unknown", "reason": "Synthetic unknown"})["item"]
+        rejected = apply_governed_item_decision(file_rows[0], {"action": "reject", "reason": "Synthetic reject"})["item"]
+        exempt_ai = apply_governed_item_decision(ai[0], {"action": "not_applicable", "reason": "Synthetic exemption"})["item"]
+        exempt_file = apply_governed_item_decision(file_rows[0], {"action": "not_applicable", "reason": "Synthetic exemption"})["item"]
+        zero = entered | {"value": 0, "value_state": "INTENTIONAL_ZERO", "reason": "Synthetic explicit zero"}
+        for rows in (ai, file_rows, [entered], [unknown], [rejected], [exempt_ai], [exempt_file], [zero]):
+            with self.subTest(state=rows[0]["value_state"]):
+                sid = self.store.start_session(profile)["session_id"]
+                blueprint = build_dynamic_input_blueprint(profile, rows)
+                saved = self.store.save_blueprint(sid, blueprint)
+                self.assertEqual(saved["payload"]["items"], blueprint["items"])
+                for item in rows:
+                    self.assertIn(item, saved["payload"]["items"])
+                loaded = self.store.load_session(sid)
+                self.assertIsNone(loaded["approved_manifest_id"])
+                self.assertIsNone(loaded["validation_gate_id"])
+
     def test_workspace_initial_intake_then_versioned_second_save(self):
         controller = DIBApiController(self.store)
         first = controller.dispatch("POST", f"/api/dib/sessions/{self.sid}/blueprints", {

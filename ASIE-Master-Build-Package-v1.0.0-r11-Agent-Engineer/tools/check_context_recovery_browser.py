@@ -217,6 +217,33 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
                 page.get_by_role("button", name="العودة إلى موضعي مع حفظ العمل الحالي" if locale == "ar" else "Return to my place, keeping current work", exact=True).click()
                 expect(page.get_by_role("heading", name="نواقص المسودة الحالية" if locale == "ar" else "Current draft requirements", exact=True)).to_be_focused()
 
+    def test_evidence_buttons_require_an_explicit_target(self):
+        with self.app("en", evidence=True) as (page, state):
+            expect(page.get_by_role("button", name="Open requirement 1", exact=True)).to_be_enabled()
+            page.locator("#workspace-navigation .nav-item").filter(has_text="Link evidence").click()
+            expect(page.get_by_role("button", name="Link evidence", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Link requirement", exact=True)).to_be_disabled()
+            expect(page.get_by_text("To link evidence, open the specific requirement", exact=False)).to_be_visible()
+            self.assertFalse(any(method == "POST" and "evidence-links" in path for method, path, _ in state["requests"]))
+
+    def test_sanad_moves_to_current_requirement_after_previous_one_is_resolved(self):
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app(locale, evidence=True) as (page, state):
+                page.get_by_role("button", name="افتح المتطلب 1" if locale == "ar" else "Open requirement 1", exact=True).click()
+                page.get_by_label("اسم المشروع" if locale == "ar" else "Project name", exact=True).fill("Synthetic resolved name")
+                page.get_by_role("button", name="حفظ وإعادة فحص المتطلب" if locale == "ar" else "Save and recheck requirement", exact=True).click()
+                expect(page.get_by_role("status").filter(has_text="تحقق المصدر" if locale == "ar" else "source confirms")).to_be_visible()
+                expect(page.get_by_label("اسم المشروع" if locale == "ar" else "Project name", exact=True)).to_have_value("Synthetic resolved name")
+                expected = "بيانات المراجعة المطلوبة غير مكتملة. أدخل الدليل الحقيقي؛ لا تُنشأ إقرارات تلقائية." if locale == "ar" else "Required review metadata is missing. Supply actual evidence; declarations are not generated automatically."
+                expect(page.locator(".workspace")).to_have_attribute("data-asie-missing-label", expected)
+                expect(page.locator(".workspace")).to_have_attribute("data-asie-recovery-index", "0")
+                page.get_by_role("button", name="سند" if locale == "ar" else "Sanad", exact=True).click()
+                expect(page.locator(".asie-sanad-assistant__blocker")).to_contain_text(expected)
+                page.get_by_role("button", name="أكمل هذا المدخل" if locale == "ar" else "Complete this input", exact=True).click()
+                expect(page.get_by_role("textbox", name="عنوان البيانات" if locale == "ar" else "Dataset title", exact=True)).to_be_focused()
+                self.assertEqual(state["project"]["name"], "Synthetic resolved name")
+                self.assertEqual(state["datasets"][0]["title"], "")
+
     def test_refresh_preserves_unsaved_project_input(self):
         with self.app("en") as (page, state):
             page.get_by_role("button", name=re.compile("^Open requirement")).click()

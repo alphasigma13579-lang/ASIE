@@ -391,6 +391,7 @@ class DIBPersistenceStore:
                     raise DIBPersistenceError("dib_blueprint_origin_required")
                 if expected_original is not None:
                     raise DIBPersistenceError("dib_blueprint_write_conflict")
+                self._validate_initial_items(blueprint.get("items"))
                 saved_payload = dict(blueprint)
                 if type(saved_payload.get("blueprint_id")) is not str or not saved_payload["blueprint_id"].strip():
                     raise DIBPersistenceError("dib_blueprint_identity_invalid")
@@ -418,6 +419,66 @@ class DIBPersistenceStore:
             result = self._load_entity_row(connection, "dib_blueprints", "blueprint_id", blueprint_id, "unknown DIB blueprint")
             result["origin_reference"] = self._blueprint_reference(result, session_id, project_id)
         return result
+
+    @staticmethod
+    def _validate_initial_items(rows: Any) -> None:
+        """Validate first-create items without rewriting canonical adapter metadata."""
+        from backend.dib_runtime import FINANCE_REQUIRED_KEYS
+        if type(rows) is not list or any(type(item) is not dict for item in rows):
+            raise DIBPersistenceError("dib_blueprint_items_invalid")
+        keys, identities = set(), set()
+        fields = {"item_id", "input_key", "label", "category", "value", "unit", "value_state",
+                  "value_source", "source_type", "confidence", "evidence_refs", "review_status",
+                  "required", "reason", "revision"}
+        for item in rows:
+            if (set(item) - fields or type(item.get("source_type")) is not str
+                    or item["source_type"] not in {"user_input", "file_import", "product_ai_interview"}
+                    or type(item.get("value_source")) is not str or item["value_source"] != item["source_type"]
+                    or any(type(item[field]) is not str for field in ("label", "category", "unit", "reason") if field in item)
+                    or type(item.get("confidence")) not in {int, float} or not math.isfinite(item["confidence"])
+                    or ("revision" in item and (type(item["revision"]) is not int or item["revision"] < 1))):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            key, identity = item.get("input_key"), item.get("item_id")
+            if (type(key) is not str or not key.strip() or key in keys
+                    or type(identity) is not str or not identity.strip() or identity in identities
+                    or type(item.get("required")) is not bool
+                    or item["required"] != (key in FINANCE_REQUIRED_KEYS)):
+                raise DIBPersistenceError("dib_blueprint_items_invalid")
+            state, value = item.get("value_state"), item.get("value")
+            if (type(state) is not str or state not in {"UNKNOWN", "USER_PROVIDED", "FILE_IMPORTED",
+                    "AI_SUGGESTED", "REJECTED", "NOT_APPLICABLE", "INTENTIONAL_ZERO"}
+                    or "action" in item or "evidence_pack" in item):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            refs = item.get("evidence_refs", [])
+            if (type(refs) is not list or any(type(ref) is not str or not ref.startswith("file:")
+                    or len(ref) <= 5 or len(ref) > 512 for ref in refs)):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            if value is not None and (type(value) not in {int, float} or not math.isfinite(value)):
+                raise DIBPersistenceError("dib_item_value_invalid")
+            if state in {"USER_PROVIDED", "FILE_IMPORTED", "INTENTIONAL_ZERO", "NOT_APPLICABLE"} and value is None:
+                raise DIBPersistenceError("dib_item_value_invalid")
+            if state in {"UNKNOWN", "AI_SUGGESTED"} and value is not None:
+                raise DIBPersistenceError("dib_item_value_invalid")
+            if state in {"INTENTIONAL_ZERO", "NOT_APPLICABLE"} and (value != 0
+                    or type(item.get("reason")) is not str or not item["reason"].strip()):
+                raise DIBPersistenceError("dib_item_reason_required")
+            if (item.get("review_status") is not None and (type(item["review_status"]) is not str
+                    or item["review_status"] not in {"draft", "needs_review", "approved", "rejected"})):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            if state == "USER_PROVIDED" and (item.get("value_source") != "user_input"
+                    or item.get("source_type") != "user_input" or item.get("review_status") != "approved"
+                    or item.get("confidence") != 0.78):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            if state == "FILE_IMPORTED" and (item.get("value_source") != "file_import"
+                    or item.get("source_type") != "file_import" or item.get("review_status") != "draft"
+                    or item.get("confidence") != 0.72):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            if state == "AI_SUGGESTED" and (item.get("value_source") != "product_ai_interview"
+                    or item.get("source_type") != "product_ai_interview" or item.get("review_status") != "draft"
+                    or item.get("confidence") != (0.45 if item["required"] else 0.4) or refs):
+                raise DIBPersistenceError("dib_item_decision_invalid")
+            keys.add(key)
+            identities.add(identity)
 
     @staticmethod
     def _revision_items(parent: dict[str, Any], submitted: Any, decisions: Any) -> list[dict[str, Any]]:

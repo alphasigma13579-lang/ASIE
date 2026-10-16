@@ -143,7 +143,7 @@ class CustomerLanguageFoundationTests(unittest.TestCase):
         app = (SRC / "App.tsx").read_text(encoding="utf-8")
         surface = (SRC / "ASIECompleteSurfaceMount.tsx").read_text(encoding="utf-8")
         self.assertIn('window.addEventListener("asie:navigate-missing-input"', app)
-        self.assertIn('data-asie-missing-label={recoveryItems.length ?', app)
+        self.assertIn('data-asie-missing-label={currentRecoveryItem ?', app)
         self.assertIn('data-asie-missing-target={firstMissingInputTarget}', app)
         self.assertIn('focusWizardTarget(targetId)', app)
         self.assertIn('id="wizard-project-name"', app)
@@ -407,6 +407,65 @@ items=[{input_key:'price',value_state:'INTENTIONAL_ZERO',reason:'explicit zero r
 """
         result=subprocess.run(["node","-e",program],cwd=SRC.parent,text=True,capture_output=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr)
+
+
+    def test_explicit_evidence_target_gates_buttons_and_request_identity(self):
+        import json
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        program = r"""
+const assert=require('node:assert/strict'), vm=require('node:vm');
+const app=fs.readFileSync(APP, 'utf8');
+const definitions=app.split('\n').filter(line=>line.includes('const selectedAssumptionTarget =')||line.includes('const selectedCriterionTarget =')).join('\n');
+for(const [name,next,type] of [['handleLinkApprovedDataset','handleLinkSectorCriterion','assumption'],['handleLinkSectorCriterion','missingInputTargetForStep','sector_criterion']]) {
+ const start=app.indexOf('  async function '+name+'()');
+ const end=app.indexOf('  '+(next==='missingInputTargetForStep'?'':'async ')+'function '+next,start);
+ assert(start>=0&&end>start);
+ const handler=app.slice(start,end);
+ const button=app.match(new RegExp('<button disabled=\\{([^}]+)\\} onClick=\\{'+name+'\\}'));
+ assert(button);
+ for(const target of [null,{target_type:type,target_id:'missing'},{target_type:type==='assumption'?'sector_criterion':'assumption',target_id:'target-1'},{target_type:type,target_id:'target-1'}]) {
+  const calls=[],errors=[];
+  const context={project:{project_id:'project-1'},isBusy:false,draftEvidenceRegister:{quality_gates:[{dataset_id:'dataset-1',can_use_for_assumptions:true}]},overview:null,
+   selectedDatasetId:'dataset-1',selectedTransformationId:'',selectedEvidenceTarget:target,
+   assumptions:[{assumption_id:'target-1',input_key:'unit_price'}],evidenceCoverage:{targets:[{target_type:'sector_criterion',target_id:'target-1'}]},
+   setError:e=>errors.push(e),setIsBusy:()=>{},text:(_ar,en)=>en,createEvidenceLink:async(id,payload)=>calls.push({id,payload}),loadProjectWorkspace:async()=>{},customerErrorText:e=>String(e),locale:'en'};
+  const sandbox=vm.createContext(context);vm.runInContext(definitions+'\n'+handler,sandbox);
+  const valid=target?.target_type===type&&target?.target_id==='target-1';
+  assert.equal(vm.runInContext(button[1],sandbox),!valid);
+  await vm.runInContext(name+'()',sandbox);
+  assert.equal(calls.length,valid?1:0);
+  if(valid){assert.equal(calls[0].id,'project-1');assert.equal(calls[0].payload.assumption_id??calls[0].payload.target_id,'target-1');}
+  else assert(errors.some(Boolean));
+ }
+}
+""".replace("APP", json.dumps(str(SRC / "App.tsx")))
+        completed = subprocess.run(["node", "--input-type=module", "-e", program.replace("const assert=require('node:assert/strict'), vm=require('node:vm');", "import assert from 'node:assert/strict'; import vm from 'node:vm'; import fs from 'node:fs';")], text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("افتح المتطلب المحدد", source)
+        self.assertIn("open the specific requirement", source)
+
+    def test_sanad_label_and_navigation_use_same_current_requirement(self):
+        import json
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        definitions = "\n".join(line for line in source.splitlines() if "const currentRecoveryIndex =" in line or "const currentRecoveryItem =" in line)
+        workspace = next(line for line in source.splitlines() if '<section className="workspace"' in line)
+        index = re.search(r'data-asie-recovery-index=\{(.*?)\} data-asie-project-generation', workspace).group(1)
+        label = re.search(r'data-asie-missing-label=\{(.*?)\} data-asie-missing-target', workspace).group(1)
+        program = "const assert=require('node:assert/strict'),vm=require('node:vm');\n" + r"""
+const resolved={recovery_id:'resolved',requirement_code:'OLD'},first={recovery_id:'first',requirement_code:'FIRST'},second={recovery_id:'second',requirement_code:'SECOND'};
+for(const locale of ['ar','en']) for(const activeRecovery of [null,resolved,first,second]) for(const recoveryItems of [[],[first],[first,second]]) {
+ const context={activeRecovery,recoveryItems,locale,firstMissingInputLabel:'fallback',recoveryReasonText:(code,lang)=>lang+':'+code};
+ const sandbox=vm.createContext(context);vm.runInContext(DEFINITIONS,sandbox);
+ const index=vm.runInContext(INDEX,sandbox),label=vm.runInContext(LABEL,sandbox);
+ if(!recoveryItems.length){assert.equal(index,undefined);assert.equal(label,'fallback');continue;}
+ assert.equal(label,locale+':'+recoveryItems[index].requirement_code);
+ assert.equal(index,Math.max(0,recoveryItems.findIndex(item=>item.recovery_id===activeRecovery?.recovery_id)));
+}
+""".replace("DEFINITIONS", json.dumps(definitions)).replace("INDEX", json.dumps(index)).replace("LABEL", json.dumps(label))
+        completed = subprocess.run(["node", "-e", program], text=True, capture_output=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":
