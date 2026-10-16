@@ -9518,6 +9518,10 @@ def overlay_resume_historical_source_bytes() -> bytes:
     """OMRG-08: re-pin every read and expose only immutable inverse-verified history."""
     global _OVERLAY_RESUME_HISTORY_BYTES
     source = MANIFEST_PATH.read_bytes()
+    if type(_OVERLAY_RESUME_HISTORY_BYTES) is tuple and len(_OVERLAY_RESUME_HISTORY_BYTES) == 2:
+        cached_source = _OVERLAY_RESUME_HISTORY_BYTES[0]
+        if type(source) is bytes and type(cached_source) is bytes and source == cached_source:
+            source = cached_source
     assert overlay_resume_blob_sha(source) == OVERLAY_RESUME_MANIFEST_BLOB, "overlay_resume_fixture_source_changed"
     if _OVERLAY_RESUME_HISTORY_BYTES is None:
         baseline = _overlay_resume_historical_inverse(json.loads(source.decode("utf-8")))
@@ -9846,3 +9850,55 @@ def test_overlay_resume_digest_matches_uncached_admission(monkeypatch: pytest.Mo
     assert json.dumps(original, sort_keys=True) == json.dumps(optimized, sort_keys=True)
     defensive_record(original)["events"][0]["type"] = "MUTATED_RETURN"
     assert defensive_record(optimized)["events"][0]["type"] != "MUTATED_RETURN"
+
+
+def test_overlay_resume_identity_reuses_only_fresh_equal_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMRG-08: every read is checked before reusing an immutable equal source identity."""
+    monkeypatch.setitem(globals(), "_OVERLAY_RESUME_HISTORY_BYTES", None)
+    historical_overlay_scope_manifest()
+    cached, baseline = _OVERLAY_RESUME_HISTORY_BYTES
+    reads = []; seen = []; original = overlay_resume_blob_sha
+    def fresh(_path):
+        value = bytes(bytearray(cached)); reads.append(value)
+        return value
+    def observe(raw):
+        seen.append(raw)
+        return original(raw)
+    monkeypatch.setattr(Path, "read_bytes", fresh)
+    monkeypatch.setitem(globals(), "overlay_resume_blob_sha", observe)
+    assert overlay_resume_historical_source_bytes() == baseline
+    assert len(reads) == 1 and reads[0] == cached and reads[0] is not cached
+    assert seen[0] is cached and seen[-1] is baseline
+    changed = cached[:-1] + b"X"
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: changed)
+    with pytest.raises(AssertionError, match="overlay_resume_fixture_source_changed"):
+        overlay_resume_historical_source_bytes()
+    assert seen[-1] is changed
+
+
+@pytest.mark.parametrize("mutation", ("source", "baseline", "type", "shape", "source_type", "source_byte"))
+def test_overlay_resume_identity_preserves_original_denial_order(monkeypatch: pytest.MonkeyPatch, mutation: str) -> None:
+    """OMRG-08: compare original and identity-fast paths on the same poisoned input."""
+    import inspect
+    monkeypatch.setitem(globals(), "_OVERLAY_RESUME_HISTORY_BYTES", None)
+    historical_overlay_scope_manifest(); source, baseline = _OVERLAY_RESUME_HISTORY_BYTES
+    original_text = inspect.getsource(overlay_resume_historical_source_bytes)
+    fast_block = '    if type(_OVERLAY_RESUME_HISTORY_BYTES) is tuple and len(_OVERLAY_RESUME_HISTORY_BYTES) == 2:\n        cached_source = _OVERLAY_RESUME_HISTORY_BYTES[0]\n        if type(source) is bytes and type(cached_source) is bytes and source == cached_source:\n            source = cached_source\n'
+    assert original_text.count(fast_block) == 1
+    namespace = dict(globals()); exec(original_text.replace(fast_block, ""), namespace)
+    original = namespace["overlay_resume_historical_source_bytes"]
+    fast_namespace = dict(globals()); exec(original_text, fast_namespace)
+    fast = fast_namespace["overlay_resume_historical_source_bytes"]
+    cache = (source+b" ", baseline) if mutation == "source" else (source, baseline+b" ") if mutation == "baseline" else (source, {}) if mutation == "type" else (source,) if mutation == "shape" else (source, baseline)
+    current = bytearray(source) if mutation == "source_type" else source+b" " if mutation == "source_byte" else bytes(bytearray(source))
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: current)
+    monkeypatch.setitem(globals(), "_OVERLAY_RESUME_HISTORY_BYTES", cache)
+    namespace["_OVERLAY_RESUME_HISTORY_BYTES"] = cache
+    fast_namespace["_OVERLAY_RESUME_HISTORY_BYTES"] = cache
+    outcomes = []
+    for fn in (original, fast):
+        try: fn()
+        except (AssertionError, TypeError) as exc: outcomes.append((type(exc), str(exc)))
+        else: outcomes.append((None, None))
+    assert outcomes[0] == outcomes[1] and outcomes[0][0] is not None
+    assert _OVERLAY_RESUME_HISTORY_BYTES is cache
