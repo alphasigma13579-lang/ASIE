@@ -4567,7 +4567,7 @@ def _validate_review_identity_structure(record: dict, active_target: object) -> 
     assert isinstance(record, dict), "invalid_defensive_record"
     assert set(record) == set(REVIEW_IDENTITY_SCOPE_RECORD), "defensive_fields"
     assert record == REVIEW_IDENTITY_SCOPE_RECORD, "defensive_record_mismatch"
-    assert json.dumps(record, sort_keys=True) == json.dumps(REVIEW_IDENTITY_SCOPE_RECORD, sort_keys=True), "review_identity_literal_types"
+    assert (lambda: json.dumps(record, sort_keys=True) == json.dumps(REVIEW_IDENTITY_SCOPE_RECORD, sort_keys=True))(), "review_identity_literal_types"
     assert record["execution_authorized"] is False, "review_identity_stop_flag"
     assert all(record[key] is False for key in (
         "network_authorized", "provider_activation_authorized", "deployment_authorized",
