@@ -307,6 +307,58 @@ class DIBRecoveryCommandBoundaryTests(DIBRecoveryPersistenceTests):
         self.assertEqual(next(row for row in second["payload"]["items"] if row["input_key"] == "unit_price")["value"], 20)
         self.assertEqual(self.store.load_blueprint(first["blueprint_id"])["payload"], first["payload"])
 
+    def test_repeated_intake_uses_persisted_identity_and_retains_cas(self):
+        controller = DIBApiController(self.store)
+        path = f"/api/dib/sessions/{self.sid}/blueprints"
+        first = controller.dispatch("POST", path, {
+            "intake_payload": {"file_name": "first.csv", "csv_text": "input_key,value\nunit_price,15\nmonthly_units,30\n"},
+        }).payload["blueprint"]
+        original = copy.deepcopy(first["payload"])
+        identities = {row["input_key"]: row["item_id"] for row in original["items"]}
+        command = {
+            "contract_id": "dib.blueprint.write.v2", "expected_original": first["origin_reference"],
+            "intake_payload": {"file_name": "second.csv", "csv_text": "input_key,value\nunit_price,20\nsynthetic_extra,4\n"},
+            "existing_items": [{"input_key": "unit_price", "item_id": "client-replacement"}],
+        }
+        second = controller.dispatch("POST", path, command).payload["blueprint"]
+        rows = {row["input_key"]: row for row in second["payload"]["items"]}
+        self.assertEqual(rows["unit_price"]["item_id"], identities["unit_price"])
+        self.assertEqual(rows["unit_price"]["value"], 20)
+        self.assertEqual(rows["unit_price"]["value_state"], "FILE_IMPORTED")
+        self.assertEqual(rows["unit_price"]["review_status"], "draft")
+        self.assertEqual(rows["unit_price"]["evidence_refs"], ["file:second.csv"])
+        self.assertEqual(rows["monthly_units"], next(row for row in original["items"] if row["input_key"] == "monthly_units"))
+        self.assertNotIn(rows["synthetic_extra"]["item_id"], identities.values())
+        self.assertNotEqual(rows["synthetic_extra"]["item_id"], "client-replacement")
+        self.assertEqual(self.store.load_blueprint(first["blueprint_id"])["payload"], original)
+        before = self.snapshot()
+        with self.assertRaises(DIBApiError) as stale:
+            controller.dispatch("POST", path, command)
+        self.assertEqual(stale.exception.status, 409)
+        self.assertEqual(before, self.snapshot())
+        forged = copy.deepcopy(rows["unit_price"])
+        forged["item_id"] = "client-replacement"
+        with self.assertRaises(DIBApiError) as mismatch:
+            controller.dispatch("POST", path, {
+                "contract_id": "dib.blueprint.write.v2", "expected_original": second["origin_reference"], "items": [forged],
+            })
+        self.assertEqual(mismatch.exception.status, 422)
+        self.assertEqual(mismatch.exception.code, "dib_item_target_changed")
+        self.assertEqual(before, self.snapshot())
+        with self.assertRaises(DIBApiError) as missing:
+            controller.dispatch("POST", path, {"intake_payload": command["intake_payload"]})
+        self.assertEqual(missing.exception.status, 409)
+        self.assertEqual(before, self.snapshot())
+        bad_blueprint = copy.deepcopy(second["payload"])
+        bad_blueprint["items"][0]["item_id"] = "client-replacement"
+        with self.assertRaises(DIBApiError) as explicit:
+            controller.dispatch("POST", path, {
+                "contract_id": "dib.blueprint.write.v2", "expected_original": second["origin_reference"],
+                "blueprint": bad_blueprint,
+            })
+        self.assertEqual(explicit.exception.status, 422)
+        self.assertEqual(before, self.snapshot())
+
     def test_null_or_empty_decisions_do_not_create_revision(self):
         first = self.create()
         before = self.snapshot()

@@ -332,7 +332,7 @@ assert.deepEqual(Object.fromEntries(Object.entries(values).filter(([key,value]) 
         block = source[start:source.index("\n  }", start) + len("\n  }")]
         program = """
 const assert=require('node:assert/strict'), ts=require('typescript');
-let project=null, fileImportStatus='', datasets=[];
+let project=null, fileImportStatus='', datasets=[], draftEvidenceRegister=null;
 const form={inputs:{intake_mode:'file'}}, text=(ar,en)=>en;
 """ + "\neval(ts.transpileModule(" + repr(block) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
         program += """
@@ -344,6 +344,90 @@ fileImportStatus='Imported'; assert.equal(validateWizardStepAt(7),null);
         result=subprocess.run(["node","-e",program],cwd=SRC.parent,text=True,capture_output=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('<option value="">{text("اختر مجموعة بيانات", "Choose a dataset")}</option>',source)
+
+    def test_operating_capacity_validation_and_focus_use_the_same_visible_field(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        functions = []
+        for name in ("missingOperatingCapacityField", "missingInputTargetForStep", "validateWizardStepAt"):
+            start = source.index("  function " + name + "(")
+            functions.append(source[start:source.index("\n  }", start) + len("\n  }")])
+        program = """
+const assert=require('node:assert/strict'), ts=require('typescript');
+let locale='en';
+const text=(ar,en)=>locale==='ar'?ar:en;
+const project={project_id:'saved'}, fileImportStatus='', datasets=[], draftEvidenceRegister=null;
+const valid={intake_mode:'manual',startup_cost:100,unit_price:20,variable_cost:10,
+ monthly_units:0,use_operating_capacity:true,capacity_units_per_day:10,
+ operating_days_per_month:20,utilization_rate:0.5,annual_discount_rate:0.1,
+ working_capital_months:0,debt_amount:0,annual_interest_rate:0,loan_years:0};
+const form={inputs:{...valid}};
+""" + "\neval(ts.transpileModule(" + repr("\n".join(functions)) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+assert.equal(missingOperatingCapacityField(),null);
+assert.equal(validateWizardStepAt(7),null);
+assert.equal(form.inputs.monthly_units,0);
+for (const field of ['capacity_units_per_day','operating_days_per_month','utilization_rate']) {
+ for (const value of [0,-1,NaN,Infinity,-Infinity,undefined,...(field==='utilization_rate'?[1.01]:[])]) {
+  form.inputs={...valid,[field]:value};
+  const before={...form.inputs};
+  for (locale of ['ar','en']) {
+   assert.equal(missingOperatingCapacityField(),field);
+   assert.equal(missingInputTargetForStep(7),'wizard-'+field);
+   assert.equal(typeof validateWizardStepAt(7),'string');
+   assert(validateWizardStepAt(7).length>0);
+  }
+  assert.deepEqual(form.inputs,before);
+ }
+}
+form.inputs={...valid,capacity_units_per_day:0,operating_days_per_month:0,utilization_rate:0};
+for (const [field,value] of [['capacity_units_per_day',10],['operating_days_per_month',20],['utilization_rate',1]]) {
+ assert.equal(missingOperatingCapacityField(),field);
+ assert.equal(missingInputTargetForStep(7),'wizard-'+field);
+ form.inputs[field]=value;
+}
+assert.equal(validateWizardStepAt(7),null);
+assert.equal(form.inputs.monthly_units,0);
+form.inputs={...valid,use_operating_capacity:false,capacity_units_per_day:0,operating_days_per_month:0,utilization_rate:0};
+assert.equal(missingOperatingCapacityField(),null);
+assert.equal(missingInputTargetForStep(7),'wizard-monthly-units');
+assert.equal(validateWizardStepAt(7),'Enter the monthly number of customers or orders.');
+form.inputs.monthly_units=100; assert.equal(validateWizardStepAt(7),null);
+"""
+        result = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('inputId={`wizard-${key}`}', source)
+
+    def test_file_intake_requires_current_project_import_or_available_linked_dataset(self):
+        import subprocess
+        source = (SRC / "App.tsx").read_text(encoding="utf-8")
+        start = source.index("  function validateWizardStepAt(")
+        function = source[start:source.index("\n  }", start) + len("\n  }")]
+        program = """
+const assert=require('node:assert/strict'), ts=require('typescript');
+let project={project_id:'B'},fileImportStatus='',datasets=[],draftEvidenceRegister=null;
+const form={inputs:{intake_mode:'file'}},text=(ar,en)=>en;
+""" + "\neval(ts.transpileModule(" + repr(function) + ", {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);"
+        program += """
+const missing='Upload a data file before checking gaps.';
+assert.equal(validateWizardStepAt(7),missing);
+datasets=[{dataset_id:'A-data',organization_id:'same-org',notes:{submission_provenance:{initial_project_id:'A'}}}];
+assert.equal(validateWizardStepAt(7),missing);
+draftEvidenceRegister={evidence_links:[]}; assert.equal(validateWizardStepAt(7),missing);
+draftEvidenceRegister.evidence_links=[{project_id:'A',dataset_id:'A-data'}];
+assert.equal(validateWizardStepAt(7),missing);
+draftEvidenceRegister.evidence_links=[{project_id:'B',dataset_id:'unavailable'}];
+assert.equal(validateWizardStepAt(7),missing);
+draftEvidenceRegister.evidence_links=[{project_id:'B',dataset_id:'A-data'}];
+assert.equal(validateWizardStepAt(7),null);
+datasets[0].notes={}; assert.equal(validateWizardStepAt(7),null);
+datasets=[]; assert.equal(validateWizardStepAt(7),missing);
+draftEvidenceRegister=null; fileImportStatus='Imported for B'; assert.equal(validateWizardStepAt(7),null);
+fileImportStatus=''; project={project_id:'A'}; assert.equal(validateWizardStepAt(7),missing);
+project=null; assert.equal(validateWizardStepAt(7),null);
+"""
+        result = subprocess.run(["node", "-e", program], cwd=SRC.parent, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_dib_non_json_401_expires_only_its_current_session(self):
         import subprocess
@@ -417,9 +501,9 @@ items=[{input_key:'price',value_state:'INTENTIONAL_ZERO',reason:'explicit zero r
 const assert=require('node:assert/strict'), vm=require('node:vm');
 const app=fs.readFileSync(APP, 'utf8');
 const definitions=app.split('\n').filter(line=>line.includes('const selectedAssumptionTarget =')||line.includes('const selectedCriterionTarget =')).join('\n');
-for(const [name,next,type] of [['handleLinkApprovedDataset','handleLinkSectorCriterion','assumption'],['handleLinkSectorCriterion','missingInputTargetForStep','sector_criterion']]) {
+for(const [name,next,type] of [['handleLinkApprovedDataset','handleLinkSectorCriterion','assumption'],['handleLinkSectorCriterion','missingOperatingCapacityField','sector_criterion']]) {
  const start=app.indexOf('  async function '+name+'()');
- const end=app.indexOf('  '+(next==='missingInputTargetForStep'?'':'async ')+'function '+next,start);
+ const end=app.indexOf('  '+(next==='missingOperatingCapacityField'?'':'async ')+'function '+next,start);
  assert(start>=0&&end>start);
  const handler=app.slice(start,end);
  const button=app.match(new RegExp('<button disabled=\\{([^}]+)\\} onClick=\\{'+name+'\\}'));

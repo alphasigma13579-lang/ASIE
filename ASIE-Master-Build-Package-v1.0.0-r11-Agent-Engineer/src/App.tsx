@@ -1685,6 +1685,15 @@ function SessionWorkspace() {
     }
   }
 
+  function missingOperatingCapacityField(): "capacity_units_per_day" | "operating_days_per_month" | "utilization_rate" | null {
+    if (!form.inputs.use_operating_capacity) return null;
+    for (const field of ["capacity_units_per_day", "operating_days_per_month", "utilization_rate"] as const) {
+      const value = form.inputs[field];
+      if (!Number.isFinite(value) || value <= 0 || (field === "utilization_rate" && value > 1)) return field;
+    }
+    return null;
+  }
+
   function missingInputTargetForStep(step: number): string {
     if (step === 0) {
       if (!saudiCitiesByRegion[form.inputs.location_region]) return "wizard-location-region";
@@ -1702,7 +1711,9 @@ function SessionWorkspace() {
       if (form.inputs.intake_mode === "file") return "wizard-data-file";
       if (form.inputs.startup_cost <= 0) return "wizard-startup-cost";
       if (form.inputs.unit_price <= 0) return "wizard-unit-price";
-      if (form.inputs.monthly_units <= 0) return "wizard-monthly-units";
+      const capacityField = missingOperatingCapacityField();
+      if (capacityField) return `wizard-${capacityField}`;
+      if (!form.inputs.use_operating_capacity && form.inputs.monthly_units <= 0) return "wizard-monthly-units";
       if (form.inputs.variable_cost >= form.inputs.unit_price) return "wizard-variable-cost";
       if (form.inputs.annual_discount_rate <= 0) return "wizard-discount-rate";
       if (form.inputs.debt_amount > 0 && form.inputs.annual_interest_rate <= 0) return "wizard-interest-rate";
@@ -1763,13 +1774,19 @@ function SessionWorkspace() {
       return text("اختر رأس المال المتاح أو اكتب مبلغًا أكبر من صفر.", "Select the available capital or enter an amount greater than zero.");
     }
     if (step === 7 && !form.inputs.intake_mode?.trim()) return text("اختر طريقة تعبئة تفاصيل المشروع.", "Select how you want to provide project details.");
-    if (step === 7 && form.inputs.intake_mode === "file" && project && !fileImportStatus && datasets.length === 0) {
+    if (step === 7 && form.inputs.intake_mode === "file" && project && !fileImportStatus && !draftEvidenceRegister?.evidence_links.some(
+      (link) => link.project_id === project.project_id && datasets.some((dataset) => dataset.dataset_id === link.dataset_id)
+    )) {
       return text("ارفع ملف بيانات قبل فحص النواقص.", "Upload a data file before checking gaps.");
     }
     if (step === 7 && form.inputs.intake_mode === "manual") {
       if (form.inputs.startup_cost <= 0) return text("اكتب تكلفة التأسيس التقريبية.", "Enter the estimated setup cost.");
       if (form.inputs.unit_price <= 0) return text("اكتب سعر البيع أو الخدمة.", "Enter the product or service price.");
-      if (form.inputs.monthly_units <= 0) return text("اكتب عدد العملاء أو الطلبات شهريًا.", "Enter the monthly number of customers or orders.");
+      const capacityField = missingOperatingCapacityField();
+      if (capacityField === "capacity_units_per_day") return text("اكتب طاقة تشغيلية يومية أكبر من صفر.", "Enter a daily operating capacity greater than zero.");
+      if (capacityField === "operating_days_per_month") return text("اكتب عدد أيام تشغيل شهرية أكبر من صفر.", "Enter a number of operating days per month greater than zero.");
+      if (capacityField === "utilization_rate") return text("اكتب نسبة استخدام أكبر من صفر ولا تتجاوز واحدًا.", "Enter a utilization rate greater than zero and at most one.");
+      if (!form.inputs.use_operating_capacity && form.inputs.monthly_units <= 0) return text("اكتب عدد العملاء أو الطلبات شهريًا.", "Enter the monthly number of customers or orders.");
       if (form.inputs.variable_cost >= form.inputs.unit_price) return text("يجب أن يكون سعر البيع أعلى من تكلفة تقديم الخدمة.", "The selling price must be higher than the delivery cost.");
       if (form.inputs.annual_discount_rate <= 0) return text("اكتب معدل الخصم السنوي المستخدم في التقييم.", "Enter the annual discount rate used in the assessment.");
       if (form.inputs.working_capital_months < 0) return text("أشهر رأس المال العامل لا يمكن أن تكون سالبة.", "Working-capital months cannot be negative.");

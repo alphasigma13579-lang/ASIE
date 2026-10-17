@@ -401,16 +401,20 @@ class DIBApiController:
             session = self.store.load_session(session_id)
             project_profile = dict(payload.get("project_profile") or session["project_profile"])
             items = list(payload.get("items") or [])
+            current = session.get("current_blueprint")
             if not items and isinstance(payload.get("intake_payload"), dict):
+                persisted_items = current.get("items", []) if isinstance(current, dict) else None
                 intake = execute_dib_module_adapter(
                     "module.data_intake",
                     {
                         "intake_payload": dict(payload["intake_payload"]),
-                        "existing_items": list(payload.get("existing_items") or []),
+                        "existing_items": persisted_items if persisted_items is not None else list(payload.get("existing_items") or []),
                     },
                 )
                 items = list(intake.get("mapped_items") or [])
-            current = session.get("current_blueprint")
+                if persisted_items is not None:
+                    identities = {item["input_key"]: item["item_id"] for item in persisted_items}
+                    items = [item | {"item_id": identities[item["input_key"]]} if item["input_key"] in identities else item for item in items]
             if isinstance(current, dict):
                 # Preserve persisted identities; the store merges submitted items under CAS.
                 blueprint = current | {"items": items}

@@ -87,7 +87,7 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             owners["synthetic-project-b"] = second
         state["owners"] = owners
         def route_owned(route, state):
-            register = {"datasets": state["datasets"], "transformations": [], "quality_gates": [], "source_records": state["sources"], "source_checklists": [], "evidence_links": [], "linked_dataset_ids": [], "not_ready_reasons": []}
+            register = {"datasets": state["datasets"], "transformations": [], "quality_gates": [], "source_records": state["sources"], "source_checklists": [], "evidence_links": state.get("evidence_links", []), "linked_dataset_ids": [], "not_ready_reasons": []}
             project_id = state["project"]["project_id"]
             session_id = state.get("session_id", "synthetic-dib-session")
             dataset_id = state["datasets"][0]["dataset_id"] if state["datasets"] else "synthetic-dataset"
@@ -114,7 +114,7 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
                 state["sources"][0].update(reviewed_at=f"source-v{state['source_revision']}", notes=old_notes | {key: command[key] for key in scope_keys if key in command} | {"notes": command.get("notes", old_notes.get("notes", ""))})
                 payload = {"source": state["sources"][0]}
             elif path == "/api/projects": payload = {"projects": [owner["project"] for owner in owners.values()] if route.request.headers.get("x-asie-organization-id") == "synthetic-org-a" else []}
-            elif path == "/api/datasets/manual-import" and method == "POST":
+            elif path in ("/api/datasets/manual-import", "/api/datasets/file-import") and method == "POST":
                 command = route.request.post_data_json
                 row = {"dataset_id": "synthetic-created", "organization_id": "synthetic-org-a", "source_id": "", "title": command["title"], "publisher": command["publisher"], "review_status": "review_required", "updated_at": "created-v1", "columns": ["item", "price"], "preview": [], "row_count": 1, "notes": {}}
                 state["datasets"].append(row)
@@ -202,6 +202,103 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
         expect(nav).to_be_visible()
         page.locator("#workspace-navigation .nav-item").filter(has_text="افحص النواقص" if locale == "ar" else "Check missing inputs").click()
         expect(page.get_by_role("heading", name="نواقص المسودة الحالية" if locale == "ar" else "Current draft requirements", exact=True)).to_be_visible()
+
+    def store_step_seven_draft(self, page, owner, inputs):
+        project = owner["project"]
+        project["name"] = project["name"] or "Synthetic wizard project"
+        project["inputs"].update({
+            "location_region": "منطقة الرياض", "location_city": "الرياض", "location_district": "",
+            "primary_sector_id": "services", "subsector_id": "synthetic-services",
+            "gap_statement": "Synthetic local need", "competitive_edge": "Synthetic service advantage",
+            "target_audience": "individuals", "capital_available": 100, "annual_discount_rate": 0.1,
+            "working_capital_months": 0, "debt_amount": 0, "annual_interest_rate": 0, "loan_years": 0,
+            **inputs,
+        })
+        form = {key: copy.deepcopy(project[key]) for key in ("name", "sector", "jurisdiction", "depth_profile", "inputs")}
+        draft = {"project_id": project["project_id"], "organization_id": project["organization_id"],
+                 "form": form, "formOrigin": project["updated_at"], "wizardStep": 7, "stage": "wizard"}
+        page.evaluate("draft => sessionStorage.setItem(`asie.recovery.edit.v1:synthetic-user:synthetic-org-a:${draft.project_id}`, JSON.stringify(draft))", draft)
+
+    def continue_from_summary(self, page, owner, locale="en"):
+        expect(page.locator(".workspace")).to_be_visible()
+        nav = page.locator("#workspace-navigation")
+        toggle = page.get_by_role("button", name="فتح قائمة التنقل" if locale == "ar" else "Open navigation menu", exact=True)
+        expect(nav.and_(page.locator(":visible")).or_(toggle.and_(page.locator(":visible"))).first).to_be_visible()
+        if not nav.is_visible(): toggle.click()
+        nav.locator(".nav-item").filter(has_text="الملخص" if locale == "ar" else "Summary").click()
+        page.locator(".cc-row").filter(has=page.get_by_text(owner["project"]["name"], exact=True)).get_by_role("button", name="إكمال" if locale == "ar" else "Continue", exact=True).click()
+        expect(page.locator(".wizard-progress-label")).to_contain_text("8")
+        expect(page.locator("#wizard-intake-choices")).to_be_visible()
+        expect(page.locator(".next-action-banner").get_by_role("button", name="عالج متطلبات الجاهزية" if locale == "ar" else "Complete readiness requirements", exact=True)).to_be_visible()
+
+    def test_capacity_mode_validates_and_focuses_only_visible_capacity_inputs(self):
+        for locale, mobile in (("ar", False), ("en", True)):
+            with self.subTest(locale=locale, mobile=mobile), self.app(locale, mobile) as (page, state):
+                self.store_step_seven_draft(page, state, {
+                    "intake_mode": "manual", "monthly_units": 0, "use_operating_capacity": True,
+                    "capacity_units_per_day": 0, "operating_days_per_month": 0, "utilization_rate": 0,
+                })
+                page.reload()
+                self.continue_from_summary(page, state, locale)
+                primary = page.locator(".wizard-focus").get_by_role("button", name="افحص النواقص" if locale == "ar" else "Check missing inputs", exact=True)
+                expect(page.locator("#wizard-monthly-units")).to_have_count(0)
+                for field, value in (("capacity_units_per_day", "12"), ("operating_days_per_month", "22"), ("utilization_rate", "0.5")):
+                    expect(primary).to_be_disabled()
+                    expect(page.locator(".workspace")).to_have_attribute("data-asie-missing-target", f"wizard-{field}")
+                    page.get_by_role("button", name="سند" if locale == "ar" else "Sanad", exact=True).click()
+                    page.get_by_role("button", name="أكمل هذا المدخل" if locale == "ar" else "Complete this input", exact=True).click()
+                    control = page.locator(f"#wizard-{field}")
+                    expect(control).to_be_visible(); expect(control).to_be_focused()
+                    if field == "utilization_rate":
+                        control.fill("1.1"); expect(primary).to_be_disabled()
+                        expect(page.locator(".workspace")).to_have_attribute("data-asie-missing-target", "wizard-utilization_rate")
+                    control.fill(value)
+                expect(primary).to_be_enabled()
+                capacity = page.get_by_label("استخدام نموذج الطاقة التشغيلية" if locale == "ar" else "Use operating-capacity model", exact=True)
+                capacity.uncheck()
+                expect(page.locator("#wizard-monthly-units")).to_have_value("0")
+                expect(primary).to_be_disabled()
+                capacity.check(); expect(primary).to_be_enabled()
+                primary.click()
+                expect(page.locator(".evidence-workbench-intro")).to_be_visible()
+                writes = [body for method, path, body in state["requests"] if method == "PATCH" and path == "/api/projects/synthetic-project-a"]
+                self.assertEqual(len(writes), 1)
+                saved = writes[0]["inputs"]
+                self.assertEqual(saved["monthly_units"], 0)
+                self.assertTrue(saved["use_operating_capacity"])
+                self.assertEqual((saved["capacity_units_per_day"], saved["operating_days_per_month"], saved["utilization_rate"]), (12, 22, 0.5))
+
+    def test_file_intake_completion_requires_current_project_import_or_linked_available_data(self):
+        with self.app("en", evidence=True, two_projects=True) as (page, state):
+            other = state["owners"]["synthetic-project-b"]
+            state["datasets"][0].update(title="Project A quotation", notes={"submission_provenance": {"initial_project_id": "synthetic-project-a"}})
+            other["datasets"] = []
+            self.store_step_seven_draft(page, state, {"intake_mode": "file"})
+            self.store_step_seven_draft(page, other, {"intake_mode": "file"})
+            page.reload()
+            self.continue_from_summary(page, state)
+            primary = page.locator(".wizard-focus").get_by_role("button", name="Check missing inputs", exact=True)
+            expect(primary).to_be_disabled()
+            page.locator("#wizard-data-file").set_input_files({"name": "project-a.csv", "mimeType": "text/csv", "buffer": b"item,price\nA quotation,123"})
+            expect(primary).to_be_enabled()
+            imports = [body for method, path, body in state["requests"] if method == "POST" and path == "/api/datasets/file-import"]
+            self.assertEqual(len(imports), 1)
+            self.assertEqual(imports[0]["project_id"], "synthetic-project-a")
+            self.continue_from_summary(page, other)
+            expect(primary).to_be_disabled()
+            expect(page.locator("#wizard-data-file")).to_be_visible()
+            for project_id, dataset_id, allowed in (
+                ("synthetic-project-a", "synthetic-dataset", False),
+                ("synthetic-project-b", "unavailable-dataset", False),
+                ("synthetic-project-b", "synthetic-dataset", True),
+            ):
+                other["evidence_links"] = [{"project_id": project_id, "dataset_id": dataset_id}]
+                self.continue_from_summary(page, state)
+                self.continue_from_summary(page, other)
+                if allowed: expect(primary).to_be_enabled()
+                else: expect(primary).to_be_disabled()
+            self.assertEqual(state["datasets"][0]["notes"]["submission_provenance"]["initial_project_id"], "synthetic-project-a")
+            self.assertFalse(any(method == "POST" and "evidence-links" in path for method, path, _ in state["requests"]))
 
     def test_exact_name_focus_failed_save_retains_and_success_returns(self):
         for locale, mobile in (("ar", False), ("en", True)):
