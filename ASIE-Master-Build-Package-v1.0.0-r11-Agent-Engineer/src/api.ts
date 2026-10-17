@@ -267,7 +267,7 @@ export async function fetchDatasets(): Promise<DatasetRecord[]> {
   return response.datasets;
 }
 
-export async function createDataset(payload: Partial<DatasetRecord> & { rows?: Record<string, unknown>[] }): Promise<DatasetRecord> {
+export async function createDataset(payload: Partial<DatasetRecord> & { project_id?: string; intended_use?: "customer_study" | "governed_external"; rows?: Record<string, unknown>[] }): Promise<DatasetRecord> {
   const response = await requestJson<{ dataset: DatasetRecord }>("/api/datasets", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -276,7 +276,7 @@ export async function createDataset(payload: Partial<DatasetRecord> & { rows?: R
 }
 
 export async function manualImportDataset(
-  payload: Partial<DatasetRecord> & { rows?: Record<string, unknown>[]; csv_text?: string }
+  payload: Partial<DatasetRecord> & { project_id?: string; intended_use?: "customer_study" | "governed_external"; rows?: Record<string, unknown>[]; csv_text?: string }
 ): Promise<DatasetRecord> {
   const response = await requestJson<{ dataset: DatasetRecord }>("/api/datasets/manual-import", {
     method: "POST",
@@ -286,6 +286,8 @@ export async function manualImportDataset(
 }
 
 export async function fileImportDataset(payload: {
+  project_id?: string;
+  intended_use?: "customer_study" | "governed_external";
   file_name: string;
   file_type?: string;
   file_base64?: string;

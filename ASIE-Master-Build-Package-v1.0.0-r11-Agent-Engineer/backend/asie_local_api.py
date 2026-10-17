@@ -32,7 +32,7 @@ from backend.live_intelligence_product import LiveIntelligenceProductError, Live
 from backend.live_provider_clients import DeepSeekNarrativeClient, GoogleLocationClient, PineconeKnowledgeClient, TavilyResearchClient
 from backend.provider_security_control_plane import ProviderSecurityError, TrustedProviderScope
 from backend.tavily_source_admission import TavilySourceAdmissionPolicy
-from backend.datasets import dataset_quality_gate, normalize_file_import_payload
+from backend.datasets import APPROVED_DATASET_REQUIRED_FIELDS, dataset_quality_gate, normalize_file_import_payload, reject_client_dataset_provenance
 from backend.decision_pack import apply_review_overlay, build_action_items_from_overview, render_decision_pack_html
 from backend.evidence_ledger import build_evidence_coverage
 from backend.funding_readiness import profile_catalog, sector_profile_catalog
@@ -51,15 +51,15 @@ from backend.identity import Principal
 from backend.repository import LEGACY_ORGANIZATION_ID, ProjectRecord, Repository
 from backend.reports import build_report_view, remediation, render_report_html, render_funder_report_html
 from backend.report_release import build_release_record
-from backend.release_info import release_info
+from backend.release_info import release_info, customer_capability_declarations
 from backend.report_exports import export_funder_report_docx, export_funder_report_pdf, export_funder_report_pptx
 from backend.runtime_freeze import BUILD_OVERVIEW_REMOVAL_TARGET
 from backend.sector_intelligence import sector_taxonomy
 from backend.source_registry import source_policy, source_review_checklist
 from backend.system_bus import BusMessage, SystemBus
 from backend.snapshot_assembly import canonical_hash, seal_projection_support
-from backend.transformations import build_transformation_lineage
-from backend.workflow import project_readiness
+from backend.transformations import build_transformation_lineage, transformation_quality_review
+from backend.workflow import project_readiness, recovery_item
 from backend.workspace import build_project_remediation, build_project_workspace, compare_snapshots
 
 REPO = Repository()
@@ -134,6 +134,8 @@ BUILD_OVERVIEW_DEPRECATION_MESSAGE = (
 
 
 class ProjectRunDataAccess(Protocol):
+    def read_project_evidence(self, project_id: str) -> dict[str, list[dict[str, Any]]]: ...
+
     def project_assumptions(self, project_id: str) -> list[dict[str, Any]]: ...
 
     def source_records(self) -> list[dict[str, Any]]: ...
@@ -143,6 +145,18 @@ class ProjectRunDataAccess(Protocol):
     def datasets(self) -> list[dict[str, Any]]: ...
 
     def project_transformations(self, project_id: str) -> list[dict[str, Any]]: ...
+
+
+def intelligence_context_construction_policy() -> dict[str, str]:
+    """The existing unconditional pre-run deny policy also owns its customer display fact."""
+    return {"capability_id": "intelligence_context_construction", "state": "disabled",
+            "owner": "intelligence_ingress", "version": "f01a-dark-offline.v1",
+            "evidence_ref": "intelligence.pre_runs.deny", "reason_key": "context_construction_disabled"}
+
+
+def apply_recovery_permissions(items: list[dict[str, Any]], principal: Principal) -> list[dict[str, Any]]:
+    return [item | {"action": item["action"] | {"allowed": principal.can(item["action"]["required_permission"]) or principal.can("platform.manage")}}
+            for item in items]
 
 
 def output_set(project: ProjectRecord, run_id: str, snapshot_id: str, finance: dict[str, Any]) -> list[dict[str, Any]]:
@@ -742,7 +756,8 @@ def execute_project_run_pipeline(
         assumption_refs=[row["assumption_id"] for row in assumptions],
         session=session,
     )
-    sources = data_access.source_records()
+    evidence_register = build_evidence_register(data_access, project.project_id, snapshot_id, organization_id=project.organization_id)
+    sources = evidence_register["source_records"]
     policy = source_policy(sources, PROFILE_ID)
     blockers = list(input_blockers)
     blockers.extend(
@@ -778,7 +793,6 @@ def execute_project_run_pipeline(
         "runtime_source_module_id": run_envelope.source_module_id,
         "pipeline_policy_id": run_envelope.pipeline_policy_id,
     }
-    evidence_register = build_evidence_register(data_access, project.project_id, snapshot_id, sources)
     sector_intelligence = sector_intelligence_via_module_runtime(
         project,
         evidence_register=evidence_register,
@@ -980,27 +994,58 @@ def build_overview(
     )
 
 
+_UNSCOPED_EVIDENCE = object()
+
 def build_evidence_register(
     repo: ProjectRunDataAccess,
     project_id: str,
     snapshot_id: str,
     sources: list[dict[str, Any]] | None = None,
+    *,
+    organization_id: Any = _UNSCOPED_EVIDENCE,
 ) -> dict[str, Any]:
-    source_records = sources if sources is not None else repo.source_records()
+    """Build from one owner snapshot; sources is retained only for legacy call compatibility."""
+    # The legacy positional argument never overrides coherent repository-owned sources.
+    del sources
+    scoped = organization_id is not _UNSCOPED_EVIDENCE
+    if scoped and (type(organization_id) is not str or not organization_id.strip()):
+        raise ValueError("organization_scope_required")
+    # The approved Manifest overlay owns assumptions only. Its documented
+    # Repository remains the evidence owner; never unwrap an arbitrary object.
+    from backend.dib_canonical_finance_admission import ManifestBackedProjectRunDataAccess
+    if type(repo) is ManifestBackedProjectRunDataAccess:
+        if repo.project_id != project_id:
+            raise ValueError("manifest_data_access_project_mismatch")
+        evidence_owner = repo.repository
+    else:
+        evidence_owner = repo
+    if not callable(getattr(evidence_owner, "read_project_evidence", None)):
+        raise TypeError("coherent_evidence_reader_required")
+    evidence = evidence_owner.read_project_evidence(project_id)
+    source_records = evidence["source_records"]
     source_by_id = {row["source_id"]: row for row in source_records}
-    links = repo.project_evidence_links(project_id)
+    scoped_datasets = [row for row in evidence["datasets"] if not scoped or row.get("organization_id") == organization_id]
+    scoped_ids = {row["dataset_id"] for row in scoped_datasets}
+    transformations = [row for row in evidence["transformations"] if not scoped or row.get("dataset_id") in scoped_ids]
+    transformation_datasets = {row["transformation_id"]: row["dataset_id"] for row in transformations} if scoped else {}
+    stored_links = evidence["evidence_links"]
+    links = [row for row in stored_links if not scoped or (
+        row.get("dataset_id") in scoped_ids and (not row.get("transformation_id")
+        or transformation_datasets.get(row["transformation_id"]) == row["dataset_id"]))]
     linked_dataset_ids = {row["dataset_id"] for row in links}
-    datasets = [
-        row for row in repo.datasets() if row["dataset_id"] in linked_dataset_ids or row["review_status"] != "archived"
-    ]
-    gates = [dataset_quality_gate(row, source_by_id.get(row["source_id"])) for row in datasets]
+    datasets = [row for row in scoped_datasets if row["dataset_id"] in linked_dataset_ids or row["review_status"] != "archived"]
+    gates = [dataset_quality_gate(row, source_by_id.get(row["source_id"]), organization_id=organization_id if scoped else None, project_id=project_id if scoped else None) for row in datasets]
     return {
+        **({"unresolved_dependency_count": len(stored_links) - len(links),
+            "unresolved_dependency_targets": sorted({canonical_hash({"type": row.get("target_type", "assumption"), "id": row.get("target_id", row.get("assumption_id"))})
+                for row in stored_links if row not in links})} if scoped else {}),
+        **({"consuming_context": {"organization_id": organization_id, "project_id": project_id}} if scoped else {}),
         "evidence_register_id": f"evidence_{snapshot_id}",
         "snapshot_id": snapshot_id,
         "source_records": source_records,
         "source_checklists": [source_review_checklist(row) for row in source_records],
         "datasets": datasets,
-        "transformations": repo.project_transformations(project_id),
+        "transformations": transformations,
         "evidence_links": links,
         "linked_dataset_ids": sorted(linked_dataset_ids),
         "quality_gates": gates,
@@ -1020,9 +1065,9 @@ def build_project_evidence_state(
     snapshot_id: str,
     run_id: str | None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
-    sources = repo.source_records()
     assumptions = repo.project_assumptions(project.project_id)
-    evidence_register = build_evidence_register(repo, project.project_id, snapshot_id, sources)
+    evidence_register = build_evidence_register(repo, project.project_id, snapshot_id, organization_id=project.organization_id)
+    sources = evidence_register["source_records"]
     sector = sector_intelligence_via_module_runtime(
         project,
         evidence_register=evidence_register,
@@ -1040,7 +1085,94 @@ def build_project_evidence_state(
         transformations=transformations,
     )
     coverage = build_evidence_coverage(assumptions, sector, ledger)
+    assumptions_by_id = {row["assumption_id"]: row for row in assumptions}
+    for target in coverage["targets"]:
+        relevant_links = [row for row in evidence_register["evidence_links"] if row.get("target_id", row.get("assumption_id")) == target["target_id"] and row.get("target_type", "assumption") == target["target_type"]]
+        target["source_version"] = canonical_hash({"target": target, "assumption": assumptions_by_id.get(target["target_id"]) if target["target_type"] == "assumption" else None,
+            "project_updated_at": project.updated_at, "links": relevant_links,
+            "datasets": evidence_register["datasets"], "transformations": transformations, "sources": sources})
     return evidence_register, sector, ledger, coverage
+
+
+def current_evidence_recovery(project: ProjectRecord, register: dict[str, Any], coverage: dict[str, Any]) -> list[dict[str, Any]]:
+    """Use current evidence owners' exact target IDs and safe reason keys, never first-item fallback."""
+    items = []
+    known_targets = {canonical_hash({"type": target.get("target_type"), "id": target.get("target_id")}) for target in coverage.get("targets", [])}
+    unresolved_targets = register.get("unresolved_dependency_targets", [])
+    # Current target coverage owns remediation. A replaced stale link cannot keep
+    # an already supported target permanently blocked; unknown targets stay open.
+    if register.get("unresolved_dependency_count", 0) and (not unresolved_targets or any(identity not in known_targets for identity in unresolved_targets)):
+        items.append(recovery_item(project, "EVIDENCE_DEPENDENCY_INVALID", {"kind": "owner_review"}))
+    source_by_id = {row["source_id"]: row for row in register["source_records"]}
+    for target in coverage.get("targets", []):
+        if target.get("coverage_status") in {"supported", "reference_only"}:
+            continue
+        if target.get("target_type") not in {"assumption", "sector_criterion"}:
+            items.append(recovery_item(project, "UNMAPPED_EVIDENCE_REQUIREMENT", {"kind": "owner_review"},
+                entity_id=canonical_hash({"type": target.get("target_type"), "id": target.get("target_id")})))
+            continue
+        identity = target["target_id"]
+        item = recovery_item(project, "EVIDENCE_BINDING_REQUIRED",
+            {"kind": "evidence_binding", "target_type": target["target_type"], "target_id": identity},
+            source_kind="evidence_binding", entity_id=f"{target['target_type']}:{identity}")
+        item["source"]["version"] = target.get("source_version")
+        items.append(item)
+    datasets = {row["dataset_id"]: row for row in register["datasets"]}
+    for gate in register["quality_gates"]:
+        if gate["can_use_for_assumptions"]:
+            continue
+        dataset = datasets[gate["dataset_id"]]
+        for reason in gate["reasons"]:
+            target = {"kind": "owner_review", "dataset_id": dataset["dataset_id"]}
+            safe_reason = "DATASET_OWNER_REVIEW_REQUIRED"
+            permission = "project.edit"
+            if reason.startswith("missing_") and reason[8:] in APPROVED_DATASET_REQUIRED_FIELDS:
+                field = reason[8:]
+                if field != "dataset_id":
+                    target = {"kind": "dataset_metadata", "dataset_id": dataset["dataset_id"], "field_keys": [field]}
+                    safe_reason = "DATASET_METADATA_REQUIRED"
+            elif reason == "source_not_enabled_by_human_review":
+                target = {"kind": "source_review", "source_id": dataset["source_id"]}
+                safe_reason, permission = "SOURCE_REVIEW_REQUIRED", "platform.manage"
+                source = source_by_id.get(dataset["source_id"], {})
+                if source.get("state") == "reference_only" or source.get("reviewer_decision") == "reference_only":
+                    target = {"kind": "dataset_metadata", "dataset_id": dataset["dataset_id"], "field_keys": ["source_id"]}
+                    safe_reason, permission = "REFERENCE_ONLY_SOURCE_REPLACEMENT", "project.edit"
+            elif reason == "source_not_found":
+                target = {"kind": "dataset_metadata", "dataset_id": dataset["dataset_id"], "field_keys": ["source_id"]}
+                safe_reason = "DATASET_SOURCE_REQUIRED"
+            elif reason in {"dataset_not_approved_for_use", "dataset_missing_human_approval"}:
+                target = {"kind": "dataset_metadata", "dataset_id": dataset["dataset_id"], "field_keys": ["human_review_decision", "review_status"]}
+                safe_reason = "DATASET_REVIEW_REQUIRED"
+            elif reason in {"empty_dataset", "missing_values_above_80_percent", "duplicate_rows_above_50_percent"}:
+                target = {"kind": "dataset_content", "dataset_id": dataset["dataset_id"]}
+                safe_reason = reason.upper()
+            item = recovery_item(project, safe_reason, target, source_kind="dataset", entity_id=dataset["dataset_id"],
+                                 updated_at=dataset.get("updated_at"), permission=permission,
+                                 required=dataset["dataset_id"] in register["linked_dataset_ids"])
+            if target["kind"] == "source_review":
+                source = source_by_id.get(target["source_id"], {})
+                item["source"] = item["source"] | {"kind": "source_review", "entity_id": target["source_id"], "updated_at": source.get("reviewed_at"), "version": canonical_hash(source)}
+            item["recovery_id"] += ":" + ",".join(target.get("field_keys", []))
+            if target["kind"] == "owner_review":
+                item["recovery_id"] += ":" + canonical_hash({"reason": reason})
+            if item not in items:
+                items.append(item)
+    for transformation in register["transformations"]:
+        quality = transformation_quality_review(transformation, datasets.get(transformation["dataset_id"]))
+        for reason in quality["reasons"]:
+            code = reason.split(":", 1)[0]
+            keys = {"transformation_not_approved": ["review_status"], "transformation_rejected_by_reviewer": ["review_status"],
+                    "invalid_operation_type": ["operation_type"], "missing_input_columns": ["input_columns"],
+                    "input_column_not_found": ["input_columns"], "missing_derived_output_value": ["operation_type", "input_columns", "output_value"]}.get(code)
+            items.append(recovery_item(project, code.upper() if keys else "TRANSFORMATION_OWNER_REVIEW_REQUIRED",
+                {"kind": "transformation" if keys else "owner_review", "dataset_id": transformation["dataset_id"],
+                 "transformation_id": transformation["transformation_id"], "field_keys": keys or []},
+                source_kind="transformation", entity_id=transformation["transformation_id"], updated_at=transformation.get("updated_at"),
+                required=any(link.get("transformation_id") == transformation["transformation_id"] for link in register["evidence_links"])))
+            if not keys:
+                items[-1]["recovery_id"] += ":" + canonical_hash({"reason": reason})
+    return items
 
 
 def read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
@@ -1739,18 +1871,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/api/intelligence/contexts/"):
-            context_id = path.split("/")[4]
-            organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-            project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
-            principal = self._principal(organization_id)
-            if not organization_id or not project_id or principal is None:
-                write_error(self, "permission_denied", 403)
-                return
-            context = REPO.get_intelligence_context(context_build_id=context_id, organization_id=organization_id, project_id=project_id, principal=principal)
-            if context is None:
-                write_error(self, "intelligence_context_not_found", 404)
-                return
-            write_json(self, {"context": context, "snapshot_mutation": False, "external_fetch_enabled": False})
+            self._dispatch_intelligence_context_get()
             return
         if self._principal() is None:
             return
@@ -1801,7 +1922,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 5 and parts[4] == "quality-gate":
                 source = REPO.get_source_record(dataset["source_id"])
-                write_json(self, dataset_quality_gate(dataset, source))
+                write_json(self, dataset_quality_gate(dataset, source, organization_id=dataset["organization_id"]))
                 return
             if len(parts) == 5 and parts[4] == "transformations":
                 write_json(self, {"transformations": REPO.dataset_transformations(dataset_id)})
@@ -1833,6 +1954,11 @@ class Handler(BaseHTTPRequestHandler):
                 if workspace is None:
                     write_error(self, "project_not_found", 404)
                     return
+                principal = self._principal(workspace["project"]["organization_id"])
+                if principal is None:
+                    return
+                workspace["current_recovery"]["items"] = apply_recovery_permissions(workspace["current_recovery"]["items"], principal)
+                workspace["capabilities"] = [intelligence_context_construction_policy(), *customer_capability_declarations()]
                 write_json(self, workspace)
                 return
             if len(parts) == 5 and parts[4] == "remediation":
@@ -1876,12 +2002,15 @@ class Handler(BaseHTTPRequestHandler):
                 if project is None:
                     write_error(self, "project_not_found", 404)
                     return
-                write_json(self, build_evidence_register(REPO, parts[3], "draft"))
+                write_json(self, build_evidence_register(REPO, parts[3], "draft", organization_id=project.organization_id))
                 return
             if len(parts) == 5 and parts[4] == "evidence-ledger":
                 project = REPO.get_project(parts[3])
                 if project is None:
                     write_error(self, "project_not_found", 404)
+                    return
+                principal = self._principal(project.organization_id)
+                if principal is None:
                     return
                 evidence_register, sector, ledger, coverage = build_project_evidence_state(REPO, project, "draft", None)
                 write_json(
@@ -1891,6 +2020,7 @@ class Handler(BaseHTTPRequestHandler):
                         "sector_intelligence": sector,
                         "evidence_ledger": ledger,
                         "evidence_coverage": coverage,
+                        "recovery_items": apply_recovery_permissions(current_evidence_recovery(project, evidence_register, coverage), principal),
                         "transformation_lineage": build_transformation_lineage(
                             ledger,
                             evidence_register.get("transformations", []),
@@ -2050,6 +2180,124 @@ class Handler(BaseHTTPRequestHandler):
             return
         write_error(self, "not_found", 404)
 
+    def _intelligence_ingress_error(self, kind: str, status: int, principal: Principal | None = None) -> None:
+        # Error presentation may use a valid session identity without granting
+        # tenant scope. The ingress authorization helper remains fail-closed.
+        if kind == "denied" and principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+            if principal is None:
+                kind, status = "authentication", 401
+        locale = "ar"
+        if principal is not None:
+            try:
+                saved = REPO.customer_locale(principal.user_id)
+                locale = saved if saved in {"ar", "en"} else "ar"
+            except Exception:
+                pass
+        messages = {
+            "authentication": ("انتهت جلسة الدخول أو لم تبدأ بعد. لم يُنفذ الطلب؛ سجّل الدخول ثم عد إلى مشروعك.", "Your sign-in session has expired or has not started. Nothing was processed; sign in and return to your project."),
+            "too_large": ("الطلب أكبر من الحجم المسموح. لم تُعتمد معلومات جديدة؛ قلّل حجم البيانات المرسلة ثم أعد المحاولة.", "The request exceeds the allowed size. No new information was approved; reduce the submitted data and try again."),
+            "denied": ("لا يمكنك الوصول إلى بيانات هذا المشروع. لم يُنفذ الطلب؛ ارجع إلى مشروع تملك صلاحية استخدامه.", "You cannot access this project's data. Nothing was processed; return to a project you are authorized to use."),
+            "invalid": ("تعذر حفظ الطلب لأن بياناته غير مقبولة. لم تُعتمد أي معلومات؛ راجع بيانات المشروع ثم أعد المحاولة.", "The request could not be saved because its data is invalid. No information was approved; review your project details and try again."),
+            "blocked": ("تجهيز سياق الأدلة بهذه الطريقة غير متاح الآن، لذلك لم يبدأ التحليل ولم تتغير النتائج المحفوظة. يمكنك مراجعة بيانات المشروع وأدلته ثم العودة؛ إضافة دليل لا تفعّل هذه القدرة المحجوبة.", "Preparing evidence context this way is currently unavailable, so analysis did not start and saved results are unchanged. You can review your project details and evidence, then return; adding evidence does not enable this blocked capability."),
+            "unavailable": ("تعذر إكمال الطلب مؤقتًا ولم تُعتمد معلومات جديدة. عد إلى مشروعك وأعد المحاولة لاحقًا.", "The request is temporarily unavailable and no new information was approved. Return to your project and try again later."),
+            "missing": ("تعذر العثور على بيانات السياق المطلوبة لهذا المشروع. ارجع إلى المشروع وراجع بياناته وأدلته.", "The requested context data could not be found for this project. Return to the project and review its details and evidence."),
+        }
+        # Keep the existing error envelope, without exposing correlation IDs or
+        # request/exception content as customer-facing text.
+        write_json(self, {"error": messages[kind][locale == "en"], "status": status, "request_id": None}, status)
+
+    def _intelligence_ingress_denial(self, status: int, principal: Principal | None = None) -> None:
+        """Audit only early authorization exits; never read request payloads."""
+        if principal is None:
+            token = self._bearer_token()
+            principal = REPO.principal_for_token(token) if token else None
+        # A session-only identity supplies the actor, never selected tenant scope.
+        REPO.audit(actor_user_id=principal.user_id if principal else None, organization_id=principal.organization_id if principal else None, action="aia.context.read" if self.command == "GET" else "aia.context.request", target_type="intelligence_context", target_id="intelligence_ingress", result="denied", reason="tenant_membership_or_permission_failed", correlation_id=self.request_id)
+        self._intelligence_ingress_error("denied" if principal else "authentication", status if principal else 401, principal)
+
+    def _intelligence_ingress_principal(self) -> Principal | None:
+        organization_id = self.headers.get("X-ASIE-Organization-Id", "")
+        token = self._bearer_token()
+        principal = REPO.principal_for_token(token, organization_id) if token else None
+        if not organization_id or principal is None or principal.organization_id != organization_id:
+            return None
+        return principal
+
+    def _dispatch_intelligence_context_get(self) -> None:
+        principal = None
+        try:
+            principal = self._intelligence_ingress_principal()
+            if principal is None:
+                self._intelligence_ingress_denial(403)
+                return
+            parts = urlparse(self.path).path.split("/")
+            if len(parts) != 5 or not parts[4]:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
+            context = REPO.get_intelligence_context(context_build_id=parts[4], organization_id=principal.organization_id, project_id=project_id, principal=principal)
+            if context is None:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            write_json(self, {"context": context, "snapshot_mutation": False, "external_fetch_enabled": False})
+        except PermissionError:
+            self._intelligence_ingress_error("denied", 403, principal)
+        except Exception:
+            self._intelligence_ingress_error("unavailable", 503, principal)
+
+    def _dispatch_intelligence_context_post(self, path: str) -> None:
+        principal = None
+        try:
+            principal = self._intelligence_ingress_principal()
+            permission = "project.edit" if path in {"/api/intelligence/contexts", "/api/intelligence/pre-runs"} else "review.write"
+            if principal is None or not principal.can(permission):
+                # Preserve the existing POST denial status without raw details.
+                self._intelligence_ingress_denial(422, principal)
+                return
+            payload = read_json(self)
+            if not isinstance(payload, dict):
+                self._intelligence_ingress_error("invalid", 400, principal)
+                return
+            project_id = _request_text(payload, "project_id", maximum=256)
+            REPO._authorize_intelligence(principal=principal, organization_id=principal.organization_id, project_id=project_id, permission=permission, action="aia.context.request", target_id="", correlation_id=self.request_id)
+            if path == "/api/intelligence/contexts":
+                record = REPO.create_intelligence_context(payload=payload, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}, 201)
+                return
+            if path == "/api/intelligence/pre-runs":
+                # The same owner supplies the customer fact; this remains an unconditional deny.
+                intelligence_context_construction_policy()
+                self._intelligence_ingress_error("blocked", 409, principal)
+                return
+            parts = path.split("/")
+            if len(parts) != 6 or not parts[4]:
+                self._intelligence_ingress_error("missing", 404, principal)
+                return
+            material = {key: value for key, value in payload.items() if key != "project_id"}
+            if "intelligence_context_id" in material and material["intelligence_context_id"] != parts[4]:
+                self._intelligence_ingress_error("invalid", 400, principal)
+                return
+            material["intelligence_context_id"] = parts[4]
+            if path.startswith("/api/intelligence/contexts/") and path.endswith("/reviews"):
+                record = REPO.save_intelligence_review(organization_id=principal.organization_id, project_id=project_id, overlay=material, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"review": record, "snapshot_mutation": False}, 201)
+                return
+            if path.startswith("/api/intelligence/contexts/") and path.endswith("/approval"):
+                record = REPO.save_intelligence_approval(organization_id=principal.organization_id, project_id=project_id, receipt=material, principal=principal, correlation_id=self.request_id)
+                write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
+                return
+        except PermissionError:
+            self._intelligence_ingress_error("denied", 422, principal)
+        except RequestError as exc:
+            kind = "too_large" if exc.status == 413 else "invalid"
+            self._intelligence_ingress_error(kind, exc.status, principal)
+        except ValueError:
+            self._intelligence_ingress_error("invalid", 400, principal)
+        except Exception:
+            self._intelligence_ingress_error("unavailable", 503, principal)
+
     def do_POST(self) -> None:
         """Authorize and dispatch one state-changing API request."""
         if not self._allow_request():
@@ -2057,6 +2305,15 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/architecture/runtime-status":
             reject_architecture_status_mutation(self)
+            return
+        if path == "/api/intelligence/contexts":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path == "/api/intelligence/pre-runs":
+            self._dispatch_intelligence_context_post(path)
+            return
+        if path.startswith("/api/intelligence/contexts/") and (path.endswith("/reviews") or path.endswith("/approval")):
+            self._dispatch_intelligence_context_post(path)
             return
         try:
             payload = read_json(self)
@@ -2319,19 +2576,24 @@ class Handler(BaseHTTPRequestHandler):
                 tenant_principal = self._principal(scope.organization_id)
                 if tenant_principal is None:
                     return
-                context = REPO.get_intelligence_context(
-                    context_build_id=context_build_id,
-                    organization_id=scope.organization_id,
-                    project_id=project_id,
-                    principal=tenant_principal,
-                )
-                receipt = REPO.get_intelligence_approval_receipt(
-                    receipt_id=approval_receipt_id,
-                    organization_id=scope.organization_id,
-                    project_id=project_id,
-                    principal=tenant_principal,
-                )
-                if context is None or receipt is None:
+                try:
+                    context = REPO.get_intelligence_context(
+                        context_build_id=context_build_id,
+                        organization_id=scope.organization_id,
+                        project_id=project_id,
+                        principal=tenant_principal,
+                        validate_for_consumption=True,
+                    )
+                    receipt = REPO.get_intelligence_approval_receipt(
+                        receipt_id=approval_receipt_id,
+                        organization_id=scope.organization_id,
+                        project_id=project_id,
+                        principal=tenant_principal,
+                    )
+                except ValueError:
+                    write_error(self, "approved_evidence_context_required", 409)
+                    return
+                if context is None or not isinstance(receipt, dict):
                     write_error(self, "approved_evidence_context_required", 409)
                     return
                 context_hash = str(context.get("context_hash") or "")
@@ -2339,6 +2601,8 @@ class Handler(BaseHTTPRequestHandler):
                     receipt.get("intelligence_context_id") != context_build_id
                     or receipt.get("intelligence_context_hash") != context_hash
                     or receipt.get("approved_for_contract_version") != "live.intelligence.narrative.v1"
+                    or receipt.get("approval_scope") != "narrative"
+                    or receipt.get("conditions") != []
                     or not _approval_is_current(receipt)
                 ):
                     write_error(self, "approved_evidence_context_required", 409)
@@ -2347,28 +2611,33 @@ class Handler(BaseHTTPRequestHandler):
                 if approved_context is None:
                     write_error(self, "approved_evidence_context_required", 409)
                     return
-                if not provider_status_snapshot()["external_fetch_enabled"]:
-                    REPO.audit(
-                        actor_user_id=principal.user_id,
-                        organization_id=scope.organization_id,
-                        action="live_narrative",
-                        target_type="project",
-                        target_id=project_id,
-                        result="denied",
-                        reason="external_fetch_disabled",
-                        correlation_id=self.request_id,
-                    )
-                    self._write_provider_unavailable("live_narrative")
-                    return
                 try:
-                    REPO.consume_intelligence_approval(
-                        receipt_id=approval_receipt_id,
-                        organization_id=scope.organization_id,
-                        project_id=project_id,
-                        context_hash=context_hash,
-                        contract_version="live.intelligence.narrative.v1",
-                        principal=tenant_principal,
-                    )
+                    try:
+                        REPO.consume_intelligence_approval(
+                            receipt_id=approval_receipt_id,
+                            organization_id=scope.organization_id,
+                            project_id=project_id,
+                            context_hash=context_hash,
+                            contract_version="live.intelligence.narrative.v1",
+                            expected_scope="narrative",
+                            principal=tenant_principal,
+                        )
+                    except ValueError:
+                        write_error(self, "approved_evidence_context_required", 409)
+                        return
+                    if not provider_status_snapshot()["external_fetch_enabled"]:
+                        REPO.audit(
+                            actor_user_id=principal.user_id,
+                            organization_id=scope.organization_id,
+                            action="live_narrative",
+                            target_type="project",
+                            target_id=project_id,
+                            result="denied",
+                            reason="external_fetch_disabled",
+                            correlation_id=self.request_id,
+                        )
+                        self._write_provider_unavailable("live_narrative")
+                        return
                     narrative = _live_narrative_service().create_reviewed_narrative(
                         scope=scope,
                         request_id=self.request_id,
@@ -2530,56 +2799,35 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     self._write_provider_unavailable("google_maps_platform")
                     return
-            if path == "/api/intelligence/contexts":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                record = REPO.create_intelligence_context(payload=payload | {"organization_id": organization_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"context": record, "snapshot_mutation": False, "external_fetch_enabled": False}, 201)
-                return
-            if path == "/api/intelligence/pre-runs":
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                required = ("project_id", "context_build_id", "idempotency_key", "geography", "sector")
-                if any(not payload.get(key) for key in required) or not isinstance(payload.get("components"), list):
-                    write_error(self, "pre_run_payload_incomplete", 400)
-                    return
-                result = IntelligencePreRunService(REPO).build_local_context(organization_id=organization_id, project_id=str(payload["project_id"]), context_build_id=str(payload["context_build_id"]), idempotency_key=str(payload["idempotency_key"]), geography=str(payload["geography"]), sector=str(payload["sector"]), components=payload["components"], principal=principal, correlation_id=self.request_id)
-                write_json(self, result, 201 if result.get("context") else 422)
-                return
-            if path.startswith("/api/intelligence/contexts/") and path.endswith("/reviews"):
-                context_id = path.split("/")[4]
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                project_id = str(payload.get("project_id") or "")
-                record = REPO.save_intelligence_review(organization_id=organization_id, project_id=project_id, overlay=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"review": record, "snapshot_mutation": False}, 201)
-                return
-            if path.startswith("/api/intelligence/contexts/") and path.endswith("/approval"):
-                context_id = path.split("/")[4]
-                organization_id = self.headers.get("X-ASIE-Organization-Id", "")
-                principal = self._principal(organization_id)
-                if not organization_id or principal is None:
-                    write_error(self, "permission_denied", 403)
-                    return
-                project_id = str(payload.get("project_id") or "")
-                record = REPO.save_intelligence_approval(organization_id=organization_id, project_id=project_id, receipt=payload | {"intelligence_context_id": context_id}, principal=principal, correlation_id=self.request_id)
-                write_json(self, {"approval": record, "snapshot_mutation": False}, 201)
-                return
             if self._principal() is None:
                 return
-            if path in {"/api/datasets/manual-import", "/api/datasets/file-import"}:
+            dataset_submission_context = None
+            if path in {"/api/datasets", "/api/datasets/manual-import", "/api/datasets/file-import"}:
                 organization_id = self._organization_from_request()
-                if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
+                principal = self._require_organization_permission(organization_id, "project.edit") if organization_id else None
+                if principal is None:
                     return
+                reject_client_dataset_provenance(payload)
+                if "organization_id" in payload and payload["organization_id"] != organization_id:
+                    raise PermissionError("dataset_organization_mismatch")
+                intended_use = payload.get("intended_use", "governed_external")
+                if type(intended_use) is not str or intended_use not in {"customer_study", "governed_external"}:
+                    raise ValueError("dataset_intended_use_invalid")
+                project_id = payload.get("project_id", "")
+                if type(project_id) is not str or (intended_use == "customer_study" and not project_id.strip()):
+                    raise ValueError("dataset_project_required")
+                if project_id:
+                    project = self._require_project_permission(project_id, "project.edit")
+                    if project is None:
+                        return
+                    if project.organization_id != organization_id:
+                        raise PermissionError("dataset_project_organization_mismatch")
+                if principal.user_id == "local_legacy_operator":
+                    if intended_use == "customer_study":
+                        raise PermissionError("dataset_authenticated_creator_required")
+                else:
+                    dataset_submission_context = {"kind": intended_use, "creator_user_id": principal.user_id,
+                        "organization_id": organization_id, "initial_project_id": project_id}
                 payload = payload | {"organization_id": organization_id}
             elif path.startswith("/api/datasets/"):
                 if not self._require_dataset_permission(path.split("/")[3], "project.edit"):
@@ -2690,26 +2938,26 @@ class Handler(BaseHTTPRequestHandler):
                     if transformation["dataset_id"] != dataset["dataset_id"]:
                         write_error(self, "transformation_dataset_mismatch", 400)
                         return
-                gate = dataset_quality_gate(dataset, REPO.get_source_record(dataset["source_id"]))
+                gate = dataset_quality_gate(dataset, REPO.get_source_record(dataset["source_id"]), organization_id=project.organization_id, project_id=project.project_id)
                 if not gate["can_use_for_assumptions"]:
                     write_error(self, "dataset_quality_gate_failed:" + ",".join(gate["reasons"]), 422)
                     return
-                write_json(self, {"evidence_link": REPO.save_evidence_link(project_id, payload)}, 201)
+                write_json(self, {"evidence_link": REPO.save_evidence_link(project_id, payload, expected_dataset_revision=dataset["updated_at"])}, 201)
                 return
             if path == "/api/datasets":
                 organization_id = self._organization_from_request()
                 if not organization_id or self._require_organization_permission(organization_id, "project.edit") is None:
                     return
-                record = REPO.save_dataset(payload | {"organization_id": organization_id})
+                record = REPO.save_dataset(payload | {"organization_id": organization_id}, create_only=True, submission_context=dataset_submission_context)
                 write_json(self, {"dataset": record}, 201)
                 return
             if path == "/api/datasets/manual-import":
                 payload.setdefault("import_method", "manual_csv" if payload.get("csv_text") else "manual_table")
-                record = REPO.save_dataset(payload)
+                record = REPO.save_dataset(payload, create_only=True, submission_context=dataset_submission_context)
                 write_json(self, {"dataset": record}, 201)
                 return
             if path == "/api/datasets/file-import":
-                record = REPO.save_dataset(normalize_file_import_payload(payload))
+                record = REPO.save_dataset(normalize_file_import_payload(payload), create_only=True, submission_context=dataset_submission_context)
                 write_json(self, {"dataset": record, "external_fetch_enabled": False}, 201)
                 return
             if path.startswith("/api/datasets/") and path.endswith("/transformations"):
@@ -2717,6 +2965,11 @@ class Handler(BaseHTTPRequestHandler):
                 if REPO.get_dataset(dataset_id) is None:
                     write_error(self, "dataset_not_found", 404)
                     return
+                if payload.get("transformation_id"):
+                    existing = REPO.get_transformation(str(payload["transformation_id"]))
+                    if existing is None or existing["dataset_id"] != dataset_id:
+                        write_error(self, "transformation_not_found", 404)
+                        return
                 transformation = REPO.save_transformation(dataset_id, payload)
                 write_json(self, {"transformation": transformation}, 201)
                 return
@@ -2889,3 +3142,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

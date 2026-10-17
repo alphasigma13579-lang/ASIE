@@ -3,19 +3,20 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timedelta
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
 from backend.contracts import DB_PATH, json_dumps, json_loads, new_id, now_iso
-from backend.datasets import normalize_dataset_payload, normalize_evidence_link
+from backend.datasets import CONTENT_INPUT_KEYS, PROVENANCE_KEY, normalize_dataset_payload, normalize_evidence_link, reject_client_dataset_provenance, dataset_submission_provenance
 from backend.decision_pack import normalize_action_item_patch, normalize_review
 from backend.source_registry import normalize_source_review, seed_source_records
 from backend.snapshot_assembly import canonical_hash
 from backend.transformations import normalize_transformation_payload
 from backend.identity import Principal, VALID_ROLES, hash_beta_password, hash_password, new_session_token, token_hash, verify_password
 from backend.intelligence_authorization import authorize_intelligence_action
-from backend.intelligence_context import idempotency_fingerprint
+from backend.intelligence_context import ContextComponent, IntelligenceContext, idempotency_fingerprint
+from backend.intelligence_approval import ApprovalReceipt, ReviewOverlay
 
 
 LEGACY_ORGANIZATION_ID = "org_local_legacy"
@@ -541,9 +542,30 @@ class Repository:
                 """
             )
             self._migrate_columns(conn)
+            self._ensure_intelligence_origin_index(conn)
             self._seed_legacy_organization(conn)
             self._seed_sources(conn)
             conn.commit()
+
+    @staticmethod
+    def _ensure_intelligence_origin_index(conn: sqlite3.Connection) -> None:
+        """Create the registered lookup index and reject incompatible name reuse."""
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_security_audit_origin_proof "
+            "ON security_audit_events(action, target_type, target_id, organization_id)"
+        )
+        indexes = [row for row in conn.execute("PRAGMA index_list(security_audit_events)")
+                   if row["name"] == "idx_security_audit_origin_proof"]
+        columns = ("action", "target_type", "target_id", "organization_id")
+        info = conn.execute("PRAGMA index_info(idx_security_audit_origin_proof)").fetchall()
+        keys = [row for row in conn.execute("PRAGMA index_xinfo(idx_security_audit_origin_proof)")
+                if row["key"] == 1]
+        if (len(indexes) != 1 or indexes[0]["unique"] != 0
+                or indexes[0]["partial"] != 0 or indexes[0]["origin"] != "c"
+                or tuple(row["name"] for row in info) != columns
+                or tuple(row["name"] for row in keys) != columns
+                or any(row["cid"] < 0 or row["desc"] != 0 or row["coll"] != "BINARY" for row in keys)):
+            raise ValueError("intelligence_origin_index_conflict")
 
     def update_project(self, project_id: str, payload: dict[str, Any]) -> ProjectRecord | None:
         project = self.get_project(project_id)
@@ -1466,71 +1488,315 @@ class Repository:
         return record | {"notes": json_loads(record["notes_json"], {})}
 
     def _authorize_intelligence(self, *, principal: Principal | None, organization_id: str, project_id: str, permission: str, action: str, target_id: str, correlation_id: str | None = None) -> None:
+        # Validate the trusted principal before looking up tenant-owned data.
+        # Reuse the permission checker, but publish allow only after ownership.
+        pending_allow: list[dict[str, Any]] = []
+        repository = self
+
+        class OwnershipAudit:
+            def audit(self, **event: Any) -> None:
+                if event["result"] == "denied":
+                    repository.audit(**event)
+                else:
+                    pending_allow.append(event)
+
+        authorize_intelligence_action(principal, organization_id=organization_id, project_id=project_id, permission=permission, action=action, target_id=target_id, audit_sink=OwnershipAudit(), correlation_id=correlation_id)
         with closing(self.connect()) as conn:
             row = conn.execute("SELECT organization_id FROM projects WHERE project_id = ?", (project_id,)).fetchone()
         if row is None or row["organization_id"] != organization_id:
-            self.audit(actor_user_id=principal.user_id if principal else None, organization_id=organization_id, action=action, target_type="intelligence_context", target_id=target_id, result="denied", reason="project_tenant_mismatch", correlation_id=correlation_id)
-            raise PermissionError("intelligence_project_tenant_mismatch")
-        authorize_intelligence_action(principal, organization_id=organization_id, project_id=project_id, permission=permission, action=action, target_id=target_id, audit_sink=self, correlation_id=correlation_id)
+            self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action=action, target_type="intelligence_context", target_id=target_id, result="denied", reason="project_tenant_mismatch", correlation_id=correlation_id)
+            raise PermissionError("intelligence_access_denied")
+        for event in pending_allow:
+            self.audit(**event)
+
+    def intelligence_project_scope(self, *, organization_id: str, project_id: str, principal: Principal | None, correlation_id: str | None = None) -> dict[str, str]:
+        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.scope", target_id=project_id, correlation_id=correlation_id)
+        project = self.get_project(project_id)
+        if project is None or project.organization_id != organization_id:
+            raise PermissionError("intelligence_access_denied")
+        inputs = project.inputs
+        country = inputs.get("location_country", project.jurisdiction)
+        sector = inputs.get("primary_sector_id", project.sector)
+        if sector == "CUSTOM":
+            sector = project.sector
+        # Do not supply a guessed sector or location when saved values are missing.
+        return {"geography": country.strip() if isinstance(country, str) else "", "sector": sector.strip() if isinstance(sector, str) else ""}
+
+    @staticmethod
+    def _intelligence_draft_payload(payload: dict[str, Any], *, complete: bool) -> None:
+        if not isinstance(payload, dict) or set(payload) - {"project_id", "idempotency_key"}:
+            raise ValueError("invalid_context_request")
+        for key in ("project_id", "idempotency_key"):
+            if (complete or key in payload) and (not isinstance(payload.get(key), str) or not payload[key].strip() or len(payload[key]) > 256):
+                raise ValueError("invalid_context_request")
+
+    @staticmethod
+    def _intelligence_context_record(record: Any, *, creation_path: str) -> None:
+        # This fixed shape comes from the two server-side constructors, never
+        # from a stored payload's claims. Origin evidence is kept out of it.
+        string_fields = {"context_build_id", "organization_id", "project_id", "idempotency_key", "geography", "sector", "state", "context_hash", "created_at", "updated_at", "idempotency_fingerprint"}
+        if not isinstance(record, dict) or set(record) != string_fields | {"version", "component_manifest"}:
+            raise ValueError("context_idempotency_conflict")
+        if any(not isinstance(record[key], str) for key in string_fields):
+            raise ValueError("context_idempotency_conflict")
+        if any(not record[key].strip() for key in string_fields - {"geography", "sector", "context_hash"}):
+            raise ValueError("context_idempotency_conflict")
+        if type(record["version"]) is not int or record["version"] < 1 or not isinstance(record["component_manifest"], list):
+            raise ValueError("context_idempotency_conflict")
+        if creation_path == "public_draft":
+            if record["state"] != "DRAFT" or record["context_hash"] or record["component_manifest"]:
+                raise ValueError("context_idempotency_conflict")
+        elif creation_path == "validated_model":
+            if record["state"] != "REVIEW_PENDING" or record["version"] != 4 or not record["context_hash"] or not record["component_manifest"]:
+                raise ValueError("context_idempotency_conflict")
+            component_fields = {field.name for field in fields(ContextComponent)}
+            if any(not isinstance(component, dict) or set(component) != component_fields for component in record["component_manifest"]):
+                raise ValueError("context_idempotency_conflict")
+        else:
+            raise ValueError("context_idempotency_conflict")
+
+    @staticmethod
+    def _intelligence_origin_material(record: dict[str, Any], *, creation_path: str) -> str:
+        # Draft CAS changes version/time only without renewing creation proof.
+        # A changed project scope deliberately invalidates replay of this proof.
+        mutable = {"version", "updated_at"} if creation_path == "public_draft" else set()
+        identity = {key: value for key, value in record.items() if key not in mutable}
+        return json_dumps({"policy": "aia.context.origin.v1", "creation_path": creation_path, "project_id": record["project_id"], "creation_fingerprint": canonical_hash(identity)})
+
+    def _insert_intelligence_context(self, record: dict[str, Any], *, creation_path: str, actor_user_id: str) -> dict[str, Any]:
+        fingerprint = idempotency_fingerprint(record["organization_id"], record["project_id"], record["idempotency_key"])
+        record = record | {"idempotency_fingerprint": fingerprint}
+        self._intelligence_context_record(record, creation_path=creation_path)
+        with closing(self.connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM intelligence_contexts WHERE idempotency_fingerprint = ? AND organization_id = ? AND project_id = ?", (fingerprint, record["organization_id"], record["project_id"])).fetchone()
+            if row is not None:
+                try:
+                    existing = json_loads(row["payload_json"], {})
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("context_idempotency_conflict") from exc
+                self._intelligence_context_record(existing, creation_path=creation_path)
+                if any(type(existing[key]) is not type(row[key]) or existing[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
+                    raise ValueError("context_idempotency_conflict")
+                if any(existing[key] != record[key] for key in ("organization_id", "project_id", "idempotency_key", "idempotency_fingerprint", "state", "context_hash", "geography", "sector", "component_manifest")):
+                    raise ValueError("context_idempotency_conflict")
+                if creation_path == "validated_model" and existing["context_build_id"] != record["context_build_id"]:
+                    raise ValueError("context_idempotency_conflict")
+                proofs = conn.execute("SELECT * FROM security_audit_events WHERE organization_id = ? AND target_type = 'intelligence_context' AND target_id = ? AND action = 'aia.context.origin.v1'", (record["organization_id"], row["context_build_id"])).fetchall()
+                expected = self._intelligence_origin_material(existing, creation_path=creation_path)
+                if len(proofs) != 1 or proofs[0]["result"] != "created" or proofs[0]["reason"] != expected or not proofs[0]["actor_user_id"] or proofs[0]["correlation_id"] is not None:
+                    raise ValueError("context_idempotency_conflict")
+                return existing
+            conn.execute("INSERT INTO intelligence_contexts (context_build_id, organization_id, project_id, context_hash, state, version, idempotency_fingerprint, payload_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", (record["context_build_id"], record["organization_id"], record["project_id"], record["context_hash"], record["state"], record["version"], fingerprint, json_dumps(record), record["created_at"], record["updated_at"]))
+            # Same connection and commit as the context; audit() would commit
+            # separately. This is local provenance, not a cryptographic seal.
+            conn.execute("INSERT INTO security_audit_events (event_id, actor_user_id, organization_id, action, target_type, target_id, result, reason, correlation_id, created_at) VALUES (?, ?, ?, 'aia.context.origin.v1', 'intelligence_context', ?, 'created', ?, NULL, ?)", (new_id("audit"), actor_user_id, record["organization_id"], record["context_build_id"], self._intelligence_origin_material(record, creation_path=creation_path), now_iso()))
+        return record
 
     def create_intelligence_context(self, *, payload: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        organization_id = str(payload.get("organization_id") or "")
-        project_id = str(payload.get("project_id") or "")
-        context_id = str(payload.get("context_build_id") or new_id("ctx"))
-        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.create", target_id=context_id, correlation_id=correlation_id)
-        if not payload.get("idempotency_key"):
-            raise ValueError("idempotency_key_required")
-        record = dict(payload) | {"context_build_id": context_id, "state": payload.get("state") or "DRAFT", "version": 1, "created_at": now_iso(), "updated_at": now_iso()}
-        fingerprint = idempotency_fingerprint(organization_id, project_id, str(payload["idempotency_key"]))
-        with closing(self.connect()) as conn:
-            try:
-                conn.execute("INSERT INTO intelligence_contexts (context_build_id, organization_id, project_id, context_hash, state, version, idempotency_fingerprint, payload_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", (context_id, organization_id, project_id, str(record.get("context_hash") or ""), record["state"], 1, fingerprint, json_dumps(record), record["created_at"], record["updated_at"]))
-                conn.commit()
-            except sqlite3.IntegrityError as exc:
-                raise ValueError("context_idempotency_or_duplicate") from exc
-        return record | {"idempotency_fingerprint": fingerprint}
+        # This public boundary never accepts lifecycle, evidence or hash claims.
+        organization_id = principal.organization_id if principal is not None else ""
+        project_id = payload.get("project_id", "") if isinstance(payload, dict) else ""
+        if not isinstance(project_id, str):
+            project_id = ""
+        project_id = project_id.strip()
+        scope = self.intelligence_project_scope(organization_id=organization_id or "", project_id=project_id, principal=principal, correlation_id=correlation_id)
+        self._intelligence_draft_payload(payload, complete=True)
+        timestamp = now_iso()
+        record = self._insert_intelligence_context({"context_build_id": new_id("ctx"), "organization_id": organization_id, "project_id": project_id, "idempotency_key": payload["idempotency_key"], **scope, "component_manifest": [], "state": "DRAFT", "context_hash": "", "version": 1, "created_at": timestamp, "updated_at": timestamp}, creation_path="public_draft", actor_user_id=principal.user_id)
+        self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.context.create", target_type="intelligence_context", target_id=record["context_build_id"], result="allowed", correlation_id=correlation_id)
+        return record
 
-    def get_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, principal: Principal | None) -> dict[str, Any] | None:
+    @staticmethod
+    def _validated_intelligence_model(context: IntelligenceContext) -> IntelligenceContext:
+        if type(context) is not IntelligenceContext or type(context.version) is not int or (context.state, context.version) not in {("INTEGRITY_LOCKED", 3), ("REVIEW_PENDING", 4)}:
+            raise ValueError("context_lifecycle_invalid")
+        # Detach mutable component values; replay the existing model's lifecycle.
+        if any(type(component) is not ContextComponent for component in context.components):
+            raise ValueError("context_component_invalid")
+        string_fields = ("component_id", "kind", "source", "freshness", "geography", "sector", "confidence", "review")
+        if any(any(not isinstance(getattr(component, field), str) or not getattr(component, field).strip() for field in string_fields) for component in context.components):
+            raise ValueError("context_component_invalid")
+        # Validate original lineage before as_dict() can coerce an iterable.
+        if any(not isinstance(component.lineage, list) or not component.lineage or any(not isinstance(reference, str) or not reference.strip() for reference in component.lineage) for component in context.components):
+            raise ValueError("context_component_invalid")
+        components = [ContextComponent(**json_loads(json_dumps(component.as_dict()), {})) for component in context.components]
+        if any(component.geography != context.geography or component.sector != context.sector for component in components):
+            raise ValueError("context_component_scope_mismatch")
+        candidate = IntelligenceContext(context.context_build_id, context.organization_id, context.project_id, context.geography, context.sector, context.idempotency_key, components=components)
+        if not isinstance(candidate.context_build_id, str) or not candidate.context_build_id.strip():
+            raise ValueError("context_identity_invalid")
+        candidate.transition("VALIDATING").transition("INTEGRITY_LOCKED")
+        if context.state == "REVIEW_PENDING":
+            candidate.transition("REVIEW_PENDING")
+        # The model hashes material BEFORE incrementing its version at locking.
+        if not context.context_hash or context.context_hash != candidate.context_hash:
+            raise ValueError("context_integrity_invalid")
+        candidate.created_at, candidate.updated_at = context.created_at, context.updated_at
+        return candidate
+
+    def persist_validated_intelligence_context(self, *, context: IntelligenceContext, principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
+        """Internal offline-model write, not a raw request or production resolver."""
+        if type(context) is not IntelligenceContext:
+            raise ValueError("validated_context_model_required")
+        scope = self.intelligence_project_scope(organization_id=context.organization_id, project_id=context.project_id, principal=principal, correlation_id=correlation_id)
+        if not isinstance(context.idempotency_key, str) or not context.idempotency_key.strip():
+            raise ValueError("context_idempotency_key_invalid")
+        candidate = self._validated_intelligence_model(context)
+        if candidate.state != "REVIEW_PENDING" or scope != {"geography": candidate.geography, "sector": candidate.sector}:
+            raise ValueError("context_saved_scope_mismatch")
+        record = asdict(candidate)
+        record["component_manifest"] = record.pop("components")
+        record.pop("stale_reason")
+        saved = self._insert_intelligence_context(record, creation_path="validated_model", actor_user_id=principal.user_id)
+        self.audit(actor_user_id=principal.user_id, organization_id=candidate.organization_id, action="aia.context.create", target_type="intelligence_context", target_id=saved["context_build_id"], result="allowed", correlation_id=correlation_id)
+        return saved
+
+    def _validated_stored_intelligence_context(self, row: sqlite3.Row, record: Any) -> IntelligenceContext:
+        """Revalidate the exact stored row without another lookup or origin policy."""
+        self._intelligence_context_record(record, creation_path="validated_model")
+        if any(type(record[key]) is not type(row[key]) or record[key] != row[key] for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version", "idempotency_fingerprint", "created_at", "updated_at")):
+            raise ValueError("context_integrity_invalid")
+        fingerprint = idempotency_fingerprint(record["organization_id"], record["project_id"], record["idempotency_key"])
+        if fingerprint != record["idempotency_fingerprint"] or fingerprint != row["idempotency_fingerprint"]:
+            raise ValueError("context_integrity_invalid")
+        context = IntelligenceContext(record["context_build_id"], record["organization_id"], record["project_id"], record["geography"], record["sector"], record["idempotency_key"], state=record["state"], version=record["version"], context_hash=record["context_hash"], components=[ContextComponent(**component) for component in record["component_manifest"]])
+        return self._validated_intelligence_model(context)
+
+    def get_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, principal: Principal | None, validate_for_consumption: bool = False) -> dict[str, Any] | None:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="snapshot.read", action="aia.context.read", target_id=context_build_id)
         with closing(self.connect()) as conn:
-            row = conn.execute("SELECT payload_json, version, context_hash, state FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (context_build_id, organization_id, project_id)).fetchone()
+            row = conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (context_build_id, organization_id, project_id)).fetchone()
         if row is None:
             return None
-        return json_loads(row["payload_json"], {}) | {"version": row["version"], "context_hash": row["context_hash"], "state": row["state"]}
+        record = json_loads(row["payload_json"], {})
+        if not isinstance(record, dict):
+            raise ValueError("context_integrity_invalid")
+        if validate_for_consumption:
+            # AIA-02 §§6.3.1, 10.2 and 11.2: consume the exact integrity-locked
+            # material bound by the receipt, not merely a stored hash label.
+            # Keep ordinary historical reads separate from this consumer gate.
+            try:
+                self._validated_stored_intelligence_context(row, record)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("context_integrity_invalid") from exc
+        return record | {"version": row["version"], "context_hash": row["context_hash"], "state": row["state"]}
 
     def update_intelligence_context(self, *, context_build_id: str, organization_id: str, project_id: str, payload: dict[str, Any], expected_version: int, principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.edit", action="aia.context.update", target_id=context_build_id, correlation_id=correlation_id)
-        updated = dict(payload) | {"context_build_id": context_build_id, "organization_id": organization_id, "project_id": project_id, "updated_at": now_iso()}
-        with closing(self.connect()) as conn:
-            result = conn.execute("UPDATE intelligence_contexts SET context_hash = ?, state = ?, version = version + 1, payload_json = ?, updated_at = ? WHERE context_build_id = ? AND organization_id = ? AND project_id = ? AND version = ?", (str(updated.get("context_hash") or ""), str(updated.get("state") or "DRAFT"), json_dumps(updated), updated["updated_at"], context_build_id, organization_id, project_id, expected_version))
+        scope = self.intelligence_project_scope(organization_id=organization_id, project_id=project_id, principal=principal, correlation_id=correlation_id)
+        self._intelligence_draft_payload(payload, complete=False)
+        if type(expected_version) is not int or expected_version < 1:
+            raise RuntimeError("context_optimistic_version_conflict")
+        with closing(self.connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (context_build_id, organization_id, project_id)).fetchone()
+            if row is None or row["version"] != expected_version:
+                raise RuntimeError("context_optimistic_version_conflict")
+            if row["state"] != "DRAFT" or row["context_hash"]:
+                raise ValueError("context_locked")
+            record = json_loads(row["payload_json"], {})
+            if any(payload[key] != record.get(key) for key in payload):
+                raise ValueError("context_identity_immutable")
+            updated = record | scope | {"state": "DRAFT", "context_hash": "", "version": expected_version + 1, "updated_at": now_iso()}
+            result = conn.execute("UPDATE intelligence_contexts SET version = ?, payload_json = ?, updated_at = ? WHERE context_build_id = ? AND organization_id = ? AND project_id = ? AND version = ? AND state = 'DRAFT' AND context_hash = ''", (updated["version"], json_dumps(updated), updated["updated_at"], context_build_id, organization_id, project_id, expected_version))
             if result.rowcount != 1:
                 raise RuntimeError("context_optimistic_version_conflict")
-            conn.commit()
-        return updated | {"version": expected_version + 1}
+        return updated
+
+    def _intelligence_review_context(self, conn: sqlite3.Connection, *, organization_id: str, project_id: str, context_id: str) -> IntelligenceContext:
+        row = conn.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (context_id, organization_id, project_id)).fetchone()
+        if row is None or row["state"] != "REVIEW_PENDING" or not row["context_hash"]:
+            raise ValueError("context_not_review_eligible")
+        try:
+            record = json_loads(row["payload_json"], {})
+            return self._validated_stored_intelligence_context(row, record)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("context_not_review_eligible") from exc
+
+    @staticmethod
+    def _intelligence_model_payload(payload: dict[str, Any], model_type: type, *, derived_hash: str) -> dict[str, Any]:
+        names = {field.name for field in fields(model_type)}
+        if not isinstance(payload, dict) or set(payload) - names - {derived_hash}:
+            raise ValueError("invalid_intelligence_approval_request")
+        if any(key != "conditions" and not isinstance(value, str) for key, value in payload.items()):
+            raise ValueError("invalid_intelligence_approval_request")
+        material = {key: value for key, value in payload.items() if key in names}
+        conditions = material.get("conditions", [])
+        if not isinstance(conditions, list) or any(not isinstance(value, str) or not value.strip() for value in conditions):
+            raise ValueError("invalid_intelligence_conditions")
+        return material
 
     def save_intelligence_review(self, *, organization_id: str, project_id: str, overlay: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        overlay_id = str(overlay.get("review_overlay_id") or new_id("review"))
-        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.review.save", target_id=overlay_id, correlation_id=correlation_id)
-        record = dict(overlay) | {"review_overlay_id": overlay_id, "created_at": now_iso()}
-        with closing(self.connect()) as conn:
-            context = conn.execute("SELECT context_hash FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (str(record.get("intelligence_context_id") or ""), organization_id, project_id)).fetchone()
-            if context is None or str(record.get("intelligence_context_hash") or "") != context["context_hash"]:
-                raise ValueError("review_context_hash_mismatch")
-            conn.execute("INSERT INTO intelligence_review_overlays (review_overlay_id, organization_id, project_id, context_build_id, overlay_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)", (overlay_id, organization_id, project_id, str(record.get("intelligence_context_id") or ""), str(record.get("review_overlay_hash") or ""), json_dumps(record), record["created_at"]))
-            conn.commit()
+        review_id = new_id("review")
+        self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.review.save", target_id=review_id, correlation_id=correlation_id)
+        material = self._intelligence_model_payload(overlay, ReviewOverlay, derived_hash="review_overlay_hash")
+        role = principal.role or principal.platform_role
+        if any(key in material and material[key] != value for key, value in (("reviewer_id", principal.user_id), ("reviewer_role", role))):
+            self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.review.save", target_type="intelligence_context", target_id=review_id, result="denied", reason="reviewer_identity_mismatch", correlation_id=correlation_id)
+            raise PermissionError("intelligence_access_denied")
+        material |= {"reviewer_id": principal.user_id, "reviewer_role": role}
+        if "review_overlay_id" in material:
+            raise ValueError("invalid_intelligence_review")
+        material["review_overlay_id"] = review_id
+        try:
+            model = ReviewOverlay(**material)
+        except TypeError as exc:
+            raise ValueError("invalid_intelligence_review") from exc
+        with closing(self.connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context = self._intelligence_review_context(conn, organization_id=organization_id, project_id=project_id, context_id=model.intelligence_context_id)
+            model.validate_for(context)
+            if not model.reviewed_output_hash or ("review_overlay_hash" in overlay and overlay["review_overlay_hash"] != model.review_overlay_hash):
+                raise ValueError("review_integrity_invalid")
+            record = model.material() | {"review_overlay_hash": model.review_overlay_hash, "created_at": now_iso()}
+            conn.execute("INSERT INTO intelligence_review_overlays (review_overlay_id, organization_id, project_id, context_build_id, overlay_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)", (model.review_overlay_id, organization_id, project_id, context.context_build_id, model.review_overlay_hash, json_dumps(record), record["created_at"]))
         return record
 
     def save_intelligence_approval(self, *, organization_id: str, project_id: str, receipt: dict[str, Any], principal: Principal | None, correlation_id: str | None = None) -> dict[str, Any]:
-        receipt_id = str(receipt.get("approval_receipt_id") or new_id("receipt"))
+        receipt_id = new_id("receipt")
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="review.write", action="aia.approval.save", target_id=receipt_id, correlation_id=correlation_id)
-        record = dict(receipt) | {"approval_receipt_id": receipt_id, "created_at": now_iso()}
-        with closing(self.connect()) as conn:
-            context = conn.execute("SELECT context_hash FROM intelligence_contexts WHERE context_build_id = ? AND organization_id = ? AND project_id = ?", (str(record.get("intelligence_context_id") or ""), organization_id, project_id)).fetchone()
-            overlay = conn.execute("SELECT overlay_hash FROM intelligence_review_overlays WHERE review_overlay_id = ? AND organization_id = ? AND project_id = ?", (str(record.get("review_overlay_id") or ""), organization_id, project_id)).fetchone()
-            if context is None or overlay is None or str(record.get("intelligence_context_hash") or "") != context["context_hash"] or str(record.get("review_overlay_hash") or "") != overlay["overlay_hash"]:
+        material = self._intelligence_model_payload(receipt, ApprovalReceipt, derived_hash="approval_receipt_hash")
+        for key, expected in (("organization_id", organization_id), ("project_id", project_id)):
+            if key in material and material[key] != expected:
+                reason = "receipt_organization_mismatch" if key == "organization_id" else "receipt_project_mismatch"
+                self.audit(actor_user_id=principal.user_id, organization_id=organization_id, action="aia.approval.save", target_type="intelligence_context", target_id=receipt_id, result="denied", reason=reason, correlation_id=correlation_id)
+                raise PermissionError("intelligence_access_denied")
+        material |= {"organization_id": organization_id, "project_id": project_id}
+        if "approval_receipt_id" in material:
+            raise ValueError("invalid_intelligence_approval")
+        material["approval_receipt_id"] = receipt_id
+        try:
+            model = ApprovalReceipt(**material)
+        except TypeError as exc:
+            raise ValueError("invalid_intelligence_approval") from exc
+        with closing(self.connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context = self._intelligence_review_context(conn, organization_id=organization_id, project_id=project_id, context_id=model.intelligence_context_id)
+            row = conn.execute("SELECT * FROM intelligence_review_overlays WHERE review_overlay_id = ? AND organization_id = ? AND project_id = ? AND context_build_id = ?", (model.review_overlay_id, organization_id, project_id, context.context_build_id)).fetchone()
+            if row is None:
                 raise ValueError("approval_reference_mismatch")
-            conn.execute("INSERT INTO intelligence_approval_receipts (approval_receipt_id, organization_id, project_id, context_build_id, receipt_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)", (receipt_id, organization_id, project_id, str(record.get("intelligence_context_id") or ""), str(record.get("approval_receipt_hash") or ""), json_dumps(record), record["created_at"]))
-            conn.commit()
+            try:
+                overlay_record = json_loads(row["payload_json"], {})
+                overlay_model = ReviewOverlay(**{field.name: overlay_record[field.name] for field in fields(ReviewOverlay)})
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("review_integrity_invalid") from exc
+            overlay_model.validate_for(context)
+            if row["overlay_hash"] != overlay_model.review_overlay_hash or model.conditions != overlay_model.conditions:
+                raise ValueError("approval_reference_mismatch")
+            model.validate_for(context, overlay_model)
+            try:
+                expiry = datetime.fromisoformat(model.valid_until)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("approval_expiry_invalid") from exc
+            if expiry.tzinfo is None:
+                raise ValueError("approval_expiry_invalid")
+            if expiry <= datetime.fromisoformat(now_iso()):
+                raise ValueError("approval_expired")
+            if "approval_receipt_hash" in receipt and receipt["approval_receipt_hash"] != model.approval_receipt_hash:
+                raise ValueError("approval_integrity_invalid")
+            record = model.material() | {"approval_receipt_hash": model.approval_receipt_hash, "created_at": now_iso()}
+            conn.execute("INSERT INTO intelligence_approval_receipts (approval_receipt_id, organization_id, project_id, context_build_id, receipt_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)", (model.approval_receipt_id, organization_id, project_id, context.context_build_id, model.approval_receipt_hash, json_dumps(record), record["created_at"]))
         return record
 
     def get_intelligence_approval_receipt(self, *, receipt_id: str, organization_id: str, project_id: str, principal: Principal | None) -> dict[str, Any] | None:
@@ -1576,16 +1842,75 @@ class Repository:
             row = conn.execute("SELECT payload_json FROM intelligence_synthesis_packs WHERE pack_id = ? AND organization_id = ? AND project_id = ?", (pack_id, organization_id, project_id)).fetchone()
         return None if row is None else json_loads(row["payload_json"], {})
 
-    def consume_intelligence_approval(self, *, receipt_id: str, organization_id: str, project_id: str, context_hash: str, contract_version: str, principal: Principal | None) -> dict[str, Any]:
+    def consume_intelligence_approval(self, *, receipt_id: str, organization_id: str, project_id: str, context_hash: str, contract_version: str, expected_scope: str, principal: Principal | None) -> dict[str, Any]:
         self._authorize_intelligence(principal=principal, organization_id=organization_id, project_id=project_id, permission="project.run", action="aia.approval.consume", target_id=receipt_id)
         with closing(self.connect()) as conn:
-            row = conn.execute("SELECT payload_json FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?", (receipt_id, organization_id, project_id)).fetchone()
+            row = conn.execute("SELECT * FROM intelligence_approval_receipts WHERE approval_receipt_id = ? AND organization_id = ? AND project_id = ?", (receipt_id, organization_id, project_id)).fetchone()
         if row is None:
             raise ValueError("approval_receipt_not_found")
-        receipt = json_loads(row["payload_json"], {})
+        try:
+            receipt = json_loads(row["payload_json"], {})
+        except (TypeError, ValueError) as exc:
+            raise ValueError("approval_integrity_invalid") from exc
+        if not isinstance(receipt, dict):
+            raise ValueError("approval_integrity_invalid")
         if receipt.get("intelligence_context_hash") != context_hash or receipt.get("approved_for_contract_version") != contract_version:
             raise ValueError("approval_receipt_contract_or_hash_mismatch")
+        expiry_text = receipt.get("valid_until")
+        if not isinstance(expiry_text, str):
+            raise ValueError("approval_expiry_invalid")
+        try:
+            expiry = datetime.fromisoformat(expiry_text)
+        except ValueError as exc:
+            raise ValueError("approval_expiry_invalid") from exc
+        if expiry.tzinfo is None or expiry.utcoffset() is None:
+            raise ValueError("approval_expiry_invalid")
+        # Expiry is a hashed receipt field. Syntax alone cannot establish that
+        # the stored authorization actually granted this validity interval.
+        receipt_fields = {field.name for field in fields(ApprovalReceipt)}
+        if set(receipt) != receipt_fields | {"approval_receipt_hash", "created_at"}:
+            raise ValueError("approval_integrity_invalid")
+        try:
+            material = self._intelligence_model_payload({key: receipt[key] for key in receipt_fields}, ApprovalReceipt, derived_hash="approval_receipt_hash")
+            model = ApprovalReceipt(**material)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("approval_integrity_invalid") from exc
+        if (model.approval_receipt_hash != row["receipt_hash"]
+                or receipt["approval_receipt_hash"] != row["receipt_hash"]
+                or model.approval_receipt_id != row["approval_receipt_id"]
+                or model.organization_id != row["organization_id"]
+                or model.project_id != row["project_id"]
+                or model.intelligence_context_id != row["context_build_id"]
+                or receipt["created_at"] != row["created_at"]):
+            raise ValueError("approval_integrity_invalid")
+        # AIA-02 sections 6.3.1/11.2 bind consumption to the receipt's scope
+        # and conditions. No condition evaluator is admitted on this boundary;
+        # never turn a caller's assertion into proof of satisfaction.
+        if not isinstance(expected_scope, str) or not expected_scope.strip() or model.approval_scope != expected_scope:
+            raise ValueError("approval_scope_mismatch")
+        if model.conditions:
+            raise ValueError("approval_conditions_unverified")
+        if expiry <= datetime.fromisoformat(now_iso()):
+            raise ValueError("approval_expired")
         return {"approval_receipt_id": receipt_id, "organization_id": organization_id, "project_id": project_id, "context_hash": context_hash, "contract_version": contract_version, "consumable": True, "snapshot_mutation": False}
+
+    def read_project_evidence(self, project_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Read evidence owners from one SQLite snapshot; never combine approval epochs."""
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN")
+            sources = [self._source_from_row(row) for row in conn.execute("SELECT * FROM source_records ORDER BY source_id").fetchall()]
+            datasets = [self._dataset_from_row(row) for row in conn.execute("SELECT * FROM datasets ORDER BY updated_at DESC").fetchall()]
+            links = [dict(row) for row in conn.execute("SELECT * FROM evidence_links WHERE project_id = ? ORDER BY updated_at DESC", (project_id,)).fetchall()]
+            for link in links:
+                link["target_id"] = link.get("target_id") or link.get("assumption_id", "")
+                link["target_type"] = link.get("target_type") or "assumption"
+                link["transformation_id"] = link.get("transformation_id") or ""
+            dataset_ids = {row["dataset_id"] for row in links}
+            transformation_ids = {row["transformation_id"] for row in links if row["transformation_id"]}
+            transformations = [self._transformation_from_row(row) for row in conn.execute("SELECT * FROM transformations ORDER BY updated_at DESC").fetchall()]
+            transformations = [row for row in transformations if row["dataset_id"] in dataset_ids or row["transformation_id"] in transformation_ids]
+            conn.commit()
+        return {"source_records": sources, "datasets": datasets, "evidence_links": links, "transformations": transformations}
 
     def datasets(self, organization_id: str | None = None) -> list[dict[str, Any]]:
         with closing(self.connect()) as conn:
@@ -1600,11 +1925,49 @@ class Repository:
             row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
         return None if row is None else self._dataset_from_row(row)
 
-    def save_dataset(self, payload: dict[str, Any]) -> dict[str, Any]:
-        existing = self.get_dataset(str(payload.get("dataset_id") or ""))
-        record = normalize_dataset_payload(payload, existing)
-        record["organization_id"] = str(payload.get("organization_id") or (existing or {}).get("organization_id") or LEGACY_ORGANIZATION_ID)
+    def save_dataset(self, payload: dict[str, Any], *, create_only: bool = False, update_only: bool = False, submission_context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Persist identity, owner and provenance under the same atomic write boundary."""
+        reject_client_dataset_provenance(payload)
+        if create_only and update_only:
+            raise ValueError("dataset_write_intent_invalid")
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (str(payload.get("dataset_id") or ""),)).fetchone()
+            existing = self._dataset_from_row(row) if row is not None else None
+            if create_only and existing is not None:
+                raise ValueError("dataset_identity_already_exists")
+            if update_only and existing is None:
+                raise ValueError("dataset_not_found")
+            if existing is not None and "organization_id" in payload and payload["organization_id"] != existing["organization_id"]:
+                raise PermissionError("dataset_organization_immutable")
+            if existing is not None and submission_context is not None:
+                raise PermissionError("dataset_provenance_immutable")
+            organization_id = (existing or {}).get("organization_id") or payload.get("organization_id") or LEGACY_ORGANIZATION_ID
+            if type(organization_id) is not str or not organization_id.strip():
+                raise ValueError("dataset_organization_required")
+            provenance = None
+            if submission_context is not None:
+                if type(submission_context) is not dict or set(submission_context) != {"kind", "creator_user_id", "initial_project_id", "organization_id"}:
+                    raise ValueError("dataset_submission_context_invalid")
+                provenance = dict(submission_context, version=1, created_at=now_iso())
+                if provenance["organization_id"] != organization_id or dataset_submission_provenance({"organization_id": organization_id, "notes": {PROVENANCE_KEY: provenance}}) is None:
+                    raise ValueError("dataset_submission_context_invalid")
+                creator = conn.execute("SELECT user_id FROM users WHERE user_id = ? AND status = 'active'", (provenance["creator_user_id"],)).fetchone()
+                if creator is None:
+                    raise PermissionError("dataset_submission_actor_invalid")
+                if provenance["initial_project_id"]:
+                    project = conn.execute("SELECT organization_id FROM projects WHERE project_id = ?", (provenance["initial_project_id"],)).fetchone()
+                    if project is None or project["organization_id"] != organization_id:
+                        raise PermissionError("dataset_submission_project_invalid")
+            replacement = existing is not None and bool(CONTENT_INPUT_KEYS & payload.keys())
+            # Explicit content submission is a replacement even when the retained
+            # five-row preview/profile happens to match; metadata-only edits are not.
+            effective_payload = payload | {"review_status": "review_required", "human_review_decision": ""} if replacement else payload
+            record = normalize_dataset_payload(effective_payload, existing, submission_provenance=provenance)
+            record["organization_id"] = organization_id
+            if replacement:
+                record["review_status"] = "review_required"
+                record["human_review_decision"] = ""
             conn.execute(
                 """
                 INSERT INTO datasets (
@@ -1639,26 +2002,38 @@ class Repository:
                 """,
                 record,
             )
+            if replacement:
+                conn.execute("UPDATE transformations SET review_status = 'review_required', updated_at = ? WHERE dataset_id = ?", (record["updated_at"], record["dataset_id"]))
+                conn.execute("UPDATE evidence_links SET human_review_decision = '', updated_at = ? WHERE dataset_id = ?", (record["updated_at"], record["dataset_id"]))
+            saved_row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (record["dataset_id"],)).fetchone()
+            saved = self._dataset_from_row(saved_row)
             conn.commit()
-        saved = self.get_dataset(record["dataset_id"])
-        if saved is None:
-            raise RuntimeError("dataset_save_failed")
-        return saved
+            return saved
 
     def review_dataset(self, dataset_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-        existing = self.get_dataset(dataset_id)
-        if existing is None:
-            return None
-        payload = payload | {"dataset_id": dataset_id}
-        return self.save_dataset(payload)
+        if "dataset_id" in payload and payload["dataset_id"] != dataset_id:
+            raise PermissionError("dataset_identity_immutable")
+        try:
+            return self.save_dataset(payload | {"dataset_id": dataset_id}, update_only=True)
+        except ValueError as exc:
+            if str(exc) == "dataset_not_found":
+                return None
+            raise
 
     def save_transformation(self, dataset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        dataset = self.get_dataset(dataset_id)
-        if dataset is None:
-            raise ValueError("dataset_not_found")
-        existing = self.get_transformation(str(payload.get("transformation_id") or ""))
-        record = normalize_transformation_payload(dataset, payload | {"dataset_id": dataset_id}, existing)
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            dataset_row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+            if dataset_row is None:
+                raise ValueError("dataset_not_found")
+            dataset = self._dataset_from_row(dataset_row)
+            if "dataset_id" in payload and payload["dataset_id"] != dataset_id:
+                raise PermissionError("transformation_dataset_immutable")
+            existing_row = conn.execute("SELECT * FROM transformations WHERE transformation_id = ?", (str(payload.get("transformation_id") or ""),)).fetchone()
+            existing = self._transformation_from_row(existing_row) if existing_row is not None else None
+            if existing is not None and existing["dataset_id"] != dataset_id:
+                raise PermissionError("transformation_dataset_immutable")
+            record = normalize_transformation_payload(dataset, payload | {"dataset_id": dataset_id}, existing)
             conn.execute(
                 """
                 INSERT INTO transformations (
@@ -1722,14 +2097,18 @@ class Repository:
             if row["transformation_id"] in linked_ids or row["dataset_id"] in dataset_ids
         ]
 
-    def save_evidence_link(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        existing = self.get_evidence_link(
-            project_id,
-            str(payload.get("target_id") or payload.get("assumption_id") or ""),
-            str(payload.get("dataset_id") or ""),
-        )
-        record = normalize_evidence_link(project_id, payload, existing)
+    def save_evidence_link(self, project_id: str, payload: dict[str, Any], *, expected_dataset_revision: str | None = None) -> dict[str, Any]:
         with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            dataset_id = str(payload.get("dataset_id") or "")
+            if expected_dataset_revision is not None:
+                dataset = conn.execute("SELECT updated_at, review_status FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+                if dataset is None or dataset["updated_at"] != expected_dataset_revision or dataset["review_status"] != "approved_for_use":
+                    raise ValueError("dataset_revision_conflict")
+            previous = conn.execute("SELECT * FROM evidence_links WHERE project_id = ? AND assumption_id = ? AND dataset_id = ?",
+                (project_id, str(payload.get("target_id") or payload.get("assumption_id") or ""), dataset_id)).fetchone()
+            existing = dict(previous) if previous else None
+            record = normalize_evidence_link(project_id, payload, existing)
             conn.execute(
                 """
                 INSERT INTO evidence_links (
@@ -1804,3 +2183,4 @@ class Repository:
         filters = json_loads(data.pop("filters_json", None), {})
         lineage = json_loads(data.pop("lineage_json", None), {})
         return data | {"input_columns": input_columns, "filters": filters, "lineage": lineage}
+

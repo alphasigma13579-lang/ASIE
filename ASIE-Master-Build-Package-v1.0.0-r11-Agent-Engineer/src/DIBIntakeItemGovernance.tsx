@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowLeft, BadgeCheck, Database, FileText, RefreshCcw, Send, ShieldCheck, Sparkles, Target } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project } from "./contracts";
 import {
@@ -7,6 +7,7 @@ import {
   type DIBBlueprintItem,
   type DIBSessionRecord,
   applyDIBItemDecision,
+  fetchDIBSession,
   previewDIBIntakeItems,
   resolveDIBTemplateRegistry,
   saveDIBBlueprint,
@@ -53,8 +54,24 @@ function displayValue(item: DIBBlueprintItem): string {
 
 export function DIBIntakeItemGovernance() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [selectedProjectId, setProjectState] = useState("");
+  const [session, setSessionState] = useState<DIBSessionRecord | null>(null);
+  const requestScope = useRef({ project: selectedProjectId, session: session?.session_id, origin: session?.origin_reference?.payload_hash, epoch: 0 });
+  const operationSequence = useRef(0);
+  function setSelectedProjectId(project: string) {
+    if (requestScope.current.project !== project) {
+      requestScope.current = { ...requestScope.current, project, epoch: requestScope.current.epoch + 1 };
+    }
+    setProjectState(project);
+  }
+  function setSession(next: DIBSessionRecord | null) {
+    if (requestScope.current.session !== next?.session_id || requestScope.current.origin !== next?.origin_reference?.payload_hash) {
+      requestScope.current = { ...requestScope.current, session: next?.session_id, origin: next?.origin_reference?.payload_hash, epoch: requestScope.current.epoch + 1 };
+    }
+    setSessionState(next);
+  }
+  useEffect(() => () => { requestScope.current.epoch += 1; }, []);
+
   const [templateId, setTemplateId] = useState("");
   const [templateItems, setTemplateItems] = useState<string[]>([]);
   const [questionsCount, setQuestionsCount] = useState(0);
@@ -82,13 +99,17 @@ export function DIBIntakeItemGovernance() {
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setOperationBusy(label);
     setErrorMessage(null);
+    const epoch = requestScope.current.epoch;
+    const operation = ++operationSequence.current;
     try {
-      return await action();
+      const result = await action();
+      return requestScope.current.epoch === epoch ? result : null;
     } catch (error) {
+      if (requestScope.current.epoch !== epoch) return null;
       setErrorMessage(error instanceof Error ? error.message : "تعذر تنفيذ Package B");
       return null;
     } finally {
-      setOperationBusy(null);
+      if (operationSequence.current === operation) setOperationBusy(null);
     }
   }
 
@@ -124,7 +145,11 @@ export function DIBIntakeItemGovernance() {
       })
     );
     if (!preview) return;
-    setItems(preview.mapped_items);
+    const stored = new Map((session.current_blueprint?.items ?? []).map((item) => [item.input_key, item]));
+    setItems(preview.mapped_items.map((item) => {
+      const original = stored.get(item.input_key);
+      return original ? { ...item, item_id: original.item_id, required: original.required } : item;
+    }));
     setUnmatchedCount(preview.unmatched_rows.length);
   }
 
@@ -143,13 +168,25 @@ export function DIBIntakeItemGovernance() {
 
   async function persistGovernedBlueprint() {
     if (!session) return;
-    const saved = await withOperation("save-governed-blueprint", () =>
-      saveDIBBlueprint(session.session_id, {
+    const result = await withOperation("save-governed-blueprint", async () => {
+      const saved = await saveDIBBlueprint(session.session_id, {
         source: "dib_completion_package_b_intake_item_governance",
+        expected_original: session.origin_reference ?? null,
         items,
-      })
-    );
-    if (saved?.payload.blueprint_id) setSavedBlueprintId(saved.payload.blueprint_id);
+      });
+      const loaded = await fetchDIBSession(session.session_id);
+      if (!saved.origin_reference || !loaded.origin_reference ||
+          saved.origin_reference.payload_hash !== loaded.origin_reference.payload_hash ||
+          saved.origin_reference.blueprint_id !== loaded.origin_reference.blueprint_id ||
+          saved.origin_reference.revision !== loaded.origin_reference.revision) {
+        throw new Error("تغيرت البيانات بعد الحفظ. احتُفظ بالتعديلات الحالية؛ أعد تحميل النسخة قبل المتابعة.");
+      }
+      return { saved, loaded };
+    });
+    if (!result) return;
+    setSession(result.loaded);
+    setItems(result.loaded.current_blueprint?.items ?? items);
+    setSavedBlueprintId(result.saved.payload.blueprint_id);
   }
 
   return (
@@ -196,7 +233,7 @@ export function DIBIntakeItemGovernance() {
       <section className="panel" aria-label="Supplier Quote Text Intake">
         <div className="section-title"><FileText size={20} aria-hidden="true" /><h2>Supplier Quote Text Intake</h2></div>
         <p className="muted">أدخل نص عرض السعر بعد استخراجه. لا يتم إرسال ملف خام أو PDF base64، وإنما نص محكوم يتحول إلى صفوف وبنود قابلة للمراجعة.</p>
-        <textarea value={quoteText} onChange={(event) => setQuoteText(event.target.value)} rows={8} style={{ width: "100%" }} />
+        <textarea disabled={Boolean(operationBusy)} value={quoteText} onChange={(event) => setQuoteText(event.target.value)} rows={8} style={{ width: "100%" }} />
       </section>
 
       <section className="panel" aria-label="Customer Item Decision Workflow">
@@ -208,9 +245,9 @@ export function DIBIntakeItemGovernance() {
               <span>{item.input_key} · {item.value_state} · {displayValue(item)}</span>
               <small>{(item.evidence_refs ?? []).join(" · ") || "supplier_quote_text"}</small>
               <div className="button-row">
-                <button type="button" onClick={() => void applyDecision(item, "enter_value")}><BadgeCheck size={15} aria-hidden="true" /> اعتماد القيمة</button>
-                <button type="button" onClick={() => void applyDecision(item, "mark_unknown")}>يحتاج دليل</button>
-                <button type="button" onClick={() => void applyDecision(item, "reject")}>رفض البند</button>
+                <button type="button" disabled={Boolean(operationBusy)} onClick={() => void applyDecision(item, "enter_value")}><BadgeCheck size={15} aria-hidden="true" /> اعتماد القيمة</button>
+                <button type="button" disabled={Boolean(operationBusy)} onClick={() => void applyDecision(item, "mark_unknown")}>يحتاج دليل</button>
+                <button type="button" disabled={Boolean(operationBusy)} onClick={() => void applyDecision(item, "reject")}>رفض البند</button>
               </div>
             </article>
           ))}

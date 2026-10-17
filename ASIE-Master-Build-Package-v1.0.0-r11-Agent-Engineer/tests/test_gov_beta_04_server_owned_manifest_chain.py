@@ -210,9 +210,15 @@ class ServerOwnedManifestChainTests(unittest.TestCase):
             "blueprint_id": "replacement_blueprint",
             "revision": int(previous.get("revision") or 1) + 1,
         }
-        self.store.save_blueprint(self.session_id, replacement)
+        saved = self.store.save_blueprint(
+            self.session_id, replacement, command_contract="dib.blueprint.write.v2",
+            expected_original=self.blueprint_record["origin_reference"],
+        )
         session = self.store.load_session(self.session_id)
-        self.assertEqual("replacement_blueprint", session["current_blueprint_id"])
+        self.assertEqual(saved["blueprint_id"], session["current_blueprint_id"])
+        self.assertNotEqual("replacement_blueprint", saved["blueprint_id"])
+        self.assertNotEqual(previous["blueprint_id"], saved["blueprint_id"])
+        self.assertEqual(previous, self.store.load_blueprint(previous["blueprint_id"])["payload"])
         self.assertIsNone(session["approved_manifest_id"])
         self.assertIsNone(session["validation_gate_id"])
         self.assertNotIn("approved_manifest", session)

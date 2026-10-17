@@ -23,9 +23,14 @@ def build_project_workspace(repo: Any, project_id: str) -> dict[str, Any] | None
         if latest_overview
         else []
     )
+    readiness = project_readiness(project, assumptions, sources, include_recovery=True)
+    recovery_items = readiness.pop("recovery_items")
     return {
         "project": project.to_public(),
-        "readiness": project_readiness(project, assumptions, sources),
+        "readiness": readiness,
+        "current_recovery": {"contract_id": "customer.recovery.v1", "source": "current_draft", "project_id": project_id,
+                             "organization_id": project.organization_id, "updated_at": project.updated_at,
+                             "items": recovery_items},
         "assumptions": assumptions,
         "runs": [summarize_run(repo, row) for row in runs],
         "latest_overview": latest_overview,

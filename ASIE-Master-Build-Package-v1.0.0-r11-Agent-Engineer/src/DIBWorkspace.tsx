@@ -12,7 +12,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project, ProjectInputs } from "./contracts";
 import {
@@ -210,10 +210,26 @@ function shortDate(value?: string): string {
 
 export function DIBWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectId, setProjectState] = useState("");
   const [items, setItems] = useState<DIBBlueprintItem[]>([]);
   const [status, setStatus] = useState<DIBStatusPayload | null>(null);
-  const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [session, setSessionState] = useState<DIBSessionRecord | null>(null);
+  const requestScope = useRef({ project: selectedProjectId, session: session?.session_id, origin: session?.origin_reference?.payload_hash, epoch: 0 });
+  const operationSequence = useRef(0);
+  function setSelectedProjectId(project: string) {
+    if (requestScope.current.project !== project) {
+      requestScope.current = { ...requestScope.current, project, epoch: requestScope.current.epoch + 1 };
+    }
+    setProjectState(project);
+  }
+  function setSession(next: DIBSessionRecord | null) {
+    if (requestScope.current.session !== next?.session_id || requestScope.current.origin !== next?.origin_reference?.payload_hash) {
+      requestScope.current = { ...requestScope.current, session: next?.session_id, origin: next?.origin_reference?.payload_hash, epoch: requestScope.current.epoch + 1 };
+    }
+    setSessionState(next);
+  }
+  useEffect(() => () => { requestScope.current.epoch += 1; }, []);
+
   const [resumableSessions, setResumableSessions] = useState<DIBSessionRecord[]>([]);
   const [blueprint, setBlueprint] = useState<DIBPersistedEntity<DIBBlueprintPayload> | null>(null);
   const [manifest, setManifest] = useState<DIBPersistedEntity<DIBApprovedManifestPayload> | null>(null);
@@ -232,18 +248,20 @@ export function DIBWorkspace() {
     [projects, selectedProjectId]
   );
   const boundProjectProfile = selectedProject ? projectProfileFromProject(selectedProject) : null;
-  const visibleItems = blueprint?.payload.items ?? session?.current_blueprint?.items ?? items;
+  const visibleItems = items;
   const approvedManifest = manifest?.payload ?? session?.approved_manifest ?? null;
   const gatePayload = validationGate?.payload ?? session?.validation_gate ?? null;
   const latestResumeSession = resumableSessions[0] ?? null;
   const sessionStatus = session?.status ?? "not_started";
   const approvedCount = visibleItems.filter((item) => item.value_state !== "UNKNOWN" && item.value_state !== "REJECTED").length;
   const blockedCount = visibleItems.filter((item) => item.value_state === "UNKNOWN" || item.value_state === "REJECTED").length;
-  const canBeginSession = Boolean(selectedProject && !operationBusy);
+  const hasUnsavedItems = Boolean(session && JSON.stringify(items) !== JSON.stringify(session.current_blueprint?.items ?? itemsFromProject(selectedProject)));
+  const canBeginSession = Boolean(selectedProject && !operationBusy && !hasUnsavedItems);
   const canResumeSession = Boolean(latestResumeSession && !session && !operationBusy);
-  const canSaveBlueprint = Boolean(session && selectedProject && !operationBusy);
-  const canApproveManifest = Boolean(session && (blueprint || session.current_blueprint) && !operationBusy);
-  const canRunGate = Boolean(session && approvedManifest?.status === "approved" && !operationBusy);
+  const legacyReadOnly = Boolean(session?.current_blueprint && !session.origin_reference);
+  const canSaveBlueprint = Boolean(session && selectedProject && !operationBusy && !legacyReadOnly);
+  const canApproveManifest = Boolean(session && (blueprint || session.current_blueprint) && !operationBusy && !hasUnsavedItems && !legacyReadOnly);
+  const canRunGate = Boolean(session && approvedManifest?.status === "approved" && !operationBusy && !hasUnsavedItems && !legacyReadOnly);
 
   const timeline = useMemo(
     () => [
@@ -272,13 +290,17 @@ export function DIBWorkspace() {
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setOperationBusy(label);
     setErrorMessage(null);
+    const epoch = requestScope.current.epoch;
+    const operation = ++operationSequence.current;
     try {
-      return await action();
+      const result = await action();
+      return requestScope.current.epoch === epoch ? result : null;
     } catch (error) {
+      if (requestScope.current.epoch !== epoch) return null;
       setErrorMessage(error instanceof Error ? error.message : "تعذر تنفيذ عملية DIB");
       return null;
     } finally {
-      setOperationBusy(null);
+      if (operationSequence.current === operation) setOperationBusy(null);
     }
   }
 
@@ -293,7 +315,7 @@ export function DIBWorkspace() {
 
   function restoreSessionState(loaded: DIBSessionRecord, project: Project | null = selectedProject) {
     setSession(loaded);
-    setBlueprint(loaded.current_blueprint ? { payload: loaded.current_blueprint } : null);
+    setBlueprint(loaded.current_blueprint ? { payload: loaded.current_blueprint, origin_reference: loaded.origin_reference ?? undefined, payload_hash: loaded.origin_reference?.payload_hash } : null);
     setManifest(loaded.approved_manifest ? { payload: loaded.approved_manifest } : null);
     setValidationGate(loaded.validation_gate ? { payload: loaded.validation_gate } : null);
     setItems(loaded.current_blueprint?.items ?? itemsFromProject(project));
@@ -314,6 +336,7 @@ export function DIBWorkspace() {
   }
 
   async function loadUserProjects() {
+    if (hasUnsavedItems) return;
     const loaded = await withOperation("load-projects", fetchProjects);
     if (!loaded) return;
     setProjects(loaded);
@@ -333,71 +356,87 @@ export function DIBWorkspace() {
     else setResumableSessions([]);
   }
 
+  async function readSessionState(id: string) {
+    const loaded = await fetchDIBSession(id);
+    const loadedEvents = await fetchDIBEvents(id);
+    return { loaded, loadedEvents };
+  }
+
+  function applySessionState(result: { loaded: DIBSessionRecord; loadedEvents: typeof events }) {
+    restoreSessionState(result.loaded);
+    setEvents(result.loadedEvents);
+  }
+
   async function refreshSession(nextSessionId = session?.session_id) {
-    if (!nextSessionId) return;
-    const loaded = await fetchDIBSession(nextSessionId);
-    restoreSessionState(loaded);
-    setEvents(await fetchDIBEvents(nextSessionId));
+    if (!nextSessionId || hasUnsavedItems) return;
+    const result = await withOperation("refresh-session", () => readSessionState(nextSessionId));
+    if (result) applySessionState(result);
   }
 
   async function resumeSession(sessionId: string) {
-    const loaded = await withOperation("resume-session", () => fetchDIBSession(sessionId));
-    if (!loaded) return;
-    restoreSessionState(loaded);
-    setEvents(await fetchDIBEvents(sessionId));
+    const result = await withOperation("resume-session", () => readSessionState(sessionId));
+    if (result) applySessionState(result);
   }
 
   async function beginSession() {
-    if (!boundProjectProfile) return;
-    const started = await withOperation("start-session", () => startDIBSession(boundProjectProfile));
-    if (!started) return;
-    restoreSessionState(started);
-    await refreshSession(started.session_id);
-    await loadProjectSessions(started.project_id);
+    if (!boundProjectProfile || hasUnsavedItems) return;
+    const result = await withOperation("start-session", async () => {
+      const started = await startDIBSession(boundProjectProfile);
+      return { ...await readSessionState(started.session_id), sessions: await fetchDIBSessionsForProject(started.project_id) };
+    });
+    if (result) { applySessionState(result); setResumableSessions(result.sessions); }
   }
 
   async function persistBlueprint() {
-    if (!session) return;
-    const saved = await withOperation("save-blueprint", () =>
-      saveDIBBlueprint(session.session_id, {
+    if (!session || legacyReadOnly) return;
+    const result = await withOperation("save-blueprint", async () => {
+      const saved = await saveDIBBlueprint(session.session_id, {
         source: "dib_ui_user_project_context_binding",
-        intake_payload: {
+        expected_original: session.origin_reference ?? null,
+        ...(session.origin_reference ? { items } : { intake_payload: {
           file_name: `project-context-${selectedProject?.project_id ?? session.project_id}`,
           rows: items.map((item) => ({ input_key: item.input_key, label: item.label, value: item.value ?? "" })),
-        },
-      })
-    );
-    if (!saved) return;
-    setBlueprint(saved);
-    await refreshSession(session.session_id);
-    await loadProjectSessions(session.project_id);
+        } }),
+      });
+      const loaded = await fetchDIBSession(session.session_id);
+      if (!saved.origin_reference || !loaded.origin_reference ||
+          saved.origin_reference.payload_hash !== loaded.origin_reference.payload_hash ||
+          saved.origin_reference.blueprint_id !== loaded.origin_reference.blueprint_id ||
+          saved.origin_reference.revision !== loaded.origin_reference.revision) {
+        throw new Error("تغيرت البيانات بعد الحفظ. احتُفظ بالتعديلات الحالية؛ أعد تحميل النسخة قبل المتابعة.");
+      }
+      return { saved, loaded };
+    });
+    if (!result) return;
+    restoreSessionState(result.loaded);
+    setBlueprint(result.saved);
   }
 
   async function persistManifest() {
-    if (!session) return;
-    const saved = await withOperation("approve-manifest", () => saveDIBApprovedManifest(session.session_id));
-    if (!saved) return;
-    setManifest(saved);
-    await refreshSession(session.session_id);
-    await loadProjectSessions(session.project_id);
+    if (!session || legacyReadOnly || hasUnsavedItems) return;
+    const result = await withOperation("approve-manifest", async () => {
+      await saveDIBApprovedManifest(session.session_id);
+      return { ...await readSessionState(session.session_id), sessions: await fetchDIBSessionsForProject(session.project_id) };
+    });
+    if (result) { applySessionState(result); setResumableSessions(result.sessions); }
   }
 
   async function persistValidationGate() {
-    if (!session) return;
-    const saved = await withOperation("validation-gate", () => saveDIBValidationGate(session.session_id));
-    if (!saved) return;
-    setValidationGate(saved);
-    await refreshSession(session.session_id);
-    await loadProjectSessions(session.project_id);
+    if (!session || legacyReadOnly || hasUnsavedItems) return;
+    const result = await withOperation("validation-gate", async () => {
+      await saveDIBValidationGate(session.session_id);
+      return { ...await readSessionState(session.session_id), sessions: await fetchDIBSessionsForProject(session.project_id) };
+    });
+    if (result) { applySessionState(result); setResumableSessions(result.sessions); }
   }
 
   async function closeSession() {
-    if (!session) return;
-    const closed = await withOperation("close-session", () => closeDIBSession(session.session_id));
-    if (!closed) return;
-    restoreSessionState(closed);
-    await refreshSession(closed.session_id);
-    await loadProjectSessions(closed.project_id);
+    if (!session || legacyReadOnly || hasUnsavedItems) return;
+    const result = await withOperation("close-session", async () => {
+      const closed = await closeDIBSession(session.session_id);
+      return { ...await readSessionState(closed.session_id), sessions: await fetchDIBSessionsForProject(closed.project_id) };
+    });
+    if (result) { applySessionState(result); setResumableSessions(result.sessions); }
   }
 
   function updateItemValue(inputKey: string, value: string) {
@@ -412,6 +451,7 @@ export function DIBWorkspace() {
           review_status: value === "" ? "draft" : "approved",
           source_type: "project_context_override",
           value_source: "user_project_context_override",
+          reason: numeric === 0 && item.value_state !== "INTENTIONAL_ZERO" ? "" : item.reason,
         };
       })
     );
@@ -424,6 +464,7 @@ export function DIBWorkspace() {
           ? {
               ...item,
               value_state: item.value === 0 ? "INTENTIONAL_ZERO" : "USER_PROVIDED",
+              reason: item.value === 0 && item.value_state !== "INTENTIONAL_ZERO" ? "" : item.reason,
               review_status: "approved",
               value_source: item.value_source || "asie_project_inputs",
               source_type: item.source_type || "project_context",
@@ -468,12 +509,14 @@ export function DIBWorkspace() {
         <div className="button-row">
           <a className="secondary-button" href="#dashboard"><ArrowLeft size={16} aria-hidden="true" /> العودة للمنصة</a>
           <button type="button" className="secondary-button" onClick={() => void loadDIBStatus()} disabled={Boolean(operationBusy)}><RefreshCcw size={16} aria-hidden="true" /> تحديث حالة DIB</button>
-          <button type="button" className="secondary-button" onClick={() => void loadUserProjects()} disabled={Boolean(operationBusy)}><RefreshCcw size={16} aria-hidden="true" /> تحديث المشاريع</button>
+          <button type="button" className="secondary-button" onClick={() => void loadUserProjects()} disabled={Boolean(operationBusy) || hasUnsavedItems}><RefreshCcw size={16} aria-hidden="true" /> تحديث المشاريع</button>
           <button type="button" className="primary-button" onClick={() => void beginSession()} disabled={!canBeginSession}><Send size={16} aria-hidden="true" /> بدء Session للمشروع</button>
           <button type="button" disabled={!canSaveBlueprint} onClick={() => void persistBlueprint()}>حفظ Blueprint عبر API</button>
+          {legacyReadOnly ? <p role="status">هذه نسخة سابقة تحتاج مراجعة المسؤول قبل تعديلها؛ بقيت بياناتها الأصلية محفوظة.</p> : null}
+          {hasUnsavedItems ? <p role="status">لديك تعديلات غير محفوظة. احفظها قبل اعتماد المدخلات أو فحصها أو إغلاق الجلسة.</p> : null}
           <button type="button" disabled={!canApproveManifest} onClick={() => void persistManifest()}>اعتماد Manifest عبر API</button>
           <button type="button" disabled={!canRunGate} onClick={() => void persistValidationGate()}>تشغيل Validation Gate عبر API</button>
-          <button type="button" disabled={!session || Boolean(operationBusy)} onClick={() => void closeSession()}>إغلاق Session</button>
+          <button type="button" disabled={!session || Boolean(operationBusy) || hasUnsavedItems || legacyReadOnly} onClick={() => void closeSession()}>إغلاق Session</button>
         </div>
       </section>
 
@@ -556,10 +599,12 @@ export function DIBWorkspace() {
               <strong>{item.label}</strong>
               <span>{item.input_key} · {arabicState(item.value_state)} · {formatCurrency(item.value, item.unit)}</span>
               <small>{(item.evidence_refs ?? ["project_context"]).join(" · ")}</small>
+              {!item.item_id ? <small>احفظ المسودة أولًا، ثم راجع البند وسبب الصفر من نسخته المحفوظة.</small> : null}
               <div className="button-row">
-                <input aria-label={`قيمة ${item.label}`} type="number" value={item.value ?? ""} onChange={(event) => updateItemValue(item.input_key, event.target.value)} />
-                <button type="button" onClick={() => approveItem(item.input_key)}><CheckCircle2 size={15} aria-hidden="true" /> اعتماد البند</button>
-                <button type="button" onClick={() => blockItem(item.input_key)}><ShieldCheck size={15} aria-hidden="true" /> يحتاج تعديل</button>
+                <input disabled={Boolean(operationBusy) || legacyReadOnly} aria-label={`قيمة ${item.label}`} type="number" value={item.value ?? ""} onChange={(event) => updateItemValue(item.input_key, event.target.value)} />
+                {item.item_id && item.value_state === "INTENTIONAL_ZERO" ? <input disabled={Boolean(operationBusy) || legacyReadOnly} aria-label={`سبب الصفر المقصود ${item.label}`} placeholder="سبب اعتماد قيمة صفر" value={item.reason ?? ""} onChange={(event) => setItems((current) => current.map((row) => row.input_key === item.input_key ? { ...row, reason: event.target.value } : row))} /> : null}
+                <button type="button" disabled={Boolean(operationBusy) || !item.item_id || legacyReadOnly} onClick={() => approveItem(item.input_key)}><CheckCircle2 size={15} aria-hidden="true" /> اعتماد البند</button>
+                <button type="button" disabled={Boolean(operationBusy) || !item.item_id || legacyReadOnly} onClick={() => blockItem(item.input_key)}><ShieldCheck size={15} aria-hidden="true" /> يحتاج تعديل</button>
               </div>
             </article>
           ))}

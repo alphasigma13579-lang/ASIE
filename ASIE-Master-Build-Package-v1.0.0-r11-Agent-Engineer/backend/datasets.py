@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import copy
+import json
 import csv
 import base64
 import zipfile
 from io import BytesIO, StringIO
+from datetime import datetime
 from statistics import mean
 from typing import Any
 from xml.etree import ElementTree
@@ -26,7 +29,65 @@ APPROVED_DATASET_REQUIRED_FIELDS = [
 ]
 
 
-def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
+PROVENANCE_KEY = "submission_provenance"
+PROVENANCE_FIELDS = {"version", "kind", "organization_id", "creator_user_id", "initial_project_id", "created_at"}
+CONTENT_INPUT_KEYS = {"rows", "json_rows", "csv_text"}
+
+
+def reject_client_dataset_provenance(payload: object) -> None:
+    """Reserved structured provenance is server-owned, including nested import notes."""
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key == PROVENANCE_KEY:
+                raise PermissionError("dataset_provenance_server_owned")
+            if key == "notes_json":
+                raise PermissionError("dataset_notes_json_server_owned")
+            reject_client_dataset_provenance(value)
+    elif isinstance(payload, list):
+        for value in payload:
+            reject_client_dataset_provenance(value)
+
+
+def dataset_submission_provenance(dataset: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate stored submission context without inferring origin or backfilling legacy rows."""
+    notes = dataset.get("notes")
+    provenance = notes.get(PROVENANCE_KEY) if type(notes) is dict else None
+    if type(provenance) is not dict or set(provenance) != PROVENANCE_FIELDS:
+        return None
+    if type(provenance["version"]) is not int or provenance["version"] != 1:
+        return None
+    if provenance["kind"] not in ("customer_study", "governed_external"):
+        return None
+    if any(type(provenance[key]) is not str for key in PROVENANCE_FIELDS - {"version"}):
+        return None
+    if any(not provenance[key].strip() for key in ("organization_id", "creator_user_id", "created_at")):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(provenance["created_at"].replace("Z", "+00:00"))
+        if timestamp.tzinfo is None:
+            return None
+    except ValueError:
+        return None
+    if provenance["organization_id"] != dataset.get("organization_id"):
+        return None
+    if provenance["kind"] == "customer_study" and not provenance["initial_project_id"].strip():
+        return None
+    return copy.deepcopy(provenance)
+
+
+def is_customer_study_dataset(dataset: dict[str, Any]) -> bool:
+    provenance = dataset_submission_provenance(dataset)
+    return bool(provenance and provenance["kind"] == "customer_study")
+
+
+def dataset_required_review_fields(dataset: dict[str, Any]) -> list[str]:
+    """Use one origin predicate for normalization and consumption requirements."""
+    exempt = {"source_id", "license_snapshot_ref", "terms_hash"} if is_customer_study_dataset(dataset) else set()
+    return [field for field in APPROVED_DATASET_REQUIRED_FIELDS if field not in exempt]
+
+
+def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] | None = None, *, submission_provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+    reject_client_dataset_provenance(payload)
     if any(payload.get(key) for key in ["fetch_url", "crawler_url", "api_url", "external_fetch_url"]):
         raise PermissionError("datasets support manual local import only; external fetch is blocked")
     import_method = str(payload.get("import_method") or (existing or {}).get("import_method") or "manual_table")
@@ -36,8 +97,10 @@ def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] 
     if review_status not in DATASET_STATES:
         raise ValueError("review_status must be draft, review_required, approved_for_use, rejected, or archived")
 
+    if existing is not None and "csv_text" in payload and import_method != "manual_csv":
+        raise ValueError("dataset_content_shape_invalid")
     rows = _extract_rows(payload, import_method)
-    if not rows and existing:
+    if not (CONTENT_INPUT_KEYS & payload.keys()) and existing:
         columns = list(existing.get("columns", []))
         preview = list(existing.get("preview", []))
         row_count = int(existing.get("row_count") or 0)
@@ -82,8 +145,18 @@ def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] 
         "created_at": str((existing or {}).get("created_at") or now),
         "updated_at": now,
     }
+    notes = json.loads(dataset["notes_json"])
+    existing_notes = (existing or {}).get("notes")
+    if type(existing_notes) is dict and PROVENANCE_KEY in existing_notes:
+        notes[PROVENANCE_KEY] = copy.deepcopy(existing_notes[PROVENANCE_KEY])
+    elif submission_provenance is not None:
+        notes[PROVENANCE_KEY] = copy.deepcopy(submission_provenance)
+    dataset["notes_json"] = json_dumps(notes)
+    view = dataset | {"notes": notes, "organization_id": (existing or {}).get("organization_id") or (submission_provenance or {}).get("organization_id")}
+    if is_customer_study_dataset(view) and dataset["source_id"]:
+        raise PermissionError("customer_dataset_platform_source_forbidden")
     if review_status == "approved_for_use":
-        missing = [field for field in APPROVED_DATASET_REQUIRED_FIELDS if not dataset.get(field)]
+        missing = [field for field in dataset_required_review_fields(view) if not dataset.get(field)]
         if missing:
             raise PermissionError(f"approved datasets require complete review metadata. Missing: {', '.join(missing)}")
         if dataset["human_review_decision"] != "approved":
@@ -91,14 +164,20 @@ def normalize_dataset_payload(payload: dict[str, Any], existing: dict[str, Any] 
     return dataset
 
 
-def dataset_quality_gate(dataset: dict[str, Any], source: dict[str, Any] | None) -> dict[str, Any]:
+def dataset_quality_gate(dataset: dict[str, Any], source: dict[str, Any] | None, *, organization_id: str | None = None, project_id: str | None = None) -> dict[str, Any]:
     reasons: list[str] = []
     quality_review = dataset_quality_review(dataset)
-    if source is None:
+    customer = is_customer_study_dataset(dataset)
+    if customer:
+        if type(organization_id) is not str or not organization_id or organization_id != dataset.get("organization_id"):
+            reasons.append("dataset_consuming_organization_mismatch")
+        if dataset.get("source_id") != "":
+            reasons.append("customer_dataset_platform_source_forbidden")
+    elif source is None:
         reasons.append("source_not_found")
     elif source.get("state") != "enabled" or source.get("reviewer_decision") != "approved":
         reasons.append("source_not_enabled_by_human_review")
-    for field in APPROVED_DATASET_REQUIRED_FIELDS:
+    for field in dataset_required_review_fields(dataset):
         if not dataset.get(field):
             reasons.append(f"missing_{field}")
     if dataset.get("review_status") != "approved_for_use":
@@ -126,7 +205,7 @@ def dataset_quality_gate(dataset: dict[str, Any], source: dict[str, Any] | None)
         "reasons": reasons + quality_reasons,
         "quality_review": quality_review,
         "checks": {
-            "source_reviewed": bool(source and source.get("state") == "enabled" and source.get("reviewer_decision") == "approved"),
+            "source_reviewed": bool(not customer and source and source.get("state") == "enabled" and source.get("reviewer_decision") == "approved"),
             "license_snapshot": bool(dataset.get("license_snapshot_ref")),
             "terms_hash": bool(dataset.get("terms_hash")),
             "classification": bool(dataset.get("classification")),
@@ -254,6 +333,8 @@ def normalize_evidence_link(project_id: str, payload: dict[str, Any], existing: 
 
 
 def normalize_file_import_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    reject_client_dataset_provenance(payload)
+    _extract_rows(payload, "manual_table")  # Validate raw shapes before file adapters coerce text.
     if any(payload.get(key) for key in ["fetch_url", "crawler_url", "api_url", "external_fetch_url"]):
         raise PermissionError("file import supports local files only; external fetch is blocked")
     file_name = str(payload.get("file_name") or "local-data.csv")
@@ -306,9 +387,23 @@ def rows_from_xlsx_base64(file_base64: str) -> list[dict[str, Any]]:
 
 
 def _extract_rows(payload: dict[str, Any], import_method: str) -> list[dict[str, Any]]:
+    for key in ("rows", "json_rows"):
+        if key in payload and (type(payload[key]) is not list or any(type(row) is not dict or any(type(column) is not str for column in row) for row in payload[key])):
+            raise ValueError("dataset_content_shape_invalid")
+    if "csv_text" in payload and type(payload["csv_text"]) is not str:
+        raise ValueError("dataset_content_shape_invalid")
     if import_method == "manual_csv" and payload.get("csv_text"):
-        reader = csv.DictReader(StringIO(str(payload["csv_text"])))
-        return [dict(row) for row in reader]
+        try:
+            reader = csv.DictReader(StringIO(payload["csv_text"]), strict=True)
+            headers = reader.fieldnames or []
+            if len(headers) != len(set(headers)) or any(not header.strip() for header in headers):
+                raise ValueError("dataset_content_shape_invalid")
+            rows = [dict(row) for row in reader]
+        except csv.Error as exc:
+            raise ValueError("dataset_content_shape_invalid") from exc
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
+            raise ValueError("dataset_content_shape_invalid")
+        return rows
     raw_rows = payload.get("rows") or payload.get("json_rows") or []
     if isinstance(raw_rows, list):
         return [dict(row) for row in raw_rows if isinstance(row, dict)]

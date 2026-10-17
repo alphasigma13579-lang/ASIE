@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowLeft, BadgeCheck, Database, RefreshCcw, Send, Sparkles, Target } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchProjects } from "./api";
 import type { Project } from "./contracts";
 import {
@@ -55,9 +55,25 @@ function shortValue(value: unknown): string {
 
 export function DIBManifestRunReadiness() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectId, setProjectState] = useState("");
   const [sessions, setSessions] = useState<DIBSessionRecord[]>([]);
-  const [session, setSession] = useState<DIBSessionRecord | null>(null);
+  const [session, setSessionState] = useState<DIBSessionRecord | null>(null);
+  const requestScope = useRef({ project: selectedProjectId, session: session?.session_id, origin: session?.origin_reference?.payload_hash, epoch: 0 });
+  const operationSequence = useRef(0);
+  function setSelectedProjectId(project: string) {
+    if (requestScope.current.project !== project) {
+      requestScope.current = { ...requestScope.current, project, epoch: requestScope.current.epoch + 1 };
+    }
+    setProjectState(project);
+  }
+  function setSession(next: DIBSessionRecord | null) {
+    if (requestScope.current.session !== next?.session_id || requestScope.current.origin !== next?.origin_reference?.payload_hash) {
+      requestScope.current = { ...requestScope.current, session: next?.session_id, origin: next?.origin_reference?.payload_hash, epoch: requestScope.current.epoch + 1 };
+    }
+    setSessionState(next);
+  }
+  useEffect(() => () => { requestScope.current.epoch += 1; }, []);
+
   const [readiness, setReadiness] = useState<DIBManifestRunReadinessPayload | null>(null);
   const [operationBusy, setOperationBusy] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -76,20 +92,25 @@ export function DIBManifestRunReadiness() {
   const canStart = Boolean(selectedProject && !session && !operationBusy);
   const canResume = Boolean(latestSession && !session && !operationBusy);
   const canPrepare = Boolean(session && !session.current_blueprint && !operationBusy);
-  const canApproveManifest = Boolean(session?.current_blueprint && !session.approved_manifest && !operationBusy);
-  const canRunGate = Boolean(session?.approved_manifest && !session.validation_gate && !operationBusy);
-  const canCheckReadiness = Boolean(session && !operationBusy);
+  const legacyReadOnly = Boolean(session?.current_blueprint && !session.origin_reference);
+  const canApproveManifest = Boolean(session?.current_blueprint && !session.approved_manifest && !operationBusy && !legacyReadOnly);
+  const canRunGate = Boolean(session?.approved_manifest && !session.validation_gate && !operationBusy && !legacyReadOnly);
+  const canCheckReadiness = Boolean(session && !operationBusy && !legacyReadOnly);
 
   async function withOperation<T>(label: string, action: () => Promise<T>): Promise<T | null> {
     setOperationBusy(label);
     setErrorMessage(null);
+    const epoch = requestScope.current.epoch;
+    const operation = ++operationSequence.current;
     try {
-      return await action();
+      const result = await action();
+      return requestScope.current.epoch === epoch ? result : null;
     } catch (error) {
+      if (requestScope.current.epoch !== epoch) return null;
       setErrorMessage(error instanceof Error ? error.message : "تعذر تنفيذ Package C");
       return null;
     } finally {
-      setOperationBusy(null);
+      if (operationSequence.current === operation) setOperationBusy(null);
     }
   }
 
@@ -136,38 +157,49 @@ export function DIBManifestRunReadiness() {
 
   async function prepareBaselineBlueprint() {
     if (!session) return;
-    const saved = await withOperation("baseline-blueprint", () =>
-      saveDIBBlueprint(session.session_id, {
+    const result = await withOperation("baseline-blueprint", async () => {
+      const saved = await saveDIBBlueprint(session.session_id, {
         source: "dib_completion_package_c_manifest_run_readiness",
+        expected_original: null,
         intake_payload: {
           file_name: `package-c-baseline-${session.project_id}`,
           rows: requiredRows.map((row) => ({ ...row })),
         },
-      })
-    );
-    if (saved) await refreshSession();
+      });
+      const loaded = await fetchDIBSession(session.session_id);
+      if (!saved.origin_reference || !loaded.origin_reference ||
+          saved.origin_reference.payload_hash !== loaded.origin_reference.payload_hash ||
+          saved.origin_reference.blueprint_id !== loaded.origin_reference.blueprint_id ||
+          saved.origin_reference.revision !== loaded.origin_reference.revision) {
+        throw new Error("تغيرت البيانات بعد الحفظ. احتُفظ بالتعديلات الحالية؛ أعد تحميل النسخة قبل المتابعة.");
+      }
+      return { saved, loaded };
+    });
+    if (!result) return;
+    setSession(result.loaded);
   }
 
   async function approveManifest() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const saved = await withOperation("approve-manifest", () => saveDIBApprovedManifest(session.session_id));
     if (saved) await refreshSession();
   }
 
   async function runValidationGate() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const saved = await withOperation("validation-gate", () => saveDIBValidationGate(session.session_id));
     if (saved) await refreshSession();
   }
 
   async function checkReadiness() {
-    if (!session) return;
+    if (!session || legacyReadOnly) return;
     const result = await withOperation("project-run-readiness", () => buildDIBProjectRunReadiness(session.session_id));
     if (result) setReadiness(result.project_run_readiness);
   }
 
   return (
     <main className="app-shell dib-workspace" dir="rtl" data-ui-id={DIB_MANIFEST_RUN_READINESS_UI_ID}>
+      {legacyReadOnly ? <p role="status">هذه نسخة سابقة تحتاج مراجعة المسؤول قبل اعتمادها؛ بقيت بياناتها الأصلية محفوظة.</p> : null}
       <section className="page-intro">
         <p className="eyebrow"><Sparkles size={16} aria-hidden="true" /> DIB Completion Package C · Manifest-to-Run Readiness</p>
         <h1>جاهزية Manifest للتسليم إلى Project Run</h1>
@@ -203,7 +235,7 @@ export function DIBManifestRunReadiness() {
       </section>
 
       <section className="dashboard-grid" aria-label="Package C metrics">
-        <article className="metric-card"><span>Blueprint</span><strong>{session?.current_blueprint ? "جاهز" : "ناقص"}</strong><small>{session?.current_blueprint_id ?? "لا يوجد"}</small></article>
+        <article className="metric-card"><span>Blueprint</span><strong>{legacyReadOnly ? "تحتاج مراجعة المسؤول" : session?.current_blueprint ? "جاهز" : "ناقص"}</strong><small>{session?.current_blueprint_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Manifest</span><strong>{manifestStatus}</strong><small>{session?.approved_manifest_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Validation Gate</span><strong>{gateStatus}</strong><small>{session?.validation_gate_id ?? "لا يوجد"}</small></article>
         <article className="metric-card"><span>Run Readiness</span><strong>{readiness?.status ?? "لم يفحص"}</strong><small>Finance execution = not_executed</small></article>
