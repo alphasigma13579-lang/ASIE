@@ -121990,6 +121990,95 @@
                   }
                 }
               }
+            },
+            {
+              "type": "CI_MAINTENANCE_EXCEPTION",
+              "recorded_at": "2026-10-18T05:59:31Z",
+              "owner_ci_maintenance_decision": {
+                "id": "DECISION-FC20-12-C3C-SINGLE-JOB-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18",
+                "owner_approval_at": "2026-10-18T05:53:23.887243+00:00",
+                "approval_source": "EXPLICIT_OWNER_APPROVAL_RECORDED_BY_ASSISTANT_NOT_CRYPTOGRAPHIC_SIGNATURE",
+                "public_proposal_reference": {
+                  "url": "https://github.com/alphasigma13579-lang/ASIE/pull/217",
+                  "role": "PROPOSAL_REFERENCE_NOT_APPROVAL_RECEIPT_OR_MERGE_EVIDENCE"
+                },
+                "decision_record": {
+                  "path": "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md",
+                  "section_marker": "<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->",
+                  "section_sha256": "8e4df3c4283b6adde58d8d630e0a8ba126a59fa04fb16666efa02b946b578cd2"
+                },
+                "effect": "EDIT_TEST_AND_UPDATE_PR217_CI_MAINTENANCE_BEFORE_GOVERNANCE_MERGE",
+                "effective_condition": "EFFECTIVE_NOW_FOR_EXACT_TWO_CI_MAINTENANCE_PATHS_ONLY",
+                "subject": {
+                  "merged_baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+                  "merged_baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+                  "published_unmerged_proposal_commit_sha": "57c22bc91f276e6115b53366a88f0eec7d2ee715",
+                  "published_unmerged_proposal_manifest_blob_sha": "3a3e5c8506600ad92fd30242000d40b5a01f1a84",
+                  "previous_resume_event_index": 27,
+                  "previous_resume_event_sha256": "eb077cced35fc1bb8cb72f18acf69f11fae7401e42ae5efaf7fff0fe327a5134",
+                  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                  "prior_acr_blob_sha": "c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c",
+                  "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+                  "pending_resume28_ci_proposal_disposition": "SUPERSEDED_SPLIT_AND_20_MINUTE_DESIGN_NOT_MERGED_OR_PARALLEL_AUTHORITY",
+                  "superseded_sequencing": [
+                    "ACR-FIN-003-C3C:G-C3C-0_AND_SECTION14_MERGE_BEFORE_CI",
+                    "ACR-FIN-003-C3C:CI_APPENDIX_LINES393_AND430_AT_CE8EF8C",
+                    "F01A_REGISTRATION_PROPOSAL:SECTION4",
+                    "PENDING_RESUME28:MERGE_BEFORE_THE_TWO_CI_FILES_ONLY"
+                  ],
+                  "superseded_ci_purpose": "SPLIT_BUILD_TEST_AND_BENCHMARK_WITH_20_MINUTE_BUILD_TEST_BUDGET",
+                  "current_ci_purpose": "KEEP_EXISTING_SINGLE_SEQUENTIAL_JOB_CHANGE_ONLY_JOB_TIMEOUT_20_TO_30",
+                  "immediately_authorized_scope": {
+                    "repository_root_paths": [
+                      ".github/workflows/asie-ci.yml"
+                    ],
+                    "package_root_paths": [
+                      "tests/test_program_close_10_repository_rebaseline.py"
+                    ]
+                  },
+                  "workflow_contract": {
+                    "repository_root_path": ".github/workflows/asie-ci.yml",
+                    "prior_workflow_blob_sha": "19afa3d54997423e54c3aa1ecbd5ac2578458f89",
+                    "job_id": "build-and-test",
+                    "required_context": "Build frontend and test backend",
+                    "job_count": 1,
+                    "job_timeout_minutes": 30,
+                    "benchmark_step_timeout_minutes": 10,
+                    "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+                    "all_other_workflow_bytes_unchanged": true,
+                    "all_tests_and_success_criteria_preserved": true,
+                    "sequential_failure_behavior_preserved": true
+                  },
+                  "governance_package_total_files": 10,
+                  "review_date": "2026-10-18",
+                  "review_required_before_merge": true,
+                  "authorization_expires_on": "MERGE_OR_CANCELLATION_OF_THIS_EXACT_PR217_AMENDMENT",
+                  "future_ci_maintenance_authorized": false,
+                  "rationale": {
+                    "run_url": "https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076",
+                    "attempts": [
+                      1,
+                      2
+                    ],
+                    "both_job_elapsed_seconds": 1215,
+                    "attempt1_pytest_passed": 22860,
+                    "attempt1_pytest_seconds": 1170.37,
+                    "attempt2_pytest_cancelled_percent": 99,
+                    "attempt2_pytest_summary_available": false,
+                    "explicit_log_cause": "THE_OPERATION_WAS_CANCELED_NO_EXPLICIT_TIMEOUT_CAUSE",
+                    "thirty_minute_success_guaranteed": false
+                  },
+                  "general_resume_condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+                  "application_execution_before_governance_merge_authorized": false,
+                  "governance_merge_authorized": false,
+                  "application_merge_authorized": false,
+                  "deployment_authorized": false,
+                  "external_network_authorized": false,
+                  "provider_activation_authorized": false,
+                  "live_database_authorized": false,
+                  "rejected_numeric_investigation_authorized": false
+                }
+              }
             }
           ],
           "closure_effect": "NONE",

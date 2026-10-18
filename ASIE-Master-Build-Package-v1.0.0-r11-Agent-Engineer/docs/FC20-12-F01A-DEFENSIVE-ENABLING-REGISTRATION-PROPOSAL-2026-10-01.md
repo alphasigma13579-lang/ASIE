@@ -1258,3 +1258,25 @@ GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE
 routing_repair REGISTERED_BLOCKED/false وضوابطه التسعة PENDING؛ FC20-12 ACR_REQUIRED؛ release BLOCK وDARK_OFFLINE؛ network/provider/deployment=false؛ delivery_evidence=null وclosure_effect=NONE؛ T08 OPEN وstartup/maintenance/recovery UNKNOWN_NOT_APPROVED. فحوص الحوكمة لا تثبت تنفيذ تقسيم CI أو نجاح benchmark أو جاهزية نشر.
 
 الحارس مستقل: ثبات الأنواع والنطاق والقرار، ربط STOP26/SCOPE27 وكامل repair_scope بمراجع indices وبصمات canonical مستقلة دون نسخ أشجار التاريخ، عكس exact bytes، خمس أختام append-only، تاريخ منفصل لكل قراءة، ورفض source/cache الملوثة. تبقى جميع الاختبارات التاريخية، والنتائج النهائية تُربط بالرأس المطابق عند النشر ولا تُفترض من تحضير سابق.
+
+<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->
+
+### قرار المالك: استثناء صيانة CI محدود قبل دمج الحوكمة
+
+سُجل هذا الملحق عند 2026-10-18T05:59:31Z، مستقلًا عن وقت موافقة المالك. وافق المالك صراحة عند 2026-10-18T05:53:23.887243+00:00 على التعديل المحدد وتحديث حزمة #217 ومراجعتها وتشغيل فحوصها. هذا تلخيص تقني للقرار الفعلي سجله المساعد، وليس توقيعًا مشفرًا أو مراجعة GitHub مستقلة. https://github.com/alphasigma13579-lang/ASIE/pull/217 مرجع المقترح العام فقط، وليس تعليق موافقة جديدًا أو دليلًا على الدمج. لا تنشر هذه الإضافة معرّف محادثة خاصة. موافقة الدمج نفسها منفصلة بعد ظهور النتائج.
+
+هذا القرار نافذ الآن فقط لتعديل واختبار .github/workflows/asie-ci.yml في جذر المستودع وtests/test_program_close_10_repository_rebaseline.py في جذر الحزمة، مع تحديث ملفات الحوكمة الثمانية المرافقة في حزمة عشرة ملفات إجمالًا. يستثني صراحة هذين الملفين وحدهما من ترتيب merge-before-CI في ACR G-C3C-0 و§14، وملحق CI عند السطرين 393 و430 في المرجع ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af، و§4 من اقتراح التسجيل، وشرط دمج انتقال RESUME28 قبل كودهما. لا يتطلب هذا الاستثناء PR تصميم إضافيًا ولا يجيز دمج #217 أو #189.
+
+الغرض الحالي يحل محل اقتراح تقسيم CI وحد 20 دقيقة لهذا النطاق فقط: يبقى job واحد build-and-test بسياق Build frontend and test backend، وترفع مهلة job من 20 إلى 30 دقيقة. تبقى خطوة Benchmark C3C full 21x21 sensitivity بمهلة 10 دقائق وبالأمر python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3. تبقى كل الخطوات والأوامر وترتيبها ومعايير النجاح والاختبارات وtriggers وconcurrency وpermissions كما هي. لا jobs إضافية، ولا شرط skip أو continue-on-error أو نجاح مصطنع؛ تسلسل job القائم يبقى fail-closed. لا يتغير benchmark أو حدّه العددي أو سقف الذاكرة أو آلة التنفيذ أو cache/artifacts.
+
+الرأس المنشور 57c22bc91f276e6115b53366a88f0eec7d2ee715 وmanifest blob 3a3e5c8506600ad92fd30242000d40b5a01f1a84 يمثلان مرشح RESUME28 غير مدموج. الجزء الخاص بالتقسيم وحد 20 فيه مستبدل بهذا القرار، وليس تفويضًا موازيًا نافذًا. يبقى receipt #216 التاريخي صحيحًا لغرضه المشروط الأصلي ولا يصرح بالغرض الجديد. لا يغير هذا الاستثناء إصلاحات التطبيق أو RESUME العام: لا تنفيذها إلا بعد مراجعة انتقال الحوكمة وموافقة دمجه المنفصلة ودمجه الفعلي.
+
+تحفظ الأحداث 27 المدموجة كاملة وSTOP26/SCOPE27 وrepair_scope.implementation_authorized=false دون إعادة تفسير. يضاف CI_MAINTENANCE_EXCEPTION29 بعد RESUME28 المرشح، بمراجع وبصمات صغيرة بدل نسخ التاريخ. عكس 29 يعيد مرشح 28 المنشور حرفيًا، وعكس 28 يعيد manifest المدموج 4eef63fa72b0316383c6112ee92e577514123178 على main ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af. قوائم 37 تراكميًا و32 مشروطًا وموضع التنفيذ الواحد وFC20-05 held محفوظة؛ الاستثناء الفوري محصور في ملفي CI المذكورين.
+
+سبب الاستثناء وأدلته: في [المحاولة الأولى](https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076/attempts/1) للرأس المنشور، امتدت الوظيفة 04:59:09–05:19:24 UTC؛ نجح 22,860 اختبارًا، مع تخطي اختبارين و10 تحذيرات، خلال 1170.37 ثانية، ثم أُلغيت خطوة benchmark. في [المحاولة الثانية](https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076/attempts/2)، امتدت الوظيفة 05:26:15–05:46:30 UTC؛ أُلغي pytest عند 99% دون ملخص نهائي وتُخطيت خطوة benchmark. استغرقت كلتاهما 20 دقيقة و15 ثانية. يذكر السجل The operation was canceled فقط؛ اتساق ذلك مع سقف الوظيفة استنتاج، وليس سبب timeout مثبتًا صراحة. لذلك لا يكفي فصل benchmark مع إبقاء suite عند 20 دقيقة لمعالجة المحاولة الثانية؛ مهلة 30 دقيقة هامش مقترح وليست ضمان نجاح.
+
+الاستثناء محدود بهذا التعديل المحدد داخل #217؛ تاريخ مراجعة القرار 2026-10-18، وتلزم مراجعة الرأس النهائي ونتائجه قبل موافقة الدمج. ينتهي إذن ما قبل الدمج عند دمج هذا التعديل أو إلغائه، ولا يمنح صيانة CI مستقبلية مفتوحة. تبقى موافقة الدمج منفصلة.
+
+تبقى routing_repair REGISTERED_BLOCKED/false، ضوابطها التسعة PENDING، FC20-12 ACR_REQUIRED، release BLOCK وDARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null، closure_effect=NONE، T08 OPEN، وstartup/maintenance/recovery UNKNOWN_NOT_APPROVED. لا تطبيق أو runtime أو قاعدة حية أو نشر أو تفعيل شبكة/مزود أو تحقيق REJECTED. لا نجاح مستنتج للـbenchmark أو جاهزية إنتاج؛ نتائج التحقق النهائي تربط بالرأس المطابق بعد التنفيذ، ولا ضمان نجاح إعادة CI.
+
+السجل الحالي المثبت في docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md؛ بصمة قسم القرار SHA256 8e4df3c4283b6adde58d8d630e0a8ba126a59fa04fb16666efa02b946b578cd2. يسري هذا الملحق على التفسير الحالي فقط، والنص السابق تاريخ محفوظ بأختامه.
