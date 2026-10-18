@@ -632,7 +632,7 @@ def validate_execution_sequence(manifest: dict) -> None:
     active = active_execution_targets(packages, held_ids)
     assert len(active) <= sequence["max_active_executions"], "multiple_active_executions"
     assert active == ["FC20-12/f01a_defensive_ingress"], "unrecorded_active_execution"
-    validate_ci_scope(defensive_record(manifest), sequence["active_target"])
+    validate_ci_resume(defensive_record(manifest), sequence["active_target"])
 
 
 def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool = False) -> None:
@@ -653,7 +653,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         "routing_repair", "f01a_defensive_ingress",
     ], "unknown_or_duplicate_slice"
     sequence = execution_sequence_record(manifest)
-    validate_ci_scope(slices[1], sequence["active_target"])
+    validate_ci_resume(slices[1], sequence["active_target"])
     record = slices[0]
     assert isinstance(record, dict)
     schema = record.get("schema")
@@ -737,7 +737,7 @@ def validate_routing_registration(manifest: dict, *, allow_historical_v1: bool =
         assert manifest[key] is False, "unauthorized_program_effect"
     validate_execution_sequence(manifest)
     if not allow_historical_v1:
-        validate_ci_scope_baseline(manifest)
+        validate_ci_resume_baseline(manifest)
 
 
 def test_routing_registration_is_valid_but_not_executable() -> None:
@@ -2421,7 +2421,7 @@ def test_consumption_inverse_rejects_unrelated_manifest_delta(mutation: str) -> 
 @pytest.mark.parametrize("relative_path", CONSUMPTION_VIEW_PATHS)
 def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_path: str) -> None:
     """CS-07: require the same bounded candidate evidence in every governing view."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     validate_consumption_governing_view(content, relative_path)
 
 
@@ -2431,7 +2431,7 @@ def test_consumption_scope_candidate_is_consistent_in_governing_views(relative_p
 ))
 def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> None:
     """CS-07: reject any added, removed, repeated, reordered or malformed scope item."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     scope_lines = [f"- `{path}`\n" for path in CONSUMPTION_SCOPE_RECORD["allowed_paths"]]
     scope_block = "".join(scope_lines)
@@ -2464,7 +2464,7 @@ def test_consumption_view_requires_exact_ordered_scope_list(mutation: str) -> No
 @pytest.mark.parametrize("token", CONSUMPTION_VIEW_TOKENS)
 def test_consumption_view_does_not_borrow_evidence_from_other_sections(token: str) -> None:
     """CS-07: evidence outside the candidate section cannot satisfy its guard."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     before, section = content.split(CONSUMPTION_VIEW_MARKER, 1)
     tampered = before + token + "\n" + CONSUMPTION_VIEW_MARKER + section.replace(token, "[removed]")
     with pytest.raises(AssertionError, match="consumption_view_missing"):
@@ -2486,7 +2486,7 @@ def test_consumption_view_rejects_contradictory_authority_assignments(
     flag: str, separator: str, value: str, style: str, formatting: str,
 ) -> None:
     """CS-07: plain or formatted colon/equals grants cannot hide behind false evidence."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     gap = ""
@@ -2515,7 +2515,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
     target: str, state: str, formatting: str, slash_gap: str,
 ) -> None:
     """CS-07: formatting cannot conceal an execution or delivered state with true authority."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
     delimiter = {
@@ -2532,7 +2532,7 @@ def test_consumption_view_rejects_formatted_authorized_state(
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "heading", "resume", "network"))
 def test_consumption_view_rejects_ambiguous_or_implicit_authority(mutation: str) -> None:
     """CS-07: reject ambiguous section boundaries and implicit execution authority."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     if mutation == "missing_marker":
         content = content.replace(CONSUMPTION_VIEW_MARKER, "")
     elif mutation == "duplicate_marker":
@@ -2607,7 +2607,7 @@ def test_consumption_manifest_loader_preserves_canonical_source() -> None:
     source_bytes = MANIFEST_PATH.read_bytes()
     manifest = load_manifest()
     assert source_bytes == (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    validate_ci_scope_baseline(manifest)
+    validate_ci_resume_baseline(manifest)
 
 
 @pytest.mark.parametrize("mutation", (
@@ -2695,7 +2695,7 @@ def test_consumption_view_byte_seal_rejects_markdown_and_boundary_edits(
     relative_path: str, mutation: str,
 ) -> None:
     """CS-07: partial Markdown parsing cannot admit any unreviewed terminal bytes."""
-    source_bytes = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source_bytes = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     content = source_bytes.decode("utf-8")
     heading_line = CONSUMPTION_VIEW_HEADING + "\n"
     assert content.count(heading_line) == 1, "consumption_view_test_heading_fixture"
@@ -2751,7 +2751,7 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
         else CONSUMPTION_VIEW_PATHS[0]
     )
     assert CONSUMPTION_VIEW_PROJECTION_SHA256[relative_path] != CONSUMPTION_VIEW_PROJECTION_SHA256[other_path]
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / other_path).read_bytes(), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path)
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / other_path).read_bytes(), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path), other_path)
     with pytest.raises(AssertionError, match=r"^consumption_view_projection_changed(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
@@ -2759,14 +2759,14 @@ def test_consumption_view_seal_is_bound_to_its_document_path(relative_path: str)
 @pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
 def test_consumption_view_seal_rejects_unregistered_document_path(relative_path: str) -> None:
     """CS-07: no generic/default digest for an unregistered governing view."""
-    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    content = historical_consumption_view(index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match=r"^consumption_view_path(?:\n|$)"):
         validate_consumption_governing_view(content, relative_path)
 
 
 def test_consumption_view_seal_requires_original_source_bytes() -> None:
     """CS-07: text-mode newline normalization is not an admissible input."""
-    content = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
+    content = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]).decode("utf-8")
     with pytest.raises(AssertionError, match=r"^consumption_view_source_bytes(?:\n|$)"):
         validate_consumption_governing_view(content, CONSUMPTION_VIEW_PATHS[0])
 
@@ -3037,7 +3037,7 @@ def test_consumption_resume_cannot_be_self_authorized_by_flag_or_fixture() -> No
 @pytest.mark.parametrize("relative_path", tuple(CONSUMPTION_RESUME_VIEW_SHA256))
 def test_consumption_resume_preserves_old_seals_and_exact_new_projection(relative_path: str) -> None:
     """CRG-06: byte-exact full history plus a unique path-bound terminal projection."""
-    source = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     historical_consumption_view(source, relative_path)
     assert set(CONSUMPTION_RESUME_VIEW_SHA256) == set(CONSUMPTION_VIEW_PATHS)
     assert set(CONSUMPTION_RESUME_VIEW_PREFIX_BLOBS) == set(CONSUMPTION_VIEW_PATHS)
@@ -3051,7 +3051,7 @@ def test_consumption_resume_preserves_old_seals_and_exact_new_projection(relativ
 ))
 def test_consumption_resume_view_rejects_all_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """CRG-06: no suffix/comment, normalized line ending, erased history or hidden grant."""
-    source = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = CONSUMPTION_RESUME_VIEW_MARKER.encode()
     separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
@@ -3091,14 +3091,14 @@ def test_consumption_resume_view_rejects_all_unreviewed_bytes(relative_path: str
 def test_consumption_resume_view_seal_cannot_be_reused_on_another_path(relative_path: str) -> None:
     """CRG-06: a valid projection from a different document is still unauthorized."""
     other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
-    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other), other)
+    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other), other), other)
     with pytest.raises(AssertionError, match="consumption_resume_view_prefix_changed"):
         historical_consumption_view(content, relative_path)
 
 
 @pytest.mark.parametrize("relative_path", ("", "docs/unapproved.md", "tests/test_intelligence_consumption.py"))
 def test_consumption_resume_view_has_no_default_authority(relative_path: str) -> None:
-    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="consumption_resume_view_path"):
         historical_consumption_view(content, relative_path)
 
@@ -3115,15 +3115,15 @@ def test_consumption_resume_rejects_section_transplants_even_with_original_prefi
     other = next(path for path in CONSUMPTION_RESUME_VIEW_SHA256 if path != relative_path)
     root = Path(__file__).resolve().parents[1]
     separator = ("\n" + CONSUMPTION_RESUME_VIEW_MARKER + "\n").encode()
-    prefix = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path).split(separator, 1)[0]
-    transplanted = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other), other).split(separator, 1)[1]
+    prefix = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path).split(separator, 1)[0]
+    transplanted = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="consumption_resume_view_projection_changed"):
         historical_consumption_view(prefix + separator + transplanted, relative_path)
 
 
 def test_consumption_resume_views_require_raw_bytes() -> None:
     path = CONSUMPTION_VIEW_PATHS[0]
-    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / path).read_bytes(), path), path), path), path), path), path), path), path), path), path), path), path), path).decode("utf-8")
+    content = index_scope_historical_view(index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / path).read_bytes(), path), path), path), path), path), path), path), path), path), path), path), path), path), path).decode("utf-8")
     with pytest.raises(AssertionError, match="consumption_resume_view_source_bytes"):
         historical_consumption_view(content, path)
 
@@ -3548,7 +3548,7 @@ def test_index_scope_retains_counted_slot(slot: object) -> None:
 @pytest.mark.parametrize("relative_path", tuple(INDEX_VIEW_SHA256))
 def test_index_scope_projections_preserve_all_old_seals(relative_path: str) -> None:
     """ISG-06: every complete pre-transition document remains byte-exact."""
-    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = index_scope_historical_view(source, relative_path)
     historical_consumption_view(prefix, relative_path)
     assert set(INDEX_VIEW_SHA256) == set(INDEX_VIEW_PREFIX_BLOBS) == set(CONSUMPTION_VIEW_PATHS)
@@ -3562,7 +3562,7 @@ def test_index_scope_projections_preserve_all_old_seals(relative_path: str) -> N
 ))
 def test_index_scope_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """ISG-06/08: neither formatting nor hidden text can relax the gated scope."""
-    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = INDEX_VIEW_MARKER.encode()
     separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
@@ -3603,7 +3603,7 @@ def test_index_scope_projection_cannot_borrow_other_path_bytes(relative_path: st
     """ISG-06: both full-document and suffix transplants are rejected."""
     root = Path(__file__).resolve().parents[1]
     other = next(path for path in INDEX_VIEW_SHA256 if path != relative_path)
-    source, other_source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other)
+    source, other_source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other), other)
     separator = ("\n" + INDEX_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="index_view_prefix_changed"):
         index_scope_historical_view(other_source, relative_path)
@@ -3615,7 +3615,7 @@ def test_index_scope_projection_cannot_borrow_other_path_bytes(relative_path: st
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "tests/test_repository_intelligence.py"))
 def test_index_scope_view_has_no_unregistered_path(path: str) -> None:
     """ISG-06: no default seal or authority for an unknown path."""
-    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = index_resume_historical_view(review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="index_view_path"):
         index_scope_historical_view(source, path)
 
@@ -4340,7 +4340,7 @@ def test_index_resume_retains_single_counted_slot(slot: object) -> None:
 @pytest.mark.parametrize("relative_path", tuple(INDEX_RESUME_VIEW_SHA256))
 def test_index_resume_preserves_all_historical_projection_seals(relative_path: str) -> None:
     """IRG-06: full prior documents and every old oracle stay independently sealed."""
-    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = index_resume_historical_view(source, relative_path)
     index_scope_historical_view(prefix, relative_path)
     assert set(INDEX_RESUME_VIEW_SHA256) == set(INDEX_RESUME_VIEW_PREFIX_BLOBS) == set(INDEX_VIEW_SHA256)
@@ -4350,7 +4350,7 @@ def test_index_resume_preserves_all_historical_projection_seals(relative_path: s
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "live_authority", "startup_approved", "data_scope", "scope_order"))
 def test_index_resume_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """IRG-06/08: exact terminal bytes, including every restricted-execution claim."""
-    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = INDEX_RESUME_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
     if mutation == "missing_marker":
@@ -4387,7 +4387,7 @@ def test_index_resume_rejects_cross_path_projection_transplants(relative_path: s
     """IRG-06: authentic content from another path cannot borrow this path's seal."""
     root = Path(__file__).resolve().parents[1]
     other = next(p for p in INDEX_RESUME_VIEW_SHA256 if p != relative_path)
-    source, other_source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other)
+    source, other_source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other), other)
     separator = ("\n" + INDEX_RESUME_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="index_resume_view_prefix_changed"):
         index_resume_historical_view(other_source, relative_path)
@@ -4398,7 +4398,7 @@ def test_index_resume_rejects_cross_path_projection_transplants(relative_path: s
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
 def test_index_resume_projection_has_no_default_path(path: str) -> None:
     """IRG-06: no fallback seal is accepted for unregistered documents."""
-    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = review_identity_historical_view(review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="index_resume_view_path"):
         index_resume_historical_view(source, path)
 
@@ -4848,7 +4848,7 @@ def test_review_identity_keeps_one_counted_slot(slot: object) -> None:
 
 @pytest.mark.parametrize("relative_path", tuple(REVIEW_IDENTITY_VIEW_SHA256))
 def test_review_identity_raw_projection_seals_and_historical_chain(relative_path: str) -> None:
-    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = review_identity_historical_view(source, relative_path)
     assert git_blob_sha(prefix) == REVIEW_IDENTITY_VIEW_PREFIX_BLOBS[relative_path]
     index_resume_historical_view(prefix, relative_path)
@@ -4858,7 +4858,7 @@ def test_review_identity_raw_projection_seals_and_historical_chain(relative_path
 @pytest.mark.parametrize("relative_path", tuple(REVIEW_IDENTITY_VIEW_SHA256))
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "scope", "execution", "schema", "receipt", "path_order"))
 def test_review_identity_rejects_unreviewed_projection_bytes(relative_path: str, mutation: str) -> None:
-    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = REVIEW_IDENTITY_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
     if mutation == "missing_marker":
@@ -4894,7 +4894,7 @@ def test_review_identity_rejects_unreviewed_projection_bytes(relative_path: str,
 def test_review_identity_rejects_cross_path_transplants(relative_path: str) -> None:
     root = Path(__file__).resolve().parents[1]
     other = next(p for p in REVIEW_IDENTITY_VIEW_SHA256 if p != relative_path)
-    source, other_source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other)
+    source, other_source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other), other)
     separator = ("\n" + REVIEW_IDENTITY_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="review_identity_view_prefix_changed"):
         review_identity_historical_view(other_source, relative_path)
@@ -4904,7 +4904,7 @@ def test_review_identity_rejects_cross_path_transplants(relative_path: str) -> N
 
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
 def test_review_identity_projection_has_no_fallback(path: str) -> None:
-    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = review_identity_resume_historical_view(key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="review_identity_view_path"):
         review_identity_historical_view(source, path)
 
@@ -5317,7 +5317,7 @@ def test_review_identity_resume_retains_single_counted_slot(slot: object) -> Non
 @pytest.mark.parametrize("relative_path", tuple(REVIEW_IDENTITY_RESUME_VIEW_SHA256))
 def test_review_identity_resume_preserves_all_historical_projection_seals(relative_path: str) -> None:
     """RIRG-06: full prior documents and every old oracle stay independently sealed."""
-    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = review_identity_resume_historical_view(source, relative_path)
     review_identity_historical_view(prefix, relative_path)
     assert set(REVIEW_IDENTITY_RESUME_VIEW_SHA256) == set(REVIEW_IDENTITY_RESUME_VIEW_PREFIX_BLOBS) == set(REVIEW_IDENTITY_VIEW_SHA256)
@@ -5327,7 +5327,7 @@ def test_review_identity_resume_preserves_all_historical_projection_seals(relati
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "live_authority", "startup_approved", "data_scope", "scope_order"))
 def test_review_identity_resume_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """RIRG-06/08: exact terminal bytes, including every restricted-execution claim."""
-    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = REVIEW_IDENTITY_RESUME_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
     if mutation == "missing_marker":
@@ -5364,7 +5364,7 @@ def test_review_identity_resume_rejects_cross_path_projection_transplants(relati
     """RIRG-06: authentic content from another path cannot borrow this path's seal."""
     root = Path(__file__).resolve().parents[1]
     other = next(p for p in REVIEW_IDENTITY_RESUME_VIEW_SHA256 if p != relative_path)
-    source, other_source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other)
+    source, other_source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other), other)
     separator = ("\n" + REVIEW_IDENTITY_RESUME_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="review_identity_resume_view_prefix_changed"):
         review_identity_resume_historical_view(other_source, relative_path)
@@ -5375,7 +5375,7 @@ def test_review_identity_resume_rejects_cross_path_projection_transplants(relati
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
 def test_review_identity_resume_projection_has_no_default_path(path: str) -> None:
     """RIRG-06: no fallback seal is accepted for unregistered documents."""
-    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = key_binding_historical_view(key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="review_identity_resume_view_path"):
         review_identity_resume_historical_view(source, path)
 
@@ -5881,7 +5881,7 @@ def test_key_binding_keeps_one_counted_slot(slot: object) -> None:
 
 @pytest.mark.parametrize("relative_path", tuple(KEY_BINDING_VIEW_SHA256))
 def test_key_binding_raw_projection_seals_and_historical_chain(relative_path: str) -> None:
-    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = key_binding_historical_view(source, relative_path)
     assert git_blob_sha(prefix) == KEY_BINDING_VIEW_PREFIX_BLOBS[relative_path]
     review_identity_resume_historical_view(prefix, relative_path)
@@ -5891,7 +5891,7 @@ def test_key_binding_raw_projection_seals_and_historical_chain(relative_path: st
 @pytest.mark.parametrize("relative_path", tuple(KEY_BINDING_VIEW_SHA256))
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "scope", "execution", "schema", "receipt", "path_order"))
 def test_key_binding_rejects_unreviewed_projection_bytes(relative_path: str, mutation: str) -> None:
-    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = KEY_BINDING_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
     if mutation == "missing_marker":
@@ -5927,7 +5927,7 @@ def test_key_binding_rejects_unreviewed_projection_bytes(relative_path: str, mut
 def test_key_binding_rejects_cross_path_transplants(relative_path: str) -> None:
     root = Path(__file__).resolve().parents[1]
     other = next(p for p in KEY_BINDING_VIEW_SHA256 if p != relative_path)
-    source, other_source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other)
+    source, other_source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other), other)
     separator = ("\n" + KEY_BINDING_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="key_binding_view_prefix_changed"):
         key_binding_historical_view(other_source, relative_path)
@@ -5937,7 +5937,7 @@ def test_key_binding_rejects_cross_path_transplants(relative_path: str) -> None:
 
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
 def test_key_binding_projection_has_no_fallback(path: str) -> None:
-    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = key_binding_resume_historical_view(recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="key_binding_view_path"):
         key_binding_historical_view(source, path)
 
@@ -6362,7 +6362,7 @@ def test_key_binding_resume_retains_single_counted_slot(slot: object) -> None:
 @pytest.mark.parametrize("relative_path", tuple(KEY_BINDING_RESUME_VIEW_SHA256))
 def test_key_binding_resume_preserves_all_historical_projection_seals(relative_path: str) -> None:
     """KBRG-06: full prior documents and every old oracle stay independently sealed."""
-    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = key_binding_resume_historical_view(source, relative_path)
     key_binding_historical_view(prefix, relative_path)
     assert set(KEY_BINDING_RESUME_VIEW_SHA256) == set(KEY_BINDING_RESUME_VIEW_PREFIX_BLOBS) == set(KEY_BINDING_VIEW_SHA256)
@@ -6372,7 +6372,7 @@ def test_key_binding_resume_preserves_all_historical_projection_seals(relative_p
 @pytest.mark.parametrize("mutation", ("missing_marker", "duplicate_marker", "separator", "prefix", "prefix_crlf", "whole_crlf", "section_crlf", "suffix", "comment", "trailing_blank_line", "missing_final_newline", "live_authority", "startup_approved", "data_scope", "scope_order"))
 def test_key_binding_resume_projection_rejects_unreviewed_bytes(relative_path: str, mutation: str) -> None:
     """KBRG-06/08: exact terminal bytes, including every restricted-execution claim."""
-    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     marker = KEY_BINDING_RESUME_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
     prefix, section = source.split(separator, 1)
     if mutation == "missing_marker":
@@ -6409,7 +6409,7 @@ def test_key_binding_resume_rejects_cross_path_projection_transplants(relative_p
     """KBRG-06: authentic content from another path cannot borrow this path's seal."""
     root = Path(__file__).resolve().parents[1]
     other = next(p for p in KEY_BINDING_RESUME_VIEW_SHA256 if p != relative_path)
-    source, other_source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other)
+    source, other_source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other), other)
     separator = ("\n" + KEY_BINDING_RESUME_VIEW_MARKER + "\n").encode()
     with pytest.raises(AssertionError, match="key_binding_resume_view_prefix_changed"):
         key_binding_resume_historical_view(other_source, relative_path)
@@ -6420,7 +6420,7 @@ def test_key_binding_resume_rejects_cross_path_projection_transplants(relative_p
 @pytest.mark.parametrize("path", ("", "docs/unapproved.md", "backend/repository.py"))
 def test_key_binding_resume_projection_has_no_default_path(path: str) -> None:
     """KBRG-06: no fallback seal is accepted for unregistered documents."""
-    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
+    source = recovery_scope_historical_view(recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / CONSUMPTION_VIEW_PATHS[0]).read_bytes(), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0]), CONSUMPTION_VIEW_PATHS[0])
     with pytest.raises(AssertionError, match="key_binding_resume_view_path"):
         key_binding_resume_historical_view(source, path)
 
@@ -7116,7 +7116,7 @@ def test_recovery_inverse_is_detached_and_does_not_mutate_sources() -> None:
 @pytest.mark.parametrize("relative_path", tuple(RECOVERY_VIEW_SHA256))
 def test_recovery_scope_projection_matches_pinned_bytes(relative_path: str) -> None:
     """CRSG-05: path-specific old prefix and new section are both checked."""
-    source = recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     prefix = recovery_scope_historical_view(source, relative_path)
     assert git_blob_sha(prefix) == RECOVERY_VIEW_PREFIX_BLOBS[relative_path]
     assert b"https://github.com/alphasigma13579-lang/ASIE/pull/207#issuecomment-6165892821" in source[len(prefix):]
@@ -7127,7 +7127,7 @@ def test_recovery_scope_projection_matches_pinned_bytes(relative_path: str) -> N
 def test_recovery_scope_projection_tampering_rejected(relative_path: str, mutation: str) -> None:
     """CRSG-05: no marker, whitespace, or cross-path projection substitution."""
     root = Path(__file__).resolve().parents[1]
-    source = recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
+    source = recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     separator = ("\n" + RECOVERY_VIEW_MARKER + "\n").encode()
     prefix, section = source.split(separator, 1)
     if mutation == "prefix":
@@ -7140,7 +7140,7 @@ def test_recovery_scope_projection_tampering_rejected(relative_path: str, mutati
         source = prefix + separator.replace(b"\n", b"\r\n") + section
     else:
         other = next(path for path in RECOVERY_VIEW_SHA256 if path != relative_path)
-        source = prefix + separator + recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other), other).split(separator, 1)[1]
+        source = prefix + separator + recovery_resume_historical_view(dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="recovery_view"):
         recovery_scope_historical_view(source, relative_path)
 
@@ -7698,7 +7698,7 @@ def test_recovery_resume_denies_scope_slot_and_unrelated_drift_without_mutation(
 @pytest.mark.parametrize("mutation", ("valid", "prefix", "section", "duplicate", "boundary", "swap"))
 def test_recovery_resume_projection_exact_seals(relative_path: str, mutation: str) -> None:
     """CRRG-05: exact path-specific terminal bytes preserve all old projections."""
-    root = Path(__file__).resolve().parents[1]; source = dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path)
+    root = Path(__file__).resolve().parents[1]; source = dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path), relative_path)
     separator = ("\n" + RECOVERY_RESUME_VIEW_MARKER + "\n").encode()
     prefix, section = source.split(separator, 1)
     if mutation == "valid":
@@ -7710,7 +7710,7 @@ def test_recovery_resume_projection_exact_seals(relative_path: str, mutation: st
     elif mutation == "boundary": source = prefix + separator.replace(b"\n", b"\r\n") + section
     else:
         other = next(p for p in RECOVERY_RESUME_VIEW_SHA256 if p != relative_path)
-        source = prefix + separator + dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other), other), other).split(separator, 1)[1]
+        source = prefix + separator + dataset_scope_historical_view(dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="recovery_resume_view"):
         recovery_resume_historical_view(source, relative_path)
 
@@ -8195,7 +8195,7 @@ def test_dataset_scope_inverse_rejects_unrelated_drift_without_mutation(mutation
 @pytest.mark.parametrize("mutation", ["valid","prefix","section","duplicate","boundary","swap"])
 def test_dataset_scope_projection_seals(relative_path: str, mutation: str) -> None:
     """DPSG-05: exact path, old bytes, new section and unique boundary are required."""
-    raw = dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path)
+    raw = dataset_resume_historical_view(overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path), relative_path)
     if mutation == "valid":
         assert git_blob_sha(dataset_scope_historical_view(raw, relative_path)) == DATASET_VIEW_PREFIX_BLOBS[relative_path]
         return
@@ -8635,7 +8635,7 @@ def test_dataset_resume_denies_scope_slot_and_unrelated_drift_without_mutation(m
 @pytest.mark.parametrize("mutation", ("valid", "prefix", "section", "duplicate", "boundary", "swap"))
 def test_dataset_resume_projection_exact_seals(relative_path: str, mutation: str) -> None:
     """DPRG-05: exact path-specific terminal bytes preserve all old projections."""
-    root = Path(__file__).resolve().parents[1]; source = overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path)
+    root = Path(__file__).resolve().parents[1]; source = overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path), relative_path), relative_path)
     separator = ("\n" + DATASET_RESUME_VIEW_MARKER + "\n").encode()
     prefix, section = source.split(separator, 1)
     if mutation == "valid":
@@ -8647,7 +8647,7 @@ def test_dataset_resume_projection_exact_seals(relative_path: str, mutation: str
     elif mutation == "boundary": source = prefix + b"\n" + DATASET_RESUME_VIEW_MARKER.encode() + b"\r\n" + section
     else:
         other = next(p for p in DATASET_RESUME_VIEW_SHA256 if p != relative_path)
-        source = prefix + separator + overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view((root / other).read_bytes(), other), other), other).split(separator, 1)[1]
+        source = prefix + separator + overlay_scope_historical_view(overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="dataset_resume_view"):
         dataset_resume_historical_view(source, relative_path)
 
@@ -9167,7 +9167,7 @@ def test_overlay_scope_inverse_rejects_unrelated_drift_without_mutation(mutation
 @pytest.mark.parametrize("mutation", ["valid","prefix","section","duplicate","boundary","swap"])
 def test_overlay_scope_projection_seals(relative_path: str, mutation: str) -> None:
     """OMSG-05: exact path, old bytes, new section and unique boundary are required."""
-    raw = overlay_resume_historical_view(ci_scope_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path)
+    raw = overlay_resume_historical_view(ci_scope_historical_view(ci_resume_historical_view((Path(__file__).resolve().parents[1] / relative_path).read_bytes(), relative_path), relative_path), relative_path)
     if mutation == "valid":
         assert git_blob_sha(overlay_scope_historical_view(raw, relative_path)) == OVERLAY_VIEW_PREFIX_BLOBS[relative_path]
         return
@@ -9694,7 +9694,7 @@ def test_overlay_resume_denies_scope_slot_and_unrelated_drift_without_mutation(m
 @pytest.mark.parametrize("mutation", ("valid", "prefix", "section", "duplicate", "boundary", "swap"))
 def test_overlay_resume_projection_exact_seals(relative_path: str, mutation: str) -> None:
     """OMRG-05: exact path-specific terminal bytes preserve all old projections."""
-    root = Path(__file__).resolve().parents[1]; source = ci_scope_historical_view((root / relative_path).read_bytes(), relative_path)
+    root = Path(__file__).resolve().parents[1]; source = ci_scope_historical_view(ci_resume_historical_view((root / relative_path).read_bytes(), relative_path), relative_path)
     separator = ("\n" + OVERLAY_RESUME_VIEW_MARKER + "\n").encode()
     prefix, section = source.split(separator, 1)
     if mutation == "valid":
@@ -9706,7 +9706,7 @@ def test_overlay_resume_projection_exact_seals(relative_path: str, mutation: str
     elif mutation == "boundary": source = prefix + b"\n" + OVERLAY_RESUME_VIEW_MARKER.encode() + b"\r\n" + section
     else:
         other = next(p for p in OVERLAY_RESUME_VIEW_SHA256 if p != relative_path)
-        source = prefix + separator + ci_scope_historical_view((root / other).read_bytes(), other).split(separator, 1)[1]
+        source = prefix + separator + ci_scope_historical_view(ci_resume_historical_view((root / other).read_bytes(), other), other).split(separator, 1)[1]
     with pytest.raises(AssertionError, match="overlay_resume_view"):
         overlay_resume_historical_view(source, relative_path)
 
@@ -10203,7 +10203,7 @@ _CI_SCOPE_HISTORY_BYTES: tuple[bytes, bytes] | None = None
 def ci_scope_historical_source_bytes() -> bytes:
     """CISG-08: every call freshly reads, compares and independently re-pins both bytes."""
     global _CI_SCOPE_HISTORY_BYTES
-    source = MANIFEST_PATH.read_bytes()
+    source = ci_resume_historical_source_bytes()
     if type(_CI_SCOPE_HISTORY_BYTES) is tuple and len(_CI_SCOPE_HISTORY_BYTES) == 2:
         cached_source = _CI_SCOPE_HISTORY_BYTES[0]
         if type(source) is bytes and type(cached_source) is bytes and source == cached_source:
@@ -10261,8 +10261,8 @@ def ci_scope_acr_historical_view(source_bytes: bytes) -> bytes:
 
 def test_ci_scope_current_admission_and_full_inverse_chain() -> None:
     """CISG-01/04: 27 stopped events, separate path roots, and every historical oracle."""
-    manifest = load_manifest(); before = json.dumps(manifest, sort_keys=True)
-    validate_routing_registration(manifest); validate_execution_sequence(manifest)
+    manifest = historical_ci_scope_manifest(); before = json.dumps(manifest, sort_keys=True)
+    validate_routing_registration(load_manifest()); validate_execution_sequence(load_manifest())
     record = defensive_record(manifest)
     assert len(record["events"]) == 27 and record["execution_authorized"] is False
     assert len(record["allowed_paths"]) == 36
@@ -10315,23 +10315,23 @@ def test_ci_scope_equal_but_wrong_json_types(path: tuple, value: object) -> None
 
 @pytest.mark.parametrize("field,value", [("record_url","UNRESOLVED"),("recorded_at","UNRESOLVED"),("effect","F01A_DEFENSIVE_RESUME_ONLY"),("record_url",OVERLAY_RESUME_DECISION["record_url"])])
 def test_ci_scope_missing_or_reused_receipts_reach_current_seams(field: str, value: str) -> None:
-    manifest = load_manifest(); defensive_record(manifest)["events"][26]["owner_scope_decision"][field] = value
-    for validator in (validate_ci_scope_baseline, validate_routing_registration, validate_execution_sequence):
+    manifest = historical_ci_scope_manifest(); defensive_record(manifest)["events"][26]["owner_scope_decision"][field] = value
+    for validator in (validate_ci_scope_baseline,):
         with pytest.raises(AssertionError): validator(manifest)
 
 
 @pytest.mark.parametrize("event_index,field", [(i,f) for i in (15,17,18,20,21,23,24) for f in ("record_url","recorded_at","effect")]+[(18,"condition"),(21,"condition"),(24,"condition")])
 def test_ci_scope_historical_receipt_negatives_reach_current_seams(event_index: int, field: str) -> None:
-    manifest = load_manifest(); event = defensive_record(manifest)["events"][event_index]
+    manifest = historical_ci_scope_manifest(); event = defensive_record(manifest)["events"][event_index]
     decision = event["owner_scope_decision" if event_index in (17,20,23) else "owner_resume_decision"]
     decision[field] = "UNRESOLVED_OR_CHANGED"
-    for validator in (validate_ci_scope_baseline, validate_routing_registration, validate_execution_sequence):
+    for validator in (validate_ci_scope_baseline,):
         with pytest.raises(AssertionError): validator(manifest)
 
 
 @pytest.mark.parametrize("mutation", ("root_missing","root_extra","root_parent","root_wildcard","root_in_package","package_in_root","historical_union","active_omission","schema","slot","hold","unrelated"))
 def test_ci_scope_denies_scope_slot_and_unrelated_drift(mutation: str) -> None:
-    manifest = load_manifest(); record = defensive_record(manifest)
+    manifest = historical_ci_scope_manifest(); record = defensive_record(manifest)
     scope = record["events"][26]["owner_scope_decision"]["subject"]["repair_scope"]
     if mutation == "root_missing": record.pop("allowed_repository_root_paths")
     elif mutation == "root_extra": record["allowed_repository_root_paths"].append(".github/workflows/other.yml")
@@ -10346,7 +10346,7 @@ def test_ci_scope_denies_scope_slot_and_unrelated_drift(mutation: str) -> None:
     elif mutation == "hold": manifest["execution_sequence"]["held_packages"] = []
     else: manifest["program_id"] = "UNRELATED"
     before = json.dumps(manifest, sort_keys=True)
-    for validator in (validate_ci_scope_baseline, validate_routing_registration):
+    for validator in (validate_ci_scope_baseline,):
         with pytest.raises(AssertionError): validator(manifest)
     assert json.dumps(manifest, sort_keys=True) == before
 
@@ -10354,7 +10354,7 @@ def test_ci_scope_denies_scope_slot_and_unrelated_drift(mutation: str) -> None:
 @pytest.mark.parametrize("relative_path", tuple(CI_VIEW_SECTION_SHA256))
 @pytest.mark.parametrize("mutation", ("valid","prefix","section","duplicate","boundary","swap"))
 def test_ci_scope_five_projection_seals(relative_path: str, mutation: str) -> None:
-    root = Path(__file__).resolve().parents[1]; source = (root / relative_path).read_bytes()
+    root = Path(__file__).resolve().parents[1]; source = ci_resume_historical_view((root / relative_path).read_bytes(), relative_path)
     separator = ("\n" + CI_VIEW_MARKER + "\n").encode(); prefix, section = source.split(separator, 1)
     if mutation == "valid":
         assert ci_scope_historical_view(source, relative_path) == prefix
@@ -10365,7 +10365,7 @@ def test_ci_scope_five_projection_seals(relative_path: str, mutation: str) -> No
     elif mutation == "boundary": source = prefix + b"\n" + CI_VIEW_MARKER.encode() + b"\r\n" + section
     else:
         other = next(path for path in CI_VIEW_SECTION_SHA256 if path != relative_path)
-        source = prefix + separator + (root / other).read_bytes().split(separator,1)[1]
+        source = prefix + separator + ci_resume_historical_view((root / other).read_bytes(), other).split(separator,1)[1]
     with pytest.raises(AssertionError, match="ci_scope_view"):
         ci_scope_historical_view(source, relative_path)
 
@@ -10380,7 +10380,7 @@ def test_ci_scope_projection_requires_exact_bytes(value: object) -> None:
 
 def test_ci_scope_projection_rejects_unknown_path() -> None:
     root = Path(__file__).resolve().parents[1]; path = next(iter(CI_VIEW_SECTION_SHA256))
-    raw = (root / path).read_bytes()
+    raw = ci_resume_historical_view((root / path).read_bytes(), path)
     for wrong in ("", "../" + path, ".github/workflows/asie-ci.yml", None, False):
         with pytest.raises(AssertionError, match="ci_scope_view_path"): ci_scope_historical_view(raw, wrong)
 
@@ -10403,7 +10403,7 @@ def test_ci_scope_acr_prefix_and_published_update_pins(mutation: str) -> None:
 
 def test_ci_scope_fixture_cold_warm_equivalence_and_detachment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(globals(), "_CI_SCOPE_HISTORY_BYTES", None)
-    manifest = load_manifest(); original = validate_ci_scope_baseline(manifest)
+    manifest = historical_ci_scope_manifest(); original = validate_ci_scope_baseline(manifest)
     first, second = historical_overlay_resume_manifest(), historical_overlay_resume_manifest()
     expected = json.dumps(original, ensure_ascii=False, indent=2) + "\n"
     assert json.dumps(first, ensure_ascii=False, indent=2) + "\n" == expected
@@ -10421,7 +10421,7 @@ def test_ci_scope_fixture_cold_warm_equivalence_and_detachment(monkeypatch: pyte
 @pytest.mark.parametrize("mutation", ("bytes","literal","history","slot","unrelated","receipt","root"))
 def test_ci_scope_fixture_cold_warm_source_denials(monkeypatch: pytest.MonkeyPatch, warm: bool, mutation: str) -> None:
     monkeypatch.setitem(globals(), "_CI_SCOPE_HISTORY_BYTES", None)
-    manifest = load_manifest(); record = defensive_record(manifest)
+    manifest = historical_ci_scope_manifest(); record = defensive_record(manifest)
     if warm: historical_overlay_resume_manifest()
     cache = _CI_SCOPE_HISTORY_BYTES
     if mutation == "literal": record["execution_authorized"] = 0
@@ -10432,9 +10432,9 @@ def test_ci_scope_fixture_cold_warm_source_denials(monkeypatch: pytest.MonkeyPat
     elif mutation == "root": record["allowed_repository_root_paths"].append(".github/workflows/*")
     raw = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
     if mutation == "bytes": raw += b"\n"
-    monkeypatch.setattr(Path, "read_bytes", lambda _path: raw)
+    monkeypatch.setitem(globals(), "ci_resume_historical_source_bytes", lambda: raw)
     if mutation != "bytes":
-        with pytest.raises(AssertionError): _ci_scope_historical_inverse(load_manifest())
+        with pytest.raises(AssertionError): _ci_scope_historical_inverse(historical_ci_scope_manifest())
     with pytest.raises(AssertionError, match="ci_scope_fixture_source_changed"): historical_overlay_resume_manifest()
     assert _CI_SCOPE_HISTORY_BYTES is cache
 
@@ -10450,18 +10450,18 @@ def test_ci_scope_fixture_poisoned_cache_rejected(monkeypatch: pytest.MonkeyPatc
 
 def test_ci_scope_fixture_single_read_and_failed_initialization(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(globals(), "_CI_SCOPE_HISTORY_BYTES", None)
-    raw = MANIFEST_PATH.read_bytes(); reads = []; calls = []; original = _ci_scope_historical_inverse
-    def alternating(_path: Path) -> bytes:
+    raw = ci_resume_historical_source_bytes(); reads = []; calls = []; original = _ci_scope_historical_inverse
+    def alternating() -> bytes:
         reads.append(True)
         return raw if len(reads) == 1 else raw+b"\n"
     def checked(manifest: dict) -> dict:
         calls.append(True); return original(manifest)
-    monkeypatch.setattr(Path, "read_bytes", alternating); monkeypatch.setitem(globals(), "_ci_scope_historical_inverse", checked)
+    monkeypatch.setitem(globals(), "ci_resume_historical_source_bytes", alternating); monkeypatch.setitem(globals(), "_ci_scope_historical_inverse", checked)
     historical_overlay_resume_manifest(); assert len(reads) == len(calls) == 1
     with pytest.raises(AssertionError, match="ci_scope_fixture_source_changed"): historical_overlay_resume_manifest()
     assert len(reads) == 2 and len(calls) == 1
     monkeypatch.setitem(globals(), "_CI_SCOPE_HISTORY_BYTES", None)
-    monkeypatch.setattr(Path, "read_bytes", lambda _path: raw)
+    monkeypatch.setitem(globals(), "ci_resume_historical_source_bytes", lambda: raw)
     def failed(_manifest): raise AssertionError("injected_inverse_failure")
     monkeypatch.setitem(globals(), "_ci_scope_historical_inverse", failed)
     with pytest.raises(AssertionError, match="injected_inverse_failure"): historical_overlay_resume_manifest()
@@ -10523,15 +10523,15 @@ def test_ci_scope_identity_reuses_only_fresh_equal_bytes(monkeypatch: pytest.Mon
     monkeypatch.setitem(globals(), "_CI_SCOPE_HISTORY_BYTES", None)
     historical_overlay_resume_manifest(); cached, baseline = _CI_SCOPE_HISTORY_BYTES
     reads = []; seen = []; original = ci_scope_blob_sha
-    def fresh(_path):
+    def fresh():
         value = bytes(bytearray(cached)); reads.append(value); return value
     def observed(raw):
         seen.append(raw); return original(raw)
-    monkeypatch.setattr(Path, "read_bytes", fresh); monkeypatch.setitem(globals(), "ci_scope_blob_sha", observed)
+    monkeypatch.setitem(globals(), "ci_resume_historical_source_bytes", fresh); monkeypatch.setitem(globals(), "ci_scope_blob_sha", observed)
     assert ci_scope_historical_source_bytes() == baseline
     assert len(reads) == 1 and reads[0] == cached and reads[0] is not cached
     assert seen[0] is cached and seen[-1] is baseline
-    changed = cached[:-1]+b"X"; monkeypatch.setattr(Path, "read_bytes", lambda _path: changed)
+    changed = cached[:-1]+b"X"; monkeypatch.setitem(globals(), "ci_resume_historical_source_bytes", lambda: changed)
     with pytest.raises(AssertionError, match="ci_scope_fixture_source_changed"): ci_scope_historical_source_bytes()
     assert seen[-1] is changed
 
@@ -10548,8 +10548,10 @@ def test_ci_scope_identity_preserves_original_denial_order(monkeypatch: pytest.M
     fast_namespace = dict(globals()); exec(original_text,fast_namespace)
     cache = (source+b" ",baseline) if mutation == "source" else (source,baseline+b" ") if mutation == "baseline" else (source,{}) if mutation == "type" else (source,) if mutation == "shape" else (source,baseline)
     current = bytearray(source) if mutation == "source_type" else source+b" " if mutation == "source_byte" else bytes(bytearray(source))
-    monkeypatch.setattr(Path,"read_bytes",lambda _path:current)
+    monkeypatch.setitem(globals(),"ci_resume_historical_source_bytes",lambda:current)
     monkeypatch.setitem(globals(),"_CI_SCOPE_HISTORY_BYTES",cache)
+    namespace["ci_resume_historical_source_bytes"] = lambda: current
+    fast_namespace["ci_resume_historical_source_bytes"] = lambda: current
     namespace["_CI_SCOPE_HISTORY_BYTES"] = cache; fast_namespace["_CI_SCOPE_HISTORY_BYTES"] = cache
     outcomes = []
     for fn in (namespace["ci_scope_historical_source_bytes"],fast_namespace["ci_scope_historical_source_bytes"]):
@@ -10594,3 +10596,591 @@ def test_ci_scope_rejections_preserve_bounded_ci_diagnostics(monkeypatch: pytest
         else: outcomes.append((None,None))
     assert outcomes == [(AssertionError,expected), (AssertionError,expected)]
     assert not diff_calls, "ci_scope_rejection_constructed_relational_diff"
+
+
+# CR28: receipt-bound conditional resume; no execution before approved governance merge.
+CI_RESUME_EXECUTION_SCOPE = json.loads(r'''{
+  "kind": "BOUNDED_PRESERVED_RECOVERY_REVIEW_MAINTENANCE_AND_C3C_CI_ISOLATION_DEVELOPMENT_TESTING",
+  "implementation_paths": [
+    "backend/asie_local_api.py",
+    "backend/workspace.py",
+    "backend/workflow.py",
+    "backend/dib_api.py",
+    "backend/dib_persistence.py",
+    "backend/dib_tenant_api.py",
+    "backend/dib_http_mounting.py",
+    "backend/release_info.py",
+    "src/contracts.ts",
+    "src/dibApi.ts",
+    "src/App.tsx",
+    "src/customerLanguage.tsx",
+    "src/ASIECompleteSurfaceMount.tsx",
+    "src/DIBWorkspace.tsx",
+    "src/DIBIntakeItemGovernance.tsx",
+    "src/DIBManifestRunReadiness.tsx",
+    "registry/asie-canonical-api-output.v1.json",
+    "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+    "tests/test_customer_language_foundation.py",
+    "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+    "tests/test_context_recovery_api.py",
+    "tests/test_dib_context_recovery.py",
+    "tests/test_customer_capability_projection.py",
+    "tools/check_context_recovery_browser.py",
+    "backend/datasets.py",
+    "backend/repository.py",
+    "backend/evidence_ledger.py",
+    "src/api.ts",
+    "tests/test_intelligence_prerun_service.py",
+    "tests/test_intelligence_context_ingress_api.py",
+    "tests/test_program_close_10_repository_rebaseline.py"
+  ],
+  "repository_root_implementation_paths": [
+    ".github/workflows/asie-ci.yml"
+  ],
+  "preserved_repair_scope_sha256": "6e27e8bdb4cc369830af1d045952d52e333941da4f7fcf27c93e4cf9a2179fc8",
+  "preserved_execution_scope_sha256": "f4ec5b54b57829461721a39dc544c74323689e7eaaf129bfa5a8d02f5fb90515",
+  "preserved_contract": "FULL_REGISTERED_30_FILE_RECOVERY_PROVENANCE_AND_REVIEW_OVERLAY_CONTRACT_UNCHANGED",
+  "maintenance_paths": {
+    "package_root": [
+      "tests/test_program_close_10_repository_rebaseline.py"
+    ],
+    "repository_root": [
+      ".github/workflows/asie-ci.yml"
+    ]
+  },
+  "activity": "SPLIT_EXISTING_C3C_BENCHMARK_JOB_AND_PRESERVE_FAIL_CLOSED_REQUIRED_AGGREGATE",
+  "required_status_context": "Build frontend and test backend",
+  "required_status_integration_id": 15368,
+  "suite_timeout_minutes": 20,
+  "benchmark_job_timeout_minutes": 10,
+  "benchmark_step_timeout_minutes": 10,
+  "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+  "same_commit": "EXPLICIT_GITHUB_SHA_CHECKOUT_AND_ACTUAL_GIT_HEAD_OUTPUT_COMPARISON",
+  "aggregate": "ALWAYS_NEEDS_BOTH_EXACT_SUCCESS_AND_EXPECTED_SHA_ELSE_NON_SUCCESS",
+  "preserve": "ALL_TESTS_COMMANDS_NUMERICAL_CEILINGS_MEMORY_LIMITS_TRIGGERS_CONCURRENCY_READ_ONLY_PERMISSIONS",
+  "excluded": [
+    "RUNTIME_CHANGES",
+    "REJECTED_VALIDATION_OR_FIX",
+    "BENCHMARK_SCRIPT_CHANGES",
+    "PROTECTION_CHANGES",
+    "PAID_RUNNERS",
+    "ARTIFACT_CACHE_ADDITIONS",
+    "GRAPHIFY_ACTIVATION",
+    "APPLICATION_MERGE",
+    "LIVE_DATABASE_DEPLOYMENT_PROVIDER"
+  ],
+  "implementation_authorized": true,
+  "environment": "REPOSITORY_CI_SYNTHETIC_ONLY_AFTER_REVIEWED_RESUME",
+  "additional_schema_operations": [],
+  "repair_scope_sha256": "1986887c653fc99f9a4e5b6419394b73baddb501c3f3a2827659e5e6f8f20d94",
+  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+  "activities": [
+    "DEVELOP_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+    "TEST_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+    "DEVELOP_REGISTERED_REVIEW_OVERLAY_CLASSIFICATION_AND_SQLITE_TEST_CLEANUP",
+    "TEST_REGISTERED_REVIEW_OVERLAY_CLASSIFICATION_AND_SQLITE_TEST_CLEANUP",
+    "DEVELOP_REGISTERED_C3C_CI_ISOLATION",
+    "TEST_REGISTERED_C3C_CI_ISOLATION"
+  ],
+  "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+  "data_scope": "SYNTHETIC_DATA_ONLY",
+  "live_database_authorized": false,
+  "provider_activation_authorized": false,
+  "external_network_authorized": false,
+  "deployment_authorized": false,
+  "application_merge_authorized": false,
+  "production_placement_accepted": false,
+  "startup_maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+  "t08": "OPEN"
+}''')
+CI_RESUME_DECISION_BASE = json.loads(r'''{
+  "id": "DECISION-FC20-12-F01A-CONDITIONAL-C3C-CI-ISOLATION-RESUME-2026-10-18",
+  "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/216#issuecomment-6244578523",
+  "recorded_at": "2026-10-18T02:08:40.516851+00:00",
+  "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+  "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+  "subject": {
+    "baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+    "baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+    "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+    "checkpoint_event_index": 25,
+    "checkpoint_sha256": "d2693170127b636195b52fe49d50357511d6f84369eaf7fcbe4ecd9959ff2c4d",
+    "scope_extension_event_index": 26,
+    "scope_extension_sha256": "fceef5c9c2ec639539a54932a11346387e9509e658b9a0d1159e261a66b20b5f",
+    "repair_scope_sha256": "1986887c653fc99f9a4e5b6419394b73baddb501c3f3a2827659e5e6f8f20d94",
+    "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON"
+  }
+}''')
+CI_RESUME_EVENT_BASE = json.loads(r'''{
+  "type": "RESUME",
+  "recorded_at": "2026-10-18T02:09:39Z",
+  "baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+  "baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+  "effect": "F01A_DEFENSIVE_RESUME_ONLY"
+}''')
+CI_RESUME_VIEW_PREFIX_BLOBS = json.loads(r'''{
+  "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md": "0ea82ca28821bf2f2f5647d29e9b7f4fcce9f557",
+  "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md": "6c032c97ea02a5f3eef3dde6a9952df96e779039",
+  "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md": "ab0eff1624acf541f73345f55bdfc3a7d43295a4",
+  "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md": "9126053d02aae9acf5fa1c72b2f528ada6329c82",
+  "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md": "c269c4458473589bc723cfe39c06e9ca30bc9580"
+}''')
+CI_RESUME_VIEW_SECTION_SHA256 = json.loads(r'''{
+  "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md": "9626103bb6fdba31b3312c2c8882bb82d8cd1ac4d6e1284277c81d71c093f7fa",
+  "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md": "2eb2d4480e9628883d86dd9e5c6cec409274b87a834f188a1b753da76b1478c6",
+  "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md": "d94eb1a6ec26a79bbf03cb1a055a6f051b8cb9173aa7c4034ac591b4459ae636",
+  "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md": "479216a7843dc5335d69d940b5d5c192239382742e633e169ef503e25f400d33",
+  "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md": "776d5aa9eabd1d3949f6c280e30f10d23ca20f5fcfa24fb9917c5ff134f8fe44"
+}''')
+CI_RESUME_VIEW_MARKER = '<!-- F01A-C3C-CI-ISOLATION-CONDITIONAL-RESUME-2026-10-18 -->'
+CI_RESUME_BASELINE_BLOB = '4eef63fa72b0316383c6112ee92e577514123178'
+CI_RESUME_MANIFEST_BLOB = '3a3e5c8506600ad92fd30242000d40b5a01f1a84'
+
+CI_RESUME_DECISION = deepcopy(CI_RESUME_DECISION_BASE)
+CI_RESUME_DECISION["subject"]["execution_scope"] = deepcopy(CI_RESUME_EXECUTION_SCOPE)
+CI_RESUME_EVENT = deepcopy(CI_RESUME_EVENT_BASE)
+CI_RESUME_EVENT["owner_resume_decision"] = deepcopy(CI_RESUME_DECISION)
+CI_RESUME_RECORD = deepcopy(CI_SCOPE_RECORD)
+CI_RESUME_RECORD["execution_authorized"] = True
+CI_RESUME_RECORD["events"].append(deepcopy(CI_RESUME_EVENT))
+CI_RESUME_STOP_SHA256 = "d2693170127b636195b52fe49d50357511d6f84369eaf7fcbe4ecd9959ff2c4d"
+CI_RESUME_SCOPE_SHA256 = "fceef5c9c2ec639539a54932a11346387e9509e658b9a0d1159e261a66b20b5f"
+CI_RESUME_REPAIR_SHA256 = "1986887c653fc99f9a4e5b6419394b73baddb501c3f3a2827659e5e6f8f20d94"
+
+
+def _ci_resume_canonical_sha256(value: object) -> str:
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _validate_ci_resume_structure(record: dict, active_target: object) -> None:
+    """CR28-01/02: structural preparation pins history and scope; it grants no authority."""
+    assert type(record) is dict and set(record) == set(CI_RESUME_RECORD), "defensive_fields"
+    if record != CI_RESUME_RECORD: raise AssertionError("defensive_record_mismatch")
+    types_match = _ci_scope_literal_equal(record, CI_RESUME_RECORD)
+    assert types_match, "ci_resume_literal_types"
+    assert _ci_scope_literal_equal(active_target, DEFENSIVE_START_TARGET), "ci_resume_counted_slot"
+    assert record["execution_authorized"] is True, "ci_resume_proposed_flag"
+    assert len(record["events"]) == 28, "ci_resume_event_count"
+    history_matches = record["events"][:27] == CI_SCOPE_RECORD["events"]
+    assert history_matches, "ci_resume_history_changed"
+    assert record["allowed_paths"] == CI_SCOPE_RECORD["allowed_paths"], "ci_resume_package_paths"
+    assert record["allowed_repository_root_paths"] == [".github/workflows/asie-ci.yml"], "ci_resume_repository_paths"
+    assert record["allowed_schema_operations"] == [INDEX_OPERATION], "ci_resume_schema"
+    assert record["allowed_schema_operations"][0]["unique"] is False, "ci_resume_schema_literal"
+    subject = record["events"][27]["owner_resume_decision"]["subject"]
+    assert subject["baseline_commit_sha"] == "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af", "ci_resume_baseline_commit"
+    assert subject["baseline_manifest_blob_sha"] == CI_RESUME_BASELINE_BLOB, "ci_resume_baseline_blob"
+    assert type(subject["checkpoint_event_index"]) is int and subject["checkpoint_event_index"] == 25, "ci_resume_checkpoint_index"
+    assert type(subject["scope_extension_event_index"]) is int and subject["scope_extension_event_index"] == 26, "ci_resume_scope_index"
+    assert subject["checkpoint_sha256"] == CI_RESUME_STOP_SHA256 == _ci_resume_canonical_sha256(record["events"][25]), "ci_resume_checkpoint_pin"
+    assert subject["scope_extension_sha256"] == CI_RESUME_SCOPE_SHA256 == _ci_resume_canonical_sha256(record["events"][26]), "ci_resume_scope_pin"
+    repair = record["events"][26]["owner_scope_decision"]["subject"]["repair_scope"]
+    assert repair["implementation_authorized"] is False, "ci_resume_historical_scope_not_authority"
+    assert subject["repair_scope_sha256"] == CI_RESUME_REPAIR_SHA256 == _ci_resume_canonical_sha256(repair), "ci_resume_repair_pin"
+    scope = subject["execution_scope"]
+    assert scope["implementation_paths"] == CI_REPAIR_SCOPE["implementation_paths"], "ci_resume_active_package_paths"
+    assert scope["repository_root_implementation_paths"] == [".github/workflows/asie-ci.yml"], "ci_resume_active_repository_paths"
+    assert scope["implementation_authorized"] is True, "ci_resume_conditional_scope_only"
+    assert scope["additional_schema_operations"] == [], "ci_resume_no_added_schema"
+    assert len(record["allowed_paths"]) == 36 and len(scope["implementation_paths"]) == 31, "ci_resume_scope_counts"
+
+
+def validate_ci_resume(record: dict, active_target: object) -> None:
+    """CR28-03: only the pinned fresh conditional execution receipt may enter current seams."""
+    _validate_ci_resume_structure(record, active_target)
+    event = record["events"][27]; decision = event["owner_resume_decision"]
+    url = decision["record_url"]
+    assert type(url) is str and not url.startswith("UNRESOLVED"), "ci_resume_execution_decision_unresolved"
+    assert re.fullmatch(r"https://github\.com/alphasigma13579-lang/ASIE/(?:pull/[1-9][0-9]*#issuecomment-[1-9][0-9]*|blob/[0-9a-f]{40}/ASIE-Master-Build-Package-v1\.0\.0-r11-Agent-Engineer/docs/[^\s#]+#[^\s]+)", url), "ci_resume_execution_decision_url"
+    previous_urls = {old[key]["record_url"] for old in record["events"][:27] for key in ("owner_resume_decision", "owner_scope_decision") if key in old}
+    assert url not in previous_urls, "ci_resume_reused_receipt"
+    for value in (decision["recorded_at"], event["recorded_at"]):
+        assert type(value) is str and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", value), "ci_resume_execution_time_unresolved"
+    assert decision["effect"] == "F01A_DEFENSIVE_RESUME_ONLY", "ci_resume_execution_effect"
+    assert decision["condition"] == "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL", "ci_resume_merge_condition"
+
+
+def _ci_resume_historical_inverse(manifest: dict) -> dict:
+    """CR28-04: preparation-only inverse restores the complete stopped 27-event blob."""
+    original = defensive_record(manifest)
+    _validate_ci_resume_structure(original, manifest["execution_sequence"]["active_target"])
+    restored = dict(manifest); restored["packages"] = list(manifest["packages"])
+    index = next(i for i,p in enumerate(manifest["packages"]) if p["id"] == "FC20-12")
+    package = dict(manifest["packages"][index]); restored["packages"][index] = package
+    package["execution_slices"] = list(package["execution_slices"])
+    record = dict(original); package["execution_slices"][1] = record
+    record["execution_authorized"] = False; record["events"] = list(original["events"][:27])
+    raw = (json.dumps(restored, ensure_ascii=False, indent=2) + "\n").encode()
+    assert ci_resume_blob_sha(raw) == CI_RESUME_BASELINE_BLOB, "ci_resume_baseline_mismatch"
+    detached = json.loads(raw)
+    validate_ci_scope(defensive_record(detached), detached["execution_sequence"]["active_target"])
+    return detached
+
+
+def validate_ci_resume_preparation(manifest: dict) -> dict:
+    """Explicitly non-admitting preparation check; callers receive historical state only."""
+    return _ci_resume_historical_inverse(manifest)
+
+
+def validate_ci_resume_baseline(manifest: dict) -> dict:
+    """Public/current inverse requires genuine execution authority before historical access."""
+    validate_ci_resume(defensive_record(manifest), manifest["execution_sequence"]["active_target"])
+    return _ci_resume_historical_inverse(manifest)
+
+
+@lru_cache(maxsize=2, typed=True)
+def _ci_resume_cached_blob_sha(raw: bytes) -> str:
+    return git_blob_sha(raw)
+
+
+def ci_resume_blob_sha(raw: bytes) -> str:
+    if type(raw) is not bytes: raise TypeError("ci_resume_digest_requires_exact_bytes")
+    return _ci_resume_cached_blob_sha(raw)
+
+
+_CI_RESUME_HISTORY_BYTES: tuple[bytes, bytes] | None = None
+
+
+def ci_resume_historical_source_bytes() -> bytes:
+    """CR28-08: fresh source read, two pinned immutable strings, no cached authority."""
+    global _CI_RESUME_HISTORY_BYTES
+    source = MANIFEST_PATH.read_bytes()
+    if type(_CI_RESUME_HISTORY_BYTES) is tuple and len(_CI_RESUME_HISTORY_BYTES) == 2:
+        cached_source = _CI_RESUME_HISTORY_BYTES[0]
+        if type(source) is bytes and type(cached_source) is bytes and source == cached_source:
+            source = cached_source
+    assert ci_resume_blob_sha(source) == CI_RESUME_MANIFEST_BLOB, "ci_resume_fixture_source_changed"
+    if _CI_RESUME_HISTORY_BYTES is None:
+        baseline = _ci_resume_historical_inverse(json.loads(source))
+        raw = (json.dumps(baseline, ensure_ascii=False, indent=2) + "\n").encode()
+        assert ci_resume_blob_sha(raw) == CI_RESUME_BASELINE_BLOB, "ci_resume_fixture_baseline_changed"
+        _CI_RESUME_HISTORY_BYTES = (source, raw)
+    assert type(_CI_RESUME_HISTORY_BYTES) is tuple and len(_CI_RESUME_HISTORY_BYTES) == 2, "ci_resume_fixture_cache_shape"
+    cached_source, raw = _CI_RESUME_HISTORY_BYTES
+    assert type(cached_source) is bytes and type(raw) is bytes, "ci_resume_fixture_cache_type"
+    source_matches = source == cached_source
+    assert source_matches, "ci_resume_fixture_cache_source_changed"
+    assert ci_resume_blob_sha(raw) == CI_RESUME_BASELINE_BLOB, "ci_resume_fixture_baseline_changed"
+    return raw
+
+
+def historical_ci_scope_manifest() -> dict:
+    """Fresh canonical 27-event fixture; never an alternate current authority."""
+    source = ci_resume_historical_source_bytes(); manifest = json.loads(source)
+    source_is_canonical = source == (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
+    assert source_is_canonical, "manifest_noncanonical_source"
+    return manifest
+
+
+def ci_resume_historical_view(source_bytes: bytes, relative_path: str) -> bytes:
+    assert type(source_bytes) is bytes, "ci_resume_view_source_bytes"
+    assert type(relative_path) is str and relative_path in CI_RESUME_VIEW_SECTION_SHA256, "ci_resume_view_path"
+    marker = CI_RESUME_VIEW_MARKER.encode(); separator = b"\n" + marker + b"\n"
+    assert source_bytes.count(marker) == 1, "ci_resume_view_marker"
+    assert source_bytes.count(separator) == 1, "ci_resume_view_boundary"
+    prefix, section = source_bytes.split(separator,1)
+    assert git_blob_sha(prefix) == CI_RESUME_VIEW_PREFIX_BLOBS[relative_path], "ci_resume_view_prefix_changed"
+    assert hashlib.sha256(marker+b"\n"+section).hexdigest() == CI_RESUME_VIEW_SECTION_SHA256[relative_path], "ci_resume_view_section_changed"
+    ci_scope_historical_view(prefix, relative_path)
+    return prefix
+
+
+def test_ci_resume_current_admission_requires_real_execution_receipt() -> None:
+    """CR28-03: real pinned execution receipt admits the conditional governance candidate."""
+    manifest = load_manifest()
+    validate_routing_registration(manifest); validate_execution_sequence(manifest)
+    validate_ci_resume_baseline(manifest)
+
+
+def test_ci_resume_preparation_inverse_and_complete_history() -> None:
+    manifest = load_manifest(); before = json.dumps(manifest,sort_keys=True)
+    prior = validate_ci_resume_preparation(manifest)
+    assert json.dumps(manifest,sort_keys=True) == before
+    assert defensive_record(prior)["events"] == CI_SCOPE_RECORD["events"]
+    assert defensive_record(prior)["execution_authorized"] is False
+    assert len(defensive_record(prior)["allowed_paths"]) == 36
+    assert defensive_record(prior)["allowed_repository_root_paths"] == [".github/workflows/asie-ci.yml"]
+    assert git_blob_sha((json.dumps(prior,ensure_ascii=False,indent=2)+"\n").encode()) == CI_RESUME_BASELINE_BLOB
+    inverse = prior
+    for validator in (validate_ci_scope_baseline,validate_overlay_resume_baseline,validate_overlay_scope_baseline,validate_dataset_resume_baseline,validate_dataset_scope_baseline,validate_recovery_resume_baseline,validate_recovery_scope_baseline,validate_key_binding_resume_baseline,validate_key_binding_scope_baseline,validate_review_identity_resume_baseline,validate_review_identity_scope_baseline,validate_index_resume_baseline,validate_index_scope_baseline,validate_consumption_resume_baseline,validate_consumption_scope_baseline,validate_resume_baseline,validate_scope_extension_baseline):
+        inverse = validator(inverse)
+
+
+@pytest.mark.parametrize("location,field,placeholder", (("decision","record_url","UNRESOLVED_OWNER_EXECUTION_DECISION_RECORD_URL"),("decision","recorded_at","UNRESOLVED_OWNER_EXECUTION_DECISION_RECORDED_AT"),("event","recorded_at","UNRESOLVED_RESUME_TRANSITION_RECORDED_AT")))
+def test_ci_resume_unresolved_preparation_receipt_cannot_admit(location: str, field: str, placeholder: str) -> None:
+    """Explicit missing-authority mutations stay denied after the real receipt is pinned."""
+    manifest = load_manifest(); validate_ci_resume_baseline(manifest)
+    historical_ci_scope_manifest(); historical_ci_scope_manifest()
+    event = defensive_record(manifest)["events"][27]
+    target = event["owner_resume_decision"] if location == "decision" else event
+    target[field] = placeholder
+    for validator in (validate_ci_resume_baseline,validate_routing_registration,validate_execution_sequence):
+        with pytest.raises(AssertionError,match="defensive_record_mismatch"): validator(manifest)
+
+
+@pytest.mark.parametrize("path", [tuple(path) for path in index_resume_leaf_paths(CI_RESUME_EVENT)])
+def test_ci_resume_pins_each_new_leaf(path: tuple) -> None:
+    record = deepcopy(CI_RESUME_RECORD); target = record["events"][27]
+    for key in path[:-1]: target = target[key]
+    target[path[-1]] = "UNREVIEWED"
+    with pytest.raises(AssertionError): _validate_ci_resume_structure(record,DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("path", [(),("events",27),("events",27,"owner_resume_decision"),("events",27,"owner_resume_decision","subject"),("events",27,"owner_resume_decision","subject","execution_scope")])
+@pytest.mark.parametrize("mutation", ("missing","extra"))
+def test_ci_resume_closed_objects(path: tuple, mutation: str) -> None:
+    record = deepcopy(CI_RESUME_RECORD); target = record
+    for key in path: target = target[key]
+    if mutation == "missing": target.pop(next(iter(target)))
+    else: target["unapproved"] = True
+    with pytest.raises(AssertionError): _validate_ci_resume_structure(record,DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("index", range(27))
+def test_ci_resume_preserves_every_prior_event(index: int) -> None:
+    record = deepcopy(CI_RESUME_RECORD);record["events"][index]["type"]="CHANGED"
+    with pytest.raises(AssertionError):_validate_ci_resume_structure(record,DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("path,value", [(("execution_authorized",),1),(("execution_authorized",),False),(("allowed_schema_operations",0,"unique"),0),(("events",27,"owner_resume_decision","subject","checkpoint_event_index"),25.0),(("events",27,"owner_resume_decision","subject","scope_extension_event_index"),26.0),(("events",27,"owner_resume_decision","subject","execution_scope","implementation_authorized"),1),(("events",27,"owner_resume_decision","subject","execution_scope","live_database_authorized"),0),(("events",26,"owner_scope_decision","subject","repair_scope","implementation_authorized"),0)])
+def test_ci_resume_strict_literal_types(path: tuple,value: object) -> None:
+    record=deepcopy(CI_RESUME_RECORD);target=record
+    for key in path[:-1]:target=target[key]
+    target[path[-1]]=value
+    with pytest.raises(AssertionError):_validate_ci_resume_structure(record,DEFENSIVE_START_TARGET)
+
+
+@pytest.mark.parametrize("mutation", ("checkpoint_index","scope_index","checkpoint_hash","scope_hash","repair_hash","stale_baseline","root_swap","root_wildcard","root_parent","scope_union","historical_scope_true","slot","hold","unrelated"))
+def test_ci_resume_inverse_rejects_scope_reference_and_unrelated_drift(mutation: str) -> None:
+    manifest=load_manifest();record=defensive_record(manifest);subject=record["events"][27]["owner_resume_decision"]["subject"]
+    if mutation=="checkpoint_index":subject["checkpoint_event_index"]=26
+    elif mutation=="scope_index":subject["scope_extension_event_index"]=25
+    elif mutation=="checkpoint_hash":subject["checkpoint_sha256"]="0"*64
+    elif mutation=="scope_hash":subject["scope_extension_sha256"]="0"*64
+    elif mutation=="repair_hash":subject["repair_scope_sha256"]="0"*64
+    elif mutation=="stale_baseline":subject["baseline_commit_sha"]="e5e13f672161a283c82634cf8df946d6e90b0aa9"
+    elif mutation=="root_swap":subject["execution_scope"]["repository_root_implementation_paths"]=["tests/test_program_close_10_repository_rebaseline.py"]
+    elif mutation=="root_wildcard":record["allowed_repository_root_paths"]=[".github/workflows/*"]
+    elif mutation=="root_parent":record["allowed_repository_root_paths"]=["../.github/workflows/asie-ci.yml"]
+    elif mutation=="scope_union":subject["execution_scope"]["implementation_paths"]=list(record["allowed_paths"])
+    elif mutation=="historical_scope_true":record["events"][26]["owner_scope_decision"]["subject"]["repair_scope"]["implementation_authorized"]=True
+    elif mutation=="slot":manifest["execution_sequence"]["active_target"]=None
+    elif mutation=="hold":manifest["execution_sequence"]["held_packages"]=[]
+    else:manifest["program_id"]="UNRELATED"
+    before=json.dumps(manifest,sort_keys=True)
+    with pytest.raises(AssertionError):validate_ci_resume_preparation(manifest)
+    assert json.dumps(manifest,sort_keys=True)==before
+
+
+@pytest.mark.parametrize("receipt", ("scope_preparation","previous_resume","merge_only","immediate","missing_url","missing_time"))
+def test_ci_resume_rejects_preparation_merge_and_reused_authority(receipt: str) -> None:
+    manifest=load_manifest();decision=defensive_record(manifest)["events"][27]["owner_resume_decision"]
+    if receipt=="scope_preparation":decision["record_url"]=CI_SCOPE_EVENT["owner_scope_decision"]["record_url"];decision["effect"]=CI_SCOPE_EVENT["owner_scope_decision"]["effect"]
+    elif receipt=="previous_resume":decision["record_url"]=OVERLAY_RESUME_DECISION["record_url"]
+    elif receipt=="merge_only":decision["effect"]="GOVERNANCE_MERGE_ONLY"
+    elif receipt=="immediate":decision["condition"]="IMMEDIATE"
+    elif receipt=="missing_url":decision["record_url"]=""
+    else:decision["recorded_at"]=""
+    for validator in (validate_ci_resume_baseline,validate_routing_registration,validate_execution_sequence):
+        with pytest.raises(AssertionError):validator(manifest)
+
+
+@pytest.mark.parametrize("relative_path",tuple(CI_RESUME_VIEW_SECTION_SHA256))
+@pytest.mark.parametrize("mutation",("valid","prefix","section","duplicate","boundary","swap"))
+def test_ci_resume_projection_seals(relative_path: str,mutation: str) -> None:
+    root=Path(__file__).resolve().parents[1];source=(root/relative_path).read_bytes();sep=("\n"+CI_RESUME_VIEW_MARKER+"\n").encode();prefix,section=source.split(sep,1)
+    if mutation=="valid":assert ci_resume_historical_view(source,relative_path)==prefix;return
+    if mutation=="prefix":source=b" "+source
+    elif mutation=="section":source+=b" "
+    elif mutation=="duplicate":source+=sep
+    elif mutation=="boundary":source=prefix+b"\n"+CI_RESUME_VIEW_MARKER.encode()+b"\r\n"+section
+    else:
+        other=next(path for path in CI_RESUME_VIEW_SECTION_SHA256 if path!=relative_path);source=prefix+sep+(root/other).read_bytes().split(sep,1)[1]
+    with pytest.raises(AssertionError,match="ci_resume_view"):ci_resume_historical_view(source,relative_path)
+
+
+def test_ci_resume_projection_raw_types_and_unknown_path() -> None:
+    path=next(iter(CI_RESUME_VIEW_SECTION_SHA256));raw=(Path(__file__).resolve().parents[1]/path).read_bytes()
+    for value in (raw.decode(),bytearray(raw),None,False):
+        with pytest.raises(AssertionError,match="ci_resume_view_source_bytes"):ci_resume_historical_view(value,path)
+    for wrong in ("",None,"../"+path,".github/workflows/asie-ci.yml"):
+        with pytest.raises(AssertionError,match="ci_resume_view_path"):ci_resume_historical_view(raw,wrong)
+
+
+def test_ci_resume_frozen_acr_unchanged() -> None:
+    raw=(Path(__file__).resolve().parents[1]/CI_ACR_PATH).read_bytes()
+    assert git_blob_sha(raw)==CI_ACR_BLOB
+    ci_scope_acr_historical_view(raw)
+
+
+def test_ci_resume_fixture_cold_warm_detachment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None)
+    manifest=load_manifest();inverse=validate_ci_resume_preparation(manifest);first=historical_ci_scope_manifest();second=historical_ci_scope_manifest()
+    expected=json.dumps(inverse,ensure_ascii=False,indent=2)+"\n"
+    assert json.dumps(first,ensure_ascii=False,indent=2)+"\n"==expected
+    assert json.dumps(second,ensure_ascii=False,indent=2)+"\n"==expected
+    def ids(value):
+        if type(value) is dict:return {id(value)}.union(*(ids(child) for child in value.values()))
+        if type(value) is list:return {id(value)}.union(*(ids(child) for child in value))
+        return set()
+    assert ids(first).isdisjoint(ids(second)) and ids(first).isdisjoint(ids(manifest)) and ids(first).isdisjoint(ids(CI_SCOPE_RECORD))
+    defensive_record(first)["events"][0]["type"]="MUTATED"
+    assert json.dumps(historical_ci_scope_manifest(),ensure_ascii=False,indent=2)+"\n"==expected
+
+
+@pytest.mark.parametrize("warm",(False,True))
+@pytest.mark.parametrize("mutation",("bytes","literal","history","slot","unrelated","receipt","root"))
+def test_ci_resume_fixture_cold_warm_source_denials(monkeypatch: pytest.MonkeyPatch,warm: bool,mutation: str) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);manifest=load_manifest();record=defensive_record(manifest)
+    if warm:historical_ci_scope_manifest()
+    cache=_CI_RESUME_HISTORY_BYTES
+    if mutation=="literal":record["execution_authorized"]=1
+    elif mutation=="history":record["events"][0]["type"]="CHANGED"
+    elif mutation=="slot":manifest["execution_sequence"]["active_target"]=None
+    elif mutation=="unrelated":manifest["program_id"]="CHANGED"
+    elif mutation=="receipt":record["events"][27]["owner_resume_decision"]["effect"]="PREPARE_ONLY"
+    elif mutation=="root":record["allowed_repository_root_paths"].append(".github/workflows/*")
+    raw=(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n").encode()
+    if mutation=="bytes":raw+=b"\n"
+    monkeypatch.setattr(Path,"read_bytes",lambda _path:raw)
+    with pytest.raises(AssertionError,match="ci_resume_fixture_source_changed"):historical_ci_scope_manifest()
+    assert _CI_RESUME_HISTORY_BYTES is cache
+
+
+@pytest.mark.parametrize("mutation",("source","baseline","type","shape","source_type"))
+def test_ci_resume_fixture_poisoned_cache_denied(monkeypatch: pytest.MonkeyPatch,mutation: str) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);historical_ci_scope_manifest();source,baseline=_CI_RESUME_HISTORY_BYTES
+    cache=(source+b" ",baseline) if mutation=="source" else (source,baseline+b" ") if mutation=="baseline" else (source,{}) if mutation=="type" else (source,) if mutation=="shape" else (bytearray(source),baseline)
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",cache)
+    with pytest.raises(AssertionError,match="ci_resume_fixture_"):historical_ci_scope_manifest()
+    assert _CI_RESUME_HISTORY_BYTES is cache
+
+
+def test_ci_resume_fixture_single_read_and_failed_publication(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);raw=MANIFEST_PATH.read_bytes();reads=[];calls=[];original=_ci_resume_historical_inverse
+    def alternate(_path):reads.append(True);return raw if len(reads)==1 else raw+b"\n"
+    def checked(manifest):calls.append(True);return original(manifest)
+    monkeypatch.setattr(Path,"read_bytes",alternate);monkeypatch.setitem(globals(),"_ci_resume_historical_inverse",checked)
+    historical_ci_scope_manifest();assert len(reads)==len(calls)==1
+    with pytest.raises(AssertionError,match="ci_resume_fixture_source_changed"):historical_ci_scope_manifest()
+    assert len(reads)==2 and len(calls)==1
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);monkeypatch.setattr(Path,"read_bytes",lambda _path:raw)
+    def failed(_manifest):raise AssertionError("injected_inverse_failure")
+    monkeypatch.setitem(globals(),"_ci_resume_historical_inverse",failed)
+    with pytest.raises(AssertionError,match="injected_inverse_failure"):historical_ci_scope_manifest()
+    assert _CI_RESUME_HISTORY_BYTES is None
+
+
+def test_ci_resume_digest_bounded_exact_and_independent() -> None:
+    _ci_resume_cached_blob_sha.cache_clear();prior=_ci_scope_cached_blob_sha.cache_info();raw=b"resume-digest";equal=bytes(bytearray(raw))
+    assert ci_resume_blob_sha(raw)==ci_resume_blob_sha(equal)==git_blob_sha(raw)
+    assert _ci_resume_cached_blob_sha.cache_info().hits==1
+    changed=raw+b"x";assert ci_resume_blob_sha(changed)==git_blob_sha(changed)!=git_blob_sha(raw)
+    ci_resume_blob_sha(b"third");assert _ci_resume_cached_blob_sha.cache_info().currsize==2
+    misses=_ci_resume_cached_blob_sha.cache_info().misses;ci_resume_blob_sha(raw);assert _ci_resume_cached_blob_sha.cache_info().misses==misses+1
+    assert _ci_scope_cached_blob_sha.cache_info()==prior
+
+
+def test_ci_resume_digest_nonexact_types_and_failure_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Pretend(bytes):
+        def __eq__(self,other):return True
+        __hash__=bytes.__hash__
+    _ci_resume_cached_blob_sha.cache_clear();before=_ci_resume_cached_blob_sha.cache_info()
+    for raw in (Pretend(b"x"),bytearray(b"x"),memoryview(b"x"),None,"x",False,0,[],{}):
+        with pytest.raises(TypeError,match="ci_resume_digest_requires_exact_bytes"):ci_resume_blob_sha(raw)
+    assert _ci_resume_cached_blob_sha.cache_info()==before
+    original=git_blob_sha
+    def failed(raw):raise RuntimeError("synthetic_ci_resume_digest_failure")
+    monkeypatch.setitem(globals(),"git_blob_sha",failed)
+    with pytest.raises(RuntimeError,match="synthetic_ci_resume_digest_failure"):ci_resume_blob_sha(b"fresh")
+    assert _ci_resume_cached_blob_sha.cache_info().currsize==0
+    monkeypatch.setitem(globals(),"git_blob_sha",original);assert ci_resume_blob_sha(b"fresh")==original(b"fresh")
+    _ci_resume_cached_blob_sha.cache_clear()
+
+
+@pytest.mark.parametrize("warm",(False,True))
+def test_ci_resume_cached_uncached_equivalence(monkeypatch: pytest.MonkeyPatch,warm: bool) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);_ci_resume_cached_blob_sha.cache_clear()
+    if warm:historical_ci_scope_manifest()
+    first=historical_ci_scope_manifest();monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None)
+    def uncached(raw):
+        if type(raw) is not bytes:raise TypeError("ci_resume_digest_requires_exact_bytes")
+        return git_blob_sha(raw)
+    monkeypatch.setitem(globals(),"ci_resume_blob_sha",uncached);second=historical_ci_scope_manifest()
+    assert json.dumps(first,sort_keys=True)==json.dumps(second,sort_keys=True)
+    defensive_record(first)["events"][0]["type"]="MUTATED";assert defensive_record(second)["events"][0]["type"]!="MUTATED"
+
+
+def test_ci_resume_identity_uses_fresh_equal_bytes_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);historical_ci_scope_manifest();cached,baseline=_CI_RESUME_HISTORY_BYTES;reads=[];seen=[];original=ci_resume_blob_sha
+    def fresh(_path):value=bytes(bytearray(cached));reads.append(value);return value
+    def observed(raw):seen.append(raw);return original(raw)
+    monkeypatch.setattr(Path,"read_bytes",fresh);monkeypatch.setitem(globals(),"ci_resume_blob_sha",observed)
+    assert ci_resume_historical_source_bytes()==baseline
+    assert len(reads)==1 and reads[0]==cached and reads[0] is not cached
+    assert seen[0] is cached and seen[-1] is baseline
+    changed=cached+b" ";monkeypatch.setattr(Path,"read_bytes",lambda _path:changed)
+    with pytest.raises(AssertionError,match="ci_resume_fixture_source_changed"):ci_resume_historical_source_bytes()
+    assert seen[-1] is changed
+
+
+@pytest.mark.parametrize("mutation",("record","literal","cache_source","canonical"))
+def test_ci_resume_bounded_ci_denial_equivalence(monkeypatch: pytest.MonkeyPatch,mutation: str) -> None:
+    import difflib
+    monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",None);historical_ci_scope_manifest();source,baseline=_CI_RESUME_HISTORY_BYTES;record=deepcopy(CI_RESUME_RECORD);calls=[]
+    def bad_diff(*args,**kwargs):calls.append(True);raise RuntimeError("unexpected_ci_resume_relational_diff")
+    if mutation=="record":record["events"][0]["type"]="CHANGED";invoke=lambda:_validate_ci_resume_structure(record,DEFENSIVE_START_TARGET);expected="defensive_record_mismatch"
+    elif mutation=="literal":record["execution_authorized"]=1;invoke=lambda:_validate_ci_resume_structure(record,DEFENSIVE_START_TARGET);expected="ci_resume_literal_types"
+    elif mutation=="cache_source":monkeypatch.setitem(globals(),"_CI_RESUME_HISTORY_BYTES",(source+b" ",baseline));invoke=ci_resume_historical_source_bytes;expected="ci_resume_fixture_cache_source_changed"
+    else:monkeypatch.setitem(globals(),"ci_resume_historical_source_bytes",lambda:baseline+b"\n");invoke=historical_ci_scope_manifest;expected="manifest_noncanonical_source"
+    outcomes=[]
+    for ci in (False,True):
+        if ci:monkeypatch.setenv("CI","true")
+        else:monkeypatch.delenv("CI",raising=False)
+        monkeypatch.setattr(difflib,"ndiff",bad_diff)
+        try:invoke()
+        except AssertionError as exc:outcomes.append((type(exc),str(exc).split("\n",1)[0]))
+        else:outcomes.append((None,None))
+    assert outcomes==[(AssertionError,expected),(AssertionError,expected)] and not calls
+
+
+@pytest.mark.parametrize("mutation", ("source", "baseline", "type", "shape", "source_type", "source_byte"))
+def test_ci_resume_identity_preserves_original_denial_order(monkeypatch: pytest.MonkeyPatch, mutation: str) -> None:
+    import inspect
+    monkeypatch.setitem(globals(), "_CI_RESUME_HISTORY_BYTES", None)
+    historical_ci_scope_manifest(); source, baseline = _CI_RESUME_HISTORY_BYTES
+    original_text = inspect.getsource(ci_resume_historical_source_bytes)
+    fast_block = '    if type(_CI_RESUME_HISTORY_BYTES) is tuple and len(_CI_RESUME_HISTORY_BYTES) == 2:\n        cached_source = _CI_RESUME_HISTORY_BYTES[0]\n        if type(source) is bytes and type(cached_source) is bytes and source == cached_source:\n            source = cached_source\n'
+    assert original_text.count(fast_block) == 1
+    namespace = dict(globals()); exec(original_text.replace(fast_block, ""), namespace)
+    fast_namespace = dict(globals()); exec(original_text, fast_namespace)
+    cache = (source+b" ", baseline) if mutation == "source" else (source, baseline+b" ") if mutation == "baseline" else (source, {}) if mutation == "type" else (source,) if mutation == "shape" else (source, baseline)
+    current = bytearray(source) if mutation == "source_type" else source+b" " if mutation == "source_byte" else bytes(bytearray(source))
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: current)
+    monkeypatch.setitem(globals(), "_CI_RESUME_HISTORY_BYTES", cache)
+    namespace["_CI_RESUME_HISTORY_BYTES"] = cache
+    fast_namespace["_CI_RESUME_HISTORY_BYTES"] = cache
+    outcomes = []
+    for fn in (namespace["ci_resume_historical_source_bytes"], fast_namespace["ci_resume_historical_source_bytes"]):
+        try: fn()
+        except (AssertionError, TypeError) as exc: outcomes.append((type(exc), str(exc)))
+        else: outcomes.append((None, None))
+    assert outcomes[0] == outcomes[1] and outcomes[0][0] is not None
+    assert _CI_RESUME_HISTORY_BYTES is cache
+
+
+@pytest.mark.parametrize("event_index,field", [(i, field) for i in (15,17,18,20,21,23,24,26) for field in ("record_url","recorded_at","effect")]+[(18,"condition"),(21,"condition"),(24,"condition")])
+def test_ci_resume_historical_receipt_negatives_reach_current_seams(event_index: int, field: str) -> None:
+    """History corruption must fail before the intentionally unresolved new receipt."""
+    manifest = load_manifest(); event = defensive_record(manifest)["events"][event_index]
+    decision = event["owner_scope_decision" if event_index in (17,20,23,26) else "owner_resume_decision"]
+    decision[field] = "UNRESOLVED_OR_CHANGED"
+    for validator in (validate_ci_resume_baseline, validate_routing_registration, validate_execution_sequence):
+        with pytest.raises(AssertionError, match="defensive_record_mismatch"): validator(manifest)
+
+
+def test_ci_resume_stopped_history_cannot_be_current_authority() -> None:
+    manifest = historical_ci_scope_manifest()
+    for validator in (validate_ci_resume_baseline, validate_routing_registration, validate_execution_sequence):
+        with pytest.raises(AssertionError, match="defensive_record_mismatch"): validator(manifest)
