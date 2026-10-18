@@ -10734,7 +10734,7 @@ CI_RESUME_VIEW_SECTION_SHA256 = json.loads(r'''{
 }''')
 CI_RESUME_VIEW_MARKER = '<!-- F01A-C3C-CI-ISOLATION-CONDITIONAL-RESUME-2026-10-18 -->'
 CI_RESUME_BASELINE_BLOB = '4eef63fa72b0316383c6112ee92e577514123178'
-CI_RESUME_MANIFEST_BLOB = 'a2fe1afe39922d9369c9cd26c5dfc20d15517e3b'
+CI_RESUME_MANIFEST_BLOB = 'a6e7a4059ad28edbb31b507e51902f538e330a4e'
 
 CI_RESUME_DECISION = deepcopy(CI_RESUME_DECISION_BASE)
 CI_RESUME_DECISION["subject"]["execution_scope"] = deepcopy(CI_RESUME_EXECUTION_SCOPE)
@@ -11201,7 +11201,7 @@ CI_AMEND_EVENT = json.loads(r'''{
     "decision_record": {
       "path": "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md",
       "section_marker": "<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->",
-      "section_sha256": "8e4df3c4283b6adde58d8d630e0a8ba126a59fa04fb16666efa02b946b578cd2"
+      "section_sha256": "f00f51702d6e93dbe45adbb62b6d5ce0a7227af2d4e6080a5c0513bacea1b0cf"
     },
     "effect": "EDIT_TEST_AND_UPDATE_PR217_CI_MAINTENANCE_BEFORE_GOVERNANCE_MERGE",
     "effective_condition": "EFFECTIVE_NOW_FOR_EXACT_TWO_CI_MAINTENANCE_PATHS_ONLY",
@@ -11261,7 +11261,7 @@ CI_AMEND_EVENT = json.loads(r'''{
         "attempt1_pytest_seconds": 1170.37,
         "attempt2_pytest_cancelled_percent": 99,
         "attempt2_pytest_summary_available": false,
-        "explicit_log_cause": "THE_OPERATION_WAS_CANCELED_NO_EXPLICIT_TIMEOUT_CAUSE",
+        "explicit_log_cause": "RAW_STEP_LOG_CANCELLATION_WITH_EXPLICIT_GITHUB_JOB_TIMEOUT_20M0S_ANNOTATION",
         "thirty_minute_success_guaranteed": false
       },
       "general_resume_condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
@@ -11279,27 +11279,27 @@ CI_AMEND_EVENT = json.loads(r'''{
 CI_AMEND_SEALS = json.loads(r'''{
   "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md": {
     "prefix_blob": "c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c",
-    "section_sha256": "8e4df3c4283b6adde58d8d630e0a8ba126a59fa04fb16666efa02b946b578cd2"
+    "section_sha256": "f00f51702d6e93dbe45adbb62b6d5ce0a7227af2d4e6080a5c0513bacea1b0cf"
   },
   "docs/FOUNDATION-COMPLETE-20-CORE-INTELLIGENCE-COMPLETION-PROGRAM-2026-07-29.md": {
     "prefix_blob": "a90ac8eb052c8a8c48502dd32d3df0622ebf9aca",
-    "section_sha256": "e65d76afe797839700623b38534904dae86fac30d2ad67c2cf32fe657b47da94"
+    "section_sha256": "78bedaafbe837e1c72bb548ecbab5619443707628912793b61ab3a65b2e48b97"
   },
   "docs/EKB/FOUNDATION-COMPLETE-20-PACKAGE-INDEX.md": {
     "prefix_blob": "78e3845b35567f5ebf660d4e7ba7f043ca06345a",
-    "section_sha256": "e65d76afe797839700623b38534904dae86fac30d2ad67c2cf32fe657b47da94"
+    "section_sha256": "78bedaafbe837e1c72bb548ecbab5619443707628912793b61ab3a65b2e48b97"
   },
   "docs/ASIE-BETA-EXECUTION-MASTER-PLAN-2026-09-09.md": {
     "prefix_blob": "f6f3a70c8d13e2427fe3ca83aaaa8088d80e9826",
-    "section_sha256": "e65d76afe797839700623b38534904dae86fac30d2ad67c2cf32fe657b47da94"
+    "section_sha256": "78bedaafbe837e1c72bb548ecbab5619443707628912793b61ab3a65b2e48b97"
   },
   "docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md": {
     "prefix_blob": "4d70a08c05ee0018b9fff2b284af80e30a5e7c76",
-    "section_sha256": "e65d76afe797839700623b38534904dae86fac30d2ad67c2cf32fe657b47da94"
+    "section_sha256": "78bedaafbe837e1c72bb548ecbab5619443707628912793b61ab3a65b2e48b97"
   },
   "docs/FC20-12-F01A-APPROVAL-CONSUMPTION-SCOPE-REGISTRATION-2026-10-09.md": {
     "prefix_blob": "139cd99540afcf3cf4a7d25930dbbd3fdce9c512",
-    "section_sha256": "e65d76afe797839700623b38534904dae86fac30d2ad67c2cf32fe657b47da94"
+    "section_sha256": "78bedaafbe837e1c72bb548ecbab5619443707628912793b61ab3a65b2e48b97"
   }
 }''')
 CI_AMEND_MARKER = '<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->'

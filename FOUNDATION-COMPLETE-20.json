@@ -122005,7 +122005,7 @@
                 "decision_record": {
                   "path": "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md",
                   "section_marker": "<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->",
-                  "section_sha256": "8e4df3c4283b6adde58d8d630e0a8ba126a59fa04fb16666efa02b946b578cd2"
+                  "section_sha256": "f00f51702d6e93dbe45adbb62b6d5ce0a7227af2d4e6080a5c0513bacea1b0cf"
                 },
                 "effect": "EDIT_TEST_AND_UPDATE_PR217_CI_MAINTENANCE_BEFORE_GOVERNANCE_MERGE",
                 "effective_condition": "EFFECTIVE_NOW_FOR_EXACT_TWO_CI_MAINTENANCE_PATHS_ONLY",
@@ -122065,7 +122065,7 @@
                     "attempt1_pytest_seconds": 1170.37,
                     "attempt2_pytest_cancelled_percent": 99,
                     "attempt2_pytest_summary_available": false,
-                    "explicit_log_cause": "THE_OPERATION_WAS_CANCELED_NO_EXPLICIT_TIMEOUT_CAUSE",
+                    "explicit_log_cause": "RAW_STEP_LOG_CANCELLATION_WITH_EXPLICIT_GITHUB_JOB_TIMEOUT_20M0S_ANNOTATION",
                     "thirty_minute_success_guaranteed": false
                   },
                   "general_resume_condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
