@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.contracts import new_id, now_iso
-from backend.dib_runtime import FINANCE_REQUIRED_KEYS
+from backend.dib_runtime import FINANCE_REQUIRED_KEYS, rejected_input_blockers
 
 DIB_PROJECT_RUN_GATE_ID = "DIB-LIVE-002F-PROJECT-RUN-MANIFEST-GATE-v1"
 DIB_PROJECT_RUN_GATE_STATUS = "post_freeze_manifest_gate"
@@ -125,7 +125,7 @@ def _reject_forbidden_payload(payload: Any, *, context: str) -> None:
 
 
 def _manifest_blockers(manifest: dict[str, Any], validation_gate: dict[str, Any]) -> list[dict[str, Any]]:
-    blockers: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = rejected_input_blockers(manifest.get("items") or [])
     if manifest.get("contract_id") != "approved.input.manifest.v1":
         blockers.append({"code": "INVALID_DIB_MANIFEST_CONTRACT", "severity": "critical", "message": "DIB Project Run Gate requires approved.input.manifest.v1"})
     if manifest.get("status") != "approved":
