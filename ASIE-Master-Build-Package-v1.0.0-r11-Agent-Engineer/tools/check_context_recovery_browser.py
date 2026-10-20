@@ -42,9 +42,26 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
         ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
-    def app(self, locale="ar", mobile=False, storage_failure=False, evidence=False, source_review=False, administrator=False, dataset_proof=False, customer_classification=False, two_projects=False):
+    def app(self, locale="ar", mobile=False, storage_failure=False, evidence=False, source_review=False, administrator=False, dataset_proof=False, customer_classification=False, two_projects=False, dib_rejected_key=None):
         context = self.browser.new_context(viewport={"width": 390 if mobile else 1280, "height": 900}, locale=locale, service_workers="block")
         state = {"project": project_fixture(), "requests": [], "blocked": [], "errors": [], "fail_save": False, "dib_conflict": False, "dib_value": None, "dib_revision": 1, "fail_next_dib_read": False, "fail_read_after_save": False, "expire_dib": False, "defer_dib": False, "pending_dib": [], "source_revision": 1}
+        real_dib = None
+        if dib_rejected_key:
+            from backend.dib_persistence import DIBPersistenceStore
+            from backend.dib_runtime import FINANCE_REQUIRED_KEYS, _item, apply_customer_decision, build_dynamic_input_blueprint
+            from backend.dib_tenant_api import create_tenant_scoped_dib_api_controller
+            from backend.dib_tenant_boundary import DIBTenantContext
+            real_dib = create_tenant_scoped_dib_api_controller(
+                DIBPersistenceStore(), project_organization_resolver=lambda p: "synthetic-org-a" if p == state["project"]["project_id"] else None,
+                trusted_internal_context=DIBTenantContext("synthetic-org-a", "synthetic-user", "synthetic-principal"))
+            state["session_id"] = real_dib.dispatch("POST", "/api/dib/sessions", {
+                "project_profile": {"project_id": state["project"]["project_id"]}}).payload["session"]["session_id"]
+            values = dict(zip(FINANCE_REQUIRED_KEYS, (120000, 42000, 18, 7, 4200))) | {dib_rejected_key: 123}
+            rows = [apply_customer_decision(_item(key, required=key in FINANCE_REQUIRED_KEYS, label="INTERNAL-UNSAFE-LABEL"),
+                                           {"action": "enter_value", "value": value}) for key, value in values.items()]
+            rows[-1] = apply_customer_decision(rows[-1], {"action": "reject"})
+            blueprint = build_dynamic_input_blueprint({"project_id": state["project"]["project_id"]}, rows)
+            state["optional_original"] = real_dib.dispatch("POST", f"/api/dib/sessions/{state['session_id']}/blueprints", {"blueprint": blueprint}).payload["blueprint"]
         state["datasets"] = [{"dataset_id": "synthetic-dataset", "organization_id": "synthetic-org-a", "source_id": "source", "title": "", "publisher": "Synthetic publisher", "updated_at": "dataset-v1", "columns": [], "preview": [], "notes": {}, "row_count": 0, "review_status": "draft"}] if evidence else []
         state["sources"] = [{"source_id": "synthetic-source", "publisher": "Synthetic source", "route": "official_open_dataset_or_api", "state": "candidate", "url": "https://example.invalid/source", "terms_url": "https://example.invalid/terms", "terms_hash": "PRIVATE-SOURCE-TERMS", "license_snapshot_ref": "PRIVATE-LICENSE-REFERENCE", "classification": "public", "pdpl_check": "Synthetic reviewed", "nca_check": "Synthetic reviewed", "lawful_purpose": "Synthetic research", "attribution": "Synthetic source", "reviewer": "Synthetic reviewer", "reviewer_decision": "", "reviewed_at": "source-v1", "notes": {"organization_id": "synthetic-org-a", "project_id": "synthetic-project-a", "discovery_allowed": False, "discovery_sectors": ["services"], "discovery_geographies": ["SA"], "allowed_paths": ["/source"], "allow_query_parameters": False, "state_reason": "Synthetic preservation", "notes": "Synthetic note"}}] if source_review else []
         if dataset_proof:
@@ -71,6 +88,12 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             initial += '''const originalSet=Storage.prototype.setItem; Storage.prototype.setItem=function(k,v){if(k.startsWith("asie.recovery.edit"))throw new DOMException("synthetic storage unavailable");return originalSet.call(this,k,v)};'''
         context.add_init_script(initial)
         def session(state=state):
+            if real_dib:
+                loaded = real_dib.dispatch("GET", f"/api/dib/sessions/{state['session_id']}").payload["session"]
+                # This loopback fixture represents an authenticated editor. HTTP
+                # authorization remains owned and tested by the real mount.
+                for recovery in loaded["recovery_items"]: recovery["action"]["allowed"] = True
+                return loaded
             revision = state["dib_revision"]
             origin = {"session_id": state.get("session_id", "synthetic-dib-session"), "project_id": state["project"]["project_id"], "blueprint_id": f"private-blueprint-{revision}", "revision": revision, "payload_hash": f"PRIVATE-ORIGIN-HASH-{revision}"}
             item = {"item_id": "private-item", "input_key": "unit_price", "label": "INTERNAL-UNSAFE-LABEL", "value": state["dib_value"], "value_state": "UNKNOWN" if state["dib_value"] is None else "USER_PROVIDED", "required": True}
@@ -135,6 +158,15 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
                     state["pending_dib"].append((route, copy.deepcopy(payload))); return
             elif path == f"/api/dib/sessions/{session_id}/blueprints":
                 command = route.request.post_data_json
+                if real_dib:
+                    from backend.dib_api import DIBApiError
+                    try:
+                        payload = real_dib.dispatch(method, path, command).payload
+                    except DIBApiError as error:
+                        route.fulfill(status=error.status, json={"error": error.code}); return
+                    row = next(row for row in session(state)["current_blueprint"]["items"] if row["input_key"] == dib_rejected_key)
+                    state["dib_value"] = row["value"]
+                    route.fulfill(status=200, json=payload); return
                 if state["dib_conflict"] or command["expected_original"] != session(state)["origin_reference"]:
                     route.fulfill(status=409, json={"error": "dib_blueprint_write_conflict"}); return
                 state["dib_value"] = command["item_decisions"][0]["decision"]["value"]
@@ -192,6 +224,7 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
         finally:
             page.screenshot(path=str(ARTIFACTS / f"{self._testMethodName}-{locale}-{'mobile' if mobile else 'desktop'}.png"), full_page=True)
             context.close()
+            if real_dib: real_dib.close()
 
     def navigate(self, page, locale):
         expect(page.locator(".workspace")).to_be_visible()
@@ -348,6 +381,36 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
             page.reload()
             expect(page.get_by_label("Project name", exact=True)).to_have_value("Unsaved retained draft")
             self.assertEqual(state["project"]["name"], "")
+
+    def test_optional_rejected_input_is_discoverable_editable_and_resolved_in_both_languages(self):
+        labels = {"rent_monthly": ("الإيجار الشهري", "Monthly rent"),
+                  "annual_discount_rate": ("معدل الخصم السنوي", "Annual discount rate"),
+                  "synthetic_custom_cost": ("مدخل إضافي 6", "Additional input 6")}
+        for locale, mobile in (("ar", False), ("en", True)):
+            for key, names in labels.items():
+                with self.subTest(locale=locale, key=key), self.app(locale, mobile, dib_rejected_key=key) as (page, state):
+                    page.get_by_role("combobox", name="الجلسة" if locale == "ar" else "Session", exact=True).select_option(state["session_id"])
+                    panel = page.get_by_role("region", name="مدخلات جلسة المشروع" if locale == "ar" else "Project session inputs", exact=True)
+                    expect(panel.get_by_text(names[0 if locale == "ar" else 1], exact=True)).to_be_visible()
+                    page.get_by_role("button", name="تحرير المدخل المحدد" if locale == "ar" else "Edit this input", exact=True).click()
+                    value = page.get_by_label("القيمة" if locale == "ar" else "Value", exact=True)
+                    expect(value).to_be_focused(); expect(value).to_have_value("123")
+                    corrected = "0.12" if key == "annual_discount_rate" else "42"
+                    value.fill(corrected)
+                    page.get_by_role("button", name="حفظ وإعادة القراءة" if locale == "ar" else "Save and reread", exact=True).click()
+                    expect(page.get_by_role("status").filter(has_text="تحقق المصدر" if locale == "ar" else "source confirms this input")).to_be_visible()
+                    expect(panel.get_by_role("button", name="تحرير المدخل المحدد" if locale == "ar" else "Edit this input", exact=True)).to_have_count(0)
+                    self.assertEqual(state["dib_value"], float(corrected))
+                    writes = [row for row in state["requests"] if row[0] == "POST" and row[1].endswith("/blueprints")]
+                    self.assertEqual(len(writes), 1)
+                    decision = writes[0][2]["item_decisions"][0]
+                    original = state["optional_original"]
+                    target = original["payload"]["items"][-1]
+                    self.assertEqual((decision["input_key"], decision["item_id"]), (key, target["item_id"]))
+                    self.assertEqual(writes[0][2]["expected_original"], original["origin_reference"])
+                    for marker in (key, "REJECTED", target["item_id"], original["payload_hash"]):
+                        self.assertNotIn(marker, panel.inner_text())
+                    page.screenshot(path=str(ARTIFACTS / f"optional-rejected-{key}-{locale}.png"), full_page=True)
 
     def test_dib_original_reference_conflict_and_source_specific_save(self):
         with self.app("en") as (page, state):

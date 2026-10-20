@@ -493,7 +493,13 @@ def dib_customer_recovery(session: dict[str, Any], organization_id: str) -> list
         or len(set(value for value in keys if isinstance(value, str))) != len(keys)
         or any(type(row.get("value_state")) is not str or row["value_state"] not in ITEM_STATES for row in candidates))
     rows = {row.get("input_key"): row for row in candidates if isinstance(row.get("input_key"), str)}
-    for key in FINANCE_REQUIRED_KEYS:
+    # A rejected optional/default/custom item also blocks Manifest approval and
+    # needs the same exact, version-bound correction target as a required item.
+    recovery_keys = list(FINANCE_REQUIRED_KEYS)
+    if not integrity_invalid:
+        recovery_keys.extend(key for key, row in rows.items()
+                             if key not in FINANCE_REQUIRED_KEYS and row["value_state"] == "REJECTED")
+    for key in recovery_keys:
         row = rows.get(key)
         if integrity_invalid:
             target, reason = {"kind": "owner_review"}, "DIB_ITEM_INTEGRITY_REVIEW_REQUIRED"
