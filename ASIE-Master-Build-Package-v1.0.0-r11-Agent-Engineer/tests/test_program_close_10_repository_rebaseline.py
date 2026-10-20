@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -15,6 +16,17 @@ PROGRAM_DOC = (
     / "PROGRAM-CLOSE-10-EMERGENCY-REMEDIATION-CONSOLIDATION-AND-REBASELINE-2026-07-29.md"
 )
 PROGRAM_DOC_NAME = PROGRAM_DOC.name
+
+
+def validate_ci_timeout_amendment(source: bytes) -> None:
+    """Only the approved single-job 20-to-30-minute byte change is admitted."""
+    assert type(source) is bytes, "ci_workflow_exact_bytes"
+    current = b"    timeout-minutes: 30\n"
+    previous = b"    timeout-minutes: 20\n"
+    assert source.count(current) == 1, "ci_workflow_job_timeout"
+    restored = source.replace(current, previous, 1)
+    digest = hashlib.sha1(b"blob " + str(len(restored)).encode() + b"\0" + restored).hexdigest()
+    assert digest == '19afa3d54997423e54c3aa1ecbd5ac2578458f89', "ci_workflow_unapproved_change"
 
 
 class ProgramClose10RepositoryRebaselineTests(unittest.TestCase):
@@ -57,6 +69,37 @@ class ProgramClose10RepositoryRebaselineTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("python -m pytest -q", workflow)
         self.assertNotIn("python -m unittest discover -s tests", workflow)
+
+    def test_ci_maintenance_exception_preserves_the_complete_original_workflow(self) -> None:
+        source = (REPOSITORY_ROOT / ".github/workflows/asie-ci.yml").read_bytes()
+        validate_ci_timeout_amendment(source)
+
+    def test_ci_maintenance_exception_rejects_other_workflow_changes(self) -> None:
+        source = (REPOSITORY_ROOT / ".github/workflows/asie-ci.yml").read_bytes()
+        mutations = (
+            (b"timeout-minutes: 30", b"timeout-minutes: 20"),
+            (b"timeout-minutes: 10", b"timeout-minutes: 11"),
+            (b"--warmups 1 --trials 3", b"--warmups 0 --trials 1"),
+            (b"python -m pytest -q", b"python -m pytest -q -k subset"),
+            (b"Build frontend and test backend", b"Changed required context"),
+            (b"contents: read", b"contents: write"),
+            (b"branches: [main,", b"branches: [other,"),
+            (b"cancel-in-progress: true", b"cancel-in-progress: false"),
+            (b"      - name: Run Python tests", b"      - name: Run Python tests\n        continue-on-error: true"),
+        )
+        for old, new in mutations:
+            with self.subTest(old=old):
+                self.assertEqual(source.count(old), 1)
+                with self.assertRaises(AssertionError):
+                    validate_ci_timeout_amendment(source.replace(old, new, 1))
+        with self.assertRaises(AssertionError):
+            validate_ci_timeout_amendment(source + b"\n  extra-job:\n    runs-on: ubuntu-latest\n")
+
+    def test_ci_maintenance_workflow_guard_requires_exact_bytes(self) -> None:
+        for source in (None, False, 0, "text", bytearray(b"x")):
+            with self.subTest(source=source):
+                with self.assertRaises(AssertionError):
+                    validate_ci_timeout_amendment(source)
 
     def test_external_sync_is_manual_and_marker_authorized(self) -> None:
         workflow = (

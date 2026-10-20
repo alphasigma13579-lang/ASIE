@@ -834,7 +834,8 @@
             "tools/check_context_recovery_browser.py",
             "backend/datasets.py",
             "backend/evidence_ledger.py",
-            "src/api.ts"
+            "src/api.ts",
+            "tests/test_program_close_10_repository_rebaseline.py"
           ],
           "environment": "DARK_OFFLINE",
           "entry_requirements": [
@@ -121750,6 +121751,334 @@
                   }
                 }
               }
+            },
+            {
+              "type": "STOP_CHECKPOINT",
+              "recorded_at": "2026-10-17T17:26:49.722530+00:00",
+              "baseline_commit_sha": "e5e13f672161a283c82634cf8df946d6e90b0aa9",
+              "baseline_manifest_blob_sha": "b67be5e90c4a501acba1d16655561ff0d11074be",
+              "reason": "C3C_CI_WORKFLOW_AND_GUARD_OUTSIDE_ACTIVE_EXECUTION_SCOPE",
+              "evidence": {
+                "decision_url": "https://github.com/alphasigma13579-lang/ASIE/blob/fe7d849b1befcabfc49fcefcb66770b1424f32af/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md#قرار-إعداد-ونشر-الحزمة",
+                "application_commit_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+                "ci_run_url": "https://github.com/alphasigma13579-lang/ASIE/actions/runs/39049389874"
+              },
+              "resume_requirement": "NEW_OWNER_EXECUTION_DECISION_AND_REVIEWED_SCOPE_BOUND_RESUME_MERGED_AFTER_SEPARATE_APPROVAL"
+            },
+            {
+              "type": "SCOPE_EXTENSION",
+              "recorded_at": "2026-10-17T17:26:49.722530+00:00",
+              "baseline_commit_sha": "e5e13f672161a283c82634cf8df946d6e90b0aa9",
+              "baseline_manifest_blob_sha": "b67be5e90c4a501acba1d16655561ff0d11074be",
+              "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+              "added_paths": [
+                "tests/test_program_close_10_repository_rebaseline.py"
+              ],
+              "added_repository_root_paths": [
+                ".github/workflows/asie-ci.yml"
+              ],
+              "owner_scope_decision": {
+                "id": "DECISION-FC20-12-F01A-C3C-CI-ISOLATION-REGISTRATION-2026-10-17",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/blob/fe7d849b1befcabfc49fcefcb66770b1424f32af/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md#قرار-إعداد-ونشر-الحزمة",
+                "recorded_at": "2026-10-17T17:26:49.722530+00:00",
+                "effect": "PREPARE_AND_PUBLISH_ACR_AND_GOVERNANCE_DRAFT_ONLY_NO_MERGE_NO_RESUME",
+                "subject": {
+                  "baseline_commit_sha": "e5e13f672161a283c82634cf8df946d6e90b0aa9",
+                  "baseline_manifest_blob_sha": "b67be5e90c4a501acba1d16655561ff0d11074be",
+                  "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+                  "previous_resume_event_index": 24,
+                  "previous_resume_sha256": "2d743221c458df6cabe0448ebcea0f4a0824c007bf869e6955f6e5689741d628",
+                  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                  "repair_scope": {
+                    "kind": "PRESERVED_RECOVERY_REVIEW_MAINTENANCE_WITH_BOUNDED_C3C_CI_ISOLATION",
+                    "implementation_paths": [
+                      "backend/asie_local_api.py",
+                      "backend/workspace.py",
+                      "backend/workflow.py",
+                      "backend/dib_api.py",
+                      "backend/dib_persistence.py",
+                      "backend/dib_tenant_api.py",
+                      "backend/dib_http_mounting.py",
+                      "backend/release_info.py",
+                      "src/contracts.ts",
+                      "src/dibApi.ts",
+                      "src/App.tsx",
+                      "src/customerLanguage.tsx",
+                      "src/ASIECompleteSurfaceMount.tsx",
+                      "src/DIBWorkspace.tsx",
+                      "src/DIBIntakeItemGovernance.tsx",
+                      "src/DIBManifestRunReadiness.tsx",
+                      "registry/asie-canonical-api-output.v1.json",
+                      "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+                      "tests/test_customer_language_foundation.py",
+                      "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+                      "tests/test_context_recovery_api.py",
+                      "tests/test_dib_context_recovery.py",
+                      "tests/test_customer_capability_projection.py",
+                      "tools/check_context_recovery_browser.py",
+                      "backend/datasets.py",
+                      "backend/repository.py",
+                      "backend/evidence_ledger.py",
+                      "src/api.ts",
+                      "tests/test_intelligence_prerun_service.py",
+                      "tests/test_intelligence_context_ingress_api.py",
+                      "tests/test_program_close_10_repository_rebaseline.py"
+                    ],
+                    "repository_root_implementation_paths": [
+                      ".github/workflows/asie-ci.yml"
+                    ],
+                    "preserved_repair_scope_sha256": "6e27e8bdb4cc369830af1d045952d52e333941da4f7fcf27c93e4cf9a2179fc8",
+                    "preserved_execution_scope_sha256": "f4ec5b54b57829461721a39dc544c74323689e7eaaf129bfa5a8d02f5fb90515",
+                    "preserved_contract": "FULL_REGISTERED_30_FILE_RECOVERY_PROVENANCE_AND_REVIEW_OVERLAY_CONTRACT_UNCHANGED",
+                    "maintenance_paths": {
+                      "package_root": [
+                        "tests/test_program_close_10_repository_rebaseline.py"
+                      ],
+                      "repository_root": [
+                        ".github/workflows/asie-ci.yml"
+                      ]
+                    },
+                    "activity": "SPLIT_EXISTING_C3C_BENCHMARK_JOB_AND_PRESERVE_FAIL_CLOSED_REQUIRED_AGGREGATE",
+                    "required_status_context": "Build frontend and test backend",
+                    "required_status_integration_id": 15368,
+                    "suite_timeout_minutes": 20,
+                    "benchmark_job_timeout_minutes": 10,
+                    "benchmark_step_timeout_minutes": 10,
+                    "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+                    "same_commit": "EXPLICIT_GITHUB_SHA_CHECKOUT_AND_ACTUAL_GIT_HEAD_OUTPUT_COMPARISON",
+                    "aggregate": "ALWAYS_NEEDS_BOTH_EXACT_SUCCESS_AND_EXPECTED_SHA_ELSE_NON_SUCCESS",
+                    "preserve": "ALL_TESTS_COMMANDS_NUMERICAL_CEILINGS_MEMORY_LIMITS_TRIGGERS_CONCURRENCY_READ_ONLY_PERMISSIONS",
+                    "excluded": [
+                      "RUNTIME_CHANGES",
+                      "REJECTED_VALIDATION_OR_FIX",
+                      "BENCHMARK_SCRIPT_CHANGES",
+                      "PROTECTION_CHANGES",
+                      "PAID_RUNNERS",
+                      "ARTIFACT_CACHE_ADDITIONS",
+                      "GRAPHIFY_ACTIVATION",
+                      "APPLICATION_MERGE",
+                      "LIVE_DATABASE_DEPLOYMENT_PROVIDER"
+                    ],
+                    "implementation_authorized": false,
+                    "environment": "REPOSITORY_CI_SYNTHETIC_ONLY_AFTER_REVIEWED_RESUME",
+                    "additional_schema_operations": []
+                  },
+                  "acr_record": {
+                    "path": "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md",
+                    "commit_sha": "fe7d849b1befcabfc49fcefcb66770b1424f32af",
+                    "blob_sha": "c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c"
+                  }
+                }
+              },
+              "effect": "REGISTER_BOUNDED_C3C_CI_ISOLATION_ONLY_EXECUTION_STOPPED"
+            },
+            {
+              "type": "RESUME",
+              "recorded_at": "2026-10-18T02:09:39Z",
+              "baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+              "baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+              "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+              "owner_resume_decision": {
+                "id": "DECISION-FC20-12-F01A-CONDITIONAL-C3C-CI-ISOLATION-RESUME-2026-10-18",
+                "record_url": "https://github.com/alphasigma13579-lang/ASIE/pull/216#issuecomment-6244578523",
+                "recorded_at": "2026-10-18T02:08:40.516851+00:00",
+                "effect": "F01A_DEFENSIVE_RESUME_ONLY",
+                "condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+                "subject": {
+                  "baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+                  "baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+                  "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+                  "checkpoint_event_index": 25,
+                  "checkpoint_sha256": "d2693170127b636195b52fe49d50357511d6f84369eaf7fcbe4ecd9959ff2c4d",
+                  "scope_extension_event_index": 26,
+                  "scope_extension_sha256": "fceef5c9c2ec639539a54932a11346387e9509e658b9a0d1159e261a66b20b5f",
+                  "repair_scope_sha256": "1986887c653fc99f9a4e5b6419394b73baddb501c3f3a2827659e5e6f8f20d94",
+                  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                  "execution_scope": {
+                    "kind": "BOUNDED_PRESERVED_RECOVERY_REVIEW_MAINTENANCE_AND_C3C_CI_ISOLATION_DEVELOPMENT_TESTING",
+                    "implementation_paths": [
+                      "backend/asie_local_api.py",
+                      "backend/workspace.py",
+                      "backend/workflow.py",
+                      "backend/dib_api.py",
+                      "backend/dib_persistence.py",
+                      "backend/dib_tenant_api.py",
+                      "backend/dib_http_mounting.py",
+                      "backend/release_info.py",
+                      "src/contracts.ts",
+                      "src/dibApi.ts",
+                      "src/App.tsx",
+                      "src/customerLanguage.tsx",
+                      "src/ASIECompleteSurfaceMount.tsx",
+                      "src/DIBWorkspace.tsx",
+                      "src/DIBIntakeItemGovernance.tsx",
+                      "src/DIBManifestRunReadiness.tsx",
+                      "registry/asie-canonical-api-output.v1.json",
+                      "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+                      "tests/test_customer_language_foundation.py",
+                      "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+                      "tests/test_context_recovery_api.py",
+                      "tests/test_dib_context_recovery.py",
+                      "tests/test_customer_capability_projection.py",
+                      "tools/check_context_recovery_browser.py",
+                      "backend/datasets.py",
+                      "backend/repository.py",
+                      "backend/evidence_ledger.py",
+                      "src/api.ts",
+                      "tests/test_intelligence_prerun_service.py",
+                      "tests/test_intelligence_context_ingress_api.py",
+                      "tests/test_program_close_10_repository_rebaseline.py"
+                    ],
+                    "repository_root_implementation_paths": [
+                      ".github/workflows/asie-ci.yml"
+                    ],
+                    "preserved_repair_scope_sha256": "6e27e8bdb4cc369830af1d045952d52e333941da4f7fcf27c93e4cf9a2179fc8",
+                    "preserved_execution_scope_sha256": "f4ec5b54b57829461721a39dc544c74323689e7eaaf129bfa5a8d02f5fb90515",
+                    "preserved_contract": "FULL_REGISTERED_30_FILE_RECOVERY_PROVENANCE_AND_REVIEW_OVERLAY_CONTRACT_UNCHANGED",
+                    "maintenance_paths": {
+                      "package_root": [
+                        "tests/test_program_close_10_repository_rebaseline.py"
+                      ],
+                      "repository_root": [
+                        ".github/workflows/asie-ci.yml"
+                      ]
+                    },
+                    "activity": "SPLIT_EXISTING_C3C_BENCHMARK_JOB_AND_PRESERVE_FAIL_CLOSED_REQUIRED_AGGREGATE",
+                    "required_status_context": "Build frontend and test backend",
+                    "required_status_integration_id": 15368,
+                    "suite_timeout_minutes": 20,
+                    "benchmark_job_timeout_minutes": 10,
+                    "benchmark_step_timeout_minutes": 10,
+                    "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+                    "same_commit": "EXPLICIT_GITHUB_SHA_CHECKOUT_AND_ACTUAL_GIT_HEAD_OUTPUT_COMPARISON",
+                    "aggregate": "ALWAYS_NEEDS_BOTH_EXACT_SUCCESS_AND_EXPECTED_SHA_ELSE_NON_SUCCESS",
+                    "preserve": "ALL_TESTS_COMMANDS_NUMERICAL_CEILINGS_MEMORY_LIMITS_TRIGGERS_CONCURRENCY_READ_ONLY_PERMISSIONS",
+                    "excluded": [
+                      "RUNTIME_CHANGES",
+                      "REJECTED_VALIDATION_OR_FIX",
+                      "BENCHMARK_SCRIPT_CHANGES",
+                      "PROTECTION_CHANGES",
+                      "PAID_RUNNERS",
+                      "ARTIFACT_CACHE_ADDITIONS",
+                      "GRAPHIFY_ACTIVATION",
+                      "APPLICATION_MERGE",
+                      "LIVE_DATABASE_DEPLOYMENT_PROVIDER"
+                    ],
+                    "implementation_authorized": true,
+                    "environment": "REPOSITORY_CI_SYNTHETIC_ONLY_AFTER_REVIEWED_RESUME",
+                    "additional_schema_operations": [],
+                    "repair_scope_sha256": "1986887c653fc99f9a4e5b6419394b73baddb501c3f3a2827659e5e6f8f20d94",
+                    "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                    "activities": [
+                      "DEVELOP_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+                      "TEST_REGISTERED_CUSTOMER_DATASET_PROVENANCE_AND_RECOVERY",
+                      "DEVELOP_REGISTERED_REVIEW_OVERLAY_CLASSIFICATION_AND_SQLITE_TEST_CLEANUP",
+                      "TEST_REGISTERED_REVIEW_OVERLAY_CLASSIFICATION_AND_SQLITE_TEST_CLEANUP",
+                      "DEVELOP_REGISTERED_C3C_CI_ISOLATION",
+                      "TEST_REGISTERED_C3C_CI_ISOLATION"
+                    ],
+                    "database_scope": "DISPOSABLE_TEMPORARY_DATABASES_ONLY",
+                    "data_scope": "SYNTHETIC_DATA_ONLY",
+                    "live_database_authorized": false,
+                    "provider_activation_authorized": false,
+                    "external_network_authorized": false,
+                    "deployment_authorized": false,
+                    "application_merge_authorized": false,
+                    "production_placement_accepted": false,
+                    "startup_maintenance_recovery_acceptance": "UNKNOWN_NOT_APPROVED",
+                    "t08": "OPEN"
+                  }
+                }
+              }
+            },
+            {
+              "type": "CI_MAINTENANCE_EXCEPTION",
+              "recorded_at": "2026-10-18T05:59:31Z",
+              "owner_ci_maintenance_decision": {
+                "id": "DECISION-FC20-12-C3C-SINGLE-JOB-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18",
+                "owner_approval_at": "2026-10-18T05:53:23.887243+00:00",
+                "approval_source": "EXPLICIT_OWNER_APPROVAL_RECORDED_BY_ASSISTANT_NOT_CRYPTOGRAPHIC_SIGNATURE",
+                "public_proposal_reference": {
+                  "url": "https://github.com/alphasigma13579-lang/ASIE/pull/217",
+                  "role": "PROPOSAL_REFERENCE_NOT_APPROVAL_RECEIPT_OR_MERGE_EVIDENCE"
+                },
+                "decision_record": {
+                  "path": "docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md",
+                  "section_marker": "<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->",
+                  "section_sha256": "f00f51702d6e93dbe45adbb62b6d5ce0a7227af2d4e6080a5c0513bacea1b0cf"
+                },
+                "effect": "EDIT_TEST_AND_UPDATE_PR217_CI_MAINTENANCE_BEFORE_GOVERNANCE_MERGE",
+                "effective_condition": "EFFECTIVE_NOW_FOR_EXACT_TWO_CI_MAINTENANCE_PATHS_ONLY",
+                "subject": {
+                  "merged_baseline_commit_sha": "ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af",
+                  "merged_baseline_manifest_blob_sha": "4eef63fa72b0316383c6112ee92e577514123178",
+                  "published_unmerged_proposal_commit_sha": "57c22bc91f276e6115b53366a88f0eec7d2ee715",
+                  "published_unmerged_proposal_manifest_blob_sha": "3a3e5c8506600ad92fd30242000d40b5a01f1a84",
+                  "previous_resume_event_index": 27,
+                  "previous_resume_event_sha256": "eb077cced35fc1bb8cb72f18acf69f11fae7401e42ae5efaf7fff0fe327a5134",
+                  "digest_serialization": "UTF8_JSON_ENSURE_ASCII_FALSE_SORT_KEYS_TRUE_COMPACT_SEPARATORS_COMMA_COLON",
+                  "prior_acr_blob_sha": "c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c",
+                  "application_head_sha": "281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546",
+                  "pending_resume28_ci_proposal_disposition": "SUPERSEDED_SPLIT_AND_20_MINUTE_DESIGN_NOT_MERGED_OR_PARALLEL_AUTHORITY",
+                  "superseded_sequencing": [
+                    "ACR-FIN-003-C3C:G-C3C-0_AND_SECTION14_MERGE_BEFORE_CI",
+                    "ACR-FIN-003-C3C:CI_APPENDIX_LINES393_AND430_AT_CE8EF8C",
+                    "F01A_REGISTRATION_PROPOSAL:SECTION4",
+                    "PENDING_RESUME28:MERGE_BEFORE_THE_TWO_CI_FILES_ONLY"
+                  ],
+                  "superseded_ci_purpose": "SPLIT_BUILD_TEST_AND_BENCHMARK_WITH_20_MINUTE_BUILD_TEST_BUDGET",
+                  "current_ci_purpose": "KEEP_EXISTING_SINGLE_SEQUENTIAL_JOB_CHANGE_ONLY_JOB_TIMEOUT_20_TO_30",
+                  "immediately_authorized_scope": {
+                    "repository_root_paths": [
+                      ".github/workflows/asie-ci.yml"
+                    ],
+                    "package_root_paths": [
+                      "tests/test_program_close_10_repository_rebaseline.py"
+                    ]
+                  },
+                  "workflow_contract": {
+                    "repository_root_path": ".github/workflows/asie-ci.yml",
+                    "prior_workflow_blob_sha": "19afa3d54997423e54c3aa1ecbd5ac2578458f89",
+                    "job_id": "build-and-test",
+                    "required_context": "Build frontend and test backend",
+                    "job_count": 1,
+                    "job_timeout_minutes": 30,
+                    "benchmark_step_timeout_minutes": 10,
+                    "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+                    "all_other_workflow_bytes_unchanged": true,
+                    "all_tests_and_success_criteria_preserved": true,
+                    "sequential_failure_behavior_preserved": true
+                  },
+                  "governance_package_total_files": 10,
+                  "review_date": "2026-10-18",
+                  "review_required_before_merge": true,
+                  "authorization_expires_on": "MERGE_OR_CANCELLATION_OF_THIS_EXACT_PR217_AMENDMENT",
+                  "future_ci_maintenance_authorized": false,
+                  "rationale": {
+                    "run_url": "https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076",
+                    "attempts": [
+                      1,
+                      2
+                    ],
+                    "both_job_elapsed_seconds": 1215,
+                    "attempt1_pytest_passed": 22860,
+                    "attempt1_pytest_seconds": 1170.37,
+                    "attempt2_pytest_cancelled_percent": 99,
+                    "attempt2_pytest_summary_available": false,
+                    "explicit_log_cause": "RAW_STEP_LOG_CANCELLATION_WITH_EXPLICIT_GITHUB_JOB_TIMEOUT_20M0S_ANNOTATION",
+                    "thirty_minute_success_guaranteed": false
+                  },
+                  "general_resume_condition": "REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL",
+                  "application_execution_before_governance_merge_authorized": false,
+                  "governance_merge_authorized": false,
+                  "application_merge_authorized": false,
+                  "deployment_authorized": false,
+                  "external_network_authorized": false,
+                  "provider_activation_authorized": false,
+                  "live_database_authorized": false,
+                  "rejected_numeric_investigation_authorized": false
+                }
+              }
             }
           ],
           "closure_effect": "NONE",
@@ -121771,6 +122100,9 @@
               "implementation_path": "backend/repository.py",
               "test_path": "tests/test_repository_intelligence.py"
             }
+          ],
+          "allowed_repository_root_paths": [
+            ".github/workflows/asie-ci.yml"
           ]
         }
       ]

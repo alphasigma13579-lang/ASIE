@@ -1129,3 +1129,154 @@ baseline بعد دمج #208: `973c6a33080ddf50ade686a4ff8dbb21ed32c978`، manife
 حارسOMRG مستقل مغلق الأنواع والحقول والقرار والشرط؛ لا يستبدل قرار التنفيذ بموافقة تجهيز التسجيل أو دمجه. العكس يزيل RESUME25 ويعيد العلمfalse ويطابق كامل baseline e486be15c60a576e75a1cc24cdb39fd174d8aaa0 ثم أوراكلOMSG وكل السلسلة التاريخية دون تغيير. المقارنات البايتية والأختام وكل الاختبارات وحدCI20دقيقة محفوظة. ذاكرةdigest معزولة محدودة للبايتات الأصلية فقط، مع قراءة المصدر ومطابقته في كل مرة وكائنات تاريخ منفصلة. لا إعادة كتابة للتاريخ أو إضعاف بوابة.
 
 بعد مراجعة وفحوص الرأس النهائي، يلزم قرار منفصل لدمج RESUME25. بعد نفاذه فقط يبدأ كود الصيانة المحددة. لا تصميمPR إضافي ولا مسار تشغيل موازٍ.
+
+<!-- F01A-C3C-CI-ISOLATION-SCOPE-2026-10-17 -->
+
+### تسجيل فصل فحص C3C — مرشح STOP26/SCOPE27
+
+GOVERNANCE_TRANSITION_CANDIDATE / REVIEW_REQUIRED / NOT_EFFECTIVE_UNTIL_SEPARATE_OWNER_MERGE_APPROVAL.
+هذا إسقاط قراءة خاص بالمسار `docs/FC20-12-F01A-DEFENSIVE-ENABLING-REGISTRATION-PROPOSAL-2026-10-01.md`، لا مصدر سلطة بديل.
+
+[قرار إعداد ونشر الحزمة](https://github.com/alphasigma13579-lang/ASIE/blob/fe7d849b1befcabfc49fcefcb66770b1424f32af/ASIE-Master-Build-Package-v1.0.0-r11-Agent-Engineer/docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md#قرار-إعداد-ونشر-الحزمة) منقول تقنيًا بواسطة المساعد داخل وثيقة ACR، وليس توقيعًا مستقلًا. وقت موافقة المالك `2026-10-17T17:26:49.722530+00:00`. الوثيقة المثبتة commit `fe7d849b1befcabfc49fcefcb66770b1424f32af` وblob `c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c` موجودة قبل مرشح التسجيل؛ لا self-hash ولا رابط مفترض ولا تحويل لتعليق نتائج الاختبار إلى إذن. الإذن نشر الحزمة للمراجعة فقط، لا دمج أو استئناف أو تنفيذ workflow.
+
+المراجع: main `e5e13f672161a283c82634cf8df946d6e90b0aa9`، manifest blob `b67be5e90c4a501acba1d16655561ff0d11074be`، تطبيق #189 `281f11d7a6d8e9850b1da8a6b6b23ffeb4f51546`. تبقى أعمال #215 منفصلة؛ لا تفعيل أو تثبيت Graphify.
+
+الدلتا: execution_authorized=true→false حرفيًا، ثم STOP_CHECKPOINT26 وSCOPE_EXTENSION27، مع حفظ الأحداث25 السابقة كاملة. تبقى f01a_defensive_ingress IN_PROGRESS/false وactive_target محفوظًا ومحسوبًا؛ max_active_executions=1 وFC20-05 held. لا START أو RESUME أو DELIVERED.
+
+القائمة التاريخية package_root:35 محفوظة وتضيف tests/test_program_close_10_repository_rebaseline.py فقط لتصبح36. يضاف حقل allowed_repository_root_paths مغلق بمدخل واحد .github/workflows/asie-ci.yml. لا خلط للجذور أو ../ أو wildcard أو تطبيع عام. النشط السابق30 محفوظ، ويضاف اختبار الحزمة ومسار workflow، أي32 ملفًا موزعة31 package_root و1 repository_root. كل عقد التعافي ومنشأDataset وReviewOverlay السابق محفوظ ببصماته؛ لا إذن عام من القائمة التاريخية.
+
+النطاق المقترح بعد استئناف لاحق: فصل benchmark في workflow الحالي؛ البناء وcompile وpytest كاملة بحد20دقيقة، benchmark بحد10دقائق للوظيفة والخطوة، الأمر نفسه warmups1/trials3 والسقوف العددية الحالية. الحكم الجامع الوحيد باسم Build frontend and test backend ومصدر GitHub Actions15368 يعمل always() ويعتمد الوظيفتين، ولا ينجح إلا بنتيجتي success وتطابق خرج checkout الفعلي مع github.sha نفسه. فشل أو تخطي أو إلغاء أو غياب دليل أو اختلاف SHA لا يعطي نجاحًا. لا تغيير حماية أو triggers/concurrency/permissions أو runtime أو scripts أو dependency أو مدفوعات.
+
+موضوع النطاق المغلق:
+
+```json
+{
+  "kind": "PRESERVED_RECOVERY_REVIEW_MAINTENANCE_WITH_BOUNDED_C3C_CI_ISOLATION",
+  "implementation_paths": [
+    "backend/asie_local_api.py",
+    "backend/workspace.py",
+    "backend/workflow.py",
+    "backend/dib_api.py",
+    "backend/dib_persistence.py",
+    "backend/dib_tenant_api.py",
+    "backend/dib_http_mounting.py",
+    "backend/release_info.py",
+    "src/contracts.ts",
+    "src/dibApi.ts",
+    "src/App.tsx",
+    "src/customerLanguage.tsx",
+    "src/ASIECompleteSurfaceMount.tsx",
+    "src/DIBWorkspace.tsx",
+    "src/DIBIntakeItemGovernance.tsx",
+    "src/DIBManifestRunReadiness.tsx",
+    "registry/asie-canonical-api-output.v1.json",
+    "docs/ASIE-CANONICAL-API-OUTPUT-REGISTER-v1.0.0.md",
+    "tests/test_customer_language_foundation.py",
+    "tests/test_gov_beta_04_server_owned_manifest_chain.py",
+    "tests/test_context_recovery_api.py",
+    "tests/test_dib_context_recovery.py",
+    "tests/test_customer_capability_projection.py",
+    "tools/check_context_recovery_browser.py",
+    "backend/datasets.py",
+    "backend/repository.py",
+    "backend/evidence_ledger.py",
+    "src/api.ts",
+    "tests/test_intelligence_prerun_service.py",
+    "tests/test_intelligence_context_ingress_api.py",
+    "tests/test_program_close_10_repository_rebaseline.py"
+  ],
+  "repository_root_implementation_paths": [
+    ".github/workflows/asie-ci.yml"
+  ],
+  "preserved_repair_scope_sha256": "6e27e8bdb4cc369830af1d045952d52e333941da4f7fcf27c93e4cf9a2179fc8",
+  "preserved_execution_scope_sha256": "f4ec5b54b57829461721a39dc544c74323689e7eaaf129bfa5a8d02f5fb90515",
+  "preserved_contract": "FULL_REGISTERED_30_FILE_RECOVERY_PROVENANCE_AND_REVIEW_OVERLAY_CONTRACT_UNCHANGED",
+  "maintenance_paths": {
+    "package_root": [
+      "tests/test_program_close_10_repository_rebaseline.py"
+    ],
+    "repository_root": [
+      ".github/workflows/asie-ci.yml"
+    ]
+  },
+  "activity": "SPLIT_EXISTING_C3C_BENCHMARK_JOB_AND_PRESERVE_FAIL_CLOSED_REQUIRED_AGGREGATE",
+  "required_status_context": "Build frontend and test backend",
+  "required_status_integration_id": 15368,
+  "suite_timeout_minutes": 20,
+  "benchmark_job_timeout_minutes": 10,
+  "benchmark_step_timeout_minutes": 10,
+  "benchmark_command": "python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3",
+  "same_commit": "EXPLICIT_GITHUB_SHA_CHECKOUT_AND_ACTUAL_GIT_HEAD_OUTPUT_COMPARISON",
+  "aggregate": "ALWAYS_NEEDS_BOTH_EXACT_SUCCESS_AND_EXPECTED_SHA_ELSE_NON_SUCCESS",
+  "preserve": "ALL_TESTS_COMMANDS_NUMERICAL_CEILINGS_MEMORY_LIMITS_TRIGGERS_CONCURRENCY_READ_ONLY_PERMISSIONS",
+  "excluded": [
+    "RUNTIME_CHANGES",
+    "REJECTED_VALIDATION_OR_FIX",
+    "BENCHMARK_SCRIPT_CHANGES",
+    "PROTECTION_CHANGES",
+    "PAID_RUNNERS",
+    "ARTIFACT_CACHE_ADDITIONS",
+    "GRAPHIFY_ACTIVATION",
+    "APPLICATION_MERGE",
+    "LIVE_DATABASE_DEPLOYMENT_PROVIDER"
+  ],
+  "implementation_authorized": false,
+  "environment": "REPOSITORY_CI_SYNTHETIC_ONLY_AFTER_REVIEWED_RESUME",
+  "additional_schema_operations": []
+}
+```
+
+الحارس الجديد مستقل ويثبت القرار والأنواع والمسارين والأختام؛ عكس الحدثين والعلم وإضافة المسارين يعيد manifest الكامل إلى baseline blob المثبت، ثم يتحقق أوراكل RESUME25 وكل التاريخ. تبقى كل الاختبارات التاريخية، مع حالات سلبية مركزة للفرق فقط، ومقارنة بايتات كل قراءة ونسخ مستقلة ورفض cache ملوثة. لا مضاعفة لنسخ السجل التاريخي داخل الحدثين.
+
+اختبارات تنفيذ تقسيم CI: NOT_IMPLEMENTED / NOT_RUN. نجاح حارس التسجيل لا يثبت benchmark أو إطلاقًا. نتيجة التطبيق الحالية:22503 اختبارات ناجحة واختباران متخطيان و10تحذيرات؛ benchmark ألغي، والمتصفح الاصطناعي21/21. لا يُنقل ذلك كنجاح لتقسيم لم ينفذ. ملاحظة REJECTED غير محسومة ومتابعة SQL غير الحاجبة معلنتان، ولا تفويض للتحقق المحظور أو تعديلهما هنا.
+
+يبقى routing_repair REGISTERED_BLOCKED/false وضوابطه التسعة PENDING، FC20-12 ACR_REQUIRED، release BLOCK وDARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null وclosure_effect=NONE وT08 OPEN. قبول startup/maintenance/recovery UNKNOWN_NOT_APPROVED. لا إسقاط بقية الإصلاحات والمحركات والخدمات، ولا قاعدة تشغيل أو نشر أو دمج #189.
+
+بعد مراجعة الحزمة وفحوصها يلزم قرار دمج منفصل، ثم قرار تنفيذ جديد وانتقال RESUME28 مراجع وموافقة دمجه قبل كود الملفين. لا PR تصميم إضافي ولا مسار تشغيل موازٍ.
+
+<!-- F01A-C3C-CI-ISOLATION-CONDITIONAL-RESUME-2026-10-18 -->
+
+### RESUME28 المشروط: سجل التمكين الدفاعي
+
+هذه حزمة حوكمة مرشحة بعد قرار المالك المشروط وإذن نشر حزمة الاستئناف للمراجعة. لا تعني الحزمة دمجًا أو استئنافًا فوريًا: لا يبدأ تنفيذ النطاق إلا بعد مراجعة انتقال RESUME28 وموافقة دمجه منفصلة ودمجه فعليًا. لم يتغير workflow أو كود التطبيق بهذه الحزمة.
+
+خط الأساس المدمج ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af، وmanifest blob 4eef63fa72b0316383c6112ee92e577514123178. تُحفظ الأحداث السبعة والعشرون كاملة بالترتيب، بما فيها STOP26 وSCOPE27 وrepair_scope.implementation_authorized=false التاريخية. يضيف المرشح RESUME28 فقط ويغير العلم الأعلى إلى true مشروطًا؛ عكسهما يعيد بايتات manifest الكاملة إلى خط الأساس المثبت.
+
+قرار التنفيذ المشروط: DECISION-FC20-12-F01A-CONDITIONAL-C3C-CI-ISOLATION-RESUME-2026-10-18.
+- السجل التقني المثبت: https://github.com/alphasigma13579-lang/ASIE/pull/216#issuecomment-6244578523
+- وقت موافقة المالك: 2026-10-18T02:08:40.516851+00:00
+- وقت إنشاء السجل وتسجيل انتقال المرشح: 2026-10-18T02:09:39Z
+
+أثر القرار F01A_DEFENSIVE_RESUME_ONLY، وشرطه REVIEWED_GOVERNANCE_TRANSITION_MERGED_AFTER_SEPARATE_OWNER_MERGE_APPROVAL. القرار الجديد مقيد بكامل النطاق المسجل، ولا تُستخدم موافقة إعداد أو نشر أو دمج SCOPE27 بديلًا له. الحارس يرفض receipt مفقودًا أو UNRESOLVED أو قديمًا أو خاصًا بالإعداد/الدمج فقط، ويحفظ اختباراته السلبية بعد تثبيت القرار الحقيقي. الفحص البنيوي والعكس التاريخي ليسا مسار قبول بديلًا.
+
+النطاق التراكمي محفوظ: 36 مسارًا تحت package root ومسار repository root واحد، أي 37 إجمالًا. نطاق التنفيذ المشروط محفوظ: 31 مسارًا تحت package root ومسار repository root واحد، أي 32 إجمالًا. لا يختلط النطاقان ولا يستخدم ../ أو wildcard. يظل backend/workspace.py ضمن العقد المسجل ولا تختزل الحزمة في تقسيم CI وحده.
+
+الملفان الإضافيان المسجلان فقط هما tests/test_program_close_10_repository_rebaseline.py تحت package root و.github/workflows/asie-ci.yml تحت repository root. حد المجموعة 20 دقيقة وحد benchmark job/step عشر دقائق، والأمر python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3؛ المطلوب fail-closed aggregate بنفس سياق Build frontend and test backend وتكامل15368، ومطابقة exact SHA والنجاح الصريح لكلتا المهمتين. لا تغيير للاختبارات أو الأوامر أو الحدود العددية/الذاكرة أو triggers/concurrency/read-only permissions.
+
+السجل ACR-FIN-003 المثبت c1db77e3e5baf4cc422cf4c36cba57cef60a9f7c يبقى دون تعديل. لا تنفيذ للـworkflow في هذه الحزمة، ولا تعديل benchmark أو Runtime أو حماية الفرع أو paid runners أو artifacts/cache أو Graphify، ولا تحقق أو إصلاح لـREJECTED، ولا دمج للتطبيق أو نشر أو قاعدة حية أو تفعيل شبكة/مزود. تبقى بقية الإصلاحات والمحركات والخدمات محفوظة.
+
+routing_repair REGISTERED_BLOCKED/false وضوابطه التسعة PENDING؛ FC20-12 ACR_REQUIRED؛ release BLOCK وDARK_OFFLINE؛ network/provider/deployment=false؛ delivery_evidence=null وclosure_effect=NONE؛ T08 OPEN وstartup/maintenance/recovery UNKNOWN_NOT_APPROVED. فحوص الحوكمة لا تثبت تنفيذ تقسيم CI أو نجاح benchmark أو جاهزية نشر.
+
+الحارس مستقل: ثبات الأنواع والنطاق والقرار، ربط STOP26/SCOPE27 وكامل repair_scope بمراجع indices وبصمات canonical مستقلة دون نسخ أشجار التاريخ، عكس exact bytes، خمس أختام append-only، تاريخ منفصل لكل قراءة، ورفض source/cache الملوثة. تبقى جميع الاختبارات التاريخية، والنتائج النهائية تُربط بالرأس المطابق عند النشر ولا تُفترض من تحضير سابق.
+
+<!-- C3C-CI-TIMEOUT-PREMERGE-EXCEPTION-2026-10-18 -->
+
+### قرار المالك: استثناء صيانة CI محدود قبل دمج الحوكمة
+
+سُجل هذا الملحق عند 2026-10-18T05:59:31Z، مستقلًا عن وقت موافقة المالك. وافق المالك صراحة عند 2026-10-18T05:53:23.887243+00:00 على التعديل المحدد وتحديث حزمة #217 ومراجعتها وتشغيل فحوصها. هذا تلخيص تقني للقرار الفعلي سجله المساعد، وليس توقيعًا مشفرًا أو مراجعة GitHub مستقلة. https://github.com/alphasigma13579-lang/ASIE/pull/217 مرجع المقترح العام فقط، وليس تعليق موافقة جديدًا أو دليلًا على الدمج. لا تنشر هذه الإضافة معرّف محادثة خاصة. موافقة الدمج نفسها منفصلة بعد ظهور النتائج.
+
+هذا القرار نافذ الآن فقط لتعديل واختبار .github/workflows/asie-ci.yml في جذر المستودع وtests/test_program_close_10_repository_rebaseline.py في جذر الحزمة، مع تحديث ملفات الحوكمة الثمانية المرافقة في حزمة عشرة ملفات إجمالًا. يستثني صراحة هذين الملفين وحدهما من ترتيب merge-before-CI في ACR G-C3C-0 و§14، وملحق CI عند السطرين 393 و430 في المرجع ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af، و§4 من اقتراح التسجيل، وشرط دمج انتقال RESUME28 قبل كودهما. لا يتطلب هذا الاستثناء PR تصميم إضافيًا ولا يجيز دمج #217 أو #189.
+
+الغرض الحالي يحل محل اقتراح تقسيم CI وحد 20 دقيقة لهذا النطاق فقط: يبقى job واحد build-and-test بسياق Build frontend and test backend، وترفع مهلة job من 20 إلى 30 دقيقة. تبقى خطوة Benchmark C3C full 21x21 sensitivity بمهلة 10 دقائق وبالأمر python scripts/benchmark_finance_v2_sensitivity.py --warmups 1 --trials 3. تبقى كل الخطوات والأوامر وترتيبها ومعايير النجاح والاختبارات وtriggers وconcurrency وpermissions كما هي. لا jobs إضافية، ولا شرط skip أو continue-on-error أو نجاح مصطنع؛ تسلسل job القائم يبقى fail-closed. لا يتغير benchmark أو حدّه العددي أو سقف الذاكرة أو آلة التنفيذ أو cache/artifacts.
+
+الرأس المنشور 57c22bc91f276e6115b53366a88f0eec7d2ee715 وmanifest blob 3a3e5c8506600ad92fd30242000d40b5a01f1a84 يمثلان مرشح RESUME28 غير مدموج. الجزء الخاص بالتقسيم وحد 20 فيه مستبدل بهذا القرار، وليس تفويضًا موازيًا نافذًا. يبقى receipt #216 التاريخي صحيحًا لغرضه المشروط الأصلي ولا يصرح بالغرض الجديد. لا يغير هذا الاستثناء إصلاحات التطبيق أو RESUME العام: لا تنفيذها إلا بعد مراجعة انتقال الحوكمة وموافقة دمجه المنفصلة ودمجه الفعلي.
+
+تحفظ الأحداث 27 المدموجة كاملة وSTOP26/SCOPE27 وrepair_scope.implementation_authorized=false دون إعادة تفسير. يضاف CI_MAINTENANCE_EXCEPTION29 بعد RESUME28 المرشح، بمراجع وبصمات صغيرة بدل نسخ التاريخ. عكس 29 يعيد مرشح 28 المنشور حرفيًا، وعكس 28 يعيد manifest المدموج 4eef63fa72b0316383c6112ee92e577514123178 على main ce8ef8c8882ba5117f9c7f1dfbac34fc50f507af. قوائم 37 تراكميًا و32 مشروطًا وموضع التنفيذ الواحد وFC20-05 held محفوظة؛ الاستثناء الفوري محصور في ملفي CI المذكورين.
+
+سبب الاستثناء وأدلته: في [المحاولة الأولى](https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076/attempts/1) للرأس المنشور، امتدت الوظيفة 04:59:09–05:19:24 UTC؛ نجح 22,860 اختبارًا، مع تخطي اختبارين و10 تحذيرات، خلال 1170.37 ثانية، ثم أُلغيت خطوة benchmark. في [المحاولة الثانية](https://github.com/alphasigma13579-lang/ASIE/actions/runs/39098964076/attempts/2)، امتدت الوظيفة 05:26:15–05:46:30 UTC؛ أُلغي pytest عند 99% دون ملخص نهائي وتُخطيت خطوة benchmark. استغرقت كلتاهما 20 دقيقة و15 ثانية. تعرض صفحة GitHub لكلتا المحاولتين تنبيهًا صريحًا: The job has exceeded the maximum execution time of 20m0s. أما سجل الخطوة الخام فيذكر The operation was canceled. تجاوز مهلة الوظيفة البالغة 20 دقيقة مثبت إذن بتنبيه GitHub، وليس مجرد استنتاج من الإلغاء. لا تثبت هذه الأدلة نجاح أي تشغيل على رأس أحدث أو نجاح benchmark. لذلك لا يكفي فصل benchmark مع إبقاء suite عند 20 دقيقة لمعالجة المحاولة الثانية؛ مهلة 30 دقيقة هامش مقترح وليست ضمان نجاح.
+
+الاستثناء محدود بهذا التعديل المحدد داخل #217؛ تاريخ مراجعة القرار 2026-10-18، وتلزم مراجعة الرأس النهائي ونتائجه قبل موافقة الدمج. ينتهي إذن ما قبل الدمج عند دمج هذا التعديل أو إلغائه، ولا يمنح صيانة CI مستقبلية مفتوحة. تبقى موافقة الدمج منفصلة.
+
+تبقى routing_repair REGISTERED_BLOCKED/false، ضوابطها التسعة PENDING، FC20-12 ACR_REQUIRED، release BLOCK وDARK_OFFLINE، network/provider/deployment=false، delivery_evidence=null، closure_effect=NONE، T08 OPEN، وstartup/maintenance/recovery UNKNOWN_NOT_APPROVED. لا تطبيق أو runtime أو قاعدة حية أو نشر أو تفعيل شبكة/مزود أو تحقيق REJECTED. لا نجاح مستنتج للـbenchmark أو جاهزية إنتاج؛ نتائج التحقق النهائي تربط بالرأس المطابق بعد التنفيذ، ولا ضمان نجاح إعادة CI.
+
+السجل الحالي المثبت في docs/ACR-FIN-003-C3C-DETERMINISTIC-2D-SENSITIVITY-DARK-BUILD-2026-08-10.md؛ بصمة قسم القرار SHA256 f00f51702d6e93dbe45adbb62b6d5ce0a7227af2d4e6080a5c0513bacea1b0cf. يسري هذا الملحق على التفسير الحالي فقط، والنص السابق تاريخ محفوظ بأختامه.
