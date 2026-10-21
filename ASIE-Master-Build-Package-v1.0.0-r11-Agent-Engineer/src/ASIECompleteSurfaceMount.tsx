@@ -1,3 +1,4 @@
+import { readRecoveryStorage, writeRecoveryStorage, removeRecoveryStorage } from "./customerLanguage";
 import {
   ArrowLeft,
   BarChart3,
@@ -336,16 +337,16 @@ export function ASIECompleteSurfaceMount() {
   const [targets, setTargets] = useState<PortalTargets>(() => readTargets());
   const [activeStage, setActiveStage] = useState(() => activeStageFromDom());
   const [sanadOpen, setSanadOpen] = useState(false);
-  const [returnStage, setReturnStage] = useState<string | null>(() => window.sessionStorage.getItem("asie.sanad.return_stage"));
+  const [returnStage, setReturnStage] = useState<string | null>(() => readRecoveryStorage("asie.sanad.return_stage"));
 
   useEffect(() => {
     const refresh = () => {
       setTargets(readTargets());
       setActiveStage(activeStageFromDom());
-      setReturnStage(window.sessionStorage.getItem("asie.sanad.return_stage"));
+      setReturnStage(readRecoveryStorage("asie.sanad.return_stage"));
     };
     const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "data-asie-missing-label", "data-asie-missing-target"] });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "data-asie-missing-label", "data-asie-missing-target", "data-asie-recovery-index", "data-asie-project-generation"] });
     window.addEventListener("hashchange", refresh);
     window.addEventListener("popstate", refresh);
     refresh();
@@ -361,16 +362,18 @@ export function ASIECompleteSurfaceMount() {
   function navigateToMissingInput() {
     const currentStage = activeStageFromDom();
     if (currentStage !== "wizard" && currentStage !== "readiness") {
-      window.sessionStorage.setItem("asie.sanad.return_stage", currentStage);
+      writeRecoveryStorage("asie.sanad.return_stage", currentStage);
       setReturnStage(currentStage);
     }
-    window.dispatchEvent(new CustomEvent("asie:navigate-missing-input"));
+    const index = targets.workspace?.dataset.asieRecoveryIndex;
+    const generation = targets.workspace?.dataset.asieProjectGeneration;
+    window.dispatchEvent(new CustomEvent("asie:navigate-missing-input", { detail: index === undefined ? undefined : { recoveryIndex: Number(index), generation: Number(generation) } }));
     setSanadOpen(false);
   }
 
   function returnFromMissingInput() {
     window.dispatchEvent(new CustomEvent("asie:return-from-missing-input"));
-    window.sessionStorage.removeItem("asie.sanad.return_stage");
+    removeRecoveryStorage("asie.sanad.return_stage");
     setReturnStage(null);
     setSanadOpen(false);
   }

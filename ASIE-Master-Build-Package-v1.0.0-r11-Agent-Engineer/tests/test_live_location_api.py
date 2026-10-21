@@ -11,13 +11,16 @@ import os
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
+from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import backend.asie_local_api as api
+from backend.intelligence_context import ContextComponent, IntelligenceContext
 from backend.repository import Repository
 
 
@@ -165,6 +168,9 @@ class LiveLocationApiTests(unittest.TestCase):
         self.token_a, _ = self.repo.create_session(email=self.user_a["email"], password="location-password-a1")
         self.token_b, _ = self.repo.create_session(email=self.user_b["email"], password="location-password-b1")
 
+        limiter_patch = patch.object(api, "REQUEST_RATE_LIMITER", api.LocalRateLimiter())
+        limiter_patch.start()
+        self.addCleanup(limiter_patch.stop)
         previous_repo = api.REPO
         api.REPO = self.repo
         self.addCleanup(setattr, api, "REPO", previous_repo)
@@ -174,53 +180,58 @@ class LiveLocationApiTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def create_approved_narrative_context(self) -> tuple[str, str]:
-        """Persist a reviewed context and receipt; browser payload never supplies either body."""
+    def create_approved_narrative_context(self, *, approval_scope="narrative", conditions=None) -> tuple[str, str]:
+        """Use the native model and approval guards, never browser state/hash claims."""
+        conditions = [] if conditions is None else conditions
         context_id = "ctx-narrative-a"
-        receipt_id = "receipt-narrative-a"
-        context_hash = "b" * 64
         principal = self.repo.principal_for_token(self.token_a, self.org_a_id)
         assert principal is not None
-        self.repo.create_intelligence_context(
-            payload={
-                "organization_id": self.org_a_id,
-                "project_id": self.project_a.project_id,
-                "context_build_id": context_id,
-                "idempotency_key": "narrative-context-a",
-                "context_hash": context_hash,
-                "state": "REVIEW_PENDING",
-                "component_manifest": [
-                    {
-                        "source": "GASTAT",
-                        "freshness": "2026-09-01",
-                        "geography": "Saudi Arabia",
-                        "sector": "food_service",
-                        "confidence": "high",
-                        "lineage": ["https://www.stats.gov.sa/market-data"],
-                    }
-                ],
+        scope = self.repo.intelligence_project_scope(
+            organization_id=self.org_a_id,
+            project_id=self.project_a.project_id,
+            principal=principal,
+        )
+        context = IntelligenceContext(
+            context_id, self.org_a_id, self.project_a.project_id,
+            scope["geography"], scope["sector"], "narrative-context-a",
+            components=[ContextComponent(
+                component_id="narrative-evidence-a", kind="reference",
+                value={"summary": "Isolated narrative fixture"},
+                source="GASTAT", freshness="2026-09-01",
+                geography=scope["geography"], sector=scope["sector"],
+                confidence="high",
+                lineage=["https://www.stats.gov.sa/market-data"],
+            )],
+        )
+        context.transition("VALIDATING").transition("INTEGRITY_LOCKED").transition("REVIEW_PENDING")
+        self.repo.persist_validated_intelligence_context(context=context, principal=principal)
+        overlay = self.repo.save_intelligence_review(
+            organization_id=self.org_a_id, project_id=self.project_a.project_id,
+            overlay={
+                "intelligence_context_id": context_id,
+                "intelligence_context_hash": context.context_hash,
+                "review_scope": "narrative",
+                "reviewed_output_hash": context.context_hash,
+                "decision": "APPROVE_WITH_CONDITIONS" if conditions else "APPROVE",
+                "conditions": conditions,
             },
             principal=principal,
         )
-        receipt = {
-            "approval_receipt_id": receipt_id,
-            "organization_id": self.org_a_id,
-            "project_id": self.project_a.project_id,
-            "intelligence_context_id": context_id,
-            "intelligence_context_hash": context_hash,
-            "approved_for_contract_version": "live.intelligence.narrative.v1",
-            "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-        }
-        db = self.repo.connect()
-        try:
-            db.execute(
-                "INSERT INTO intelligence_approval_receipts (approval_receipt_id, organization_id, project_id, context_build_id, receipt_hash, payload_json, created_at) VALUES (?,?,?,?,?,?,?)",
-                (receipt_id, self.org_a_id, self.project_a.project_id, context_id, "receipt-hash", json.dumps(receipt), "now"),
-            )
-            db.commit()
-        finally:
-            db.close()
-        return context_id, receipt_id
+        receipt = self.repo.save_intelligence_approval(
+            organization_id=self.org_a_id, project_id=self.project_a.project_id,
+            receipt={
+                "intelligence_context_id": context_id,
+                "intelligence_context_hash": context.context_hash,
+                "review_overlay_id": overlay["review_overlay_id"],
+                "review_overlay_hash": overlay["review_overlay_hash"],
+                "approval_scope": approval_scope,
+                "conditions": conditions,
+                "approved_for_contract_version": "live.intelligence.narrative.v1",
+                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            },
+            principal=principal,
+        )
+        return context_id, receipt["approval_receipt_id"]
 
     def request(
         self,
@@ -640,6 +651,159 @@ class LiveLocationApiTests(unittest.TestCase):
         self.assertEqual("failed", events[-1]["result"])
         self.assertEqual("provider_unavailable", events[-1]["reason"])
 
+    def test_live_narrative_validates_exact_context_material_before_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with closing(self.repo.connect()) as db:
+            original = dict(db.execute("SELECT * FROM intelligence_contexts WHERE context_build_id = ?", (context_id,)).fetchone())
+        mutations = []
+        for key in ("context_build_id", "organization_id", "project_id", "context_hash", "state", "version"):
+            for value in (None, "mismatched", []):
+                mutations.append((key, value, None))
+            mutations.append((key, None, "remove"))
+        for key in ("source", "lineage", "value", "geography", "sector", "confidence"):
+            mutations.append((key, ["unapproved evidence"] if key == "lineage" else "tampered", "component"))
+        mutations += [("source", 42, "component"), ("lineage", ["approved", 42], "component"), ("state", "STALE", "row"), ("state", "REJECTED", "row")]
+        for (key, value, mode), external_fetch in product(mutations, ("true", "false")):
+            with self.subTest(key=key, value=value, mode=mode):
+                record = json.loads(original["payload_json"])
+                if mode == "component":
+                    record["component_manifest"][0][key] = value
+                elif mode == "remove":
+                    record.pop(key)
+                elif mode != "row":
+                    record[key] = value
+                with closing(self.repo.connect()) as db, db:
+                    db.execute("UPDATE intelligence_contexts SET payload_json = ?, state = ? WHERE context_build_id = ?", (json.dumps(record), value if mode == "row" else original["state"], context_id))
+                with (
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
+                    patch.object(api, "_live_narrative_service", side_effect=AssertionError("unverified context must not construct provider")) as provider,
+                ):
+                    status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+                self.assertEqual(409, status)
+                self.assertEqual("approved_evidence_context_required", body["error"])
+                provider.assert_not_called()
+
+    def test_live_narrative_rejects_corrupt_persisted_contexts_before_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        cases = [(json.dumps(context), 409, "approved_evidence_context_required")
+                 for context in ([], ["corrupt context"], "corrupt context", 42, True, None)]
+        cases += [("{malformed context", 409, "approved_evidence_context_required"), ("", 409, "approved_evidence_context_required"), ("{}", 409, "approved_evidence_context_required")]
+        for (raw_context, expected_status, expected_error), external_fetch in product(cases, ("true", "false")):
+            with self.subTest(raw_context=raw_context):
+                with closing(self.repo.connect()) as db, db:
+                    db.execute(
+                        "UPDATE intelligence_contexts SET payload_json = ? WHERE context_build_id = ?",
+                        (raw_context, context_id),
+                    )
+                with (
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
+                    patch.object(api, "_live_narrative_service", side_effect=AssertionError("corrupt context must not construct provider")) as provider,
+                ):
+                    status, body = self.request(
+                        "POST", "/api/v1/intelligence/narrative", token=self.token_a,
+                        organization_id=self.org_a_id,
+                        payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id},
+                    )
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_error, body["error"])
+                self.assertNotIn("corrupt context", json.dumps(body))
+                self.assertNotIn("malformed context", json.dumps(body))
+                provider.assert_not_called()
+
+    def test_live_narrative_valid_approval_still_obeys_disabled_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "false"}, clear=False),
+            patch.object(self.repo, "consume_intelligence_approval", wraps=self.repo.consume_intelligence_approval) as consume,
+            patch.object(api, "_live_narrative_service") as provider,
+        ):
+            status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        consume.assert_called_once()
+        provider.assert_not_called()
+
+    def test_live_narrative_preserves_safe_internal_consumption_failures(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with (
+            patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False),
+            patch.object(self.repo, "consume_intelligence_approval", side_effect=TypeError("private internal detail")),
+            patch.object(api, "_live_narrative_service") as provider,
+        ):
+            status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+        self.assertEqual(503, status)
+        self.assertEqual("temporarily_unavailable", body["status"])
+        self.assertNotIn("private internal detail", json.dumps(body))
+        provider.assert_not_called()
+
+    def test_live_narrative_rejects_receipt_field_and_row_mismatches_before_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        with closing(self.repo.connect()) as db:
+            original = dict(db.execute("SELECT * FROM intelligence_approval_receipts WHERE approval_receipt_id = ?", (receipt_id,)).fetchone())
+        original_record = json.loads(original["payload_json"])
+        cases = [(key, None, "remove") for key in original_record]
+        cases += [(key, 42, "payload") for key in original_record]
+        cases += [(key, "mismatch", "row") for key in ("context_build_id", "receipt_hash", "created_at")]
+        for (key, value, mode), external_fetch in product(cases, ("true", "false")):
+            with self.subTest(key=key, mode=mode):
+                record = dict(original_record)
+                if mode == "remove":
+                    record.pop(key)
+                elif mode == "payload":
+                    record[key] = value
+                row = dict(original)
+                if mode == "row":
+                    row[key] = value
+                with closing(self.repo.connect()) as db, db:
+                    db.execute("UPDATE intelligence_approval_receipts SET payload_json = ?, context_build_id = ?, receipt_hash = ?, created_at = ? WHERE approval_receipt_id = ?", (json.dumps(record), row["context_build_id"], row["receipt_hash"], row["created_at"], receipt_id))
+                with (
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
+                    patch.object(api, "_live_narrative_service", side_effect=AssertionError("invalid receipt must not construct provider")) as provider,
+                ):
+                    status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id})
+                self.assertEqual(409, status)
+                self.assertEqual("approved_evidence_context_required", body["error"])
+                self.assertNotIn("mismatch", json.dumps(body))
+                provider.assert_not_called()
+                events = self.repo.security_audit_events(organization_id=self.org_a_id)
+                self.assertFalse(any(event["action"] == "live_narrative" and event["reason"] == "provider_unavailable" for event in events))
+
+    def test_live_narrative_rejects_corrupt_persisted_receipts_before_provider(self) -> None:
+        context_id, receipt_id = self.create_approved_narrative_context()
+        cases = [(json.dumps(receipt), 409, "approved_evidence_context_required")
+                 for receipt in ([], ["corrupt receipt"], "corrupt receipt", 42, True, None, {}, {"valid_until": []})]
+        cases += [("{malformed receipt", 409, "approved_evidence_context_required"), ("", 409, "approved_evidence_context_required")]
+        for (raw_receipt, expected_status, expected_error), external_fetch in product(cases, ("true", "false")):
+            with self.subTest(raw_receipt=raw_receipt):
+                with closing(self.repo.connect()) as db, db:
+                    db.execute(
+                        "UPDATE intelligence_approval_receipts SET payload_json = ? WHERE approval_receipt_id = ?",
+                        (raw_receipt, receipt_id),
+                    )
+                with (
+                    patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": external_fetch}, clear=False),
+                    patch.object(api, "_live_narrative_service", side_effect=AssertionError("corrupt receipt must not construct provider")) as provider,
+                ):
+                    status, body = self.request(
+                        "POST", "/api/v1/intelligence/narrative", token=self.token_a,
+                        organization_id=self.org_a_id,
+                        payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id},
+                    )
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_error, body["error"])
+                self.assertNotIn("corrupt receipt", json.dumps(body))
+                self.assertNotIn("malformed receipt", json.dumps(body))
+                provider.assert_not_called()
+
+    def test_live_narrative_rejects_other_scope_and_unresolved_conditions_before_provider(self) -> None:
+        for approval_scope, conditions in (("other-operation", []), ("narrative", ["manual prerequisite not satisfied"])):
+            context_id, receipt_id = self.create_approved_narrative_context(approval_scope=approval_scope, conditions=conditions)
+            with self.subTest(approval_scope=approval_scope, conditions=conditions), patch.dict(os.environ, {"ASIE_ALLOW_EXTERNAL_FETCH": "true"}, clear=False), patch.object(api, "_live_narrative_service", side_effect=AssertionError("unapproved operation must not construct provider")) as provider:
+                status, body = self.request("POST", "/api/v1/intelligence/narrative", token=self.token_a, organization_id=self.org_a_id, payload={"project_id": self.project_a.project_id, "context_build_id": context_id, "approval_receipt_id": receipt_id, "approval_scope": approval_scope, "conditions_satisfied": True})
+            self.assertEqual(409, status)
+            self.assertEqual("approved_evidence_context_required", body["error"])
+            provider.assert_not_called()
+
     def test_live_narrative_uses_only_persisted_approved_evidence_and_hides_internals(self) -> None:
         context_id, receipt_id = self.create_approved_narrative_context()
         service = FakeNarrativeService()
@@ -799,3 +963,4 @@ class LiveLocationApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

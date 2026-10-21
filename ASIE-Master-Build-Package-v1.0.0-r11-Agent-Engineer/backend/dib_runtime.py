@@ -488,15 +488,31 @@ def apply_customer_decision(item: dict[str, Any], decision: dict[str, Any]) -> d
     return updated
 
 
+def rejected_input_blockers(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Rejection remains binding even for a previously approved Manifest/Gate."""
+    return [
+        {"code": f"REJECTED_{str(item.get('input_key') or '').upper()}", "severity": "critical",
+         "message": f"Rejected item {item.get('input_key') or ''} requires a new customer decision"}
+        for item in items
+        if (item.get("value_state") or item.get("state")) == "REJECTED"
+    ]
+
+
 def build_approved_input_manifest(blueprint: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(OPTIONAL_FINANCE_DEFAULTS)
-    blockers: list[dict[str, str]] = []
+    blockers = rejected_input_blockers(blueprint.get("items", []))
     approved_items = []
     for item in blueprint.get("items", []):
         row = dict(item)
         key = str(row.get("input_key") or "")
         state = str(row.get("value_state") or row.get("state") or "UNKNOWN")
         value = row.get("value")
+        if state == "REJECTED":
+            # Preserve the original value for review, but never substitute a default
+            # or normalize a rejected number into an approved calculation input.
+            normalized.pop(key, None)
+            approved_items.append(row | {"state": state})
+            continue
         if state not in ITEM_STATES:
             blockers.append({"code": "INVALID_BLUEPRINT_ITEM_STATE", "severity": "critical", "message": f"Invalid state for {key}"})
         if key in FINANCE_REQUIRED_KEYS and state == "UNKNOWN":
@@ -531,6 +547,7 @@ def build_approved_input_manifest(blueprint: dict[str, Any]) -> dict[str, Any]:
 
 def validate_manifest_for_runtime(manifest: dict[str, Any]) -> dict[str, Any]:
     blockers = list(manifest.get("blockers") or [])
+    blockers.extend(rejected_input_blockers(manifest.get("items") or []))
     if manifest.get("contract_id") != "approved.input.manifest.v1":
         blockers.append({"code": "INVALID_MANIFEST_CONTRACT", "severity": "critical", "message": "Manifest contract mismatch"})
     if manifest.get("status") != "approved":

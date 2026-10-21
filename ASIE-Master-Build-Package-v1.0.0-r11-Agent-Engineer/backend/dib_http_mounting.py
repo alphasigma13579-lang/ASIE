@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from backend.dib_api import DIB_API_ROUTES, DIBApiError
+from backend.dib_api import DIB_API_ROUTES, DIBApiError, safe_dib_error_code
 from backend.dib_persistence import create_dib_persistence_store
 from backend.dib_security_audit_rbac import (
     DIB_SECURITY_AUDIT_RBAC_ID,
@@ -85,6 +85,9 @@ DIB_HTTP_ROUTES: tuple[dict[str, Any], ...] = tuple(
 
 class DIBHttpMountError(ValueError):
     def __init__(self, code: str, status: int = 400) -> None:
+        code = safe_dib_error_code(code)
+        if code == "dib_operation_failed":
+            status = 500
         super().__init__(code)
         self.code = code
         self.status = status
@@ -121,9 +124,9 @@ def _reject_forbidden_http_payload(payload: Any, *, context: str = "dib_http") -
             for key, item in value.items():
                 key_text = str(key)
                 if key_text in FORBIDDEN_DIB_HTTP_FIELDS:
-                    raise DIBHttpMountError(f"{context}_forbidden_field:{path}.{key_text}", 422)
+                    raise DIBHttpMountError("dib_http_forbidden_field", 422)
                 if key_text in FORBIDDEN_DIB_HTTP_TRUE_FLAGS and item is True:
-                    raise DIBHttpMountError(f"{context}_forbidden_flag:{path}.{key_text}", 422)
+                    raise DIBHttpMountError("dib_http_forbidden_flag", 422)
                 walk(item, f"{path}.{key_text}")
         elif isinstance(value, list):
             for index, item in enumerate(value):
@@ -233,17 +236,23 @@ class DIBHttpMount:
         clean_path = _clean_path(path)
         if not is_dib_http_route(clean_path):
             raise DIBHttpMountError("dib_http_route_not_found", 404)
-        request_payload = dict(payload or {})
-        _reject_forbidden_http_payload(request_payload)
         try:
+            if payload is not None and type(payload) is not dict:
+                raise DIBHttpMountError("json_object_required", 400)
+            request_payload = dict(payload or {})
+            _reject_forbidden_http_payload(request_payload)
             response = self.controller.dispatch(
                 method,
                 _dispatch_path_with_optional_session_query(path),
                 request_payload,
                 context=context or self.trusted_internal_context,
             )
+        except DIBHttpMountError:
+            raise
         except DIBApiError as exc:
             raise DIBHttpMountError(exc.code, exc.status) from exc
+        except Exception as exc:
+            raise DIBHttpMountError("dib_operation_failed", 500) from exc
         return DIBHttpResponse(response.status, response.to_public())
 
     def close(self) -> None:
@@ -409,10 +418,10 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
         return True
 
     def _handle(self, method: str) -> None:
-        if not self._require_gateway_auth(method):
-            return
         payload: dict[str, Any] = {}
         try:
+            if not self._require_gateway_auth(method):
+                return
             payload = self._read_json_body() if method == "POST" else {}
             principal = getattr(self, "_dib_gateway_principal", None)
             context = None
@@ -423,6 +432,9 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                     principal_session_id=principal.session_id,
                 )
             response = self.mount.dispatch(method, self.path, payload, context=context).to_public()
+            if principal is not None and isinstance(response.get("session"), dict):
+                for item in response["session"].get("recovery_items", []):
+                    item["action"]["allowed"] = principal.can("dib.write")
             self._write_json(response, int(response["status"]))
             self._record_gateway_audit(method, int(response["status"]), payload)
         except DIBHttpMountError as exc:
@@ -440,6 +452,13 @@ class DIBHttpSidecarHandler(BaseHTTPRequestHandler):
                 exc.status,
             )
             self._record_gateway_audit(method, exc.status, payload, error=exc.code)
+        except Exception:
+            self._write_json({"error": "dib_internal_error", "status": 500}, 500)
+            try:
+                self._record_gateway_audit(method, 500, {}, error="dib_internal_error")
+            except Exception:
+                # An unavailable audit store must not expose the original exception.
+                pass
 
     def do_OPTIONS(self) -> None:
         self._write_json({"ok": True, "http_mounting_id": DIB_HTTP_MOUNTING_ID})
