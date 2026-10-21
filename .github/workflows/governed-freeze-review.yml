@@ -33,6 +33,7 @@ jobs:
     env:
       ASIE_REVIEW_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
       ASIE_EVIDENCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.evidence_run_id || '' }}
+      ASIE_GATE_REPORT_PATH: ""
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     defaults:
       run:
@@ -130,7 +131,14 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --name rel-beta-07-complete-evidence \
             --dir gov-rel-09-input
-          test -f gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
+          report_path="$(
+            find gov-rel-09-input -type f -path '*/rel-beta-07-final/beta-release-gate-report.json' \
+              | LC_ALL=C sort \
+              | head -n 1
+          )"
+          test -n "$report_path"
+          test -f "$report_path"
+          echo "ASIE_GATE_REPORT_PATH=$report_path" >> "$GITHUB_ENV"
 
       - name: Resolve governed freeze state
         shell: bash
@@ -169,7 +177,7 @@ jobs:
         if: env.ASIE_FREEZE_STATUS == 'ACTIVE'
         run: >-
           python -m tools.gov_rel_09_governed_freeze_review
-          --gate-report gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
+          --gate-report "$ASIE_GATE_REPORT_PATH"
           --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
           --expected-commit "$ASIE_REVIEW_COMMIT"
           --repository-root ..
@@ -180,7 +188,7 @@ jobs:
         if: env.ASIE_FREEZE_STATUS == 'CLEARED'
         run: >-
           python -m tools.gov_rel_10_controlled_unfreeze
-          --gate-report gov-rel-09-input/rel-beta-07-final/beta-release-gate-report.json
+          --gate-report "$ASIE_GATE_REPORT_PATH"
           --freeze-marker ../EMERGENCY-RELEASE-FREEZE.json
           --expected-commit "$ASIE_REVIEW_COMMIT"
           --repository-root ..
