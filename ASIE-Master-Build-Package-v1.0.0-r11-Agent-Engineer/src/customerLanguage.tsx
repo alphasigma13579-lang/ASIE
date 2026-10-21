@@ -63,6 +63,9 @@ export function CustomerLanguageProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === "ar" ? "rtl" : "ltr";
+    document.title = locale === "ar" ? "ASIE | مرصد القرار المحلي" : "ASIE | Local decision workspace";
+    const skipLink = document.querySelector<HTMLAnchorElement>('a.skip-link[href="#main-content"]');
+    if (skipLink) skipLink.textContent = locale === "ar" ? "تجاوز إلى المحتوى الرئيسي" : "Skip to main content";
   }, [locale]);
 
   const value = useMemo<CustomerLanguageContextValue>(

@@ -236,6 +236,49 @@ class CustomerRecoveryBrowserTests(unittest.TestCase):
         page.locator("#workspace-navigation .nav-item").filter(has_text="افحص النواقص" if locale == "ar" else "Check missing inputs").click()
         expect(page.get_by_role("heading", name="نواقص المسودة الحالية" if locale == "ar" else "Current draft requirements", exact=True)).to_be_visible()
 
+    def test_document_chrome_tracks_locale_without_replacing_skip_link(self):
+        with self.app("en") as (page, state):
+            link = page.locator('a.skip-link[href="#main-content"]')
+            handle = link.element_handle()
+            for locale, title, label in (
+                ("en", "ASIE | Local decision workspace", "Skip to main content"),
+                ("ar", "ASIE | مرصد القرار المحلي", "تجاوز إلى المحتوى الرئيسي"),
+                ("en", "ASIE | Local decision workspace", "Skip to main content"),
+            ):
+                page.get_by_role("button", name="العربية" if locale == "ar" else "English", exact=True).click()
+                expect(page).to_have_title(title)
+                expect(link).to_have_text(label)
+                self.assertTrue(handle.evaluate("node => node === document.querySelector('a.skip-link')"))
+                self.assertEqual(page.evaluate("document.documentElement.lang"), locale)
+                self.assertEqual(page.evaluate("document.documentElement.dir"), "rtl" if locale == "ar" else "ltr")
+            link.focus(); page.keyboard.press("Enter")
+            self.assertEqual(page.url.rsplit("#", 1)[1], "main-content")
+
+    def test_active_navigation_text_contrast_in_both_directions_and_states(self):
+        contrast = """node => {
+            const rgba = value => value.match(/[\\d.]+/g).map(Number);
+            const blend = (fg, bg) => fg.slice(0,3).map((v,i) => v*(fg[3] ?? 1)+bg[i]*(1-(fg[3] ?? 1)));
+            let ancestors=[], current=node;
+            while(current){ancestors.unshift(current);current=current.parentElement;}
+            let background=[255,255,255], opacity=1;
+            for(const element of ancestors){const style=getComputedStyle(element);background=blend(rgba(style.backgroundColor),background);opacity*=Number(style.opacity);}
+            const foreground=rgba(getComputedStyle(node).color);foreground[3]=(foreground[3] ?? 1)*opacity;
+            const text=blend(foreground,background);
+            const luminance=rgb=>rgb.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+            const a=luminance(text),b=luminance(background);
+            return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+        }"""
+        for locale in ("ar", "en"):
+            with self.subTest(locale=locale), self.app(locale) as (page, state):
+                active=page.locator("#workspace-navigation .nav-item--active")
+                page.mouse.move(0,0)
+                for mode in ("rest", "hover", "focus"):
+                    if mode == "hover": active.hover()
+                    if mode == "focus": page.mouse.move(0,0); active.focus()
+                    page.wait_for_function("node => node.getAnimations().every(animation => animation.playState !== 'running')", arg=active.element_handle())
+                    for selector in ("strong", "span"):
+                        self.assertGreaterEqual(active.locator(selector).evaluate(contrast),4.5,(locale,mode,selector))
+
     def store_step_seven_draft(self, page, owner, inputs):
         project = owner["project"]
         project["name"] = project["name"] or "Synthetic wizard project"
